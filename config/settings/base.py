@@ -104,6 +104,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "reelforge.users",
     "reelforge.core",
+    "reelforge.channels",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
