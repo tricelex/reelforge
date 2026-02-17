@@ -1,4 +1,3 @@
-
 from typing import ClassVar
 
 from django.contrib.auth.models import AbstractUser
@@ -7,12 +6,11 @@ from django.db.models import EmailField
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from .managers import UserManager
+from reelforge.users.managers import UserManager
 
 
 class User(AbstractUser):
-    """
-    Default custom user model for ReelForge.
+    """Default custom user model for ReelForge.
     If adding fields that need to be filled at user signup,
     check forms.SignupForm and forms.SocialSignupForms accordingly.
     """

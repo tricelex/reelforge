@@ -8,9 +8,9 @@ from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 
-from .forms import UserAdminChangeForm
-from .forms import UserAdminCreationForm
-from .models import User
+from reelforge.users.forms import UserAdminChangeForm
+from reelforge.users.forms import UserAdminCreationForm
+from reelforge.users.models import User
 
 if settings.DJANGO_ADMIN_FORCE_ALLAUTH:
     # Force the `admin` sign in process to go through the `django-allauth` workflow:

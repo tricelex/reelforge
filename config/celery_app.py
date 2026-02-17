@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+from typing import Any
 
 from celery import Celery
 from celery.signals import setup_logging
@@ -16,7 +19,7 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 
 
 @setup_logging.connect
-def config_loggers(*args, **kwargs):
+def config_loggers(*_args: Any, **_kwargs: Any) -> None:
     from logging.config import dictConfig
 
     from django.conf import settings

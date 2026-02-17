@@ -1,14 +1,16 @@
+from typing import Any
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin
 from rest_framework.mixins import RetrieveModelMixin
 from rest_framework.mixins import UpdateModelMixin
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from reelforge.users.api.serializers import UserSerializer
 from reelforge.users.models import User
-
-from .serializers import UserSerializer
 
 
 class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericViewSet):
@@ -16,11 +18,11 @@ class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericV
     queryset = User.objects.all()
     lookup_field = "pk"
 
-    def get_queryset(self, *args, **kwargs):
+    def get_queryset(self, *_args: Any, **_kwargs: Any) -> Any:
         assert isinstance(self.request.user.id, int)
         return self.queryset.filter(id=self.request.user.id)
 
     @action(detail=False)
-    def me(self, request):
+    def me(self, request: Request) -> Response:
         serializer = UserSerializer(request.user, context={"request": request})
         return Response(status=status.HTTP_200_OK, data=serializer.data)

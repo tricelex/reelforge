@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_fsm import FSMField
+from django_fsm import transition
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class BaseAbstractModel(models.Model):
@@ -94,35 +100,35 @@ class PipelineStageModel(BaseAbstractModel):
     # on_error: auto-transition to FAILED if an exception is raised inside.
 
     @transition(field=status, source=PENDING, target=RUNNING, on_error=FAILED)
-    def start(self, task_id: str = ""):
+    def start(self, task_id: str = "") -> None:
         """Transition PENDING → RUNNING. Called when Celery task picks up the job."""
         self.started_at = timezone.now()
         self.celery_task_id = task_id
 
     @transition(field=status, source=[QUEUED], target=RUNNING, on_error=FAILED)
-    def start_from_queue(self, task_id: str = ""):
+    def start_from_queue(self, task_id: str = "") -> None:
         """Transition QUEUED → RUNNING."""
         self.started_at = timezone.now()
         self.celery_task_id = task_id
 
     @transition(field=status, source=[RUNNING, RETRYING], target=COMPLETED)
-    def complete(self):
+    def complete(self) -> None:
         """Transition RUNNING/RETRYING → COMPLETED."""
         self.completed_at = timezone.now()
 
     @transition(field=status, source="*", target=FAILED)
-    def fail(self, error: str, trace: str = ""):
+    def fail(self, error: str, trace: str = "") -> None:
         """Transition any state → FAILED. Captures error detail."""
         self.last_error = error[:2000]
         self.error_trace = trace[:10000]
 
     @transition(field=status, source="*", target=PAUSED)
-    def pause(self, reason: str = ""):
+    def pause(self, reason: str = "") -> None:
         """Transition any state → PAUSED. Requires human intervention to resume."""
         self.notes = reason
 
     @transition(field=status, source=[FAILED, PAUSED], target=RETRYING, conditions=[lambda self: self.can_retry()])
-    def retry(self):
+    def retry(self) -> None:
         """Transition FAILED/PAUSED → RETRYING.
         conditions=[can_retry] means FSM will refuse the transition if
         retry_count >= max_retries — no manual guard needed.
@@ -132,11 +138,11 @@ class PipelineStageModel(BaseAbstractModel):
         self.started_at = timezone.now()
 
     @transition(field=status, source=PENDING, target=QUEUED)
-    def enqueue(self):
+    def enqueue(self) -> None:
         """Transition PENDING → QUEUED when added to Celery queue."""
 
     @transition(field=status, source="*", target=REJECTED)
-    def reject(self, reason: str = ""):
+    def reject(self, reason: str = "") -> None:
         """Manual rejection by operator."""
         self.notes = reason
 
@@ -145,7 +151,7 @@ class PipelineStageModel(BaseAbstractModel):
     def can_retry(self) -> bool:
         return self.retry_count < self.max_retries
 
-    def mark_running(self, task_id: str = ""):
+    def mark_running(self, task_id: str = "") -> None:
         """Convenience wrapper — handles PENDING or QUEUED source state."""
         if self.status == self.QUEUED:
             self.start_from_queue(task_id=task_id)
@@ -153,19 +159,19 @@ class PipelineStageModel(BaseAbstractModel):
             self.start(task_id=task_id)
         self.save()
 
-    def mark_completed(self):
+    def mark_completed(self) -> None:
         self.complete()
         self.save()
 
-    def mark_failed(self, error: str, trace: str = ""):
+    def mark_failed(self, error: str, trace: str = "") -> None:
         self.fail(error=error, trace=trace)
         self.save()
 
-    def mark_paused(self, reason: str = ""):
+    def mark_paused(self, reason: str = "") -> None:
         self.pause(reason=reason)
         self.save()
 
-    def increment_retry(self):
+    def increment_retry(self) -> None:
         self.retry()
         self.save()
 

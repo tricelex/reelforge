@@ -1,8 +1,8 @@
 """With these settings, tests run faster."""
 
-from .base import *  # noqa: F403
-from .base import TEMPLATES
-from .base import env
+from config.settings.base import *  # noqa: F403
+from config.settings.base import TEMPLATES
+from config.settings.base import env
 
 # GENERAL
 # ------------------------------------------------------------------------------

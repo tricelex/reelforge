@@ -1,7 +1,7 @@
-from .base import *  # noqa: F403
-from .base import INSTALLED_APPS
-from .base import MIDDLEWARE
-from .base import env
+from config.settings.base import *  # noqa: F403
+from config.settings.base import INSTALLED_APPS
+from config.settings.base import MIDDLEWARE
+from config.settings.base import env
 
 # GENERAL
 # ------------------------------------------------------------------------------
