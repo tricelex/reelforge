@@ -1,10 +1,12 @@
-# ruff: noqa: ERA001, E501
+# ruff: noqa: ERA001
 """Base settings to build other settings files upon."""
 
 import ssl
 from pathlib import Path
 
 import environ
+from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # reelforge/
@@ -68,10 +70,22 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # "django.contrib.humanize", # Handy template tags
-    "django.contrib.admin",
     "django.forms",
 ]
 THIRD_PARTY_APPS = [
+    # Unfold must come before django.contrib.admin
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
+    "unfold.contrib.inlines",
+    "unfold.contrib.import_export",
+    "unfold.contrib.guardian",
+    "unfold.contrib.simple_history",
+    "unfold.contrib.location_field",
+    "unfold.contrib.constance",
+    # Django admin after Unfold
+    "django.contrib.admin",
+    # Other third-party apps
     "crispy_forms",
     "crispy_bootstrap5",
     "allauth",
@@ -83,10 +97,13 @@ THIRD_PARTY_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
+    "django_fsm",
+    "django_fsm_log",
 ]
 
 LOCAL_APPS = [
     "reelforge.users",
+    "reelforge.core",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -352,3 +369,218 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
+######################################################################
+# Unfold
+######################################################################
+UNFOLD = {
+    "STUDIO": {
+        # "header_sticky": True,
+        # "layout_style": "boxed",
+        # "header_variant": "dark",
+        # "sidebar_style": "minimal",
+        # "sidebar_variant": "dark",
+        # "site_banner": "Custom global message",
+    },
+    "SITE_TITLE": _("Reelforge HQ"),
+    "SITE_HEADER": _("Reelforge"),
+    "SITE_SUBHEADER": _("Multi-Channel YouTube Automation"),
+    "SITE_SYMBOL": "movie_creation",
+    # "SITE_ICON": lambda request: static("images/logo.svg"),
+    # "SITE_URL": None,
+    "SITE_DROPDOWN": [
+        {
+            "icon": "api",
+            "title": _("API Documentation"),
+            "link": "/api/schema/swagger/",
+        },
+        {
+            "icon": "monitor_heart",
+            "title": _("Celery Flower"),
+            "link": "/flower/",
+        },
+        {
+            "icon": "help",
+            "title": _("Unfold Documentation"),
+            "link": "https://unfoldadmin.com/docs/",
+        },
+    ],
+    "SHOW_HISTORY": True,
+    # "SHOW_LANGUAGES": True,
+    # "LANGUAGE_FLAGS": {
+    #     "de": "🇩🇪",
+    #     "en": "🇺🇸",
+    # },
+    # "ENVIRONMENT": "reelforge.utils.environment_callback",  # Future: implement environment indicator
+    # "DASHBOARD_CALLBACK": "reelforge.views.dashboard_callback",  # Future: custom dashboard
+    # "LOGIN": {
+    #     "image": lambda request: static("images/login-bg.jpg"),
+    # },
+    "STYLES": [
+        # lambda request: static("css/styles.css"),
+    ],
+    "SCRIPTS": [
+        # lambda request: static("js/scripts.js"),
+    ],
+    # "TABS": [
+    #     # Future: Add tabs for pipeline stages, channel management, etc.
+    # ],
+    # "COMMAND": {
+    #     # Future: Custom search and history callbacks
+    # },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "command_search": True,
+        "navigation": [
+            {
+                "title": _("Core"),
+                "items": [
+                    {
+                        "title": _("Dashboard"),
+                        "icon": "dashboard",
+                        "link": reverse_lazy("admin:index"),
+                    },
+                ],
+            },
+            {
+                "title": _("User Management"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Users"),
+                        "icon": "account_circle",
+                        "link": reverse_lazy("admin:users_user_changelist"),
+                    },
+                    {
+                        "title": _("Groups"),
+                        "icon": "group",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Task Scheduling"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Periodic Tasks"),
+                        "icon": "task",
+                        "link": reverse_lazy(
+                            "admin:django_celery_beat_periodictask_changelist",
+                        ),
+                    },
+                    {
+                        "title": _("Crontabs"),
+                        "icon": "update",
+                        "link": reverse_lazy(
+                            "admin:django_celery_beat_crontabschedule_changelist",
+                        ),
+                    },
+                    {
+                        "title": _("Intervals"),
+                        "icon": "timer",
+                        "link": reverse_lazy(
+                            "admin:django_celery_beat_intervalschedule_changelist",
+                        ),
+                    },
+                    {
+                        "title": _("Clocked"),
+                        "icon": "hourglass_bottom",
+                        "link": reverse_lazy(
+                            "admin:django_celery_beat_clockedschedule_changelist",
+                        ),
+                    },
+                    {
+                        "title": _("Solar Events"),
+                        "icon": "wb_sunny",
+                        "link": reverse_lazy(
+                            "admin:django_celery_beat_solarschedule_changelist",
+                        ),
+                    },
+                ],
+            },
+            # Future: Uncomment as apps are implemented
+            # {
+            #     "title": _("Channel Management"),
+            #     "collapsible": True,
+            #     "items": [
+            #         {
+            #             "title": _("Channels"),
+            #             "icon": "video_library",
+            #             "link": reverse_lazy("admin:channels_channel_changelist"),
+            #         },
+            #     ],
+            # },
+            # {
+            #     "title": _("Pipeline"),
+            #     "collapsible": True,
+            #     "items": [
+            #         {
+            #             "title": _("Pipeline Runs"),
+            #             "icon": "play_circle",
+            #             "link": reverse_lazy("admin:pipeline_pipelinerun_changelist"),
+            #         },
+            #         {
+            #             "title": _("Pipeline Events"),
+            #             "icon": "event_note",
+            #             "link": reverse_lazy("admin:pipeline_pipelineevent_changelist"),
+            #         },
+            #     ],
+            # },
+            # {
+            #     "title": _("Content Production"),
+            #     "collapsible": True,
+            #     "items": [
+            #         {
+            #             "title": _("Research Jobs"),
+            #             "icon": "search",
+            #             "link": reverse_lazy("admin:research_researchjob_changelist"),
+            #         },
+            #         {
+            #             "title": _("Script Jobs"),
+            #             "icon": "article",
+            #             "link": reverse_lazy("admin:scripts_scriptjob_changelist"),
+            #         },
+            #         {
+            #             "title": _("Asset Jobs"),
+            #             "icon": "perm_media",
+            #             "link": reverse_lazy("admin:assets_assetjob_changelist"),
+            #         },
+            #         {
+            #             "title": _("Production Jobs"),
+            #             "icon": "movie",
+            #             "link": reverse_lazy("admin:production_productionjob_changelist"),
+            #         },
+            #         {
+            #             "title": _("Distribution Jobs"),
+            #             "icon": "upload",
+            #             "link": reverse_lazy("admin:distribution_distributionjob_changelist"),
+            #         },
+            #     ],
+            # },
+            # {
+            #     "title": _("Analytics"),
+            #     "collapsible": True,
+            #     "items": [
+            #         {
+            #             "title": _("Performance Snapshots"),
+            #             "icon": "analytics",
+            #             "link": reverse_lazy("admin:analytics_analyticssnapshot_changelist"),
+            #         },
+            #     ],
+            # },
+        ],
+    },
+}
+
+UNFOLD_STUDIO_ENABLE_CUSTOMIZER = True
+
+UNFOLD_STUDIO_DEFAULT_FRAGMENT = "color-schemes"
+
+UNFOLD_STUDIO_ENABLE_SAVE = False
+
+UNFOLD_STUDIO_ENABLE_FILEUPLOAD = False
+
+UNFOLD_STUDIO_ALWAYS_OPEN = True
+
+UNFOLD_STUDIO_ENABLE_RESET_PASSWORD = True

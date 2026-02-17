@@ -21,15 +21,53 @@ ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
+warn_return_any = true
+warn_unreachable = true
+disallow_any_generics = false
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+implicit_reexport = false
+packages = ["reelforge", "tests", "docs", "tools"]
+show_error_codes = true
+strict = true
 plugins = [
     "mypy_django_plugin.main",
     "mypy_drf_plugin.main",
 ]
+exclude = '''(?x)(
+^build/
+|^dist/
+|^.venv/
+|^node_modules/
+|^migrations/
+|^src/app/server/static/
+)
+'''
 
 [[tool.mypy.overrides]]
 # Django migrations should not produce any errors:
-module = "*.migrations.*"
+module = [
+  "sqlalchemy.*",
+  "saq.*",
+  "uvicorn.*",
+  "aiohttp.*",
+  "jsbeautifier",
+  "jsbeautifier.*",
+  "uvloop",
+  "uvloop.*",
+  "nodeenv",
+  "keycloak.*",
+  "*.migrations.*",
+]
 ignore_errors = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+disable_error_code = "attr-defined,type-var,union-attr"
+disallow_untyped_decorators = false
+module = ["tests.*"]
+warn_unused_ignores = false
 
 [tool.django-stubs]
 django_settings_module = "config.settings.test"
@@ -55,79 +93,121 @@ indent_size = 2
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
+fix = true
+line-length = 120
+src = ["reelforge", "config", "tests"]
 extend-exclude = [
     "*/migrations/*.py",
     "staticfiles/*",
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "__pycache__",
 ]
 
 [tool.ruff.lint]
-select = [
-    "F",
-    "E",
-    "W",
-    "C90",
-    "I",
-    "N",
-    "UP",
-    "YTT",
-    # "ANN", # flake8-annotations: we should support this in the future but 100+ errors atm
-    "ASYNC",
-    "S",
-    "BLE",
-    "FBT",
-    "B",
-    "A",
-    "COM",
-    "C4",
-    "DTZ",
-    "T10",
-    "DJ",
-    "EM",
-    "EXE",
-    "FA",
-    'ISC',
-    "ICN",
-    "G",
-    'INP',
-    'PIE',
-    "T20",
-    'PYI',
-    'PT',
-    "Q",
-    "RSE",
-    "RET",
-    "SLF",
-    "SLOT",
-    "SIM",
-    "TID",
-    "TC",
-    "INT",
-    # "ARG", # Unused function argument
-    "PTH",
-    "ERA",
-    "PD",
-    "PGH",
-    "PL",
-    "TRY",
-    "FLY",
-    # "NPY",
-    # "AIR",
-    "PERF",
-    # "FURB",
-    # "LOG",
-    "RUF",
-]
+fixable = ["ALL"]
+select = ["ALL"]
 ignore = [
-    "S101", # Use of assert detected https://docs.astral.sh/ruff/rules/assert/
-    "RUF012", # Mutable class attributes should be annotated with `typing.ClassVar`
-    "SIM102", # sometimes it's better to nest
-    # of types for comparison.
-    # Deactivated because it can make the code slow:
-    # https://github.com/astral-sh/ruff/issues/7871
+  "A003",    # flake8-builtins - class attribute {name} is shadowing a python builtin
+  "A005",    # flake8-builtins - module {name} shadows a Python standard-library module
+  "B010",    # flake8-bugbear - do not call setattr with a constant attribute value
+  "D100",    # pydocstyle - missing docstring in public module
+  "D101",    # pydocstyle - missing docstring in public class
+  "D102",    # pydocstyle - missing docstring in public method
+  "D103",    # pydocstyle - missing docstring in public function
+  "D104",    # pydocstyle - missing docstring in public package
+  "D105",    # pydocstyle - missing docstring in magic method
+  "D106",    # pydocstyle - missing docstring in public nested class
+  "D107",    # pydocstyle - missing docstring in __init__
+  "D202",    # pydocstyle - no blank lines allowed after function docstring
+  "D205",    # pydocstyle - 1 blank line required between summary line and description
+  "D415",    # pydocstyle - first line should end with a period, question mark, or exclamation point
+  "E501",    # pydocstyle line too long, handled by black
+  "PLW2901", # pylint - for loop variable overwritten by assignment target
+  "RUF012",  # Ruff-specific rule - annotated with classvar
+  "ANN401",
+  "FBT",
+  "PLR0913", # too many arguments
+  "PT",
+  "TD",
+  "ARG002",  # ignore for now; investigate
+  "ARG003",  # ignore for now; investigate
+  "PERF203", # ignore for now; investigate
+  "PD011",   # pandas
+  "PLR0912",
+  "ISC001",
+  "COM812",
+  "CPY001",
+  "PGH003",
+  "FA100",
+  "PLC0415", # import should be at the top of the file
+  "PLR0904", # too many public methods
+  "PLR0917",
+  "PGH003",
+  "PLC2701",
+  "PLW3201",
+  "PLR6301",
 ]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 force-single-line = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 16
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = [
+  "classmethod",
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Disallow all relative imports.
+ban-relative-imports = "all"
+
+[tool.slotscheck]
+strict-imports = false
+
+[tool.codespell]
+ignore-words-list = "alog,selectin,selectinload,asend"
+skip = 'uv.lock,package-lock.json,*/bun.lock,node_modules,.venv,.agent,./src/app/server/static/*,*.txt,*.js,*.css,*.map,*.json,htmlcov'
+
+
+
+[tool.pyright]
+disableBytesTypePromotions = true
+exclude = ["src/app/db/migrations"]
+include = ["src/app", "src/tests", "tools"]
+pythonVersion = "3.11"
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
+reportUnknownMemberType = false
+reportUnnecessaryTypeIgnoreComment = true
+reportUnusedFunction = false
+strict = ["src/app/**/*"]
+venv = ".venv"
+venvPath = "."
+
 
 [dependency-groups]
 dev = [
@@ -175,9 +255,12 @@ dependencies = [
     "django-cors-headers==4.9.0",
     "django-crispy-forms==2.5",
     "django-environ==0.12.1",
+    "django-fsm-2>=4.1.0",
+    "django-fsm-log>=5.0.2",
     "django-model-utils==5.0.0",
     "django-redis==6.0.0",
     "django-storages[google]==1.14.6",
+    "django-unfold>=0.80.1",
     "djangorestframework==3.16.1",
     "drf-spectacular==0.29.0",
     "flower==2.0.1",

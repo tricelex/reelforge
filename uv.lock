@@ -441,6 +441,18 @@ wheels = [
 ]
 
 [[package]]
+name = "django-appconf"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/a2/e58bec8d7941b914af52a67c35b5709eceed2caa2848f28437f1666ed668/django_appconf-1.2.0.tar.gz", hash = "sha256:15a88d60dd942d6059f467412fe4581db632ef03018a3c183fb415d6fc9e5cec", size = 16127, upload-time = "2025-11-08T15:46:27.304Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/e6/4c34d94dfb74bbcbc489606e61f1924933de30d22c593dd1f429f35fbd7f/django_appconf-1.2.0-py3-none-any.whl", hash = "sha256:b81bce5ef0ceb9d84df48dfb623a32235d941c78cc5e45dbb6947f154ea277f4", size = 6500, upload-time = "2025-11-08T15:46:25.957Z" },
+]
+
+[[package]]
 name = "django-celery-beat"
 version = "2.8.1"
 source = { registry = "https://pypi.org/simple" }
@@ -530,6 +542,32 @@ wheels = [
 ]
 
 [[package]]
+name = "django-fsm-2"
+version = "4.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/8f/d1ec9bafdfd7830a40ab1f72887cd931e07f43552b03869495598cb1170c/django_fsm_2-4.1.0.tar.gz", hash = "sha256:5fbe34839f315a06e29052ded8868292fc469f8f37c8d4d88427ad15a92680ae", size = 17695, upload-time = "2025-11-03T15:03:43.477Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/97/f4ce5f7b3f389e03c259b0501fc28a9d1db359b09776251130ae9c5e9590/django_fsm_2-4.1.0-py3-none-any.whl", hash = "sha256:58e20abe633c1375d80aca55fd66ca2431794d32f44751f333f386de869f0e6f", size = 14976, upload-time = "2025-11-03T15:03:41.938Z" },
+]
+
+[[package]]
+name = "django-fsm-log"
+version = "5.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "django-appconf" },
+    { name = "django-fsm-2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/5f/f59917a2e0abeaf9cf20b7920c3df966c813754c61cb3d6587ace30d5e28/django_fsm_log-5.0.2.tar.gz", hash = "sha256:5276a587bff3112c123c73456f37decf9c1bdc631e005c760e248adc25c8ec97", size = 8758, upload-time = "2026-01-27T11:08:49.532Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/ca/79414e6548d0c2585c7d134250152f12071b6a270367a693e6ea704be011/django_fsm_log-5.0.2-py3-none-any.whl", hash = "sha256:02fbb61a54b21c1640e6360a251e3a07b564307bbdd391bbbf65ca8299f13d9e", size = 13964, upload-time = "2026-01-27T11:08:48.056Z" },
+]
+
+[[package]]
 name = "django-model-utils"
 version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -614,6 +652,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/05/9b93a66452cdb8a08ab26f08d5766d2332673e659a8b2aeb73f2a904d421/django_timezone_field-7.2.1.tar.gz", hash = "sha256:def846f9e7200b7b8f2a28fcce2b78fb2d470f6a9f272b07c4e014f6ba4c6d2e", size = 13096, upload-time = "2025-12-06T23:50:44.591Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/7f/d885667401515b467f84569c56075bc9add72c9fd425fca51a25f4c997e1/django_timezone_field-7.2.1-py3-none-any.whl", hash = "sha256:276915b72c5816f57c3baf9e43f816c695ef940d1b21f91ebf6203c09bf4ad44", size = 13284, upload-time = "2025-12-06T23:50:43.302Z" },
+]
+
+[[package]]
+name = "django-unfold"
+version = "0.80.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/a9/6743626cff7fabc2abe42b411c6556b1a2f39ec6e10a9bb40482408261e4/django_unfold-0.80.1.tar.gz", hash = "sha256:2bd42fcf23bdc37cd0e3880d8682eeb300d1ac0b7dbae2f7a50e14b1b16c9572", size = 1110977, upload-time = "2026-02-17T08:10:44.829Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/bd/b80ead3e61c52e547907a461b9d7dbe57068ee21954c13d1cdaf69368413/django_unfold-0.80.1-py3-none-any.whl", hash = "sha256:10f1c676075054ec5fddd590ca52460b636ee552cd3cb2ef068d33fa9014a688", size = 1225924, upload-time = "2026-02-17T08:10:42.891Z" },
 ]
 
 [[package]]
@@ -1571,9 +1621,12 @@ dependencies = [
     { name = "django-cors-headers" },
     { name = "django-crispy-forms" },
     { name = "django-environ" },
+    { name = "django-fsm-2" },
+    { name = "django-fsm-log" },
     { name = "django-model-utils" },
     { name = "django-redis" },
     { name = "django-storages", extra = ["google"] },
+    { name = "django-unfold" },
     { name = "djangorestframework" },
     { name = "drf-spectacular" },
     { name = "flower" },
@@ -1623,9 +1676,12 @@ requires-dist = [
     { name = "django-cors-headers", specifier = "==4.9.0" },
     { name = "django-crispy-forms", specifier = "==2.5" },
     { name = "django-environ", specifier = "==0.12.1" },
+    { name = "django-fsm-2", specifier = ">=4.1.0" },
+    { name = "django-fsm-log", specifier = ">=5.0.2" },
     { name = "django-model-utils", specifier = "==5.0.0" },
     { name = "django-redis", specifier = "==6.0.0" },
     { name = "django-storages", extras = ["google"], specifier = "==1.14.6" },
+    { name = "django-unfold", specifier = ">=0.80.1" },
     { name = "djangorestframework", specifier = "==3.16.1" },
     { name = "drf-spectacular", specifier = "==0.29.0" },
     { name = "flower", specifier = "==2.0.1" },
