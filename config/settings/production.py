@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 import logging
 
 import sentry_sdk
@@ -7,12 +6,12 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 
-from .base import *  # noqa: F403
-from .base import DATABASES
-from .base import INSTALLED_APPS
-from .base import REDIS_URL
-from .base import SPECTACULAR_SETTINGS
-from .base import env
+from config.settings.base import *  # noqa: F403
+from config.settings.base import DATABASES
+from config.settings.base import INSTALLED_APPS
+from config.settings.base import REDIS_URL
+from config.settings.base import SPECTACULAR_SETTINGS
+from config.settings.base import env
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -56,7 +55,6 @@ CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_NAME = "__Secure-csrftoken"
 # https://docs.djangoproject.com/en/dev/topics/security/#ssl-https
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-seconds
-# TODO: set this to 60 seconds first and then to 518400 once you prove the former works
 SECURE_HSTS_SECONDS = 60
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-include-subdomains
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(

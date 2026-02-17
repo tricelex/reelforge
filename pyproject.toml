@@ -167,6 +167,15 @@ ignore = [
 ]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.ruff.lint.per-file-ignores]
+# Tests: ignore asserts, missing type annotations, unused arguments
+"*/tests/*" = ["S101", "ANN", "ARG001"]
+"tests/*" = ["S101", "ANN", "ARG001"]
+"*/conftest.py" = ["ANN", "ARG001"]
+"manage.py" = ["ANN"]
+# Views can use assert for type guards
+"*/views.py" = ["S101"]
+
 [tool.ruff.lint.isort]
 force-single-line = true
 
