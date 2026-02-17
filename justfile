@@ -36,3 +36,6 @@ logs *args:
 # manage: Executes `manage.py` command.
 manage +args:
     @docker compose run --rm django python ./manage.py {{args}}
+
+create-superuser:
+    @docker compose run --rm django python ./manage.py createsuperuser
