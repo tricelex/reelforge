@@ -1,0 +1,70 @@
+volumes:
+  production_***REMOVED***_data: {}
+  production_***REMOVED***_data_backups: {}
+  production_traefik: {}
+  
+  production_redis_data: {}
+  
+
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+
+    image: ***REMOVED***_production_django
+    depends_on:
+      - ***REMOVED***
+      - redis
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.***REMOVED***
+    command: /start
+
+  ***REMOVED***:
+    build:
+      context: .
+      dockerfile: ./compose/production/***REMOVED***/Dockerfile
+    image: ***REMOVED***_production_***REMOVED***
+    volumes:
+      - production_***REMOVED***_data:/var/lib/***REMOVED***ql/18/docker
+      - production_***REMOVED***_data_backups:/backups
+    env_file:
+      - ./.envs/.production/.***REMOVED***
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./compose/production/traefik/Dockerfile
+    image: ***REMOVED***_production_traefik
+    depends_on:
+      - django
+    volumes:
+      - production_traefik:/etc/traefik/acme
+    ports:
+      - '0.0.0.0:80:80'
+      - '0.0.0.0:443:443'
+      - '0.0.0.0:5555:5555'
+
+  redis:
+    image: docker.io/redis:7.2
+    
+    volumes:
+      - production_redis_data:/data
+    
+
+  celeryworker:
+    <<: *django
+    image: ***REMOVED***_production_celeryworker
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: ***REMOVED***_production_celerybeat
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: ***REMOVED***_production_flower
+    command: /start-flower

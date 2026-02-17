@@ -1,0 +1,79 @@
+volumes:
+  ***REMOVED***_local_***REMOVED***_data: {}
+  ***REMOVED***_local_***REMOVED***_data_backups: {}
+  ***REMOVED***_local_redis_data: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: ***REMOVED***_local_django
+    container_name: ***REMOVED***_local_django
+    depends_on:
+      - ***REMOVED***
+      - redis
+      - mailpit
+    volumes:
+      - /app/.venv
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.***REMOVED***
+    ports:
+      - '8000:8000'
+    command: /start
+
+  ***REMOVED***:
+    build:
+      context: .
+      dockerfile: ./compose/production/***REMOVED***/Dockerfile
+    image: ***REMOVED***_production_***REMOVED***
+    container_name: ***REMOVED***_local_***REMOVED***
+    volumes:
+      - ***REMOVED***_local_***REMOVED***_data:/var/lib/***REMOVED***ql/18/docker
+      - ***REMOVED***_local_***REMOVED***_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.***REMOVED***
+
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: ***REMOVED***_local_mailpit
+    ports:
+      - "8025:8025"
+
+  redis:
+    image: docker.io/redis:7.2
+    container_name: ***REMOVED***_local_redis
+    volumes:
+      - ***REMOVED***_local_redis_data:/data
+
+  celeryworker:
+    <<: *django
+    image: ***REMOVED***_local_celeryworker
+    container_name: ***REMOVED***_local_celeryworker
+    depends_on:
+      - redis
+      - ***REMOVED***
+      - mailpit
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: ***REMOVED***_local_celerybeat
+    container_name: ***REMOVED***_local_celerybeat
+    depends_on:
+      - redis
+      - ***REMOVED***
+      - mailpit
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: ***REMOVED***_local_flower
+    container_name: ***REMOVED***_local_flower
+    ports:
+      - '5555:5555'
+    command: /start-flower
