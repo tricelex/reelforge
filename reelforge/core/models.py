@@ -13,6 +13,18 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
+class PipelineStatusChoices(models.TextChoices):
+    PENDING = "PENDING", _("Pending")
+    QUEUED = "QUEUED", _("Queued")
+    RUNNING = "RUNNING", _("Running")
+    COMPLETED = "COMPLETED", _("Completed")
+    FAILED = "FAILED", _("Failed")
+    RETRYING = "RETRYING", _("Retrying")
+    PAUSED = "PAUSED", _("Paused (Manual Review)")
+    REJECTED = "REJECTED", _("Rejected")
+    SKIPPED = "SKIPPED", _("Skipped")
+
+
 class BaseAbstractModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(_("Created at"), auto_now_add=True)
@@ -46,33 +58,10 @@ class PipelineStageModel(BaseAbstractModel):
     that raise TransitionNotAllowed if called from an invalid state.
     """
 
-    # Status constants — used as FSMField state values
-    PENDING = "PENDING"
-    QUEUED = "QUEUED"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    RETRYING = "RETRYING"
-    PAUSED = "PAUSED"
-    REJECTED = "REJECTED"
-    SKIPPED = "SKIPPED"
-
-    STATUS_CHOICES = [
-        (PENDING, "Pending"),
-        (QUEUED, "Queued"),
-        (RUNNING, "Running"),
-        (COMPLETED, "Completed"),
-        (FAILED, "Failed"),
-        (RETRYING, "Retrying"),
-        (PAUSED, "Paused (Manual Review)"),
-        (REJECTED, "Rejected"),
-        (SKIPPED, "Skipped"),
-    ]
-
     # FSMField replaces plain CharField — enforces valid transitions at DB level
     status = FSMField(
-        default=PENDING,
-        choices=STATUS_CHOICES,
+        default=PipelineStatusChoices.PENDING,
+        choices=PipelineStatusChoices,
         protected=True,  # Prevents direct assignment: obj.status = "X" raises exception
         db_index=True,
     )
@@ -99,35 +88,54 @@ class PipelineStageModel(BaseAbstractModel):
     # Calling from any other state raises django_fsm.TransitionNotAllowed.
     # on_error: auto-transition to FAILED if an exception is raised inside.
 
-    @transition(field=status, source=PENDING, target=RUNNING, on_error=FAILED)
+    @transition(
+        field=status,
+        source=PipelineStatusChoices.PENDING,
+        target=PipelineStatusChoices.RUNNING,
+        on_error=PipelineStatusChoices.FAILED,
+    )
     def start(self, task_id: str = "") -> None:
         """Transition PENDING → RUNNING. Called when Celery task picks up the job."""
         self.started_at = timezone.now()
         self.celery_task_id = task_id
 
-    @transition(field=status, source=[QUEUED], target=RUNNING, on_error=FAILED)
+    @transition(
+        field=status,
+        source=[PipelineStatusChoices.QUEUED],
+        target=PipelineStatusChoices.RUNNING,
+        on_error=PipelineStatusChoices.FAILED,
+    )
     def start_from_queue(self, task_id: str = "") -> None:
         """Transition QUEUED → RUNNING."""
         self.started_at = timezone.now()
         self.celery_task_id = task_id
 
-    @transition(field=status, source=[RUNNING, RETRYING], target=COMPLETED)
+    @transition(
+        field=status,
+        source=[PipelineStatusChoices.RUNNING, PipelineStatusChoices.RETRYING],
+        target=PipelineStatusChoices.COMPLETED,
+    )
     def complete(self) -> None:
         """Transition RUNNING/RETRYING → COMPLETED."""
         self.completed_at = timezone.now()
 
-    @transition(field=status, source="*", target=FAILED)
+    @transition(field=status, source="*", target=PipelineStatusChoices.FAILED)
     def fail(self, error: str, trace: str = "") -> None:
         """Transition any state → FAILED. Captures error detail."""
         self.last_error = error[:2000]
         self.error_trace = trace[:10000]
 
-    @transition(field=status, source="*", target=PAUSED)
+    @transition(field=status, source="*", target=PipelineStatusChoices.PAUSED)
     def pause(self, reason: str = "") -> None:
         """Transition any state → PAUSED. Requires human intervention to resume."""
         self.notes = reason
 
-    @transition(field=status, source=[FAILED, PAUSED], target=RETRYING, conditions=[lambda self: self.can_retry()])
+    @transition(
+        field=status,
+        source=[PipelineStatusChoices.FAILED, PipelineStatusChoices.PAUSED],
+        target=PipelineStatusChoices.RETRYING,
+        conditions=[lambda self: self.can_retry()],
+    )
     def retry(self) -> None:
         """Transition FAILED/PAUSED → RETRYING.
         conditions=[can_retry] means FSM will refuse the transition if
@@ -137,11 +145,11 @@ class PipelineStageModel(BaseAbstractModel):
         self.last_error = ""
         self.started_at = timezone.now()
 
-    @transition(field=status, source=PENDING, target=QUEUED)
+    @transition(field=status, source=PipelineStatusChoices.PENDING, target=PipelineStatusChoices.QUEUED)
     def enqueue(self) -> None:
         """Transition PENDING → QUEUED when added to Celery queue."""
 
-    @transition(field=status, source="*", target=REJECTED)
+    @transition(field=status, source="*", target=PipelineStatusChoices.REJECTED)
     def reject(self, reason: str = "") -> None:
         """Manual rejection by operator."""
         self.notes = reason

@@ -39,3 +39,23 @@ manage +args:
 
 create-superuser:
     @docker compose run --rm django python ./manage.py createsuperuser
+
+# lint: Run ruff linting checks.
+lint:
+    @echo "Running ruff linting checks..."
+    @uv run ruff check . --unsafe-fixes
+
+# format: Run ruff code formatting.
+format:
+    @echo "Running ruff code formatting..."
+    @uv run ruff format .
+
+# format-check: Check if code is formatted correctly without making changes.
+format-check:
+    @echo "Checking code formatting..."
+    @uv run ruff format --check .
+
+# precommit: Run all pre-commit hooks on all files.
+precommit:
+    @echo "Running pre-commit hooks on all files..."
+    @uv run pre-commit run --all-files
