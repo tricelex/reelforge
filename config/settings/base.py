@@ -105,6 +105,12 @@ LOCAL_APPS = [
     "***REMOVED***.users",
     "***REMOVED***.core",
     "***REMOVED***.channels",
+    "***REMOVED***.pipeline",
+    "***REMOVED***.research",
+    "***REMOVED***.scripts",
+    "***REMOVED***.assets",
+    "***REMOVED***.production",
+    "***REMOVED***.distribution",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -498,76 +504,90 @@ UNFOLD = {
                     },
                 ],
             },
-            # Future: Uncomment as apps are implemented
-            # {
-            #     "title": _("Channel Management"),
-            #     "collapsible": True,
-            #     "items": [
-            #         {
-            #             "title": _("Channels"),
-            #             "icon": "video_library",
-            #             "link": reverse_lazy("admin:channels_channel_changelist"),
-            #         },
-            #     ],
-            # },
-            # {
-            #     "title": _("Pipeline"),
-            #     "collapsible": True,
-            #     "items": [
-            #         {
-            #             "title": _("Pipeline Runs"),
-            #             "icon": "play_circle",
-            #             "link": reverse_lazy("admin:pipeline_pipelinerun_changelist"),
-            #         },
-            #         {
-            #             "title": _("Pipeline Events"),
-            #             "icon": "event_note",
-            #             "link": reverse_lazy("admin:pipeline_pipelineevent_changelist"),
-            #         },
-            #     ],
-            # },
-            # {
-            #     "title": _("Content Production"),
-            #     "collapsible": True,
-            #     "items": [
-            #         {
-            #             "title": _("Research Jobs"),
-            #             "icon": "search",
-            #             "link": reverse_lazy("admin:research_researchjob_changelist"),
-            #         },
-            #         {
-            #             "title": _("Script Jobs"),
-            #             "icon": "article",
-            #             "link": reverse_lazy("admin:scripts_scriptjob_changelist"),
-            #         },
-            #         {
-            #             "title": _("Asset Jobs"),
-            #             "icon": "perm_media",
-            #             "link": reverse_lazy("admin:assets_assetjob_changelist"),
-            #         },
-            #         {
-            #             "title": _("Production Jobs"),
-            #             "icon": "movie",
-            #             "link": reverse_lazy("admin:production_productionjob_changelist"),
-            #         },
-            #         {
-            #             "title": _("Distribution Jobs"),
-            #             "icon": "upload",
-            #             "link": reverse_lazy("admin:distribution_distributionjob_changelist"),
-            #         },
-            #     ],
-            # },
-            # {
-            #     "title": _("Analytics"),
-            #     "collapsible": True,
-            #     "items": [
-            #         {
-            #             "title": _("Performance Snapshots"),
-            #             "icon": "analytics",
-            #             "link": reverse_lazy("admin:analytics_analyticssnapshot_changelist"),
-            #         },
-            #     ],
-            # },
+            {
+                "title": _("Channel Management"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Channels"),
+                        "icon": "video_library",
+                        "link": reverse_lazy("admin:channels_channel_changelist"),
+                    },
+                    {
+                        "title": _("Competitors"),
+                        "icon": "trending_up",
+                        "link": reverse_lazy("admin:channels_channelcompetitor_changelist"),
+                    },
+                    {
+                        "title": _("Playlists"),
+                        "icon": "playlist_play",
+                        "link": reverse_lazy("admin:channels_channelplaylist_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Pipeline"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Pipeline Runs"),
+                        "icon": "account_tree",
+                        "link": reverse_lazy("admin:pipeline_pipelinerun_changelist"),
+                    },
+                    {
+                        "title": _("Pipeline Events"),
+                        "icon": "event_note",
+                        "link": reverse_lazy("admin:pipeline_pipelineevent_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Content Production"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Research Jobs"),
+                        "icon": "search",
+                        "link": reverse_lazy("admin:research_researchjob_changelist"),
+                    },
+                    {
+                        "title": _("Topic Ideas"),
+                        "icon": "lightbulb",
+                        "link": reverse_lazy("admin:research_topicidea_changelist"),
+                    },
+                    {
+                        "title": _("Script Jobs"),
+                        "icon": "description",
+                        "link": reverse_lazy("admin:scripts_scriptjob_changelist"),
+                    },
+                    {
+                        "title": _("Asset Jobs"),
+                        "icon": "perm_media",
+                        "link": reverse_lazy("admin:assets_assetjob_changelist"),
+                    },
+                    {
+                        "title": _("Production Jobs"),
+                        "icon": "movie",
+                        "link": reverse_lazy("admin:production_productionjob_changelist"),
+                    },
+                    {
+                        "title": _("Distribution Jobs"),
+                        "icon": "upload",
+                        "link": reverse_lazy("admin:distribution_distributionjob_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Analytics"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Analytics Snapshots"),
+                        "icon": "analytics",
+                        "link": reverse_lazy("admin:distribution_analyticssnapshot_changelist"),
+                    },
+                ],
+            },
         ],
     },
 }
