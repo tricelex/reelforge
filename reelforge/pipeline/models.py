@@ -324,9 +324,9 @@ class PipelineRun(BaseAbstractModel):
     @property
     def available_transitions(self) -> list[str]:
         """Returns valid FSM transitions from current state."""
-        from django_fsm import get_available_user_transitions
+        from django_fsm import get_available_FIELD_transitions
 
-        return [t.name for t in get_available_user_transitions(self)]
+        return [t.name for t in get_available_FIELD_transitions(self, self.overall_status)]
 
     @property
     def duration_hours(self) -> float:
