@@ -111,6 +111,7 @@ LOCAL_APPS = [
     "***REMOVED***.assets",
     "***REMOVED***.production",
     "***REMOVED***.distribution",
+    # Note: ***REMOVED***.services and ***REMOVED***.agents are utility modules, not Django apps
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -603,3 +604,33 @@ UNFOLD_STUDIO_ENABLE_FILEUPLOAD = False
 UNFOLD_STUDIO_ALWAYS_OPEN = True
 
 UNFOLD_STUDIO_ENABLE_RESET_PASSWORD = True
+
+# AI PROVIDER CONFIGURATION
+# ------------------------------------------------------------------------------
+# API Keys for AI providers
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# Provider Defaults (overridable per channel)
+DEFAULT_LLM_PROVIDER = env("DEFAULT_LLM_PROVIDER", default="claude")  # claude | openai | gemini
+DEFAULT_TTS_PROVIDER = env("DEFAULT_TTS_PROVIDER", default="elevenlabs")  # elevenlabs | openai_tts
+DEFAULT_IMAGE_PROVIDER = env("DEFAULT_IMAGE_PROVIDER", default="fal_ai")  # fal_ai | replicate | dalle
+
+# EXTERNAL SERVICES (OPTIONAL)
+# ------------------------------------------------------------------------------
+# TTS Providers
+ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", default="")
+
+# Image Generation Providers
+FAL_API_KEY = env("FAL_API_KEY", default="")
+REPLICATE_API_KEY = env("REPLICATE_API_KEY", default="")
+
+# YouTube API (for research and analytics)
+YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
+
+# Reddit API (for research)
+REDDIT_CLIENT_ID = env("REDDIT_CLIENT_ID", default="")
+REDDIT_CLIENT_SECRET = env("REDDIT_CLIENT_SECRET", default="")
+
+# Perplexity API (for research)
+PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
