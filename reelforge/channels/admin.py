@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
+from unfold.decorators import action
 from unfold.decorators import display
 
 from reelforge.channels.models import Channel
@@ -50,6 +51,9 @@ class ChannelAdmin(ModelAdmin):
         "total_views",
         "total_subscribers",
         "created_at",
+        "total_views_display",
+        "total_revenue_display",
+        "last_analytics_sync",
     ]
     list_filter = [
         "status",
@@ -256,6 +260,30 @@ class ChannelAdmin(ModelAdmin):
     )
     def status_badge(self, obj: Channel) -> str:
         return obj.status
+
+    @display(description="Total Views")
+    def total_views_display(self, obj) -> str:
+        return f"{obj.total_views:,}"
+
+    @display(description="Revenue (Est.)")
+    def total_revenue_display(self, obj) -> str:
+        return f"${obj.total_revenue_est_usd:,.2f}"
+
+    @action(description="🚀 Trigger Research Job", url_path="trigger-research")
+    def trigger_research(self, request, queryset) -> None:
+        from research.tasks import run_research_job_for_channel
+
+        for channel in queryset:
+            run_research_job_for_channel.delay(str(channel.id))
+        self.message_user(request, f"Research triggered for {queryset.count()} channels.")
+
+    @action(description="📊 Sync Analytics Now", url_path="sync-analytics")
+    def sync_analytics(self, request, queryset) -> None:
+        from analytics.tasks import sync_channel_analytics
+
+        for channel in queryset:
+            sync_channel_analytics.delay(str(channel.id))
+        self.message_user(request, "Analytics sync triggered.")
 
 
 @admin.register(ChannelCompetitor)

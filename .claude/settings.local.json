@@ -9,7 +9,13 @@
       "Bash(just manage makemigrations:*)",
       "Bash(just manage migrate:*)",
       "Bash(just manage:*)",
-      "Bash(just precommit:*)"
+      "Bash(just precommit:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(grep:*)",
+      "Bash(done)",
+      "Bash(find reelforge -name \"models.py\" -exec sh -c 'echo \"\"=== $1 ===\"\"; grep \"\"class.*Job\\\\|class.*Idea\"\" \"\"$1\"\"' _ {} ;)",
+      "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" DJANGO_SETTINGS_MODULE=\"config.settings.local\" uv run python:*)",
+      "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" SECRET_KEY=\"test-key\" USE_DOCKER=\"no\" uv run python:*)"
     ]
   }
 }
