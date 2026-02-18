@@ -1,7 +1,8 @@
 # apps/channels/services.py
 import json
+from pathlib import Path
 
-from config import settings
+from django.conf import settings
 
 from reelforge.channels.models import Channel
 
@@ -64,7 +65,9 @@ class ChannelSetupService:
 
         tts = get_tts_provider(self.channel)
         response = tts.synthesize(text=test_text, voice_id=voice_id)
-        path = f"storage/temp/voice_test_{self.channel.slug}.mp3"
+        temp_dir = Path(settings.MEDIA_ROOT) / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        path = temp_dir / f"voice_test_{self.channel.slug}.mp3"
         with open(path, "wb") as f:
             f.write(response.audio_bytes)
-        return {"success": True, "preview_path": path, "duration": response.duration_sec}
+        return {"success": True, "preview_path": str(path), "duration": response.duration_sec}

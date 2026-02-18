@@ -49,7 +49,7 @@ def build_script_agent(channel: Channel, topic: TopicIdea) -> Agent:
         job = ScriptJob.objects.get(id=script_job_id)
         next_version = job.revisions.count() + 1
         ScriptRevision.objects.create(
-            script_job=job, version=next_version, script_text=script_text, change_note=version_note
+            script_job=job, version_number=next_version, script_text=script_text, change_summary=version_note
         )
         return {"saved": True, "version": next_version}
 
@@ -83,7 +83,7 @@ def build_script_agent(channel: Channel, topic: TopicIdea) -> Agent:
         Target length: {channel.video_length_min}-{channel.video_length_max} minutes
         Target word count: {channel.video_length_min * 130}-{channel.video_length_max * 130} words
         Topic: {topic.title_idea}
-        Keyword: {topic.target_keyword}
+        Keywords: {", ".join(topic.keywords) if topic.keywords else "N/A"}
 
         PROCESS:
         1. fetch_research_facts for the topic

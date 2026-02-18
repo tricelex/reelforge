@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 
+from reelforge.pipeline.choices import PipelineStatus
+
 if TYPE_CHECKING:
     from reelforge.pipeline.models import PipelineRun
 
@@ -18,16 +20,19 @@ class PipelineService:
 
     def trigger_daily_batch(self):
         from reelforge.pipeline.models import PipelineRun
+        from reelforge.pipeline.tasks import run_research_job_for_channel
         from reelforge.research.models import TopicIdea
 
-        available_topics = self.channel.topics.filter(status="COMPLETED", script_job__isnull=True).count()
+        available_topics = self.channel.topic_ideas.filter(approved=True, status="PENDING").count()
 
         if available_topics < 3:
-            from reelforge.research.tasks import run_research_job_for_channel
-
             run_research_job_for_channel.delay(str(self.channel.id))
 
-        ready_topics = TopicIdea.objects.filter(channel=self.channel, status="COMPLETED", script_job__isnull=True)[:1]
+        ready_topics = TopicIdea.objects.filter(
+            channel=self.channel,
+            approved=True,
+            script_job__isnull=True,
+        )[:1]
 
         for topic in ready_topics:
             run = PipelineRun.objects.create(channel=self.channel, topic=topic)
@@ -41,18 +46,16 @@ class PipelineService:
         FSM conditions=[can_retry] prevent retry if max_retries exceeded.
         """
         retry_map = {
-            PipelineRun.FAILED: {
-                "SCRIPTING": run.retry_scripting,
-                "GENERATING_ASSETS": run.retry_assets,
-                "RENDERING": run.retry_rendering,
-                "UPLOADING": run.retry_upload,
-            }
+            PipelineStatus.SCRIPTING: run.retry_scripting,
+            PipelineStatus.GENERATING_ASSETS: run.retry_assets,
+            PipelineStatus.RENDERING: run.retry_rendering,
+            PipelineStatus.UPLOADING: run.retry_upload,
         }
 
-        if run.overall_status == PipelineRun.FAILED:
+        if run.overall_status == PipelineStatus.FAILED:
             # Determine which stage failed by checking stage objects
             stage = _identify_failed_stage(run)
-            fn = retry_map[PipelineRun.FAILED].get(stage)
+            fn = retry_map.get(stage)
             if fn and can_proceed(fn):
                 fn()
                 run.save()  # post_transition → Celery dispatch
@@ -67,3 +70,18 @@ class PipelineService:
             run.save()
         else:
             raise TransitionNotAllowed(f"Cannot advance from {run.overall_status} to GENERATING_ASSETS")
+
+
+def _identify_failed_stage(run: PipelineRun) -> str:
+    """Determine which stage caused the pipeline failure by checking stage job statuses."""
+    from reelforge.core.models import PipelineStatusChoices
+
+    if run.distribution_job and run.distribution_job.status == PipelineStatusChoices.FAILED:
+        return PipelineStatus.UPLOADING
+    if run.production_job and run.production_job.status == PipelineStatusChoices.FAILED:
+        return PipelineStatus.RENDERING
+    if run.asset_job and run.asset_job.status == PipelineStatusChoices.FAILED:
+        return PipelineStatus.GENERATING_ASSETS
+    if run.script_job and run.script_job.status == PipelineStatusChoices.FAILED:
+        return PipelineStatus.SCRIPTING
+    return run.current_stage or "UNKNOWN"

@@ -161,7 +161,7 @@ class PipelineStageModel(BaseAbstractModel):
 
     def mark_running(self, task_id: str = "") -> None:
         """Convenience wrapper — handles PENDING or QUEUED source state."""
-        if self.status == self.QUEUED:
+        if self.status == PipelineStatusChoices.QUEUED:
             self.start_from_queue(task_id=task_id)
         else:
             self.start(task_id=task_id)

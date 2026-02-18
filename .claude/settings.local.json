@@ -15,7 +15,9 @@
       "Bash(done)",
       "Bash(find reelforge -name \"models.py\" -exec sh -c 'echo \"\"=== $1 ===\"\"; grep \"\"class.*Job\\\\|class.*Idea\"\" \"\"$1\"\"' _ {} ;)",
       "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" DJANGO_SETTINGS_MODULE=\"config.settings.local\" uv run python:*)",
-      "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" SECRET_KEY=\"test-key\" USE_DOCKER=\"no\" uv run python:*)"
+      "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" SECRET_KEY=\"test-key\" USE_DOCKER=\"no\" uv run python:*)",
+      "Bash(DATABASE_URL=postgres://debug:debug@localhost:5432/reelforge REDIS_URL=redis://localhost:6379/0 uv run python:*)",
+      "Bash(DATABASE_URL=postgres://debug:debug@localhost:5432/reelforge REDIS_URL=redis://localhost:6379/0 USE_DOCKER=no uv run python:*)"
     ]
   }
 }

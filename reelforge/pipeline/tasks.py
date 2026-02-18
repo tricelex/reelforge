@@ -31,7 +31,11 @@ def run_pipeline_orchestrator(self, channel_id: str, pipeline_run_id: str) -> No
 
 @shared_task(bind=True, max_retries=3, queue="research")
 def run_research_job(self, channel_id: str, research_job_id: str) -> None:
+    import asyncio
+
     from agents import Runner
+
+    from reelforge.agents.research_agent import build_research_agent
     from reelforge.channels.models import Channel
     from reelforge.research.models import ResearchJob
 
@@ -40,12 +44,6 @@ def run_research_job(self, channel_id: str, research_job_id: str) -> None:
 
     try:
         channel = Channel.objects.prefetch_related("competitors").get(id=channel_id)
-        # Agent handles the research, saves results to job
-        import asyncio
-
-        from agents import Runner
-        from reelforge.agents.research_agent import build_research_agent
-
         agent = build_research_agent(channel)
         result = asyncio.run(
             Runner.run(
@@ -57,6 +55,112 @@ def run_research_job(self, channel_id: str, research_job_id: str) -> None:
         # Parse result and save topics
         _save_research_results(job, result, channel)
         job.mark_completed()
+
+    except Exception as exc:
+        job.mark_failed(str(exc))
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="research")
+def run_research_job_for_channel(self, channel_id: str) -> None:
+    """Create a ResearchJob for the channel and dispatch run_research_job."""
+    from reelforge.channels.models import Channel
+    from reelforge.research.choices import ResearchTrigger
+    from reelforge.research.models import ResearchJob
+
+    try:
+        channel = Channel.objects.get(id=channel_id)
+        job = ResearchJob.objects.create(
+            channel=channel,
+            trigger_source=ResearchTrigger.MANUAL,
+            search_keywords=list(channel.channel_keywords[:10]),
+        )
+        run_research_job.delay(str(channel.id), str(job.id))
+        logger.info("Research job created for channel %s: job_id=%s", channel.slug, job.id)
+    except Exception as exc:
+        logger.exception("Failed to create research job for channel %s", channel_id)
+        raise self.retry(exc=exc) from None
+
+
+# ── Script Generation ────────────────────────────────────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300, queue="default")
+def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
+    """Build ScriptAgent and run it for the given topic."""
+    import asyncio
+
+    from agents import Runner
+
+    from reelforge.agents.script_agent import build_script_agent
+    from reelforge.pipeline.models import PipelineRun
+    from reelforge.research.models import TopicIdea
+    from reelforge.scripts.models import ScriptJob
+
+    topic = TopicIdea.objects.select_related("channel").get(id=topic_id)
+    channel = topic.channel
+
+    # Create ScriptJob if not yet exists for this topic
+    job, _ = ScriptJob.objects.get_or_create(
+        topic=topic,
+        defaults={"channel": channel},
+    )
+    job.mark_running(task_id=self.request.id)
+
+    try:
+        agent = build_script_agent(channel, topic)
+        asyncio.run(
+            Runner.run(
+                agent,
+                input=f"Write a full script for: {topic.title_idea}",
+                max_turns=30,
+            )
+        )
+        job.mark_completed()
+
+        # Update PipelineRun to link the script job
+        PipelineRun.objects.filter(id=pipeline_run_id).update(script_job=job)
+
+    except Exception as exc:
+        job.mark_failed(str(exc))
+        raise self.retry(exc=exc) from None
+
+
+# ── Asset Generation ─────────────────────────────────────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300, queue="default")
+def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
+    """Build AssetAgent and run it for the given script job."""
+    import asyncio
+
+    from agents import Runner
+
+    from reelforge.agents.asset_agent import build_asset_agent
+    from reelforge.assets.models import AssetJob
+    from reelforge.pipeline.models import PipelineRun
+    from reelforge.scripts.models import ScriptJob
+
+    script_job = ScriptJob.objects.select_related("topic__channel").get(id=script_job_id)
+    channel = script_job.topic.channel
+
+    # Create AssetJob if not yet exists for this script job
+    job, _ = AssetJob.objects.get_or_create(script_job=script_job)
+    job.mark_running(task_id=self.request.id)
+
+    try:
+        agent = build_asset_agent(channel, script_job)
+        asyncio.run(
+            Runner.run(
+                agent,
+                input=f"Generate all assets for: {script_job.final_title or script_job.topic.title_idea}",
+                max_turns=30,
+            )
+        )
+        job.mark_completed()
+
+        # Update PipelineRun to link the asset job
+        PipelineRun.objects.filter(id=pipeline_run_id).update(asset_job=job)
 
     except Exception as exc:
         job.mark_failed(str(exc))
@@ -84,7 +188,7 @@ def render_video(self, production_job_id: str) -> None:
 
     try:
         renderer = VideoRenderer(job)
-        renderer.render()  # See Section 6 for implementation
+        renderer.render()
         job.mark_completed()
 
         # Chain to QA immediately
@@ -139,7 +243,16 @@ def upload_video(self, distribution_job_id: str) -> None:
         job.published_at = timezone.now()
         job.save()
 
-        # Chain post-upload tasks
+        # Mark job and pipeline run complete BEFORE dispatching post-upload chain
+        job.mark_completed()
+
+        from reelforge.pipeline.models import PipelineRun
+
+        run = PipelineRun.objects.get(distribution_job=job)
+        run.mark_published()
+        run.save(update_fields=["overall_status", "current_stage", "completed_at", "updated_at"])
+
+        # Chain post-upload tasks (fire-and-forget)
         (
             set_video_thumbnail.si(distribution_job_id)
             | post_pinned_comment.si(distribution_job_id)
@@ -148,11 +261,47 @@ def upload_video(self, distribution_job_id: str) -> None:
             | cross_post_social.si(distribution_job_id)
         ).delay()
 
-        job.mark_completed()
-
     except Exception as exc:
         job.mark_failed(str(exc))
         raise self.retry(exc=exc) from None
+
+
+# ── Post-Upload Stubs ────────────────────────────────────────────────────────
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+def set_video_thumbnail(self, distribution_job_id: str) -> None:
+    """Upload selected thumbnail to YouTube. Stub — real implementation in Phase 8."""
+    logger.info("set_video_thumbnail called for distribution_job_id=%s (stub)", distribution_job_id)
+    # TODO: Implement YouTube thumbnail upload via YouTube Data API
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+def post_pinned_comment(self, distribution_job_id: str) -> None:
+    """Post pinned comment on the uploaded video. Stub — real implementation in Phase 8."""
+    logger.info("post_pinned_comment called for distribution_job_id=%s (stub)", distribution_job_id)
+    # TODO: Implement YouTube comment posting and pinning via YouTube Data API
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+def add_to_playlist(self, distribution_job_id: str) -> None:
+    """Add video to configured playlists. Stub — real implementation in Phase 8."""
+    logger.info("add_to_playlist called for distribution_job_id=%s (stub)", distribution_job_id)
+    # TODO: Implement YouTube playlist assignment via YouTube Data API
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+def upload_youtube_short(self, distribution_job_id: str) -> None:
+    """Upload the Shorts variant of the video. Stub — real implementation in Phase 8."""
+    logger.info("upload_youtube_short called for distribution_job_id=%s (stub)", distribution_job_id)
+    # TODO: Upload 9:16 cropped Shorts variant via YouTube Data API
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+def cross_post_social(self, distribution_job_id: str) -> None:
+    """Cross-post video clip to TikTok/Instagram/Twitter. Stub — real implementation in Phase 8."""
+    logger.info("cross_post_social called for distribution_job_id=%s (stub)", distribution_job_id)
+    # TODO: Implement cross-platform posting (TikTok, Instagram Reels, Twitter/X)
 
 
 # ── Analytics ────────────────────────────────────────────────────────────────
@@ -168,7 +317,11 @@ def sync_channel_analytics(channel_id: str) -> None:
     channel = Channel.objects.get(id=channel_id)
     client = YouTubeAnalyticsClient(channel=channel)
 
-    published_jobs = DistributionJob.objects.filter(channel=channel, status="COMPLETED", youtube_video_id__isnull=False)
+    published_jobs = DistributionJob.objects.filter(
+        channel=channel,
+        status="COMPLETED",
+        youtube_video_id__isnull=False,
+    )
 
     for job in published_jobs:
         days_since = (timezone.now() - job.published_at).days
@@ -183,49 +336,54 @@ def sync_channel_analytics(channel_id: str) -> None:
 @shared_task(queue="orchestration")
 def daily_pipeline_trigger() -> None:
     """Runs every day at 6AM — checks each active channel and triggers pipelines."""
+    from reelforge.channels.choices import ChannelStatus
     from reelforge.channels.models import Channel
     from reelforge.pipeline.services import PipelineService
 
-    for channel in Channel.objects.filter(status=Channel.Status.ACTIVE):
+    for channel in Channel.objects.filter(status=ChannelStatus.ACTIVE):
         service = PipelineService(channel)
         service.trigger_daily_batch()
 
 
 @shared_task(queue="analytics")
 def weekly_analytics_sync() -> None:
+    from reelforge.channels.choices import ChannelStatus
     from reelforge.channels.models import Channel
 
-    for channel in Channel.objects.filter(status=Channel.Status.ACTIVE):
+    for channel in Channel.objects.filter(status=ChannelStatus.ACTIVE):
         sync_channel_analytics.delay(str(channel.id))
 
 
 # ── Helper Functions ─────────────────────────────────────────────────────────
 
 
-def _save_research_results(job: Any, result: dict[str, Any], channel: Any) -> None:
+def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     """Save research results to database.
 
     Args:
         job: ResearchJob instance
-        result: Agent result dict with research findings
+        result: Agent result from Runner.run()
         channel: Channel instance
 
-    TODO: Implement full research result parsing and TopicIdea creation.
+    TODO: Implement full research result parsing from agent output.
     """
+    from reelforge.research.choices import CompetitionLevel
     from reelforge.research.models import TopicIdea
 
     logger.warning("_save_research_results called (placeholder) - job=%s, channel=%s", job.id, channel.name)
 
-    # Placeholder: Create a single mock TopicIdea
+    # Placeholder: Create a single mock TopicIdea with correct field names
     TopicIdea.objects.create(
         research_job=job,
         channel=channel,
         title_idea="Mock Topic Idea",
-        target_keyword="mock keyword",
+        description="Placeholder topic created by research agent stub.",
+        angle="Educational overview",
+        keywords=["placeholder", "mock"],
         estimated_search_volume=10000,
-        competition_score=0.5,
-        relevance_score=0.8,
-        source="mock_source",
+        competition_level=CompetitionLevel.MEDIUM,
+        trend_score=0.5,
+        gap_opportunity_score=0.8,
     )
 
 
@@ -237,23 +395,24 @@ def _create_or_update_snapshot(client: Any, job: Any, snapshot_day: int) -> None
         job: DistributionJob instance
         snapshot_day: Number of days since publication (1, 7, or 30)
 
-    TODO: Implement actual analytics data fetching and snapshot creation.
+    TODO: Implement actual analytics data fetching from YouTube Analytics API.
     """
     from reelforge.distribution.models import AnalyticsSnapshot
 
     logger.warning("_create_or_update_snapshot called (placeholder) - job=%s, snapshot_day=%d", job.id, snapshot_day)
 
-    # Placeholder: Create or update snapshot with mock data
+    # Placeholder: Create or update snapshot with mock data using correct field names
     AnalyticsSnapshot.objects.update_or_create(
         distribution_job=job,
-        snapshot_day=snapshot_day,
+        snapshot_days_after=snapshot_day,
         defaults={
+            "channel": job.channel,
             "views": 1000 * snapshot_day,
             "likes": 50 * snapshot_day,
             "comments": 10 * snapshot_day,
             "shares": 5 * snapshot_day,
-            "watch_time_minutes": 500 * snapshot_day,
-            "click_through_rate": 0.08,
-            "avg_percentage_viewed": 0.65,
+            "watch_time_hrs": float(500 * snapshot_day) / 60.0,
+            "ctr_percent": 0.08,
+            "avg_view_percentage": 0.65,
         },
     )

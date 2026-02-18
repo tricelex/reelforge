@@ -249,7 +249,7 @@ class ChannelAdmin(ModelAdmin):
 
     @action(description="🚀 Trigger Research Job", url_path="trigger-research")
     def trigger_research(self, request, queryset) -> None:
-        from research.tasks import run_research_job_for_channel
+        from reelforge.pipeline.tasks import run_research_job_for_channel
 
         for channel in queryset:
             run_research_job_for_channel.delay(str(channel.id))
@@ -257,7 +257,7 @@ class ChannelAdmin(ModelAdmin):
 
     @action(description="📊 Sync Analytics Now", url_path="sync-analytics")
     def sync_analytics(self, request, queryset) -> None:
-        from analytics.tasks import sync_channel_analytics
+        from reelforge.pipeline.tasks import sync_channel_analytics
 
         for channel in queryset:
             sync_channel_analytics.delay(str(channel.id))

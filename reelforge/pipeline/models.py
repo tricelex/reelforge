@@ -373,7 +373,7 @@ class PipelineRun(BaseAbstractModel):
             msg = f"Cannot transition from {self.overall_status} to {stage}"
             raise TransitionNotAllowed(msg)
         fn()
-        self.save(update_fields=["overall_status", "updated_at"])
+        self.save(update_fields=["overall_status", "current_stage", "updated_at"])
 
 
 class PipelineEvent(BaseAbstractModel):
