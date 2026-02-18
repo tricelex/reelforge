@@ -106,7 +106,7 @@ class Channel(BaseAbstractModel):
     @property
     def active_niche(self) -> str:
         return (
-            self.custom_niche if self.niche_category == self.NicheCategory.CUSTOM else self.get_niche_category_display()
+            self.custom_niche if self.niche_category == NicheCategory.CUSTOM else self.get_niche_category_display()
         )
 
 

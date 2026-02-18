@@ -2,7 +2,7 @@ import logging
 
 from agents.tracing import TracingProcessor
 
-logger = logging.getLogger("youtube_hq.agents")
+logger = logging.getLogger("***REMOVED***.agents")
 
 
 class CostTrackingProcessor(TracingProcessor):
@@ -18,12 +18,12 @@ class CostTrackingProcessor(TracingProcessor):
         try:
             run = PipelineRun.objects.get(id=self.pipeline_run_id)
             PipelineEvent.objects.create(
-                run=run,
-                stage="AGENT_TRACE",
+                pipeline_run=run,
                 event_type="INFO",
+                event_name="AGENT_TRACE",
                 message=f"Agent trace completed: {trace_data.get('name', '')}",
-                detail=trace_data,
-                agent_name=trace_data.get("name", ""),
+                metadata=trace_data,
+                triggered_by_agent=trace_data.get("name", ""),
             )
         except Exception:
             logger.exception("Failed to save trace")

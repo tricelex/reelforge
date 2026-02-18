@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.pipeline.models import PipelineRun
 
-logger = logging.getLogger("youtube_hq.orchestrator")
+logger = logging.getLogger("***REMOVED***.agents.orchestrator")
 
 
 def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
@@ -34,11 +34,22 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
     from ***REMOVED***.agents.research_agent import build_research_agent
     from ***REMOVED***.agents.script_agent import build_script_agent
 
-    # Handoff tools (these transfer control to sub-agents)
+    # Always-available sub-agents (no run-specific context needed)
     research_agent = build_research_agent(channel)
-    script_agent = build_script_agent(channel, pipeline_run.topic)
-    asset_agent = build_asset_agent(channel, pipeline_run.script_job)
     qa_agent = build_qa_agent()
+
+    # Build sub-agents lazily — only if their dependencies are available
+    handoff_list = [handoff(research_agent, tool_name_override="delegate_to_research_agent")]
+
+    if pipeline_run.topic is not None:
+        script_agent = build_script_agent(channel, pipeline_run.topic)
+        handoff_list.append(handoff(script_agent, tool_name_override="delegate_to_script_agent"))
+
+    if pipeline_run.script_job is not None:
+        asset_agent = build_asset_agent(channel, pipeline_run.script_job)
+        handoff_list.append(handoff(asset_agent, tool_name_override="delegate_to_asset_agent"))
+
+    handoff_list.append(handoff(qa_agent, tool_name_override="delegate_to_qa_agent"))
 
     # Status reporting tools
     @Tool(name="get_pipeline_status", description="Get the current state of the pipeline run.")
@@ -46,6 +57,7 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
         from ***REMOVED***.pipeline.models import PipelineRun
 
         run = PipelineRun.objects.prefetch_related("events").get(id=pipeline_run_id)
+        last_error_event = run.events.filter(event_type="ERROR").last()
         return {
             "current_stage": run.current_stage,
             "overall_status": run.overall_status,
@@ -53,26 +65,25 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
             "script_status": run.script_job.status if run.script_job else None,
             "asset_status": run.asset_job.status if run.asset_job else None,
             "production_status": run.production_job.status if run.production_job else None,
-            "last_error": run.events.filter(event_type="ERROR").last().message
-            if run.events.filter(event_type="ERROR").exists()
-            else None,
+            "last_error": last_error_event.message if last_error_event else None,
         }
 
     @Tool(name="log_pipeline_event", description="Log an event to the pipeline audit trail.")
     def log_pipeline_event(
-        pipeline_run_id: str, stage: str, event_type: str, message: str, detail: dict[str, Any] | None = None
+        pipeline_run_id: str, event_name: str, event_type: str, message: str, detail: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        from ***REMOVED***.pipeline.choices import EventType
         from ***REMOVED***.pipeline.models import PipelineEvent
         from ***REMOVED***.pipeline.models import PipelineRun
 
         run = PipelineRun.objects.get(id=pipeline_run_id)
         event = PipelineEvent.objects.create(
-            run=run,
-            stage=stage,
-            event_type=event_type,
+            pipeline_run=run,
+            event_type=event_type if event_type in EventType.values else EventType.INFO,
+            event_name=event_name,
             message=message,
-            detail=detail or {},
-            agent_name="OrchestratorAgent",
+            metadata=detail or {},
+            triggered_by_agent="OrchestratorAgent",
         )
         return {"logged": True, "event_id": str(event.id)}
 
@@ -95,17 +106,12 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
             }
 
     @Tool(name="pause_pipeline_for_review", description="Pause pipeline and request operator review.")
-    def pause_pipeline_for_review(pipeline_run_id: str, reason: str, stage: str) -> dict[str, Any]:
+    def pause_pipeline_for_review(pipeline_run_id: str, reason: str) -> dict[str, Any]:
         from ***REMOVED***.pipeline.models import PipelineRun
 
         run = PipelineRun.objects.get(id=pipeline_run_id)
-        run.overall_status = "PAUSED"
-        run.current_stage = stage
-        run.save()
-        # Trigger notification
-        from ***REMOVED***.services.notifications import send_review_request
-
-        send_review_request(run=run, reason=reason)
+        run.pause_pipeline(reason=reason)
+        run.save(update_fields=["overall_status", "current_stage", "last_agent_decision", "updated_at"])
         return {"paused": True, "reason": reason}
 
     @Tool(name="trigger_celery_task", description="Trigger a specific Celery task for heavy processing.")
@@ -187,12 +193,7 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
             trigger_celery_task,
             evaluate_stage_output,
         ],
-        handoffs=[
-            handoff(research_agent, tool_name_override="delegate_to_research_agent"),
-            handoff(script_agent, tool_name_override="delegate_to_script_agent"),
-            handoff(asset_agent, tool_name_override="delegate_to_asset_agent"),
-            handoff(qa_agent, tool_name_override="delegate_to_qa_agent"),
-        ],
+        handoffs=handoff_list,
     )
 
 
@@ -202,7 +203,7 @@ async def run_orchestrator(channel_id: str, pipeline_run_id: str) -> Any:
     from ***REMOVED***.pipeline.models import PipelineRun
 
     channel = await Channel.objects.aget(id=channel_id)
-    pipeline_run = await PipelineRun.objects.aget(id=pipeline_run_id)
+    pipeline_run = await PipelineRun.objects.select_related("topic", "script_job").aget(id=pipeline_run_id)
 
     orchestrator = build_orchestrator(channel, pipeline_run)
 

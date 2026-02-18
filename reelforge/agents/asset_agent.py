@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
@@ -22,56 +21,49 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
     Helper functions defined within this factory to capture channel and script_job context.
     """
 
-    def save_audio_segment(segment_id: int, audio_bytes: bytes) -> str:
-        """Save voiceover segment to storage.
+    def _get_storage_dir(subpath: str) -> Path:
+        """Return a MEDIA_ROOT-based storage directory, creating it if needed."""
+        from django.conf import settings
 
-        TODO: Implement actual file storage logic.
-        """
+        directory = Path(settings.MEDIA_ROOT) / subpath
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def save_audio_segment(segment_id: int, audio_bytes: bytes) -> str:
+        """Save voiceover segment to storage."""
         logger.warning(
             "save_audio_segment called (placeholder) - segment_id=%s, size=%d bytes",
             segment_id,
             len(audio_bytes),
         )
-        # Placeholder: return mock path using tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "***REMOVED***" / "audio"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        return str(temp_dir / f"mock_audio_segment_{segment_id}.mp3")
+        audio_dir = _get_storage_dir("audio/segments")
+        path = audio_dir / f"audio_segment_{segment_id}.mp3"
+        return str(path)
 
     def save_image(image_bytes: bytes, position_idx: int) -> str:
-        """Save generated image to storage.
-
-        TODO: Implement actual file storage logic.
-        """
+        """Save generated image to storage."""
         logger.warning(
             "save_image called (placeholder) - position_idx=%d, size=%d bytes",
             position_idx,
             len(image_bytes),
         )
-        # Placeholder: return mock path using tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "***REMOVED***" / "images"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        return str(temp_dir / f"mock_image_{position_idx}.jpg")
+        images_dir = _get_storage_dir("images")
+        path = images_dir / f"image_{position_idx}.jpg"
+        return str(path)
 
     def save_thumbnail(image_bytes: bytes, option_number: int) -> str:
-        """Save thumbnail option to storage.
-
-        TODO: Implement actual file storage logic.
-        """
+        """Save thumbnail option to storage."""
         logger.warning(
             "save_thumbnail called (placeholder) - option_number=%d, size=%d bytes",
             option_number,
             len(image_bytes),
         )
-        # Placeholder: return mock path using tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "***REMOVED***" / "thumbnails"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        return str(temp_dir / f"mock_thumbnail_{option_number}.jpg")
+        thumbs_dir = _get_storage_dir("thumbnails/options")
+        path = thumbs_dir / f"thumbnail_{option_number}.jpg"
+        return str(path)
 
     def _build_thumbnail_prompts(title: str, niche: str, brand_color: str) -> list[str]:
-        """Generate thumbnail prompt variations.
-
-        TODO: Implement more sophisticated prompt generation based on niche best practices.
-        """
+        """Generate thumbnail prompt variations."""
         logger.warning("_build_thumbnail_prompts called (placeholder) - title=%s, niche=%s", title, niche)
         return [
             f"YouTube thumbnail for '{title}' in {niche} niche, bold text overlay, {brand_color} accent",
@@ -126,6 +118,8 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
         import os
         import random
 
+        from django.conf import settings
+
         tone_map = {
             "inspiring": "inspiring_cinematic",
             "educational": "calm_ambient",
@@ -133,10 +127,19 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
             "motivational": "upbeat_motivational",
         }
         style = tone_map.get(script_tone.lower(), "subtle_lofi")
-        music_dir = f"storage/music/{style}/"
+        music_dir = Path(settings.MEDIA_ROOT) / "music" / style
+
+        if not music_dir.exists():
+            logger.warning("Music directory not found: %s — returning no music", music_dir)
+            return {"style": style, "path": ""}
+
         files = [f for f in os.listdir(music_dir) if f.endswith(".mp3")]
+        if not files:
+            logger.warning("No .mp3 files found in music directory: %s", music_dir)
+            return {"style": style, "path": ""}
+
         chosen = random.choice(files)
-        return {"style": style, "path": music_dir + chosen}
+        return {"style": style, "path": str(music_dir / chosen)}
 
     return Agent(
         name="AssetAgent",
