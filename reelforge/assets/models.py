@@ -3,126 +3,159 @@ from __future__ import annotations
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from reelforge.assets.choices import AnimationType
-from reelforge.assets.choices import AssetStatus
 from reelforge.core.models import BaseAbstractModel
 from reelforge.core.models import PipelineStageModel
 
 
+class AssetStatusChoices(models.TextChoices):
+    PENDING = "PENDING", _("Pending")
+    GENERATING = "GENERATING", _("Generating")
+    COMPLETED = "COMPLETED", _("Completed")
+    FAILED = "FAILED", _("Failed")
+
+
 class AssetJob(PipelineStageModel):
-    """Coordinates generation of all assets for a video:
-    - Voiceover (TTS segments)
-    - Images (B-roll)
-    - Background music
-    - Thumbnail options
+    """Asset generation job for a script.
+    Manages voiceover generation, background images, thumbnails, and music selection.
+    Uses FSM for overall job status, individual status fields for each asset type.
     """
 
     script_job = models.OneToOneField(
         "scripts.ScriptJob",
         on_delete=models.CASCADE,
         related_name="asset_job",
-    )
-    channel = models.ForeignKey(
-        "channels.Channel",
-        on_delete=models.CASCADE,
-        related_name="asset_jobs",
+        verbose_name=_("Script Job"),
     )
 
-    # Voiceover
+    # ── Voiceover ──────────────────────────────────────────────────────────
     voiceover_provider = models.CharField(
+        _("Voiceover Provider"),
         max_length=50,
         blank=True,
-        help_text=_("TTS provider used (elevenlabs, openai_tts, etc.)"),
+        help_text=_("TTS provider used (e.g., elevenlabs, openai_tts)"),
     )
+
+    voiceover_full_file = models.FileField(
+        _("Full Voiceover File"),
+        upload_to="assets/audio/full/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        help_text=_("Merged full voiceover audio file"),
+    )
+
+    voiceover_duration_sec = models.FloatField(
+        _("Voiceover Duration (seconds)"),
+        default=0.0,
+        help_text=_("Total duration of all voiceover segments combined"),
+    )
+
     voiceover_status = models.CharField(
+        _("Voiceover Status"),
         max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
+        choices=AssetStatusChoices.choices,
+        default=AssetStatusChoices.PENDING,
     )
-    voiceover_file = models.FileField(
-        upload_to="audio/full/",
-        null=True,
-        blank=True,
-        help_text=_("Final merged voiceover MP3"),
-    )
-    voiceover_duration_seconds = models.FloatField(default=0.0)
+
     voiceover_cost_usd = models.DecimalField(
-        max_digits=10,
+        _("Voiceover Cost (USD)"),
+        max_digits=8,
         decimal_places=6,
         default=0,
+        help_text=_("Total cost for voiceover generation"),
     )
 
-    # Images
-    images_provider = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text=_("Image provider used (fal_ai, replicate, dalle, etc.)"),
-    )
-    images_status = models.CharField(
-        max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
-    )
-    images_generated_count = models.PositiveSmallIntegerField(default=0)
-    images_cost_usd = models.DecimalField(
-        max_digits=10,
-        decimal_places=6,
-        default=0,
-    )
-
-    # Music
+    # ── Music ──────────────────────────────────────────────────────────────
     music_file = models.FileField(
-        upload_to="audio/music/",
+        _("Background Music File"),
+        upload_to="assets/music/%Y/%m/%d/",
         null=True,
         blank=True,
+        help_text=_("Selected background music track"),
     )
-    music_url = models.URLField(
-        blank=True,
-        help_text=_("URL to royalty-free music track"),
-    )
-    music_title = models.CharField(max_length=255, blank=True)
+
     music_style = models.CharField(
+        _("Music Style"),
+        max_length=100,
+        blank=True,
+        help_text=_("Style of background music (e.g., inspiring_cinematic, calm_ambient)"),
+    )
+
+    music_volume_pct = models.FloatField(
+        _("Music Volume (%)"),
+        default=0.08,
+        help_text=_("Background music volume as percentage of voiceover volume"),
+    )
+
+    music_status = models.CharField(
+        _("Music Status"),
+        max_length=20,
+        choices=AssetStatusChoices.choices,
+        default=AssetStatusChoices.PENDING,
+    )
+
+    # ── Images ─────────────────────────────────────────────────────────────
+    images_status = models.CharField(
+        _("Images Status"),
+        max_length=20,
+        choices=AssetStatusChoices.choices,
+        default=AssetStatusChoices.PENDING,
+    )
+
+    images_provider = models.CharField(
+        _("Image Provider"),
         max_length=50,
         blank=True,
-        help_text=_("Music genre/style (cinematic, upbeat, calm, etc.)"),
-    )
-    music_volume_pct = models.FloatField(
-        default=0.08,
-        help_text=_("Music volume as percentage of voiceover (0.08 = 8%)"),
-    )
-    music_status = models.CharField(
-        max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
+        help_text=_("Image generation provider used (e.g., fal_ai, replicate)"),
     )
 
-    # Thumbnails
-    thumbnails_status = models.CharField(
-        max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
+    images_count = models.PositiveSmallIntegerField(
+        _("Images Count"),
+        default=0,
+        help_text=_("Number of background images generated"),
     )
-    thumbnails_generated_count = models.PositiveSmallIntegerField(default=0)
+
+    images_cost_usd = models.DecimalField(
+        _("Images Cost (USD)"),
+        max_digits=8,
+        decimal_places=4,
+        default=0,
+        help_text=_("Total cost for image generation"),
+    )
+
+    # ── Thumbnails ─────────────────────────────────────────────────────────
+    thumbnails_status = models.CharField(
+        _("Thumbnails Status"),
+        max_length=20,
+        choices=AssetStatusChoices.choices,
+        default=AssetStatusChoices.PENDING,
+    )
+
     selected_thumbnail = models.FileField(
-        upload_to="thumbnails/selected/",
+        _("Selected Thumbnail"),
+        upload_to="assets/thumbnails/selected/%Y/%m/%d/",
         null=True,
         blank=True,
-    )
-    thumbnails_cost_usd = models.DecimalField(
-        max_digits=10,
-        decimal_places=6,
-        default=0,
+        help_text=_("The thumbnail selected for the video"),
     )
 
-    # Visual timeline (master coordination layer for video rendering)
+    # ── Timeline ───────────────────────────────────────────────────────────
     visual_timeline = models.JSONField(
+        _("Visual Timeline"),
         default=list,
         blank=True,
         help_text=_(
-            "Master timeline coordinating all assets: "
-            '[{"start_ms": 0, "end_ms": 15000, "image_file_id": "...", '
-            '"segment_text": "...", "section": "intro", "animation_type": "KEN_BURNS"}, ...]'
+            "Timeline of images synchronized with voiceover segments: "
+            "[{start_ms, end_ms, image_file_id, segment_text, section, animation_type}]"
         ),
+    )
+
+    # ── Costs ──────────────────────────────────────────────────────────────
+    total_cost_usd = models.DecimalField(
+        _("Total Cost (USD)"),
+        max_digits=10,
+        decimal_places=4,
+        default=0,
+        help_text=_("Total cost for all asset generation (voiceover + images + thumbnails)"),
     )
 
     class Meta:
@@ -131,190 +164,258 @@ class AssetJob(PipelineStageModel):
         verbose_name_plural = _("Asset Jobs")
         indexes = [
             models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["channel", "created_at"]),
             models.Index(fields=["script_job"]),
         ]
 
     def __str__(self) -> str:
-        return f"Assets: {self.script_job.final_title[:60]}"
+        return f"AssetJob: {self.script_job.final_title or self.script_job.topic.title_idea}"
 
     @property
-    def total_cost_usd(self) -> float:
-        return float(
-            self.voiceover_cost_usd + self.images_cost_usd + self.thumbnails_cost_usd,
-        )
+    def channel(self):
+        """Convenience accessor to channel via script_job."""
+        return self.script_job.topic.channel
 
     @property
-    def all_assets_ready(self) -> bool:
-        return (
-            self.voiceover_status == AssetStatus.COMPLETED
-            and self.images_status == AssetStatus.COMPLETED
-            and self.thumbnails_status == AssetStatus.COMPLETED
-        )
+    def total_images_count(self) -> int:
+        """Total number of images generated for this asset job."""
+        return self.images.count()
 
 
 class VoiceoverSegment(BaseAbstractModel):
-    """A single TTS segment of the voiceover.
-    Script is split into segments for parallel generation.
-    """
+    """Individual voiceover segment for a script section."""
 
     asset_job = models.ForeignKey(
         AssetJob,
         on_delete=models.CASCADE,
         related_name="voiceover_segments",
+        verbose_name=_("Asset Job"),
     )
 
-    segment_index = models.PositiveSmallIntegerField()
-    text = models.TextField()
+    segment_id = models.PositiveSmallIntegerField(
+        _("Segment ID"),
+        help_text=_("Order of this segment in the full script"),
+    )
+
+    text = models.TextField(
+        _("Script Text"),
+        help_text=_("Text that was converted to speech for this segment"),
+    )
+
     section = models.CharField(
+        _("Script Section"),
         max_length=50,
         blank=True,
-        help_text=_("Script section (intro, body, outro, etc.)"),
+        help_text=_("Script section (e.g., HOOK, INTRO_BRIDGE, SECTION_1, OUTRO_CTA)"),
     )
+
     audio_file = models.FileField(
-        upload_to="audio/segments/",
+        _("Audio File"),
+        upload_to="assets/audio/segments/%Y/%m/%d/",
         null=True,
         blank=True,
+        help_text=_("Generated audio file for this segment"),
     )
-    duration_seconds = models.FloatField(default=0.0)
+
+    duration_sec = models.FloatField(
+        _("Duration (seconds)"),
+        default=0.0,
+        help_text=_("Duration of this audio segment"),
+    )
+
+    # Timeline position in merged audio
     start_ms = models.PositiveIntegerField(
+        _("Start Time (ms)"),
         default=0,
-        help_text=_("Start position in merged full audio (milliseconds)"),
+        help_text=_("Start position in full merged voiceover (milliseconds)"),
     )
+
     end_ms = models.PositiveIntegerField(
+        _("End Time (ms)"),
         default=0,
-        help_text=_("End position in merged full audio (milliseconds)"),
+        help_text=_("End position in full merged voiceover (milliseconds)"),
     )
+
     status = models.CharField(
+        _("Status"),
         max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
+        choices=AssetStatusChoices.choices,
+        default=AssetStatusChoices.PENDING,
     )
-    tts_provider = models.CharField(max_length=50, blank=True)
-    tts_voice_id = models.CharField(max_length=100, blank=True)
-    cost_usd = models.DecimalField(
-        max_digits=10,
+
+    # Provider metadata
+    tts_provider_used = models.CharField(
+        _("TTS Provider"),
+        max_length=50,
+        blank=True,
+        help_text=_("TTS provider used to generate this segment"),
+    )
+
+    voice_id_used = models.CharField(
+        _("Voice ID"),
+        max_length=255,
+        blank=True,
+        help_text=_("Voice ID used for this segment"),
+    )
+
+    generation_cost_usd = models.DecimalField(
+        _("Generation Cost (USD)"),
+        max_digits=8,
         decimal_places=6,
         default=0,
+        help_text=_("Cost to generate this segment"),
     )
 
     class Meta:
-        ordering = ["segment_index"]
+        ordering = ["asset_job", "segment_id"]
         verbose_name = _("Voiceover Segment")
         verbose_name_plural = _("Voiceover Segments")
-        unique_together = ["asset_job", "segment_index"]
+        unique_together = [["asset_job", "segment_id"]]
         indexes = [
-            models.Index(fields=["asset_job", "segment_index"]),
+            models.Index(fields=["asset_job", "segment_id"]),
+            models.Index(fields=["status"]),
         ]
 
     def __str__(self) -> str:
-        return f"Segment {self.segment_index}: {self.text[:50]}"
+        return f"Segment {self.segment_id}: {self.text[:50]}..."
 
 
 class GeneratedImage(BaseAbstractModel):
-    """A single B-roll image generated for the video."""
+    """Background image generated for a script section."""
 
     asset_job = models.ForeignKey(
         AssetJob,
         on_delete=models.CASCADE,
         related_name="images",
+        verbose_name=_("Asset Job"),
     )
 
-    position_index = models.PositiveSmallIntegerField(
-        help_text=_("Order in video timeline"),
+    position_idx = models.PositiveSmallIntegerField(
+        _("Position Index"),
+        help_text=_("Order of this image in the video timeline"),
     )
-    prompt = models.TextField(help_text=_("Image generation prompt"))
-    image_file = models.ImageField(
-        upload_to="images/",
+
+    prompt_used = models.TextField(
+        _("Prompt Used"),
+        help_text=_("Image generation prompt used"),
+    )
+
+    image_file = models.FileField(
+        _("Image File"),
+        upload_to="assets/images/%Y/%m/%d/",
         null=True,
         blank=True,
+        help_text=_("Generated background image"),
     )
-    is_selected = models.BooleanField(
-        default=True,
-        help_text=_("Whether to use this image in final video"),
-    )
-    section = models.CharField(
+
+    provider = models.CharField(
+        _("Provider"),
         max_length=50,
         blank=True,
-        help_text=_("Script section this image belongs to"),
+        help_text=_("Image generation provider used"),
     )
+
+    is_selected = models.BooleanField(
+        _("Selected"),
+        default=True,
+        help_text=_("Whether this image option was selected for the video"),
+    )
+
+    section = models.CharField(
+        _("Script Section"),
+        max_length=50,
+        blank=True,
+        help_text=_("Script section this image is associated with"),
+    )
+
     timestamp_approx = models.CharField(
+        _("Approximate Timestamp"),
         max_length=20,
         blank=True,
-        help_text=_("Approximate timestamp (e.g., '1:23', '0:45')"),
+        help_text=_("Approximate timestamp in video (e.g., '0:45', '2:30')"),
     )
-    animation_type = models.CharField(
-        max_length=20,
-        choices=AnimationType.choices,
-        default=AnimationType.KEN_BURNS,
-    )
-    duration_seconds = models.FloatField(default=5.0)
-    status = models.CharField(
-        max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
-    )
-    image_provider = models.CharField(max_length=50, blank=True)
-    cost_usd = models.DecimalField(
-        max_digits=10,
+
+    generation_cost_usd = models.DecimalField(
+        _("Generation Cost (USD)"),
+        max_digits=8,
         decimal_places=6,
         default=0,
+        help_text=_("Cost to generate this image"),
     )
 
     class Meta:
-        ordering = ["position_index"]
+        ordering = ["asset_job", "position_idx"]
         verbose_name = _("Generated Image")
         verbose_name_plural = _("Generated Images")
         indexes = [
-            models.Index(fields=["asset_job", "position_index"]),
+            models.Index(fields=["asset_job", "position_idx"]),
+            models.Index(fields=["is_selected"]),
         ]
 
     def __str__(self) -> str:
-        return f"Image {self.position_index}: {self.prompt[:50]}"
+        return f"Image {self.position_idx}: {self.prompt_used[:50]}..."
 
 
 class ThumbnailOption(BaseAbstractModel):
-    """A thumbnail candidate.
-    Agent generates 3-5 options, operator picks one.
-    """
+    """Thumbnail option generated for the video."""
 
     asset_job = models.ForeignKey(
         AssetJob,
         on_delete=models.CASCADE,
-        related_name="thumbnail_options",
+        related_name="thumbnails",
+        verbose_name=_("Asset Job"),
     )
 
-    option_number = models.PositiveSmallIntegerField()
-    prompt = models.TextField()
-    image_file = models.ImageField(
-        upload_to="thumbnails/options/",
-        null=True,
+    option_number = models.PositiveSmallIntegerField(
+        _("Option Number"),
+        help_text=_("Thumbnail option number (0, 1, 2)"),
+    )
+
+    image_file = models.FileField(
+        _("Thumbnail Image"),
+        upload_to="assets/thumbnails/options/%Y/%m/%d/",
+        help_text=_("Generated thumbnail image"),
+    )
+
+    prompt_used = models.TextField(
+        _("Prompt Used"),
         blank=True,
+        help_text=_("Thumbnail generation prompt used"),
     )
-    is_selected = models.BooleanField(default=False)
+
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+        help_text=_("Image generation provider used"),
+    )
+
+    is_selected = models.BooleanField(
+        _("Selected"),
+        default=False,
+        help_text=_("Whether this thumbnail was selected for the video"),
+    )
+
     ctr_score = models.FloatField(
+        _("CTR Score"),
         default=0.0,
-        help_text=_("AI-predicted CTR potential (0-10)"),
+        help_text=_("AI-predicted click-through rate potential (0-10)"),
     )
-    status = models.CharField(
-        max_length=20,
-        choices=AssetStatus.choices,
-        default=AssetStatus.PENDING,
-    )
-    image_provider = models.CharField(max_length=50, blank=True)
-    cost_usd = models.DecimalField(
-        max_digits=10,
+
+    generation_cost_usd = models.DecimalField(
+        _("Generation Cost (USD)"),
+        max_digits=8,
         decimal_places=6,
         default=0,
+        help_text=_("Cost to generate this thumbnail"),
     )
 
     class Meta:
-        ordering = ["option_number"]
+        ordering = ["asset_job", "option_number"]
         verbose_name = _("Thumbnail Option")
         verbose_name_plural = _("Thumbnail Options")
-        unique_together = ["asset_job", "option_number"]
         indexes = [
             models.Index(fields=["asset_job", "is_selected"]),
+            models.Index(fields=["-ctr_score"]),
         ]
 
     def __str__(self) -> str:

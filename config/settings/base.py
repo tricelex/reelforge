@@ -5,6 +5,7 @@ import ssl
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -329,6 +330,24 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-hijack-root-logger
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_TASK_ROUTES = {
+    "reelforge.pipeline.tasks.run_pipeline_orchestrator": {"queue": "orchestration"},
+    "reelforge.pipeline.tasks.render_video": {"queue": "rendering"},
+    "reelforge.pipeline.tasks.run_video_qa": {"queue": "rendering"},
+    "reelforge.pipeline.tasks.upload_video": {"queue": "uploads"},
+    "reelforge.pipeline.tasks.sync_channel_analytics": {"queue": "analytics"},
+    "*": {"queue": "default"},
+}
+CELERY_BEAT_SCHEDULE = {
+    "daily-pipeline-trigger": {
+        "task": "reelforge.pipeline.tasks.daily_pipeline_trigger",
+        "schedule": crontab(hour=6, minute=0),
+    },
+    "weekly-analytics-sync": {
+        "task": "reelforge.pipeline.tasks.weekly_analytics_sync",
+        "schedule": crontab(day_of_week="monday", hour=9, minute=0),
+    },
+}
 # django-allauth
 # ------------------------------------------------------------------------------
 ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
@@ -634,3 +653,8 @@ REDDIT_CLIENT_SECRET = env("REDDIT_CLIENT_SECRET", default="")
 
 # Perplexity API (for research)
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+
+
+# === API Keys ===
+YOUTUBE_OAUTH_CLIENT_CONFIG = env.json("YOUTUBE_OAUTH_CLIENT_CONFIG")
+CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY")
