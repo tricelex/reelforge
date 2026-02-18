@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
@@ -11,81 +12,64 @@ from ***REMOVED***.assets.models import GeneratedImage
 from ***REMOVED***.assets.models import ThumbnailOption
 from ***REMOVED***.assets.models import VoiceoverSegment
 
+# ── Inlines ──────────────────────────────────────────────────────────────────
+
 
 class VoiceoverSegmentInline(TabularInline):
     model = VoiceoverSegment
     extra = 0
-    fields = [
-        "segment_index",
-        "section",
-        "text",
-        "duration_seconds",
-        "start_ms",
-        "end_ms",
-        "status",
-        "cost_usd",
-    ]
-    readonly_fields = ["segment_index", "duration_seconds", "start_ms", "end_ms", "cost_usd"]
-    ordering = ["segment_index"]
+    ordering = ["segment_id"]
+    fields = ["segment_id", "section", "text_preview", "duration_sec", "status", "audio_file"]
+    readonly_fields = ["text_preview", "duration_sec", "audio_file", "status"]
+
+    def text_preview(self, obj: VoiceoverSegment) -> str:
+        return obj.text[:100] + "..." if len(obj.text) > 100 else obj.text
+
+    text_preview.short_description = _("Script Text")  # type: ignore
 
 
 class GeneratedImageInline(TabularInline):
     model = GeneratedImage
     extra = 0
-    fields = [
-        "position_index",
-        "section",
-        "timestamp_approx",
-        "prompt",
-        "is_selected",
-        "animation_type",
-        "duration_seconds",
-        "status",
-        "cost_usd",
-    ]
-    readonly_fields = ["position_index", "cost_usd"]
-    ordering = ["position_index"]
+    ordering = ["position_idx"]
+    fields = ["position_idx", "section", "prompt_preview", "is_selected", "image_file", "provider"]
+    readonly_fields = ["prompt_preview", "image_file", "provider"]
+
+    def prompt_preview(self, obj: GeneratedImage) -> str:
+        return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
+
+    prompt_preview.short_description = _("Prompt")  # type: ignore
 
 
 class ThumbnailOptionInline(TabularInline):
     model = ThumbnailOption
     extra = 0
-    fields = [
-        "option_number",
-        "prompt",
-        "is_selected",
-        "ctr_score",
-        "status",
-        "cost_usd",
-    ]
-    readonly_fields = ["option_number", "ctr_score", "cost_usd"]
     ordering = ["option_number"]
+    fields = ["option_number", "image_file", "ctr_score", "is_selected"]
+    readonly_fields = ["option_number", "image_file", "ctr_score"]
+
+
+# ── Admin Classes ────────────────────────────────────────────────────────────
 
 
 @admin.register(AssetJob)
 class AssetJobAdmin(ModelAdmin):
     list_display = [
         "id",
-        "channel",
+        "script_job_link",
+        "channel_name",
         "status_badge",
-        "voiceover_status_badge",
-        "images_status_badge",
-        "thumbnails_status_badge",
-        "total_cost_display",
+        "voiceover_duration_display",
+        "images_count_display",
+        "cost_display",
         "created_at",
     ]
-    list_filter = [
-        "status",
-        "voiceover_status",
-        "images_status",
-        "thumbnails_status",
-        "created_at",
-        "channel",
-    ]
+    list_filter = ["status", "created_at"]
     search_fields = [
         "id",
         "script_job__final_title",
-        "channel__name",
+        "script_job__topic__title_idea",
+        "script_job__topic__channel__name",
     ]
     readonly_fields = [
         "id",
@@ -98,123 +82,114 @@ class AssetJobAdmin(ModelAdmin):
         "agent_run_id",
         "agent_tokens_used",
         "agent_cost_usd",
-        "total_cost_usd",
-        "all_assets_ready",
-        "voiceover_provider",
-        "voiceover_duration_seconds",
-        "images_provider",
-        "images_generated_count",
-        "thumbnails_generated_count",
-        "visual_timeline",
+        "voiceover_duration_sec",
+        "total_images_count",
     ]
-    autocomplete_fields = ["channel", "script_job"]
+    ordering = ["-created_at"]
+    date_hierarchy = "created_at"
     inlines = [VoiceoverSegmentInline, GeneratedImageInline, ThumbnailOptionInline]
 
-    fieldsets = (
+    fieldsets = [
         (
             _("Basic Information"),
             {
-                "fields": (
+                "fields": [
                     "id",
-                    "channel",
                     "script_job",
                     "status",
-                    "all_assets_ready",
-                ),
+                ],
             },
         ),
         (
             _("Voiceover"),
             {
-                "fields": (
-                    "voiceover_provider",
+                "fields": [
                     "voiceover_status",
-                    "voiceover_file",
-                    "voiceover_duration_seconds",
+                    "voiceover_provider",
+                    "voiceover_duration_sec",
+                    "voiceover_full_file",
                     "voiceover_cost_usd",
-                ),
-            },
-        ),
-        (
-            _("Images"),
-            {
-                "fields": (
-                    "images_provider",
-                    "images_status",
-                    "images_generated_count",
-                    "images_cost_usd",
-                ),
+                ],
             },
         ),
         (
             _("Music"),
             {
-                "classes": ("collapse",),
-                "fields": (
-                    "music_file",
-                    "music_url",
-                    "music_title",
-                    "music_style",
-                    "music_volume_pct",
+                "fields": [
                     "music_status",
-                ),
+                    "music_style",
+                    "music_file",
+                    "music_volume_pct",
+                ],
+            },
+        ),
+        (
+            _("Images"),
+            {
+                "fields": [
+                    "images_status",
+                    "images_provider",
+                    "images_count",
+                    "images_cost_usd",
+                ],
             },
         ),
         (
             _("Thumbnails"),
             {
-                "fields": (
+                "fields": [
                     "thumbnails_status",
-                    "thumbnails_generated_count",
                     "selected_thumbnail",
-                    "thumbnails_cost_usd",
-                ),
+                ],
             },
         ),
         (
-            _("Visual Timeline (Master Coordination)"),
+            _("Timeline & Costs"),
             {
-                "classes": ("collapse",),
-                "fields": ("visual_timeline",),
-            },
-        ),
-        (
-            _("Cost Summary"),
-            {
-                "fields": ("total_cost_usd",),
+                "classes": ["collapse"],
+                "fields": [
+                    "visual_timeline",
+                    "total_cost_usd",
+                ],
             },
         ),
         (
             _("Agent Execution"),
             {
-                "classes": ("collapse",),
-                "fields": (
+                "classes": ["collapse"],
+                "fields": [
+                    "celery_task_id",
                     "agent_run_id",
                     "agent_tokens_used",
                     "agent_cost_usd",
-                ),
+                    "retry_count",
+                    "max_retries",
+                    "last_error",
+                    "error_trace",
+                ],
             },
         ),
         (
             _("Timeline"),
             {
-                "classes": ("collapse",),
-                "fields": (
+                "classes": ["collapse"],
+                "fields": [
                     "created_at",
+                    "updated_at",
                     "started_at",
                     "completed_at",
                     "duration_seconds",
-                ),
+                ],
             },
         ),
         (
             _("Notes"),
             {
-                "classes": ("collapse",),
-                "fields": ("notes",),
+                "classes": ["collapse"],
+                "fields": ["notes"],
             },
         ),
-    )
+    ]
 
     @display(
         description=_("Status"),
@@ -228,127 +203,82 @@ class AssetJobAdmin(ModelAdmin):
             "RETRYING": "warning",
             "PAUSED": "warning",
             "REJECTED": "default",
-            "SKIPPED": "default",
         },
     )
     def status_badge(self, obj: AssetJob) -> str:
         return obj.status
 
-    @display(
-        description=_("Voiceover"),
-        ordering="voiceover_status",
-        label={
-            "PENDING": "default",
-            "GENERATING": "info",
-            "COMPLETED": "success",
-            "FAILED": "danger",
-        },
-    )
-    def voiceover_status_badge(self, obj: AssetJob) -> str:
-        return obj.voiceover_status
+    @display(description=_("Script Job"), ordering="script_job")
+    def script_job_link(self, obj: AssetJob) -> str:
+        if obj.script_job:
+            title = obj.script_job.final_title or obj.script_job.topic.title_idea
+            return format_html(
+                '<a href="/admin/scripts/scriptjob/{}/change/">{}</a>',
+                obj.script_job.id,
+                title[:60],
+            )
+        return "-"
 
-    @display(
-        description=_("Images"),
-        ordering="images_status",
-        label={
-            "PENDING": "default",
-            "GENERATING": "info",
-            "COMPLETED": "success",
-            "FAILED": "danger",
-        },
-    )
-    def images_status_badge(self, obj: AssetJob) -> str:
-        return obj.images_status
+    @display(description=_("Channel"), ordering="script_job__topic__channel__name")
+    def channel_name(self, obj: AssetJob) -> str:
+        return obj.channel.name if obj.channel else "-"
 
-    @display(
-        description=_("Thumbnails"),
-        ordering="thumbnails_status",
-        label={
-            "PENDING": "default",
-            "GENERATING": "info",
-            "COMPLETED": "success",
-            "FAILED": "danger",
-        },
-    )
-    def thumbnails_status_badge(self, obj: AssetJob) -> str:
-        return obj.thumbnails_status
+    @display(description=_("Voiceover Duration"), ordering="voiceover_duration_sec")
+    def voiceover_duration_display(self, obj: AssetJob) -> str:
+        if obj.voiceover_duration_sec > 0:
+            minutes = int(obj.voiceover_duration_sec // 60)
+            seconds = int(obj.voiceover_duration_sec % 60)
+            return f"{minutes}:{seconds:02d}"
+        return "-"
 
-    @display(description=_("Total Cost"))
-    def total_cost_display(self, obj: AssetJob) -> str:
-        return f"${obj.total_cost_usd:.4f}"
+    @display(description=_("Images"), ordering="total_images_count")
+    def images_count_display(self, obj: AssetJob) -> str:
+        return str(obj.total_images_count) if obj.total_images_count > 0 else "-"
+
+    @display(description=_("Cost"), ordering="agent_cost_usd")
+    def cost_display(self, obj: AssetJob) -> str:
+        if obj.agent_cost_usd > 0:
+            return f"${obj.agent_cost_usd:.4f}"
+        return "$0.0000"
 
 
 @admin.register(VoiceoverSegment)
 class VoiceoverSegmentAdmin(ModelAdmin):
-    list_display = [
-        "id",
-        "asset_job",
-        "segment_index",
-        "section",
-        "status",
-        "duration_seconds",
-        "timing_display",
-        "cost_display",
-    ]
-    list_filter = ["status", "section", "tts_provider"]
-    search_fields = ["id", "text", "section", "asset_job__script_job__final_title"]
-    readonly_fields = ["id", "created_at", "updated_at", "duration_seconds", "start_ms", "end_ms"]
-    autocomplete_fields = ["asset_job"]
+    list_display = ["asset_job", "segment_id", "section", "text_preview", "duration_sec", "status"]
+    list_filter = ["status", "section", "tts_provider_used", "created_at"]
+    search_fields = ["asset_job__id", "text"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    ordering = ["asset_job", "segment_id"]
 
-    @display(description=_("Timing"))
-    def timing_display(self, obj: VoiceoverSegment) -> str:
-        if obj.start_ms and obj.end_ms:
-            return f"{obj.start_ms}ms - {obj.end_ms}ms"
-        return "-"
+    def text_preview(self, obj: VoiceoverSegment) -> str:
+        return obj.text[:100] + "..." if len(obj.text) > 100 else obj.text
 
-    @display(description=_("Cost"), ordering="cost_usd")
-    def cost_display(self, obj: VoiceoverSegment) -> str:
-        return f"${obj.cost_usd:.4f}"
+    text_preview.short_description = _("Script Text")  # type: ignore
 
 
 @admin.register(GeneratedImage)
 class GeneratedImageAdmin(ModelAdmin):
-    list_display = [
-        "id",
-        "asset_job",
-        "position_index",
-        "section",
-        "timestamp_approx",
-        "is_selected",
-        "status",
-        "animation_type",
-        "cost_display",
-    ]
-    list_filter = ["status", "is_selected", "section", "animation_type", "image_provider"]
-    search_fields = ["id", "prompt", "section", "asset_job__script_job__final_title"]
+    list_display = ["asset_job", "position_idx", "section", "is_selected", "prompt_preview", "provider"]
+    list_filter = ["is_selected", "section", "provider", "created_at"]
+    search_fields = ["asset_job__id", "prompt_used", "section"]
     readonly_fields = ["id", "created_at", "updated_at"]
-    autocomplete_fields = ["asset_job"]
+    ordering = ["asset_job", "position_idx"]
 
-    @display(description=_("Cost"), ordering="cost_usd")
-    def cost_display(self, obj: GeneratedImage) -> str:
-        return f"${obj.cost_usd:.4f}"
+    def prompt_preview(self, obj: GeneratedImage) -> str:
+        return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
+
+    prompt_preview.short_description = _("Prompt")  # type: ignore
 
 
 @admin.register(ThumbnailOption)
 class ThumbnailOptionAdmin(ModelAdmin):
-    list_display = [
-        "id",
-        "asset_job",
-        "option_number",
-        "is_selected",
-        "ctr_score_display",
-        "status",
-        "cost_display",
-    ]
-    list_filter = ["status", "is_selected", "image_provider"]
-    search_fields = ["id", "prompt", "asset_job__script_job__final_title"]
-    readonly_fields = ["id", "created_at", "updated_at", "ctr_score"]
-    autocomplete_fields = ["asset_job"]
+    list_display = ["asset_job", "option_number", "ctr_score", "is_selected", "prompt_preview"]
+    list_filter = ["is_selected", "created_at"]
+    search_fields = ["asset_job__id", "prompt_used"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+    ordering = ["asset_job", "-ctr_score"]
 
-    @display(description=_("CTR Score"), ordering="ctr_score")
-    def ctr_score_display(self, obj: ThumbnailOption) -> str:
-        return f"{obj.ctr_score:.1f}/10"
+    def prompt_preview(self, obj: ThumbnailOption) -> str:
+        return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
 
-    @display(description=_("Cost"), ordering="cost_usd")
-    def cost_display(self, obj: ThumbnailOption) -> str:
-        return f"${obj.cost_usd:.4f}"
+    prompt_preview.short_description = _("Prompt")  # type: ignore

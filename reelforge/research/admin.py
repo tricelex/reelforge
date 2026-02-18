@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
+from unfold.decorators import action
 from unfold.decorators import display
 
 from ***REMOVED***.research.models import ResearchJob
@@ -184,7 +187,7 @@ class TopicIdeaAdmin(ModelAdmin):
         "channel",
         "status_badge",
         "approved",
-        "combined_score_display",
+        "opportunity_score_bar",
         "trend_direction",
         "competition_level",
         "created_at",
@@ -333,3 +336,44 @@ class TopicIdeaAdmin(ModelAdmin):
     @display(description=_("Score"), ordering="trend_score")
     def combined_score_display(self, obj: TopicIdea) -> str:
         return f"{obj.combined_score:.1f}/10"
+
+    @display(description=_("Opportunity"))
+    def opportunity_score_bar(self, obj: TopicIdea) -> str:
+        """Visual opportunity score bar."""
+        score = obj.combined_score  # 0-10 scale
+        color = "#4CAF50" if score > 7 else "#FF9800" if score > 4 else "#F44336"
+        # Convert to percentage for 100px bar
+        width = int(score * 10)  # 0-100
+        return format_html(
+            '<div style="background:#eee;border-radius:3px;width:100px">'
+            '<div style="background:{};width:{}px;height:12px;border-radius:3px"></div>'
+            "</div> {:.0f}",
+            color,
+            width,
+            score,
+        )
+
+    # ── Admin Actions ──────────────────────────────────────────────────
+
+    @action(description="✅ Approve Selected")
+    def approve_selected(self, request, queryset):
+        """Approve selected topic ideas."""
+        count = queryset.update(approved=True, approved_at=timezone.now())
+        self.message_user(request, f"{count} topics approved.")
+
+    @action(description="❌ Reject Selected")
+    def reject_selected(self, request, queryset):
+        """Reject selected topic ideas."""
+        count = queryset.update(approved=False, rejection_reason="Rejected by operator")
+        self.message_user(request, f"{count} topics rejected.")
+
+    @action(description="📝 Trigger Scripting")
+    def trigger_scripting(self, request, queryset):
+        """Trigger script jobs for approved topics."""
+        # TODO: Implement when scripts.tasks exists
+        # from ***REMOVED***.scripts.tasks import create_script_job
+        count = 0
+        for topic in queryset.filter(approved=True):
+            # create_script_job.delay(str(topic.id))
+            count += 1
+        self.message_user(request, f"Scripting will be triggered for {count} topics.")

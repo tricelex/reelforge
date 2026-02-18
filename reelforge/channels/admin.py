@@ -41,16 +41,10 @@ class ChannelPlaylistInline(TabularInline):
 @admin.register(Channel)
 class ChannelAdmin(ModelAdmin):
     list_display = [
-        "id",
         "name",
-        "slug",
         "status_badge",
         "niche_category",
-        "youtube_handle",
         "total_videos_published",
-        "total_views",
-        "total_subscribers",
-        "created_at",
         "total_views_display",
         "total_revenue_display",
         "last_analytics_sync",
@@ -98,7 +92,7 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("YouTube Credentials & IDs"),
+            _("YouTube"),
             {
                 "fields": (
                     "youtube_channel_id",
@@ -109,21 +103,13 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("Niche Configuration"),
+            _("Niche & Audience"),
             {
                 "fields": (
                     "niche_category",
                     "custom_niche",
                     "active_niche",
                     "target_niches",
-                ),
-            },
-        ),
-        (
-            _("Target Audience"),
-            {
-                "classes": ("collapse",),
-                "fields": (
                     "target_audience_description",
                     "target_age_range",
                     "target_location",
@@ -131,7 +117,7 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("Content Configuration"),
+            _("Content Settings"),
             {
                 "fields": (
                     "content_tone",
@@ -139,6 +125,21 @@ class ChannelAdmin(ModelAdmin):
                     "video_length_max",
                     "upload_frequency",
                     "upload_schedule",
+                ),
+            },
+        ),
+        (
+            _("Voice & Audio"),
+            {
+                "fields": (
+                    "tts_provider",
+                    "tts_voice_id",
+                    "tts_voice_name",
+                    "tts_stability",
+                    "tts_similarity",
+                    "tts_style",
+                    "music_style",
+                    "music_volume_pct",
                 ),
             },
         ),
@@ -158,30 +159,7 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("Voice Configuration"),
-            {
-                "fields": (
-                    "tts_provider",
-                    "tts_voice_id",
-                    "tts_voice_name",
-                    "tts_stability",
-                    "tts_similarity",
-                    "tts_style",
-                ),
-            },
-        ),
-        (
-            _("Music Preferences"),
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "music_style",
-                    "music_volume_pct",
-                ),
-            },
-        ),
-        (
-            _("SEO & Monetization"),
+            _("SEO"),
             {
                 "classes": ("collapse",),
                 "fields": (
@@ -193,7 +171,7 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("API Provider Preferences"),
+            _("Providers"),
             {
                 "classes": ("collapse",),
                 "fields": (
@@ -204,7 +182,7 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
-            _("Pipeline Automation Config"),
+            _("Automation"),
             {
                 "fields": (
                     "auto_approve_scripts",
