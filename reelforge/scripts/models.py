@@ -4,8 +4,16 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from reelforge.core.fields import PydanticField
 from reelforge.core.models import BaseAbstractModel
 from reelforge.core.models import PipelineStageModel
+from reelforge.scripts.schemas import BRollSuggestions
+from reelforge.scripts.schemas import ChapterList
+from reelforge.scripts.schemas import GeneratedHooks
+from reelforge.scripts.schemas import Hook
+from reelforge.scripts.schemas import QAIssueList
+from reelforge.scripts.schemas import ResearchData
+from reelforge.scripts.schemas import SegmentList
 
 
 class ScriptJob(PipelineStageModel):
@@ -26,8 +34,9 @@ class ScriptJob(PipelineStageModel):
     )
 
     # Research gathered by agent
-    research_data = models.JSONField(
-        default=dict,
+    research_data = PydanticField(
+        schema=ResearchData,
+        default=ResearchData,
         blank=True,
         help_text=_("Facts, stats, sources gathered during script research"),
     )
@@ -38,10 +47,11 @@ class ScriptJob(PipelineStageModel):
     )
 
     # Generated hooks (agent creates multiple options, operator selects best)
-    generated_hooks = models.JSONField(
-        default=list,
+    generated_hooks = PydanticField(
+        schema=GeneratedHooks,
+        default=GeneratedHooks,
         blank=True,
-        help_text=_('[{"text": "...", "type": "question|statement|story", "score": 8.5}, ...]'),
+        help_text=_("Agent-generated hook variations for the video opening."),
     )
     selected_hook_idx = models.PositiveSmallIntegerField(
         default=0,
@@ -82,15 +92,17 @@ class ScriptJob(PipelineStageModel):
         default=0.0,
         help_text=_("0-10 readability score (Flesch-Kincaid equivalent)"),
     )
-    qa_issues_found = models.JSONField(
-        default=list,
+    qa_issues_found = PydanticField(
+        schema=QAIssueList,
+        default=QAIssueList,
         blank=True,
-        help_text=_('[{"issue": "long sentence", "location": "para 3", "severity": "low"}, ...]'),
+        help_text=_("QA issues found in the script."),
     )
-    qa_issues_fixed = models.JSONField(
-        default=list,
+    qa_issues_fixed = PydanticField(
+        schema=QAIssueList,
+        default=QAIssueList,
         blank=True,
-        help_text=_("Issues that have been resolved"),
+        help_text=_("QA issues that have been resolved."),
     )
 
     # SEO metadata
@@ -108,9 +120,10 @@ class ScriptJob(PipelineStageModel):
         blank=True,
         help_text=_("YouTube category (e.g., 'Education', 'Howto & Style')"),
     )
-    chapters = models.JSONField(
-        default=list,
-        help_text=_('[{"timestamp": "0:00", "title": "Introduction"}, ...]'),
+    chapters = PydanticField(
+        schema=ChapterList,
+        default=ChapterList,
+        help_text=_("YouTube chapter markers for the video."),
     )
     pinned_comment = models.TextField(
         blank=True,
@@ -118,19 +131,19 @@ class ScriptJob(PipelineStageModel):
     )
 
     # B-roll suggestions (structured for AssetJob)
-    broll_suggestions = models.JSONField(
-        default=list,
+    broll_suggestions = PydanticField(
+        schema=BRollSuggestions,
+        default=BRollSuggestions,
         blank=True,
-        help_text=_('[{"timestamp_approx": 15, "description": "Show chart of rising prices"}, ...]'),
+        help_text=_("B-roll cues consumed by AssetJob for image generation."),
     )
 
     # TTS segments (pre-chunked for parallel generation)
-    segments = models.JSONField(
-        default=list,
+    segments = PydanticField(
+        schema=SegmentList,
+        default=SegmentList,
         blank=True,
-        help_text=_(
-            '[{"segment_id": 1, "text": "...", "section": "intro", "approx_start_sec": 0, "approx_end_sec": 15}, ...]'
-        ),
+        help_text=_("Pre-chunked TTS segments driving VoiceoverSegment creation."),
     )
 
     # Approval
@@ -164,11 +177,12 @@ class ScriptJob(PipelineStageModel):
         return f"Script: {title[:60]}"
 
     @property
-    def selected_hook(self) -> dict[str, str | float]:
-        """Returns the currently selected hook from generated_hooks array."""
-        if self.generated_hooks and len(self.generated_hooks) > self.selected_hook_idx:
-            return self.generated_hooks[self.selected_hook_idx]
-        return {}
+    def selected_hook(self) -> Hook | None:
+        """Returns the currently selected hook from generated_hooks list."""
+        hooks = self.generated_hooks.root if self.generated_hooks else []
+        if hooks and len(hooks) > self.selected_hook_idx:
+            return hooks[self.selected_hook_idx]
+        return None
 
     @property
     def revision_count(self) -> int:
@@ -178,12 +192,12 @@ class ScriptJob(PipelineStageModel):
     @property
     def total_segments(self) -> int:
         """Count of TTS segments."""
-        return len(self.segments) if self.segments else 0
+        return len(self.segments.root) if self.segments else 0
 
     @property
     def broll_count(self) -> int:
         """Count of B-roll suggestions."""
-        return len(self.broll_suggestions) if self.broll_suggestions else 0
+        return len(self.broll_suggestions.root) if self.broll_suggestions else 0
 
 
 class ScriptRevision(BaseAbstractModel):

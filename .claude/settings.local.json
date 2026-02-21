@@ -17,7 +17,12 @@
       "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" DJANGO_SETTINGS_MODULE=\"config.settings.local\" uv run python:*)",
       "Bash(DATABASE_URL=\"postgres://test:test@localhost:5432/test\" SECRET_KEY=\"test-key\" USE_DOCKER=\"no\" uv run python:*)",
       "Bash(DATABASE_URL=postgres://debug:debug@localhost:5432/reelforge REDIS_URL=redis://localhost:6379/0 uv run python:*)",
-      "Bash(DATABASE_URL=postgres://debug:debug@localhost:5432/reelforge REDIS_URL=redis://localhost:6379/0 USE_DOCKER=no uv run python:*)"
+      "Bash(DATABASE_URL=postgres://debug:debug@localhost:5432/reelforge REDIS_URL=redis://localhost:6379/0 USE_DOCKER=no uv run python:*)",
+      "WebFetch(domain:unfoldadmin.com)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=postgres://test:test@localhost/test uv run python:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=sqlite:///test.db uv run python manage.py makemigrations:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=sqlite:///test.db uv run python:*)",
+      "Bash(uv run mypy:*)"
     ]
   }
 }

@@ -3,6 +3,9 @@ from django.db import models
 
 from reelforge.channels.choices import ChannelStatus
 from reelforge.channels.choices import NicheCategory
+from reelforge.channels.schemas import OAuthCredentials
+from reelforge.channels.schemas import UploadSchedule
+from reelforge.core.fields import PydanticField
 from reelforge.core.models import BaseAbstractModel
 
 
@@ -20,7 +23,7 @@ class Channel(BaseAbstractModel):
     # YouTube credentials & IDs
     youtube_channel_id = models.CharField(max_length=100, blank=True, db_index=True)
     youtube_handle = models.CharField(max_length=100, blank=True)  # @handle
-    oauth_credentials = models.JSONField(default=dict, blank=True)  # Encrypted in prod
+    oauth_credentials = PydanticField(schema=OAuthCredentials, default=OAuthCredentials, blank=True)  # Encrypted in prod
     analytics_property = models.CharField(max_length=100, blank=True)
 
     # Niche configuration
@@ -42,8 +45,10 @@ class Channel(BaseAbstractModel):
     # "daily" | "3x_per_week" | "2x_per_week" | "weekly"
 
     # Upload schedule (day + time per slot)
-    upload_schedule = models.JSONField(
-        default=list, help_text='[{"day": "Tuesday", "time": "15:00", "timezone": "America/New_York"}, ...]'
+    upload_schedule = PydanticField(
+        schema=UploadSchedule,
+        default=UploadSchedule,
+        help_text="Ordered list of weekly upload time slots.",
     )
 
     # Branding

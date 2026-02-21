@@ -10,5 +10,12 @@ REDIS_URL=redis://redis:6379/0
 # ------------------------------------------------------------------------------
 
 # Flower
-CELERY_FLOWER_USER=bDnyneaLACvduJjwQIBmDSRWyDqazTmh
-CELERY_FLOWER_PASSWORD=Aa0Tr6nfj0Ci3CEAuSoFu3xnU7EzB7eod73Rnjy8jgQUes7LcBlcVTua0fAlmbT0
+CELERY_FLOWER_USER=debug
+CELERY_FLOWER_PASSWORD=debug
+
+# Research Provider API Keys
+# ------------------------------------------------------------------------------
+YOUTUBE_API_KEY=
+REDDIT_CLIENT_ID=
+REDDIT_CLIENT_SECRET=
+PERPLEXITY_API_KEY=

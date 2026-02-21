@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def build_script_agent(channel: Channel, topic: TopicIdea) -> Agent:
     @Tool(name="fetch_research_facts", description="Fetch credible facts, statistics, and sources for a topic.")
     def fetch_research_facts(topic: str, depth: str = "deep") -> dict[str, Any]:
-        from reelforge.services.external.perplexity_client import PerplexityClient
+        from reelforge.services.perplexity.client import PerplexityClient
 
         return PerplexityClient().research(topic=topic, depth=depth)
 

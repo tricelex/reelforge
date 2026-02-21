@@ -3,6 +3,8 @@ from __future__ import annotations
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from reelforge.assets.schemas import VisualTimeline
+from reelforge.core.fields import PydanticField
 from reelforge.core.models import BaseAbstractModel
 from reelforge.core.models import PipelineStageModel
 
@@ -139,14 +141,12 @@ class AssetJob(PipelineStageModel):
     )
 
     # ── Timeline ───────────────────────────────────────────────────────────
-    visual_timeline = models.JSONField(
-        _("Visual Timeline"),
-        default=list,
+    visual_timeline = PydanticField(
+        schema=VisualTimeline,
+        default=VisualTimeline,
+        verbose_name=_("Visual Timeline"),
         blank=True,
-        help_text=_(
-            "Timeline of images synchronized with voiceover segments: "
-            "[{start_ms, end_ms, image_file_id, segment_text, section, animation_type}]"
-        ),
+        help_text=_("Composited timeline driving VideoRenderer — maps time windows to images."),
     )
 
     # ── Costs ──────────────────────────────────────────────────────────────

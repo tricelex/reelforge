@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Setup YouTube OAuth — {{ channel.name }}{% endblock %}
+
+{% block content %}
+<h1>Setup YouTube OAuth — {{ channel.name }}</h1>
+
+{% if error %}
+<p class="errornote">{{ error }}</p>
+{% endif %}
+
+<p>
+  Paste the authorization code from the Google OAuth consent flow below.<br>
+  After authorizing, Google will redirect you to a URL containing <code>?code=4/...</code> — copy that value here.
+</p>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="form-row">
+    <label for="auth_code"><strong>Authorization Code:</strong></label><br>
+    <input type="text" name="auth_code" id="auth_code" style="width: 60%; font-family: monospace;" required>
+  </div>
+  <div class="submit-row">
+    <input type="submit" value="Exchange Code &amp; Save Credentials" class="default">
+    <a href="{% url 'admin:channels_channel_changelist' %}" class="button cancel-link">Cancel</a>
+  </div>
+</form>
+{% endblock %}

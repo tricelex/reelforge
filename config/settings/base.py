@@ -5,7 +5,7 @@ import ssl
 from pathlib import Path
 
 import environ
-from celery.schedules import crontab
+from kombu import Queue
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -112,7 +112,8 @@ LOCAL_APPS = [
     "reelforge.assets",
     "reelforge.production",
     "reelforge.distribution",
-    # Note: reelforge.services and reelforge.agents are utility modules, not Django apps
+    "reelforge.agents",
+    # Note: reelforge.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -330,6 +331,15 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-hijack-root-logger
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_QUEUES = (
+    Queue("default"),
+    Queue("orchestration"),
+    Queue("research"),
+    Queue("rendering"),
+    Queue("uploads"),
+    Queue("analytics"),
+)
 CELERY_TASK_ROUTES = {
     "reelforge.pipeline.tasks.run_pipeline_orchestrator": {"queue": "orchestration"},
     "reelforge.pipeline.tasks.render_video": {"queue": "rendering"},
@@ -337,16 +347,6 @@ CELERY_TASK_ROUTES = {
     "reelforge.pipeline.tasks.upload_video": {"queue": "uploads"},
     "reelforge.pipeline.tasks.sync_channel_analytics": {"queue": "analytics"},
     "*": {"queue": "default"},
-}
-CELERY_BEAT_SCHEDULE = {
-    "daily-pipeline-trigger": {
-        "task": "reelforge.pipeline.tasks.daily_pipeline_trigger",
-        "schedule": crontab(hour=6, minute=0),
-    },
-    "weekly-analytics-sync": {
-        "task": "reelforge.pipeline.tasks.weekly_analytics_sync",
-        "schedule": crontab(day_of_week="monday", hour=9, minute=0),
-    },
 }
 # django-allauth
 # ------------------------------------------------------------------------------

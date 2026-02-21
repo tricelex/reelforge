@@ -1,6 +1,9 @@
 # apps/channels/services.py
+from __future__ import annotations
+
 import json
 from pathlib import Path
+from typing import Any
 
 from django.conf import settings
 
@@ -10,10 +13,10 @@ from reelforge.channels.models import Channel
 class ChannelSetupService:
     """Guided setup for a new channel."""
 
-    def __init__(self, channel: Channel):
+    def __init__(self, channel: Channel) -> None:
         self.channel = channel
 
-    def setup_youtube_oauth(self, auth_code: str) -> dict:
+    def setup_youtube_oauth(self, auth_code: str) -> dict[str, Any]:
         """Exchange auth code for OAuth2 tokens, store encrypted."""
         from cryptography.fernet import Fernet
         from google_auth_oauthlib.flow import Flow
@@ -50,14 +53,14 @@ class ChannelSetupService:
         self._sync_channel_info()
         return {"success": True}
 
-    def _sync_channel_info(self):
+    def _sync_channel_info(self) -> None:
         from reelforge.services.youtube.client import YouTubeClient
 
-        client = YouTubeClient(self.channel)
+        client = YouTubeClient.from_channel(self.channel)
         info = client.get_my_channel()
         self.channel.youtube_channel_id = info["id"]
         self.channel.youtube_handle = info.get("snippet", {}).get("customUrl", "")
-        self.channel.save()
+        self.channel.save(update_fields=["youtube_channel_id", "youtube_handle", "updated_at"])
 
     def validate_voice(self, voice_id: str, test_text: str = "Hello, this is a test.") -> dict:
         """Test TTS voice before committing."""

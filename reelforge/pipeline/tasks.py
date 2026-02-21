@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
+from dependency_injector.wiring import Provide
+from dependency_injector.wiring import inject
 from django.utils import timezone
+
+from reelforge.agents.containers import AgentContainer
+from reelforge.agents.providers.protocols import RedditProvider
+from reelforge.agents.providers.protocols import TrendsProvider
+from reelforge.agents.providers.protocols import VideoSearchProvider
+
+if TYPE_CHECKING:
+    from reelforge.services.youtube.client import YouTubeClient
 
 logger = get_task_logger(__name__)
 
@@ -30,7 +41,15 @@ def run_pipeline_orchestrator(self, channel_id: str, pipeline_run_id: str) -> No
 
 
 @shared_task(bind=True, max_retries=3, queue="research")
-def run_research_job(self, channel_id: str, research_job_id: str) -> None:
+@inject
+def run_research_job(
+    self: Any,
+    channel_id: str,
+    research_job_id: str,
+    video_search: VideoSearchProvider = Provide[AgentContainer.video_search],
+    trends: TrendsProvider = Provide[AgentContainer.trends],
+    reddit: RedditProvider = Provide[AgentContainer.reddit],
+) -> None:
     import asyncio
 
     from agents import Runner
@@ -44,7 +63,7 @@ def run_research_job(self, channel_id: str, research_job_id: str) -> None:
 
     try:
         channel = Channel.objects.prefetch_related("competitors").get(id=channel_id)
-        agent = build_research_agent(channel)
+        agent = build_research_agent(channel, video_search, trends, reddit)
         result = asyncio.run(
             Runner.run(
                 agent,
@@ -52,7 +71,6 @@ def run_research_job(self, channel_id: str, research_job_id: str) -> None:
                 max_turns=20,
             )
         )
-        # Parse result and save topics
         _save_research_results(job, result, channel)
         job.mark_completed()
 
@@ -229,14 +247,21 @@ def run_video_qa(self, production_job_id: str) -> None:
 @shared_task(bind=True, max_retries=5, default_retry_delay=120, queue="uploads")
 def upload_video(self, distribution_job_id: str) -> None:
     from reelforge.distribution.models import DistributionJob
-    from reelforge.services.youtube.uploader import YouTubeUploader
+    from reelforge.services.youtube.client import YouTubeClient
 
     job = DistributionJob.objects.select_related("channel", "production_job").get(id=distribution_job_id)
     job.mark_running(task_id=self.request.id)
 
     try:
-        uploader = YouTubeUploader(channel=job.channel)
-        youtube_id = uploader.upload(job)
+        client = YouTubeClient.from_channel(job.channel)
+        script_job = job.production_job.asset_job.script_job
+        youtube_id = client.upload_video(
+            video_path=str(job.production_job.final_video_path),
+            title=script_job.final_title or script_job.topic.title_idea,
+            description=script_job.video_description or "",
+            tags=list(script_job.seo_tags or []),
+            privacy_status="private",
+        )
         job.youtube_video_id = youtube_id
         job.youtube_video_url = f"https://youtube.com/watch?v={youtube_id}"
         job.youtube_upload_status = "COMPLETED"
@@ -312,10 +337,10 @@ def sync_channel_analytics(channel_id: str) -> None:
     """Pull analytics for all published videos on a channel."""
     from reelforge.channels.models import Channel
     from reelforge.distribution.models import DistributionJob
-    from reelforge.services.youtube.analytics import YouTubeAnalyticsClient
+    from reelforge.services.youtube.client import YouTubeClient
 
     channel = Channel.objects.get(id=channel_id)
-    client = YouTubeAnalyticsClient(channel=channel)
+    client = YouTubeClient.from_channel(channel)
 
     published_jobs = DistributionJob.objects.filter(
         channel=channel,
@@ -358,36 +383,85 @@ def weekly_analytics_sync() -> None:
 
 
 def _save_research_results(job: Any, result: Any, channel: Any) -> None:
-    """Save research results to database.
+    """Parse agent output and bulk-create TopicIdea records.
 
     Args:
         job: ResearchJob instance
-        result: Agent result from Runner.run()
+        result: RunResult from Runner.run()
         channel: Channel instance
-
-    TODO: Implement full research result parsing from agent output.
     """
+    import re
+
+    from pydantic import TypeAdapter
+    from pydantic import ValidationError
+
+    from reelforge.agents.schemas import ResearchAgentOutput
+    from reelforge.agents.schemas import ResearchTopicIdea
     from reelforge.research.choices import CompetitionLevel
+    from reelforge.research.choices import TrendDirection
     from reelforge.research.models import TopicIdea
 
-    logger.warning("_save_research_results called (placeholder) - job=%s, channel=%s", job.id, channel.name)
+    raw: str = result.final_output or ""
 
-    # Placeholder: Create a single mock TopicIdea with correct field names
-    TopicIdea.objects.create(
-        research_job=job,
-        channel=channel,
-        title_idea="Mock Topic Idea",
-        description="Placeholder topic created by research agent stub.",
-        angle="Educational overview",
-        keywords=["placeholder", "mock"],
-        estimated_search_volume=10000,
-        competition_level=CompetitionLevel.MEDIUM,
-        trend_score=0.5,
-        gap_opportunity_score=0.8,
+    try:
+        output = ResearchAgentOutput.model_validate_json(raw)
+    except ValidationError:
+        # Agent may return a bare JSON array — try to extract it
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if match:
+            ta = TypeAdapter(list[ResearchTopicIdea])
+            topics_list = ta.validate_json(match.group())
+            output = ResearchAgentOutput(topics=topics_list)
+        else:
+            logger.error(
+                "Failed to parse research agent output",
+                extra={"research_job_id": str(job.id), "raw_output": raw[:500]},
+            )
+            raise
+
+    comp_map: dict[str, str] = {
+        "LOW": CompetitionLevel.LOW,
+        "MEDIUM": CompetitionLevel.MEDIUM,
+        "HIGH": CompetitionLevel.HIGH,
+    }
+    trend_map: dict[str, str] = {
+        "RISING": TrendDirection.RISING,
+        "STABLE": TrendDirection.STABLE,
+        "DECLINING": TrendDirection.DECLINING,
+    }
+
+    topic_objects = [
+        TopicIdea(
+            research_job=job,
+            channel=channel,
+            title_idea=t.title_idea,
+            description=t.why_it_works,
+            angle=t.hook_angle,
+            keywords=[t.target_keyword],
+            estimated_search_volume=t.estimated_search_vol,
+            competition_level=comp_map.get(t.competition_level, CompetitionLevel.MEDIUM),
+            trend_score=t.opportunity_score / 100.0,
+            gap_opportunity_score=t.opportunity_score / 100.0,
+            trend_direction=trend_map.get(t.trend_direction, TrendDirection.STABLE),
+            thumbnail_concept=t.thumbnail_concept,
+            why_it_works=t.why_it_works,
+        )
+        for t in output.topics
+    ]
+
+    created = TopicIdea.objects.bulk_create(topic_objects)
+    logger.info(
+        "Research results saved",
+        extra={
+            "research_job_id": str(job.id),
+            "channel_slug": channel.slug,
+            "topics_created": len(created),
+            "research_summary": output.research_summary[:200],
+        },
     )
 
 
-def _create_or_update_snapshot(client: Any, job: Any, snapshot_day: int) -> None:
+def _create_or_update_snapshot(client: YouTubeClient, job: Any, snapshot_day: int) -> None:
     """Create or update analytics snapshot for a distribution job.
 
     Args:
