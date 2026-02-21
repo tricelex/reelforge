@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.contrib import messages
+from django.http import HttpRequest
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
@@ -10,6 +16,7 @@ from unfold.decorators import display
 from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import ChannelCompetitor
 from ***REMOVED***.channels.models import ChannelPlaylist
+from ***REMOVED***.channels.services import ChannelSetupService
 
 
 class ChannelCompetitorInline(TabularInline):
@@ -77,6 +84,7 @@ class ChannelAdmin(ModelAdmin):
     ]
     prepopulated_fields = {"slug": ("name",)}
     inlines = [ChannelCompetitorInline, ChannelPlaylistInline]
+    actions_row = ["validate_voice", "setup_youtube_oauth"]
 
     fieldsets = (
         (
@@ -246,6 +254,67 @@ class ChannelAdmin(ModelAdmin):
     @display(description="Revenue (Est.)")
     def total_revenue_display(self, obj) -> str:
         return f"${obj.total_revenue_est_usd:,.2f}"
+
+    @action(description="🎙 Test Voice", url_path="validate-voice")
+    def validate_voice(self, request: HttpRequest, object_id: int) -> HttpResponse:
+        channel = Channel.objects.get(pk=object_id)
+        if not channel.tts_voice_id:
+            self.message_user(
+                request,
+                f"'{channel.name}' has no TTS voice ID configured.",
+                level=messages.WARNING,
+            )
+            return redirect(reverse("admin:channels_channel_changelist"))
+
+        svc = ChannelSetupService(channel)
+        try:
+            result = svc.validate_voice(voice_id=channel.tts_voice_id)
+            self.message_user(
+                request,
+                f"Voice OK for '{channel.name}' — duration: {result['duration']:.1f}s, preview: {result['preview_path']}",
+                level=messages.SUCCESS,
+            )
+        except Exception as exc:
+            self.message_user(
+                request,
+                f"Voice validation failed for '{channel.name}': {exc}",
+                level=messages.ERROR,
+            )
+        return redirect(reverse("admin:channels_channel_changelist"))
+
+    @action(description="🔑 Setup YouTube OAuth", url_path="setup-youtube-oauth")
+    def setup_youtube_oauth(self, request: HttpRequest, object_id: int) -> HttpResponse:
+        channel = Channel.objects.get(pk=object_id)
+
+        if request.method == "POST":
+            auth_code = request.POST.get("auth_code", "").strip()
+            if not auth_code:
+                return TemplateResponse(
+                    request,
+                    "admin/channels/youtube_oauth_form.html",
+                    {"channel": channel, "error": "Auth code is required.", "opts": Channel._meta},
+                )
+            svc = ChannelSetupService(channel)
+            try:
+                svc.setup_youtube_oauth(auth_code=auth_code)
+                self.message_user(
+                    request,
+                    f"YouTube OAuth configured for '{channel.name}' (channel ID: {channel.youtube_channel_id}).",
+                    level=messages.SUCCESS,
+                )
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f"OAuth setup failed for '{channel.name}': {exc}",
+                    level=messages.ERROR,
+                )
+            return redirect(reverse("admin:channels_channel_changelist"))
+
+        return TemplateResponse(
+            request,
+            "admin/channels/youtube_oauth_form.html",
+            {"channel": channel, "opts": Channel._meta},
+        )
 
     @action(description="🚀 Trigger Research Job", url_path="trigger-research")
     def trigger_research(self, request, queryset) -> None:

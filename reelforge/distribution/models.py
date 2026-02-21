@@ -4,11 +4,14 @@ from django.contrib.***REMOVED***.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from ***REMOVED***.core.fields import PydanticField
 from ***REMOVED***.core.models import BaseAbstractModel
 from ***REMOVED***.core.models import PipelineStageModel
 from ***REMOVED***.distribution.choices import PerformanceClass
 from ***REMOVED***.distribution.choices import UploadStatus
 from ***REMOVED***.distribution.choices import YouTubePrivacy
+from ***REMOVED***.distribution.schemas import AIInsights
+from ***REMOVED***.distribution.schemas import TrafficSourceData
 
 # Performance classification thresholds
 VIRAL_THRESHOLD = 100_000  # 100k+ views in 7 days
@@ -196,9 +199,10 @@ class AnalyticsSnapshot(BaseAbstractModel):
     avg_view_percentage = models.FloatField(default=0.0)
 
     # Traffic sources
-    traffic_source_data = models.JSONField(
-        default=dict,
-        help_text=_('{"suggested": 45.2, "search": 23.1, "browse": 15.5, ...}'),
+    traffic_source_data = PydanticField(
+        schema=TrafficSourceData,
+        default=TrafficSourceData,
+        help_text=_("YouTube Analytics traffic source breakdown: source_name → percentage."),
     )
 
     # Revenue
@@ -223,14 +227,11 @@ class AnalyticsSnapshot(BaseAbstractModel):
     )
 
     # AI insights for feedback loop
-    ai_insights = models.JSONField(
-        default=dict,
+    ai_insights = PydanticField(
+        schema=AIInsights,
+        default=AIInsights,
         blank=True,
-        help_text=_(
-            "AI analysis for feedback loop: "
-            '{"what_worked": [], "what_to_improve": [], '
-            '"title_assessment": "...", "recommendations": []}'
-        ),
+        help_text=_("AI-generated performance analysis for the research feedback loop."),
     )
 
     class Meta:

@@ -5,7 +5,7 @@ import ssl
 from pathlib import Path
 
 import environ
-from celery.schedules import crontab
+from kombu import Queue
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -112,7 +112,8 @@ LOCAL_APPS = [
     "***REMOVED***.assets",
     "***REMOVED***.production",
     "***REMOVED***.distribution",
-    # Note: ***REMOVED***.services and ***REMOVED***.agents are utility modules, not Django apps
+    "***REMOVED***.agents",
+    # Note: ***REMOVED***.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -330,6 +331,15 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-hijack-root-logger
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_QUEUES = (
+    Queue("default"),
+    Queue("orchestration"),
+    Queue("research"),
+    Queue("rendering"),
+    Queue("uploads"),
+    Queue("analytics"),
+)
 CELERY_TASK_ROUTES = {
     "***REMOVED***.pipeline.tasks.run_pipeline_orchestrator": {"queue": "orchestration"},
     "***REMOVED***.pipeline.tasks.render_video": {"queue": "rendering"},
@@ -337,16 +347,6 @@ CELERY_TASK_ROUTES = {
     "***REMOVED***.pipeline.tasks.upload_video": {"queue": "uploads"},
     "***REMOVED***.pipeline.tasks.sync_channel_analytics": {"queue": "analytics"},
     "*": {"queue": "default"},
-}
-CELERY_BEAT_SCHEDULE = {
-    "daily-pipeline-trigger": {
-        "task": "***REMOVED***.pipeline.tasks.daily_pipeline_trigger",
-        "schedule": crontab(hour=6, minute=0),
-    },
-    "weekly-analytics-sync": {
-        "task": "***REMOVED***.pipeline.tasks.weekly_analytics_sync",
-        "schedule": crontab(day_of_week="monday", hour=9, minute=0),
-    },
 }
 # django-allauth
 # ------------------------------------------------------------------------------

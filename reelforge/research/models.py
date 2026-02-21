@@ -4,11 +4,15 @@ from django.contrib.***REMOVED***.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from ***REMOVED***.core.fields import PydanticField
 from ***REMOVED***.core.models import PipelineStageModel
 from ***REMOVED***.research.choices import ApprovalSource
 from ***REMOVED***.research.choices import CompetitionLevel
 from ***REMOVED***.research.choices import ResearchTrigger
 from ***REMOVED***.research.choices import TrendDirection
+from ***REMOVED***.research.schemas import CompetitorDataRaw
+from ***REMOVED***.research.schemas import GapAnalysisRaw
+from ***REMOVED***.research.schemas import TrendDataRaw
 
 
 class ResearchJob(PipelineStageModel):
@@ -41,18 +45,21 @@ class ResearchJob(PipelineStageModel):
     )
 
     # Raw research data (for debugging, re-processing, audit)
-    trend_data_raw = models.JSONField(
-        default=dict,
+    trend_data_raw = PydanticField(
+        schema=TrendDataRaw,
+        default=TrendDataRaw,
         blank=True,
         help_text=_("Raw data from Google Trends, YouTube search, etc."),
     )
-    competitor_data_raw = models.JSONField(
-        default=dict,
+    competitor_data_raw = PydanticField(
+        schema=CompetitorDataRaw,
+        default=CompetitorDataRaw,
         blank=True,
         help_text=_("Raw competitor channel analysis data"),
     )
-    gap_analysis_raw = models.JSONField(
-        default=dict,
+    gap_analysis_raw = PydanticField(
+        schema=GapAnalysisRaw,
+        default=GapAnalysisRaw,
         blank=True,
         help_text=_("Raw gap detection and opportunity scoring data"),
     )
