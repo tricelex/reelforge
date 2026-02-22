@@ -5,9 +5,9 @@ import ssl
 from pathlib import Path
 
 import environ
-from kombu import Queue
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
+from kombu import Queue
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # reelforge/
@@ -656,5 +656,16 @@ PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
 
 # === API Keys ===
-YOUTUBE_OAUTH_CLIENT_CONFIG = env.json("YOUTUBE_OAUTH_CLIENT_CONFIG", default={})
-CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY", default="dd")
+YOUTUBE_OAUTH_CLIENT_CONFIG = {
+    "web": {
+        "client_id": env("YOUTUBE_OAUTH_CLIENT_ID", default=""),
+        "project_id": "reelforge-488122",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": env("YOUTUBE_OAUTH_CLIENT_SECRET", default=""),
+        "redirect_uris": ["http://localhost:8000/oauth/youtube/callback/"],
+    }
+}
+
+CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY")

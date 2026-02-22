@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from reelforge.agents.schemas import RisingTopic
 from reelforge.agents.schemas import TrendData
 from reelforge.agents.schemas import TrendPoint
-from reelforge.services.exploding_topics.client import ExplodingTopicsClient
-from reelforge.services.google_trends.client import GoogleTrendsClient
+
+if TYPE_CHECKING:
+    from reelforge.services.exploding_topics.client import ExplodingTopicsClient
+    from reelforge.services.google_trends.client import GoogleTrendsClient
 
 logger = logging.getLogger("reelforge.agents.providers.trends")
 
@@ -30,8 +33,7 @@ class GoogleTrendsProvider:
         try:
             raw = self._google.get_interest(keyword=keyword, timeframe=timeframe)
             interest_over_time = [
-                TrendPoint(date=point["date"], value=point["value"])
-                for point in raw.get("interest_over_time", [])
+                TrendPoint(date=point["date"], value=point["value"]) for point in raw.get("interest_over_time", [])
             ]
             return TrendData(
                 keyword=raw["keyword"],

@@ -13,6 +13,7 @@ from reelforge.services.perplexity.client import PerplexityClient
 from reelforge.services.providers.image.mock import MockImageProvider
 from reelforge.services.providers.llm.claude import ClaudeProvider
 from reelforge.services.providers.llm.openai import OpenAIProvider
+from reelforge.services.providers.tts.elevenlabs import ElevenLabsProvider
 from reelforge.services.providers.tts.mock import MockTTSProvider
 from reelforge.services.reddit.client import RedditClient
 from reelforge.services.youtube.client import YouTubeClient
@@ -82,16 +83,21 @@ class AgentContainer(containers.DeclarativeContainer):
         api_key=config.openai_api_key,
     )
 
-    # ── TTS provider ──────────────────────────────────────────────────────────
+    # ── TTS providers ─────────────────────────────────────────────────────────
 
-    tts: providers.Singleton[MockTTSProvider] = providers.Singleton(
+    tts_mock: providers.Singleton[MockTTSProvider] = providers.Singleton(
         MockTTSProvider,
         name="mock",
     )
 
-    # ── Image provider ────────────────────────────────────────────────────────
+    tts_elevenlabs: providers.Singleton[ElevenLabsProvider] = providers.Singleton(
+        ElevenLabsProvider,
+        api_key=config.elevenlabs_api_key,
+    )
 
-    image: providers.Singleton[MockImageProvider] = providers.Singleton(
+    # ── Image providers ────────────────────────────────────────────────────────
+
+    image_mock: providers.Singleton[MockImageProvider] = providers.Singleton(
         MockImageProvider,
         name="mock",
     )

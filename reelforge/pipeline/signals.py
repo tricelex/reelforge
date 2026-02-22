@@ -13,7 +13,7 @@ from reelforge.pipeline.models import PipelineRun
 
 
 @receiver(post_transition, sender=PipelineRun)
-def pipeline_run_post_transition(sender, instance, name, source, target, **kwargs):
+def pipeline_run_post_transition(sender, instance, name, source, target, **kwargs) -> None:
     """Fires after every valid FSM transition on PipelineRun.
     Maps target state → Celery task to dispatch.
     Also logs every transition to PipelineEvent automatically.
@@ -44,21 +44,21 @@ def _dispatch_task_for_state(run: PipelineRun, state: str) -> None:
     from reelforge.pipeline.tasks import upload_video
 
     dispatch_map = {
-        PipelineStatus.RESEARCHING: lambda: run_research_job.delay(str(run.channel.id), str(run.research_job.id))
-        if run.research_job
-        else run_pipeline_orchestrator.delay(str(run.channel.id), str(run.id)),
-        PipelineStatus.SCRIPTING: lambda: run_script_job.delay(str(run.topic.id), str(run.id))
-        if run.topic
-        else None,
-        PipelineStatus.GENERATING_ASSETS: lambda: run_asset_job.delay(str(run.script_job.id), str(run.id))
-        if run.script_job
-        else None,
-        PipelineStatus.RENDERING: lambda: render_video.delay(str(run.production_job.id))
-        if run.production_job
-        else None,
-        PipelineStatus.UPLOADING: lambda: upload_video.delay(str(run.distribution_job.id))
-        if run.distribution_job
-        else None,
+        PipelineStatus.RESEARCHING: lambda: (
+            run_research_job.delay(str(run.channel.id), str(run.research_job.id))
+            if run.research_job
+            else run_pipeline_orchestrator.delay(str(run.channel.id), str(run.id))
+        ),
+        PipelineStatus.SCRIPTING: lambda: run_script_job.delay(str(run.topic.id), str(run.id)) if run.topic else None,
+        PipelineStatus.GENERATING_ASSETS: lambda: (
+            run_asset_job.delay(str(run.script_job.id), str(run.id)) if run.script_job else None
+        ),
+        PipelineStatus.RENDERING: lambda: (
+            render_video.delay(str(run.production_job.id)) if run.production_job else None
+        ),
+        PipelineStatus.UPLOADING: lambda: (
+            upload_video.delay(str(run.distribution_job.id)) if run.distribution_job else None
+        ),
         # AWAITING_APPROVAL: no task — waits for human action or auto-approve timer
         # QA: triggered directly by render_video task on completion
         # PUBLISHED, FAILED, PAUSED: no automatic dispatch

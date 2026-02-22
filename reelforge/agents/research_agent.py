@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 from agents import Agent
 from agents import function_tool
 
-from reelforge.agents.providers.protocols import RedditProvider
-from reelforge.agents.providers.protocols import TrendsProvider
-from reelforge.agents.providers.protocols import VideoSearchProvider
-
 if TYPE_CHECKING:
+    from reelforge.agents.providers.protocols import RedditProvider
+    from reelforge.agents.providers.protocols import TrendsProvider
+    from reelforge.agents.providers.protocols import VideoSearchProvider
     from reelforge.channels.models import Channel
 
 

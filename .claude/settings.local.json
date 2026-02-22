@@ -22,7 +22,13 @@
       "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=postgres://test:test@localhost/test uv run python:*)",
       "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=sqlite:///test.db uv run python manage.py makemigrations:*)",
       "Bash(DJANGO_SETTINGS_MODULE=config.settings.test DATABASE_URL=sqlite:///test.db uv run python:*)",
-      "Bash(uv run mypy:*)"
+      "Bash(uv run mypy:*)",
+      "Bash(python3:*)",
+      "Bash(docker compose exec:*)",
+      "Bash(COMPOSE_FILE=docker-compose.local.yml docker compose exec:*)",
+      "Bash(set:*)",
+      "Bash(source:*)",
+      "Bash(DATABASE_URL=sqlite:///test.db uv run python:*)"
     ]
   }
 }

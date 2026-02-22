@@ -33,11 +33,14 @@ class PerplexityClient:
         if response.status_code == 200:
             return
         if response.status_code == 401:
-            raise PerplexityAuthError(f"Perplexity API authentication failed: {response.text}")
+            msg = f"Perplexity API authentication failed: {response.text}"
+            raise PerplexityAuthError(msg)
         if response.status_code == 429:
-            raise PerplexityQuotaError("Perplexity API rate limit exceeded")
+            msg = "Perplexity API rate limit exceeded"
+            raise PerplexityQuotaError(msg)
+        msg = f"Perplexity API error: {response.text}"
         raise PerplexityAPIError(
-            f"Perplexity API error: {response.text}",
+            msg,
             status_code=response.status_code,
         )
 
@@ -91,7 +94,8 @@ class PerplexityClient:
         except (PerplexityAuthError, PerplexityQuotaError, PerplexityAPIError):
             raise
         except Exception as exc:
-            raise PerplexityAPIError(f"Perplexity research_topic failed for '{topic}': {exc}") from exc
+            msg = f"Perplexity research_topic failed for '{topic}': {exc}"
+            raise PerplexityAPIError(msg) from exc
 
     def research(self, topic: str, depth: str = "deep") -> dict[str, Any]:
         """Research a topic with specified depth (alias for research_topic)."""

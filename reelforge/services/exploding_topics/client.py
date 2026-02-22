@@ -14,20 +14,60 @@ logger = logging.getLogger("reelforge.exploding_topics.client")
 # TODO: Implement when API access is obtained.
 _STUB_TOPICS: dict[str, list[dict[str, Any]]] = {
     "technology": [
-        {"keyword": "AI agents", "growth_rate": "2500%", "category": "technology", "description": "Autonomous AI software agents"},
-        {"keyword": "vibe coding", "growth_rate": "1800%", "category": "technology", "description": "AI-assisted programming workflow"},
+        {
+            "keyword": "AI agents",
+            "growth_rate": "2500%",
+            "category": "technology",
+            "description": "Autonomous AI software agents",
+        },
+        {
+            "keyword": "vibe coding",
+            "growth_rate": "1800%",
+            "category": "technology",
+            "description": "AI-assisted programming workflow",
+        },
     ],
     "finance": [
-        {"keyword": "micro-investing", "growth_rate": "450%", "category": "finance", "description": "Investing small amounts via apps"},
-        {"keyword": "treasury bills", "growth_rate": "380%", "category": "finance", "description": "Short-term government debt instruments"},
+        {
+            "keyword": "micro-investing",
+            "growth_rate": "450%",
+            "category": "finance",
+            "description": "Investing small amounts via apps",
+        },
+        {
+            "keyword": "treasury bills",
+            "growth_rate": "380%",
+            "category": "finance",
+            "description": "Short-term government debt instruments",
+        },
     ],
     "health": [
-        {"keyword": "glucose monitoring", "growth_rate": "620%", "category": "health", "description": "Continuous glucose monitoring for non-diabetics"},
-        {"keyword": "cold plunge", "growth_rate": "890%", "category": "health", "description": "Cold water immersion therapy"},
+        {
+            "keyword": "glucose monitoring",
+            "growth_rate": "620%",
+            "category": "health",
+            "description": "Continuous glucose monitoring for non-diabetics",
+        },
+        {
+            "keyword": "cold plunge",
+            "growth_rate": "890%",
+            "category": "health",
+            "description": "Cold water immersion therapy",
+        },
     ],
     "default": [
-        {"keyword": "AI automation", "growth_rate": "1200%", "category": "general", "description": "AI-powered workflow automation"},
-        {"keyword": "passive income", "growth_rate": "340%", "category": "general", "description": "Income streams requiring minimal effort"},
+        {
+            "keyword": "AI automation",
+            "growth_rate": "1200%",
+            "category": "general",
+            "description": "AI-powered workflow automation",
+        },
+        {
+            "keyword": "passive income",
+            "growth_rate": "340%",
+            "category": "general",
+            "description": "Income streams requiring minimal effort",
+        },
     ],
 }
 
@@ -42,8 +82,7 @@ class ExplodingTopicsClient:
 
     def __init__(self) -> None:
         logger.info(
-            "ExplodingTopicsClient initialized (stub — no public API available). "
-            "Returning placeholder topic data."
+            "ExplodingTopicsClient initialized (stub — no public API available). Returning placeholder topic data."
         )
 
     def get_rising(self, category: str = "") -> list[dict[str, Any]]:
@@ -66,4 +105,5 @@ class ExplodingTopicsClient:
             )
             return [dict(t) for t in topics]
         except Exception as exc:
-            raise ExplodingTopicsAPIError(f"ExplodingTopics get_rising failed: {exc}") from exc
+            msg = f"ExplodingTopics get_rising failed: {exc}"
+            raise ExplodingTopicsAPIError(msg) from exc

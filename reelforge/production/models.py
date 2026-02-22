@@ -3,8 +3,8 @@ from __future__ import annotations
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from reelforge.core.fields import PydanticField
 from reelforge.core.models import PipelineStageModel
+from reelforge.core.validators import pydantic_validator
 from reelforge.production.choices import RenderEngine
 from reelforge.production.schemas import QAResults
 from reelforge.production.schemas import RenderSpec
@@ -32,11 +32,11 @@ class ProductionJob(PipelineStageModel):
         choices=RenderEngine.choices,
         default=RenderEngine.MOVIEPY,
     )
-    render_spec = PydanticField(
-        schema=RenderSpec,
-        default=RenderSpec,
+    render_spec = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("Full render configuration consumed by VideoRenderer."),
+        validators=[pydantic_validator(RenderSpec)],
     )
     resolution = models.CharField(
         max_length=20,
@@ -84,10 +84,10 @@ class ProductionJob(PipelineStageModel):
     qa_passed = models.BooleanField(default=False)
     qa_checks_run = models.PositiveSmallIntegerField(default=0)
     qa_checks_passed = models.PositiveSmallIntegerField(default=0)
-    qa_results = PydanticField(
-        schema=QAResults,
-        default=QAResults,
+    qa_results = models.JSONField(
+        default=dict,
         help_text=_("QA check results: check_name → pass/fail."),
+        validators=[pydantic_validator(QAResults)],
     )
     qa_notes = models.TextField(blank=True)
 

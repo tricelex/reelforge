@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from reelforge.agents.schemas import RedditPost
-from reelforge.services.reddit.client import RedditClient
+
+if TYPE_CHECKING:
+    from reelforge.services.reddit.client import RedditClient
 
 logger = logging.getLogger("reelforge.agents.providers.reddit")
 

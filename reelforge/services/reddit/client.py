@@ -30,7 +30,8 @@ class RedditClient:
             import praw  # type: ignore[import-untyped]
 
             if not self.client_id or not self.client_secret:
-                raise RedditAuthError("Reddit client_id and client_secret are required")
+                msg = "Reddit client_id and client_secret are required"
+                raise RedditAuthError(msg)
             self._reddit = praw.Reddit(
                 client_id=self.client_id,
                 client_secret=self.client_secret,
@@ -75,7 +76,8 @@ class RedditClient:
         except RedditAuthError:
             raise
         except Exception as exc:
-            raise RedditAPIError(f"Reddit get_top_posts failed for niche '{niche}': {exc}") from exc
+            msg = f"Reddit get_top_posts failed for niche '{niche}': {exc}"
+            raise RedditAPIError(msg) from exc
 
     def search_subreddit(
         self,
@@ -94,7 +96,8 @@ class RedditClient:
         except RedditAuthError:
             raise
         except Exception as exc:
-            raise RedditAPIError(f"Reddit search failed for r/{subreddit_name}: {exc}") from exc
+            msg = f"Reddit search failed for r/{subreddit_name}: {exc}"
+            raise RedditAPIError(msg) from exc
 
     def get_trending_posts(
         self,
@@ -115,4 +118,5 @@ class RedditClient:
         except RedditAuthError:
             raise
         except Exception as exc:
-            raise RedditAPIError(f"Reddit trending posts failed for niche '{niche}': {exc}") from exc
+            msg = f"Reddit trending posts failed for niche '{niche}': {exc}"
+            raise RedditAPIError(msg) from exc

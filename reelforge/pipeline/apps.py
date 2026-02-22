@@ -5,5 +5,5 @@ class PipelineConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "reelforge.pipeline"
 
-    def ready(self):
+    def ready(self) -> None:
         import reelforge.pipeline.signals  # noqa: F401

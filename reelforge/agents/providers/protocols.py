@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
 from typing import runtime_checkable
 
-from reelforge.agents.schemas import RedditPost
-from reelforge.agents.schemas import RisingTopic
-from reelforge.agents.schemas import TrendData
-from reelforge.agents.schemas import VideoResult
-from reelforge.services.dataclass import ImageResponse
-from reelforge.services.dataclass import LLMResponse
-from reelforge.services.dataclass import TTSResponse
+if TYPE_CHECKING:
+    from reelforge.agents.schemas import RedditPost
+    from reelforge.agents.schemas import RisingTopic
+    from reelforge.agents.schemas import TrendData
+    from reelforge.agents.schemas import VideoResult
+    from reelforge.services.dataclass import ImageResponse
+    from reelforge.services.dataclass import LLMResponse
+    from reelforge.services.dataclass import TTSResponse
 
 
 @runtime_checkable
@@ -35,9 +37,7 @@ class TrendsProvider(Protocol):
 
 @runtime_checkable
 class RedditProvider(Protocol):
-    def get_top_posts(
-        self, niche: str, subreddits: list[str] | None, limit: int
-    ) -> list[RedditPost]: ...
+    def get_top_posts(self, niche: str, subreddits: list[str] | None, limit: int) -> list[RedditPost]: ...
 
 
 @runtime_checkable

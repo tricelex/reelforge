@@ -310,9 +310,7 @@ class ScriptJobAdmin(ModelAdmin):
         """Preview of SEO metadata."""
         tags = ", ".join(obj.seo_tags[:5]) if obj.seo_tags else "—"
         return format_html(
-            '<div style="font-size:11px">'
-            "<strong>Tags:</strong> {}<br>"
-            "<strong>Category:</strong> {}</div>",
+            '<div style="font-size:11px"><strong>Tags:</strong> {}<br><strong>Category:</strong> {}</div>',
             tags,
             obj.category or "—",
         )
@@ -320,7 +318,7 @@ class ScriptJobAdmin(ModelAdmin):
     # ── Admin Actions ──────────────────────────────────────────────────
 
     @action(description="✅ Approve Script")
-    def approve_script(self, request, queryset):
+    def approve_script(self, request, queryset) -> None:
         """Approve selected scripts and trigger asset pipeline."""
         count = 0
         for script in queryset.filter(approved=False):

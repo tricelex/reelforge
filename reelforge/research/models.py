@@ -4,8 +4,8 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from reelforge.core.fields import PydanticField
 from reelforge.core.models import PipelineStageModel
+from reelforge.core.validators import pydantic_validator
 from reelforge.research.choices import ApprovalSource
 from reelforge.research.choices import CompetitionLevel
 from reelforge.research.choices import ResearchTrigger
@@ -45,23 +45,23 @@ class ResearchJob(PipelineStageModel):
     )
 
     # Raw research data (for debugging, re-processing, audit)
-    trend_data_raw = PydanticField(
-        schema=TrendDataRaw,
-        default=TrendDataRaw,
+    trend_data_raw = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("Raw data from Google Trends, YouTube search, etc."),
+        validators=[pydantic_validator(TrendDataRaw)],
     )
-    competitor_data_raw = PydanticField(
-        schema=CompetitorDataRaw,
-        default=CompetitorDataRaw,
+    competitor_data_raw = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("Raw competitor channel analysis data"),
+        validators=[pydantic_validator(CompetitorDataRaw)],
     )
-    gap_analysis_raw = PydanticField(
-        schema=GapAnalysisRaw,
-        default=GapAnalysisRaw,
+    gap_analysis_raw = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("Raw gap detection and opportunity scoring data"),
+        validators=[pydantic_validator(GapAnalysisRaw)],
     )
 
     # Results

@@ -5,8 +5,8 @@ from reelforge.channels.choices import ChannelStatus
 from reelforge.channels.choices import NicheCategory
 from reelforge.channels.schemas import OAuthCredentials
 from reelforge.channels.schemas import UploadSchedule
-from reelforge.core.fields import PydanticField
 from reelforge.core.models import BaseAbstractModel
+from reelforge.core.validators import pydantic_validator
 
 
 class Channel(BaseAbstractModel):
@@ -23,7 +23,9 @@ class Channel(BaseAbstractModel):
     # YouTube credentials & IDs
     youtube_channel_id = models.CharField(max_length=100, blank=True, db_index=True)
     youtube_handle = models.CharField(max_length=100, blank=True)  # @handle
-    oauth_credentials = PydanticField(schema=OAuthCredentials, default=OAuthCredentials, blank=True)  # Encrypted in prod
+    oauth_credentials = models.JSONField(
+        default=dict, blank=True, validators=[pydantic_validator(OAuthCredentials)]
+    )  # Encrypted in prod
     analytics_property = models.CharField(max_length=100, blank=True)
 
     # Niche configuration
@@ -45,10 +47,10 @@ class Channel(BaseAbstractModel):
     # "daily" | "3x_per_week" | "2x_per_week" | "weekly"
 
     # Upload schedule (day + time per slot)
-    upload_schedule = PydanticField(
-        schema=UploadSchedule,
-        default=UploadSchedule,
+    upload_schedule = models.JSONField(
+        default=list,
         help_text="Ordered list of weekly upload time slots.",
+        validators=[pydantic_validator(UploadSchedule)],
     )
 
     # Branding
@@ -110,9 +112,7 @@ class Channel(BaseAbstractModel):
 
     @property
     def active_niche(self) -> str:
-        return (
-            self.custom_niche if self.niche_category == NicheCategory.CUSTOM else self.get_niche_category_display()
-        )
+        return self.custom_niche if self.niche_category == NicheCategory.CUSTOM else self.get_niche_category_display()
 
 
 class ChannelCompetitor(BaseAbstractModel):

@@ -7,6 +7,7 @@ from django.views import defaults as default_views
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
+from reelforge.channels import views as channels_views
 from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
@@ -21,6 +22,12 @@ urlpatterns = [
     # User management
     path("users/", include("reelforge.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
+    # OAuth callbacks
+    path(
+        "oauth/youtube/callback/",
+        channels_views.youtube_oauth_callback,
+        name="youtube_oauth_callback",
+    ),
     # Your stuff: custom urls includes go here
     # ...
     # Media files

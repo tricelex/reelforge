@@ -4,12 +4,13 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
+from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
+
 from agents import Agent
 from agents import Runner
 from agents import Tool
 from agents import handoff
 from agents import trace
-from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 
 if TYPE_CHECKING:
     from reelforge.channels.models import Channel

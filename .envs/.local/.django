@@ -19,3 +19,13 @@ YOUTUBE_API_KEY=
 REDDIT_CLIENT_ID=
 REDDIT_CLIENT_SECRET=
 PERPLEXITY_API_KEY=
+
+# YouTube OAuth (web application credentials from Google Cloud Console)
+# ------------------------------------------------------------------------------
+YOUTUBE_OAUTH_CLIENT_ID=502903684098-sr2obanijbr7bqnqit0q08u6fe300brr.apps.googleusercontent.com
+YOUTUBE_OAUTH_CLIENT_SECRET=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
+
+# Credential Encryption (Fernet key — generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+# ------------------------------------------------------------------------------
+CREDENTIAL_ENCRYPTION_KEY=SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=
+ELEVENLABS_API_KEY=sk_692b1e8ba066c07edd05460d3750db365a45eaee193cb379
