@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
@@ -42,37 +41,26 @@ class YouTubeClient:
 
     @classmethod
     def from_channel(cls, channel: Channel) -> YouTubeClient:
-        """Create an authenticated client by decrypting a channel's stored OAuth blob."""
-        from django.conf import settings
+        """Create an authenticated client from a channel's stored OAuth credentials."""
+        creds = channel.oauth_credentials
+        if not creds or not creds.get("token"):
+            msg = f"Channel {channel.slug} has no OAuth credentials stored"
+            raise YouTubeAuthError(msg)
 
-        from cryptography.fernet import Fernet
-
-        from ***REMOVED***.channels.schemas import OAuthCredentials
-
-        raw_blob = channel.oauth_credentials
-        if not raw_blob:
-            raise YouTubeAuthError(f"Channel {channel.slug} has no OAuth credentials stored")
-
-        creds = OAuthCredentials.model_validate(raw_blob)
-        fernet = Fernet(settings.CREDENTIAL_ENCRYPTION_KEY)
-        decrypted = json.loads(fernet.decrypt(creds.encrypted.encode()).decode())
-
-        # Normalize key: google-auth uses "token", we store "token" but from_credential expects "access_token"
-        if "token" in decrypted and "access_token" not in decrypted:
-            decrypted["access_token"] = decrypted.pop("token")
-
-        return cls.from_credential(decrypted)
+        return cls.from_credential({"access_token": creds["token"]})
 
     def _require_auth(self) -> None:
         """Raise YouTubeAuthError if the client is not authenticated via OAuth."""
         if not self._is_authenticated:
-            raise YouTubeAuthError("This operation requires OAuth authentication. Use YouTubeClient.from_channel().")
+            msg = "This operation requires OAuth authentication. Use YouTubeClient.from_channel()."
+            raise YouTubeAuthError(msg)
 
     def _handle_errors(self, response: httpx.Response) -> None:
         if response.status_code == 200:
             return
         if response.status_code == 401:
-            raise YouTubeAuthError(f"YouTube API authentication failed: {response.text}")
+            msg = f"YouTube API authentication failed: {response.text}"
+            raise YouTubeAuthError(msg)
         if response.status_code == 403:
             try:
                 data = response.json()
@@ -80,10 +68,13 @@ class YouTubeClient:
             except Exception:
                 reason = ""
             if reason == "quotaExceeded":
-                raise YouTubeQuotaError("YouTube API quota exceeded")
-            raise YouTubeAuthError(f"YouTube API forbidden: {response.text}")
+                msg = "YouTube API quota exceeded"
+                raise YouTubeQuotaError(msg)
+            msg = f"YouTube API forbidden: {response.text}"
+            raise YouTubeAuthError(msg)
+        msg = f"YouTube API error: {response.text}"
         raise YouTubeAPIError(
-            f"YouTube API error: {response.text}",
+            msg,
             status_code=response.status_code,
         )
 

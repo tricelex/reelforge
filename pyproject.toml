@@ -292,4 +292,6 @@ dependencies = [
     "redis==7.2.0",
     "sentry-sdk==2.53.0",
     "whitenoise==6.11.0",
+    "google-auth-oauthlib>=1.2.4",
+    "elevenlabs>=2.36.1",
 ]

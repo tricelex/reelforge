@@ -1,13 +1,14 @@
 # apps/channels/services.py
 from __future__ import annotations
 
-import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 from django.conf import settings
 
-from ***REMOVED***.channels.models import Channel
+if TYPE_CHECKING:
+    from ***REMOVED***.channels.models import Channel
 
 
 class ChannelSetupService:
@@ -16,37 +17,51 @@ class ChannelSetupService:
     def __init__(self, channel: Channel) -> None:
         self.channel = channel
 
-    def setup_youtube_oauth(self, auth_code: str) -> dict[str, Any]:
-        """Exchange auth code for OAuth2 tokens, store encrypted."""
-        from cryptography.fernet import Fernet
+    _YOUTUBE_SCOPES = [
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/yt-analytics.readonly",
+    ]
+
+    def get_authorization_url(self, redirect_uri: str) -> tuple[str, str]:
+        """Build the Google OAuth authorization URL.
+
+        Returns (auth_url, state). The caller is responsible for storing
+        `state` in the session for CSRF validation.
+        """
         from google_auth_oauthlib.flow import Flow
 
         flow = Flow.from_client_config(
             client_config=settings.YOUTUBE_OAUTH_CLIENT_CONFIG,
-            scopes=[
-                "https://www.googleapis.com/auth/youtube.upload",
-                "https://www.googleapis.com/auth/youtube",
-                "https://www.googleapis.com/auth/yt-analytics.readonly",
-            ],
+            scopes=self._YOUTUBE_SCOPES,
+            redirect_uri=redirect_uri,
         )
-        flow.fetch_token(code=auth_code)
+        auth_url, state = flow.authorization_url(
+            access_type="offline",
+            prompt="consent",
+            include_granted_scopes="true",
+        )
+        return auth_url, state
+
+    def exchange_oauth_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
+        """Exchange an authorization code for OAuth2 tokens and store."""
+        from google_auth_oauthlib.flow import Flow
+
+        flow = Flow.from_client_config(
+            client_config=settings.YOUTUBE_OAUTH_CLIENT_CONFIG,
+            scopes=self._YOUTUBE_SCOPES,
+            redirect_uri=redirect_uri,
+        )
+        flow.fetch_token(code=code)
         credentials = flow.credentials
 
-        # Encrypt before storing
-        fernet = Fernet(settings.CREDENTIAL_ENCRYPTION_KEY)
-        encrypted = fernet.encrypt(
-            json.dumps(
-                {
-                    "token": credentials.token,
-                    "refresh_token": credentials.refresh_token,
-                    "token_uri": credentials.token_uri,
-                    "client_id": credentials.client_id,
-                    "client_secret": credentials.client_secret,
-                }
-            ).encode()
-        ).decode()
-
-        self.channel.oauth_credentials = {"encrypted": encrypted}
+        self.channel.oauth_credentials = {
+            "token": credentials.token or "",
+            "refresh_token": credentials.refresh_token or "",
+            "token_uri": credentials.token_uri or "",
+            "client_id": credentials.client_id or "",
+            "client_secret": credentials.client_secret or "",
+        }
         self.channel.save(update_fields=["oauth_credentials"])
 
         # Fetch channel ID from API

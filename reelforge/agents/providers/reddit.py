@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from ***REMOVED***.agents.schemas import RedditPost
-from ***REMOVED***.services.reddit.client import RedditClient
+
+if TYPE_CHECKING:
+    from ***REMOVED***.services.reddit.client import RedditClient
 
 logger = logging.getLogger("***REMOVED***.agents.providers.reddit")
 

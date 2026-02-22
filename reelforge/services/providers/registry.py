@@ -35,9 +35,19 @@ def get_llm_provider(channel: Channel | None = None) -> BaseLLMProvider:
 
 def get_tts_provider(channel: Channel | None = None) -> BaseTTSProvider:
     """Returns the configured TTS provider, optionally channel-specific."""
-    return _container().tts()
+    name = channel.tts_provider if channel and channel.tts_provider else settings.DEFAULT_TTS_PROVIDER
+    if name == "mock":
+        return _container().tts_mock()
+    if name == "elevenlabs":
+        return _container().tts_elevenlabs()
+    msg = f"Unknown TTS provider: {name}"
+    raise ValueError(msg)
 
 
 def get_image_provider(channel: Channel | None = None) -> BaseImageProvider:
     """Returns the configured image generation provider, optionally channel-specific."""
-    return _container().image()
+    name = channel.image_provider if channel and channel.image_provider else settings.DEFAULT_IMAGE_PROVIDER
+    if name == "mock":
+        return _container().image_mock()
+    msg = f"Unknown image provider: {name}"
+    raise ValueError(msg)

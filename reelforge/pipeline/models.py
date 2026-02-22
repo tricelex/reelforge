@@ -6,8 +6,8 @@ from django.utils.translation import gettext_lazy as _
 from django_fsm import FSMField
 from django_fsm import transition
 
-from ***REMOVED***.core.fields import PydanticField
 from ***REMOVED***.core.models import BaseAbstractModel
+from ***REMOVED***.core.validators import pydantic_validator
 from ***REMOVED***.pipeline.choices import EventType
 from ***REMOVED***.pipeline.choices import PipelineStatus
 from ***REMOVED***.pipeline.schemas import AgentDecision
@@ -110,11 +110,11 @@ class PipelineRun(BaseAbstractModel):
         blank=True,
         help_text=_("Current stage name for display/logging purposes"),
     )
-    last_agent_decision = PydanticField(
-        schema=AgentDecision,
-        default=AgentDecision,
+    last_agent_decision = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("Last decision made by OrchestratorAgent"),
+        validators=[pydantic_validator(AgentDecision)],
     )
 
     # Cost tracking - aggregated from all stages
@@ -403,10 +403,10 @@ class PipelineEvent(BaseAbstractModel):
         help_text=_("e.g., 'FSM transition', 'Agent decision', 'Operator approval'"),
     )
     message = models.TextField()
-    metadata = PydanticField(
-        schema=EventMetadata,
-        default=EventMetadata,
+    metadata = models.JSONField(
+        default=dict,
         help_text=_("Structured event data"),
+        validators=[pydantic_validator(EventMetadata)],
     )
 
     # Attribution

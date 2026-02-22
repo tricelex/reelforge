@@ -356,24 +356,24 @@ class TopicIdeaAdmin(ModelAdmin):
     # ── Admin Actions ──────────────────────────────────────────────────
 
     @action(description="✅ Approve Selected")
-    def approve_selected(self, request, queryset):
+    def approve_selected(self, request, queryset) -> None:
         """Approve selected topic ideas."""
         count = queryset.update(approved=True, approved_at=timezone.now())
         self.message_user(request, f"{count} topics approved.")
 
     @action(description="❌ Reject Selected")
-    def reject_selected(self, request, queryset):
+    def reject_selected(self, request, queryset) -> None:
         """Reject selected topic ideas."""
         count = queryset.update(approved=False, rejection_reason="Rejected by operator")
         self.message_user(request, f"{count} topics rejected.")
 
     @action(description="📝 Trigger Scripting")
-    def trigger_scripting(self, request, queryset):
+    def trigger_scripting(self, request, queryset) -> None:
         """Trigger script jobs for approved topics."""
         # TODO: Implement when scripts.tasks exists
         # from ***REMOVED***.scripts.tasks import create_script_job
         count = 0
-        for topic in queryset.filter(approved=True):
+        for _topic in queryset.filter(approved=True):
             # create_script_job.delay(str(topic.id))
             count += 1
         self.message_user(request, f"Scripting will be triggered for {count} topics.")

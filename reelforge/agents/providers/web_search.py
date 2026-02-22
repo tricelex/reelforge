@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
-from ***REMOVED***.services.perplexity.client import PerplexityClient
+if TYPE_CHECKING:
+    from ***REMOVED***.services.perplexity.client import PerplexityClient
 
 logger = logging.getLogger("***REMOVED***.agents.providers.web_search")
 

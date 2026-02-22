@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
 from typing import runtime_checkable
 
-from ***REMOVED***.agents.schemas import RedditPost
-from ***REMOVED***.agents.schemas import RisingTopic
-from ***REMOVED***.agents.schemas import TrendData
-from ***REMOVED***.agents.schemas import VideoResult
-from ***REMOVED***.services.dataclass import ImageResponse
-from ***REMOVED***.services.dataclass import LLMResponse
-from ***REMOVED***.services.dataclass import TTSResponse
+if TYPE_CHECKING:
+    from ***REMOVED***.agents.schemas import RedditPost
+    from ***REMOVED***.agents.schemas import RisingTopic
+    from ***REMOVED***.agents.schemas import TrendData
+    from ***REMOVED***.agents.schemas import VideoResult
+    from ***REMOVED***.services.dataclass import ImageResponse
+    from ***REMOVED***.services.dataclass import LLMResponse
+    from ***REMOVED***.services.dataclass import TTSResponse
 
 
 @runtime_checkable
@@ -35,9 +37,7 @@ class TrendsProvider(Protocol):
 
 @runtime_checkable
 class RedditProvider(Protocol):
-    def get_top_posts(
-        self, niche: str, subreddits: list[str] | None, limit: int
-    ) -> list[RedditPost]: ...
+    def get_top_posts(self, niche: str, subreddits: list[str] | None, limit: int) -> list[RedditPost]: ...
 
 
 @runtime_checkable

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
 from ***REMOVED***.agents.schemas import VideoResult
-from ***REMOVED***.services.youtube.client import YouTubeClient
+
+if TYPE_CHECKING:
+    from ***REMOVED***.services.youtube.client import YouTubeClient
 
 logger = logging.getLogger("***REMOVED***.agents.providers.youtube")
 
@@ -99,9 +102,7 @@ class YouTubeProvider:
                     "subscriber_count": int(channel_stats.get("subscriberCount", 0)),
                     "total_videos": int(channel_stats.get("videoCount", 0)),
                     "total_views": int(channel_stats.get("viewCount", 0)),
-                    "recent_video_titles": [
-                        v.get("snippet", {}).get("title", "") for v in videos[:10]
-                    ],
+                    "recent_video_titles": [v.get("snippet", {}).get("title", "") for v in videos[:10]],
                 }
             except Exception:
                 logger.warning("Failed to analyze competitor channel_id='%s'", channel_id)

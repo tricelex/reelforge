@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.contrib import admin
 from django.contrib import messages
-from django.http import HttpRequest
-from django.http import HttpResponse
 from django.shortcuts import redirect
-from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
@@ -17,6 +16,10 @@ from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import ChannelCompetitor
 from ***REMOVED***.channels.models import ChannelPlaylist
 from ***REMOVED***.channels.services import ChannelSetupService
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
+    from django.http import HttpResponse
 
 
 class ChannelCompetitorInline(TabularInline):
@@ -81,6 +84,7 @@ class ChannelAdmin(ModelAdmin):
         "total_revenue_est_usd",
         "last_analytics_sync",
         "active_niche",
+        "oauth_credentials_display",
     ]
     prepopulated_fields = {"slug": ("name",)}
     inlines = [ChannelCompetitorInline, ChannelPlaylistInline]
@@ -105,7 +109,7 @@ class ChannelAdmin(ModelAdmin):
                 "fields": (
                     "youtube_channel_id",
                     "youtube_handle",
-                    "oauth_credentials",
+                    "oauth_credentials_display",
                     "analytics_property",
                 ),
             },
@@ -255,6 +259,20 @@ class ChannelAdmin(ModelAdmin):
     def total_revenue_display(self, obj) -> str:
         return f"${obj.total_revenue_est_usd:,.2f}"
 
+    @display(
+        description=_("OAuth Credentials"),
+        label={
+            "connected": "success",
+            "not_configured": "default",
+        },
+    )
+    def oauth_credentials_display(self, obj: Channel) -> tuple[str, str]:
+        creds = obj.oauth_credentials
+        if creds and creds.get("refresh_token"):
+            preview = creds["refresh_token"][:12]
+            return f"Connected ({preview}...)", "connected"
+        return "Not configured", "not_configured"
+
     @action(description="🎙 Test Voice", url_path="validate-voice")
     def validate_voice(self, request: HttpRequest, object_id: int) -> HttpResponse:
         channel = Channel.objects.get(pk=object_id)
@@ -285,36 +303,23 @@ class ChannelAdmin(ModelAdmin):
     @action(description="🔑 Setup YouTube OAuth", url_path="setup-youtube-oauth")
     def setup_youtube_oauth(self, request: HttpRequest, object_id: int) -> HttpResponse:
         channel = Channel.objects.get(pk=object_id)
+        redirect_uri: str = request.build_absolute_uri(reverse("youtube_oauth_callback"))
 
-        if request.method == "POST":
-            auth_code = request.POST.get("auth_code", "").strip()
-            if not auth_code:
-                return TemplateResponse(
-                    request,
-                    "admin/channels/youtube_oauth_form.html",
-                    {"channel": channel, "error": "Auth code is required.", "opts": Channel._meta},
-                )
-            svc = ChannelSetupService(channel)
-            try:
-                svc.setup_youtube_oauth(auth_code=auth_code)
-                self.message_user(
-                    request,
-                    f"YouTube OAuth configured for '{channel.name}' (channel ID: {channel.youtube_channel_id}).",
-                    level=messages.SUCCESS,
-                )
-            except Exception as exc:
-                self.message_user(
-                    request,
-                    f"OAuth setup failed for '{channel.name}': {exc}",
-                    level=messages.ERROR,
-                )
-            return redirect(reverse("admin:channels_channel_changelist"))
+        svc = ChannelSetupService(channel)
+        try:
+            auth_url, state = svc.get_authorization_url(redirect_uri=redirect_uri)
+        except Exception as exc:
+            self.message_user(
+                request,
+                f"Failed to build OAuth URL for '{channel.name}': {exc}",
+                level=messages.ERROR,
+            )
+            return redirect(reverse("admin:channels_channel_change", args=[object_id]))
 
-        return TemplateResponse(
-            request,
-            "admin/channels/youtube_oauth_form.html",
-            {"channel": channel, "opts": Channel._meta},
-        )
+        request.session["youtube_oauth_state"] = state
+        request.session["youtube_oauth_channel_id"] = str(channel.id)
+
+        return redirect(auth_url)
 
     @action(description="🚀 Trigger Research Job", url_path="trigger-research")
     def trigger_research(self, request, queryset) -> None:

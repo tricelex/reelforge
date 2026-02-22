@@ -10,11 +10,11 @@ from dependency_injector.wiring import inject
 from django.utils import timezone
 
 from ***REMOVED***.agents.containers import AgentContainer
-from ***REMOVED***.agents.providers.protocols import RedditProvider
-from ***REMOVED***.agents.providers.protocols import TrendsProvider
-from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
 
 if TYPE_CHECKING:
+    from ***REMOVED***.agents.providers.protocols import RedditProvider
+    from ***REMOVED***.agents.providers.protocols import TrendsProvider
+    from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
     from ***REMOVED***.services.youtube.client import YouTubeClient
 
 logger = get_task_logger(__name__)
@@ -53,7 +53,6 @@ def run_research_job(
     import asyncio
 
     from agents import Runner
-
     from ***REMOVED***.agents.research_agent import build_research_agent
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.research.models import ResearchJob
@@ -109,7 +108,6 @@ def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
     import asyncio
 
     from agents import Runner
-
     from ***REMOVED***.agents.script_agent import build_script_agent
     from ***REMOVED***.pipeline.models import PipelineRun
     from ***REMOVED***.research.models import TopicIdea
@@ -153,7 +151,6 @@ def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
     import asyncio
 
     from agents import Runner
-
     from ***REMOVED***.agents.asset_agent import build_asset_agent
     from ***REMOVED***.assets.models import AssetJob
     from ***REMOVED***.pipeline.models import PipelineRun
@@ -413,7 +410,7 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
             topics_list = ta.validate_json(match.group())
             output = ResearchAgentOutput(topics=topics_list)
         else:
-            logger.error(
+            logger.exception(
                 "Failed to parse research agent output",
                 extra={"research_job_id": str(job.id), "raw_output": raw[:500]},
             )

@@ -25,6 +25,7 @@ class AgentsConfig(AppConfig):
                 "perplexity_api_key": getattr(settings, "PERPLEXITY_API_KEY", ""),
                 "anthropic_api_key": getattr(settings, "ANTHROPIC_API_KEY", ""),
                 "openai_api_key": getattr(settings, "OPENAI_API_KEY", ""),
+                "elevenlabs_api_key": getattr(settings, "ELEVENLABS_API_KEY", ""),
             }
         )
         container.wire(

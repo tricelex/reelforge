@@ -35,6 +35,8 @@ services:
       - ***REMOVED***_local_***REMOVED***_data_backups:/backups
     env_file:
       - ./.envs/.local/.***REMOVED***
+    ports:
+      - "5435:5432"
 
   mailpit:
     image: docker.io/axllent/mailpit:latest

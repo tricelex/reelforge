@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
-from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
@@ -255,8 +254,7 @@ class PipelineRunAdmin(ModelAdmin):
         if not transitions:
             return "—"
         badges = " ".join(
-            f'<span style="background:#e0e0e0;padding:2px 6px;border-radius:3px;'
-            f'font-size:11px">{t}</span>'
+            f'<span style="background:#e0e0e0;padding:2px 6px;border-radius:3px;font-size:11px">{t}</span>'
             for t in transitions
         )
         return format_html(badges)
@@ -264,7 +262,7 @@ class PipelineRunAdmin(ModelAdmin):
     # ── Admin Actions ──────────────────────────────────────────────────
 
     @action(description="▶ Approve & Continue to Assets")
-    def approve_to_assets(self, request, queryset):
+    def approve_to_assets(self, request, queryset) -> None:
         """Only valid when run is in AWAITING_APPROVAL state."""
         count = 0
         for run in queryset:
@@ -282,7 +280,7 @@ class PipelineRunAdmin(ModelAdmin):
             self.message_user(request, f"{count} runs approved and advancing to asset generation.")
 
     @action(description="🔄 Retry Rendering")
-    def retry_rendering_action(self, request, queryset):
+    def retry_rendering_action(self, request, queryset) -> None:
         """Retry rendering for failed pipelines."""
         count = 0
         for run in queryset:
@@ -300,7 +298,7 @@ class PipelineRunAdmin(ModelAdmin):
             self.message_user(request, f"{count} runs set to retry rendering.")
 
     @action(description="⏸ Pause Pipeline")
-    def pause_action(self, request, queryset):
+    def pause_action(self, request, queryset) -> None:
         """Pause pipelines for manual intervention."""
         count = 0
         for run in queryset:
@@ -318,7 +316,7 @@ class PipelineRunAdmin(ModelAdmin):
             self.message_user(request, f"{count} pipelines paused.")
 
     @action(description="🗑 Reject & Archive")
-    def reject_run(self, request, queryset):
+    def reject_run(self, request, queryset) -> None:
         """Reject and archive pipeline runs."""
         count = 0
         for run in queryset:

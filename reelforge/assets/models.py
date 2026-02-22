@@ -4,9 +4,9 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from ***REMOVED***.assets.schemas import VisualTimeline
-from ***REMOVED***.core.fields import PydanticField
 from ***REMOVED***.core.models import BaseAbstractModel
 from ***REMOVED***.core.models import PipelineStageModel
+from ***REMOVED***.core.validators import pydantic_validator
 
 
 class AssetStatusChoices(models.TextChoices):
@@ -54,7 +54,7 @@ class AssetJob(PipelineStageModel):
     voiceover_status = models.CharField(
         _("Voiceover Status"),
         max_length=20,
-        choices=AssetStatusChoices.choices,
+        choices=AssetStatusChoices,
         default=AssetStatusChoices.PENDING,
     )
 
@@ -91,7 +91,7 @@ class AssetJob(PipelineStageModel):
     music_status = models.CharField(
         _("Music Status"),
         max_length=20,
-        choices=AssetStatusChoices.choices,
+        choices=AssetStatusChoices,
         default=AssetStatusChoices.PENDING,
     )
 
@@ -99,7 +99,7 @@ class AssetJob(PipelineStageModel):
     images_status = models.CharField(
         _("Images Status"),
         max_length=20,
-        choices=AssetStatusChoices.choices,
+        choices=AssetStatusChoices,
         default=AssetStatusChoices.PENDING,
     )
 
@@ -128,7 +128,7 @@ class AssetJob(PipelineStageModel):
     thumbnails_status = models.CharField(
         _("Thumbnails Status"),
         max_length=20,
-        choices=AssetStatusChoices.choices,
+        choices=AssetStatusChoices,
         default=AssetStatusChoices.PENDING,
     )
 
@@ -141,12 +141,12 @@ class AssetJob(PipelineStageModel):
     )
 
     # ── Timeline ───────────────────────────────────────────────────────────
-    visual_timeline = PydanticField(
-        schema=VisualTimeline,
-        default=VisualTimeline,
+    visual_timeline = models.JSONField(
+        default=list,
         verbose_name=_("Visual Timeline"),
         blank=True,
         help_text=_("Composited timeline driving VideoRenderer — maps time windows to images."),
+        validators=[pydantic_validator(VisualTimeline)],
     )
 
     # ── Costs ──────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ class VoiceoverSegment(BaseAbstractModel):
     status = models.CharField(
         _("Status"),
         max_length=20,
-        choices=AssetStatusChoices.choices,
+        choices=AssetStatusChoices,
         default=AssetStatusChoices.PENDING,
     )
 

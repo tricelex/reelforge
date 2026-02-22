@@ -15,10 +15,10 @@ logger = logging.getLogger("***REMOVED***.pipeline.services")
 
 
 class PipelineService:
-    def __init__(self, channel):
+    def __init__(self, channel) -> None:
         self.channel = channel
 
-    def trigger_daily_batch(self):
+    def trigger_daily_batch(self) -> None:
         from ***REMOVED***.pipeline.models import PipelineRun
         from ***REMOVED***.pipeline.tasks import run_research_job_for_channel
         from ***REMOVED***.research.models import TopicIdea
@@ -63,13 +63,14 @@ class PipelineService:
         return False
 
     @staticmethod
-    def approve_script_and_advance(run: PipelineRun):
+    def approve_script_and_advance(run: PipelineRun) -> None:
         """Human clicks Approve in admin — advance past AWAITING_APPROVAL."""
         if can_proceed(run.begin_assets):
             run.begin_assets()
             run.save()
         else:
-            raise TransitionNotAllowed(f"Cannot advance from {run.overall_status} to GENERATING_ASSETS")
+            msg = f"Cannot advance from {run.overall_status} to GENERATING_ASSETS"
+            raise TransitionNotAllowed(msg)
 
 
 def _identify_failed_stage(run: PipelineRun) -> str:

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from ***REMOVED***.agents.schemas import RisingTopic
 from ***REMOVED***.agents.schemas import TrendData
 from ***REMOVED***.agents.schemas import TrendPoint
-from ***REMOVED***.services.exploding_topics.client import ExplodingTopicsClient
-from ***REMOVED***.services.google_trends.client import GoogleTrendsClient
+
+if TYPE_CHECKING:
+    from ***REMOVED***.services.exploding_topics.client import ExplodingTopicsClient
+    from ***REMOVED***.services.google_trends.client import GoogleTrendsClient
 
 logger = logging.getLogger("***REMOVED***.agents.providers.trends")
 
@@ -30,8 +33,7 @@ class GoogleTrendsProvider:
         try:
             raw = self._google.get_interest(keyword=keyword, timeframe=timeframe)
             interest_over_time = [
-                TrendPoint(date=point["date"], value=point["value"])
-                for point in raw.get("interest_over_time", [])
+                TrendPoint(date=point["date"], value=point["value"]) for point in raw.get("interest_over_time", [])
             ]
             return TrendData(
                 keyword=raw["keyword"],

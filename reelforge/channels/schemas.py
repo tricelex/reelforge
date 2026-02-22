@@ -6,9 +6,13 @@ from pydantic import RootModel
 
 
 class OAuthCredentials(BaseModel):
-    """Stores Fernet-encrypted OAuth2 credentials as a single blob."""
+    """OAuth2 credentials for YouTube API access."""
 
-    encrypted: str
+    token: str = ""
+    refresh_token: str = ""
+    token_uri: str = ""
+    client_id: str = ""
+    client_secret: str = ""
 
 
 class UploadSlot(BaseModel):

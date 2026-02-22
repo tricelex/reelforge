@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 from agents import Agent
 from agents import function_tool
 
-from ***REMOVED***.agents.providers.protocols import RedditProvider
-from ***REMOVED***.agents.providers.protocols import TrendsProvider
-from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
-
 if TYPE_CHECKING:
+    from ***REMOVED***.agents.providers.protocols import RedditProvider
+    from ***REMOVED***.agents.providers.protocols import TrendsProvider
+    from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
     from ***REMOVED***.channels.models import Channel
 
 

@@ -13,6 +13,7 @@ from ***REMOVED***.services.perplexity.client import PerplexityClient
 from ***REMOVED***.services.providers.image.mock import MockImageProvider
 from ***REMOVED***.services.providers.llm.claude import ClaudeProvider
 from ***REMOVED***.services.providers.llm.openai import OpenAIProvider
+from ***REMOVED***.services.providers.tts.elevenlabs import ElevenLabsProvider
 from ***REMOVED***.services.providers.tts.mock import MockTTSProvider
 from ***REMOVED***.services.reddit.client import RedditClient
 from ***REMOVED***.services.youtube.client import YouTubeClient
@@ -82,16 +83,21 @@ class AgentContainer(containers.DeclarativeContainer):
         api_key=config.openai_api_key,
     )
 
-    # ── TTS provider ──────────────────────────────────────────────────────────
+    # ── TTS providers ─────────────────────────────────────────────────────────
 
-    tts: providers.Singleton[MockTTSProvider] = providers.Singleton(
+    tts_mock: providers.Singleton[MockTTSProvider] = providers.Singleton(
         MockTTSProvider,
         name="mock",
     )
 
-    # ── Image provider ────────────────────────────────────────────────────────
+    tts_elevenlabs: providers.Singleton[ElevenLabsProvider] = providers.Singleton(
+        ElevenLabsProvider,
+        api_key=config.elevenlabs_api_key,
+    )
 
-    image: providers.Singleton[MockImageProvider] = providers.Singleton(
+    # ── Image providers ────────────────────────────────────────────────────────
+
+    image_mock: providers.Singleton[MockImageProvider] = providers.Singleton(
         MockImageProvider,
         name="mock",
     )

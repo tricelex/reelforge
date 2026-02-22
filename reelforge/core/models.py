@@ -42,13 +42,21 @@ class BaseAbstractModel(models.Model):
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
-        """Override save for triggering updated_at on update_fields case."""
-        listed_for_update_fields = None
-        if update_fields:
+        """Override save to validate field validators and auto-append updated_at."""
+        listed_for_update_fields: list[str] | None = None
+        if update_fields is not None:
             listed_for_update_fields = list(update_fields)
+            # Only validate the fields actually being written to the DB.
+            # clean_fields(exclude=...) takes the fields to SKIP, so exclude everything else.
+            all_field_names = {f.name for f in self._meta.concrete_fields}
+            exclude = list(all_field_names - set(listed_for_update_fields))
+            self.clean_fields(exclude=exclude)
             listed_for_update_fields.append("updated_at")
+        else:
+            # Full save — validate every field.
+            self.clean_fields()
 
-        return super().save(force_insert, force_update, using, listed_for_update_fields or None)
+        return super().save(force_insert, force_update, using, listed_for_update_fields)
 
 
 class PipelineStageModel(BaseAbstractModel):

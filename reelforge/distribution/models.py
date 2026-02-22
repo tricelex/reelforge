@@ -4,9 +4,9 @@ from django.contrib.***REMOVED***.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from ***REMOVED***.core.fields import PydanticField
 from ***REMOVED***.core.models import BaseAbstractModel
 from ***REMOVED***.core.models import PipelineStageModel
+from ***REMOVED***.core.validators import pydantic_validator
 from ***REMOVED***.distribution.choices import PerformanceClass
 from ***REMOVED***.distribution.choices import UploadStatus
 from ***REMOVED***.distribution.choices import YouTubePrivacy
@@ -199,10 +199,10 @@ class AnalyticsSnapshot(BaseAbstractModel):
     avg_view_percentage = models.FloatField(default=0.0)
 
     # Traffic sources
-    traffic_source_data = PydanticField(
-        schema=TrafficSourceData,
-        default=TrafficSourceData,
+    traffic_source_data = models.JSONField(
+        default=dict,
         help_text=_("YouTube Analytics traffic source breakdown: source_name → percentage."),
+        validators=[pydantic_validator(TrafficSourceData)],
     )
 
     # Revenue
@@ -227,11 +227,11 @@ class AnalyticsSnapshot(BaseAbstractModel):
     )
 
     # AI insights for feedback loop
-    ai_insights = PydanticField(
-        schema=AIInsights,
-        default=AIInsights,
+    ai_insights = models.JSONField(
+        default=dict,
         blank=True,
         help_text=_("AI-generated performance analysis for the research feedback loop."),
+        validators=[pydantic_validator(AIInsights)],
     )
 
     class Meta:

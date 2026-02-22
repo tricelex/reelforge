@@ -64,10 +64,7 @@ class GoogleTrendsClient:
                 pass
 
             dates = [str(d.date()) for d in df.index.tolist()]
-            interest_over_time = [
-                {"date": d, "value": v}
-                for d, v in zip(dates, interest_vals, strict=False)
-            ]
+            interest_over_time = [{"date": d, "value": v} for d, v in zip(dates, interest_vals, strict=False)]
 
             return {
                 "keyword": keyword,
@@ -79,7 +76,8 @@ class GoogleTrendsClient:
         except GoogleTrendsAPIError:
             raise
         except Exception as exc:
-            raise GoogleTrendsAPIError(f"Google Trends request failed for '{keyword}': {exc}") from exc
+            msg = f"Google Trends request failed for '{keyword}': {exc}"
+            raise GoogleTrendsAPIError(msg) from exc
 
     def get_trending_searches(self, region: str = "US") -> list[str]:
         """Get currently trending search queries for a region."""
@@ -90,7 +88,8 @@ class GoogleTrendsClient:
         except GoogleTrendsAPIError:
             raise
         except Exception as exc:
-            raise GoogleTrendsAPIError(f"Trending searches failed for region '{region}': {exc}") from exc
+            msg = f"Trending searches failed for region '{region}': {exc}"
+            raise GoogleTrendsAPIError(msg) from exc
 
     def get_rising_topics(self, category: str = "") -> list[dict[str, Any]]:
         """Get real-time trending topics."""
@@ -111,4 +110,5 @@ class GoogleTrendsClient:
         except GoogleTrendsAPIError:
             raise
         except Exception as exc:
-            raise GoogleTrendsAPIError(f"Rising topics failed: {exc}") from exc
+            msg = f"Rising topics failed: {exc}"
+            raise GoogleTrendsAPIError(msg) from exc
