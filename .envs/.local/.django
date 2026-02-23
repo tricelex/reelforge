@@ -29,3 +29,4 @@ YOUTUBE_OAUTH_CLIENT_SECRET=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
 # ------------------------------------------------------------------------------
 CREDENTIAL_ENCRYPTION_KEY=SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=
 ELEVENLABS_API_KEY=sk_692b1e8ba066c07edd05460d3750db365a45eaee193cb379
+OPENAI_API_KEY=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

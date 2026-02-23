@@ -43,18 +43,22 @@ class BaseAbstractModel(models.Model):
         update_fields: Iterable[str] | None = None,
     ) -> None:
         """Override save to validate field validators and auto-append updated_at."""
+        # FSMField(protected=True) raises AttributeError when Django's clean_fields()
+        # calls setattr() internally during validation. Always exclude FSM fields.
+        fsm_field_names = {f.name for f in self._meta.concrete_fields if isinstance(f, FSMField)}
+
         listed_for_update_fields: list[str] | None = None
         if update_fields is not None:
             listed_for_update_fields = list(update_fields)
             # Only validate the fields actually being written to the DB.
             # clean_fields(exclude=...) takes the fields to SKIP, so exclude everything else.
             all_field_names = {f.name for f in self._meta.concrete_fields}
-            exclude = list(all_field_names - set(listed_for_update_fields))
+            exclude = list((all_field_names - set(listed_for_update_fields)) | fsm_field_names)
             self.clean_fields(exclude=exclude)
             listed_for_update_fields.append("updated_at")
         else:
-            # Full save — validate every field.
-            self.clean_fields()
+            # Full save — validate every field except FSM fields.
+            self.clean_fields(exclude=list(fsm_field_names))
 
         return super().save(force_insert, force_update, using, listed_for_update_fields)
 
@@ -168,12 +172,17 @@ class PipelineStageModel(BaseAbstractModel):
         return self.retry_count < self.max_retries
 
     def mark_running(self, task_id: str = "") -> None:
-        """Convenience wrapper — handles PENDING or QUEUED source state."""
+        """Convenience wrapper — handles PENDING, QUEUED, and FAILED/PAUSED (Celery retry) source states."""
         if self.status == PipelineStatusChoices.QUEUED:
             self.start_from_queue(task_id=task_id)
+        elif self.status in (PipelineStatusChoices.FAILED, PipelineStatusChoices.PAUSED):
+            # Celery retry path: FAILED/PAUSED → RETRYING (enforces can_retry() check).
+            # TransitionNotAllowed will propagate naturally if retry budget is exhausted.
+            self.retry()
+            self.celery_task_id = task_id
         else:
             self.start(task_id=task_id)
-        self.save()
+        self.save(update_fields=["status", "started_at", "celery_task_id", "retry_count", "last_error"])
 
     def mark_completed(self) -> None:
         self.complete()

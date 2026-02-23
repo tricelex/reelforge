@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from agents import Agent
 from agents import function_tool
 
+from reelforge.agents.schemas import ResearchAgentOutput
+
 if TYPE_CHECKING:
     from reelforge.agents.providers.protocols import RedditProvider
     from reelforge.agents.providers.protocols import TrendsProvider
@@ -20,6 +22,9 @@ def build_research_agent(
     trends: TrendsProvider,
     reddit: RedditProvider,
 ) -> Agent:
+    competitor_context = "\n".join(
+        f"{c.youtube_channel_id} ({c.channel_name})" for c in channel.competitors.all()
+    ) or "None configured yet"
     """Build the ResearchAgent with injected providers.
 
     Discovers trending topics, analyzes competitors, and identifies
@@ -95,6 +100,7 @@ def build_research_agent(
     return Agent(
         name="ResearchAgent",
         model="gpt-4o",
+        output_type=ResearchAgentOutput,
         instructions=f"""
         You are an expert YouTube content research strategist for a faceless channel in: {channel.target_niches}.
         Target audience: {channel.target_audience_description}
@@ -102,11 +108,15 @@ def build_research_agent(
 
         Your job: Discover high-opportunity video topics using the available tools.
 
+        Known competitor channels (always analyze these):
+        {competitor_context}
+
         PROCESS:
         1. Search YouTube trends for each niche (last 7 days)
         2. Check Google Trends for top keywords
         3. Scrape Reddit for audience questions and pain points
-        4. Analyze competitor channels for content gaps
+        4. Analyze competitor channels for content gaps — include ALL known competitor IDs above
+           plus any new channel IDs you discover from trending search results
         5. Check Exploding Topics for emerging angles
         6. Score each opportunity
         7. Return exactly 8-12 topic ideas ranked by opportunity score
@@ -117,6 +127,10 @@ def build_research_agent(
         - Suitable for FACELESS AI video (no talking head required)
         - 8-14 minute content potential
         - Strong thumbnail concept exists
+
+        DISCOVERED COMPETITORS: Any YouTube channels you analyze (from the known list above or
+        discovered during trending searches) must be included in the discovered_competitors list
+        in your output.
 
         OUTPUT FORMAT: Return a JSON object with this exact structure:
         {{
@@ -131,7 +145,14 @@ def build_research_agent(
                 "thumbnail_concept": str,
                 "why_it_works": str
             }}],
-            "research_summary": str
+            "research_summary": str,
+            "discovered_competitors": [{{
+                "youtube_channel_id": str,
+                "channel_name": str,
+                "channel_url": str,
+                "subscriber_count": int,
+                "notes": str
+            }}]
         }}
         """,
         tools=[
