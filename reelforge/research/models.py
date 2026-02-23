@@ -36,12 +36,14 @@ class ResearchJob(PipelineStageModel):
     search_keywords = ArrayField(
         models.CharField(max_length=100),
         default=list,
+        blank=True,
         help_text=_("Keywords used for this research run"),
     )
-    competitor_channels_analyzed = ArrayField(
-        models.CharField(max_length=100),
-        default=list,
-        help_text=_("YouTube channel IDs analyzed"),
+    competitors_analyzed = models.ManyToManyField(
+        "channels.ChannelCompetitor",
+        blank=True,
+        related_name="research_jobs",
+        help_text=_("Competitor channels analyzed in this research run"),
     )
 
     # Raw research data (for debugging, re-processing, audit)

@@ -387,29 +387,20 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
         result: RunResult from Runner.run()
         channel: Channel instance
     """
-    import re
-
-    from pydantic import TypeAdapter
-    from pydantic import ValidationError
-
     from ***REMOVED***.agents.schemas import ResearchAgentOutput
-    from ***REMOVED***.agents.schemas import ResearchTopicIdea
     from ***REMOVED***.research.choices import CompetitionLevel
     from ***REMOVED***.research.choices import TrendDirection
     from ***REMOVED***.research.models import TopicIdea
 
-    raw: str = result.final_output or ""
-
-    try:
-        output = ResearchAgentOutput.model_validate_json(raw)
-    except ValidationError:
-        # Agent may return a bare JSON array — try to extract it
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if match:
-            ta = TypeAdapter(list[ResearchTopicIdea])
-            topics_list = ta.validate_json(match.group())
-            output = ResearchAgentOutput(topics=topics_list)
-        else:
+    if isinstance(result.final_output, ResearchAgentOutput):
+        # output_type was set — SDK already validated and deserialized
+        output = result.final_output
+    else:
+        # Fallback: raw string (e.g. agent ran without output_type)
+        raw: str = result.final_output or ""
+        try:
+            output = ResearchAgentOutput.model_validate_json(raw)
+        except Exception:
             logger.exception(
                 "Failed to parse research agent output",
                 extra={"research_job_id": str(job.id), "raw_output": raw[:500]},
@@ -447,12 +438,35 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     ]
 
     created = TopicIdea.objects.bulk_create(topic_objects)
+
+    # Upsert discovered competitors and link them to this research job
+    from ***REMOVED***.channels.models import ChannelCompetitor
+
+    competitor_records = []
+    for dc in output.discovered_competitors:
+        obj, _ = ChannelCompetitor.objects.update_or_create(
+            channel=channel,
+            youtube_channel_id=dc.youtube_channel_id,
+            defaults={
+                "channel_name": dc.channel_name,
+                "channel_url": dc.channel_url,
+                "subscriber_count": dc.subscriber_count,
+                "notes": dc.notes,
+                "last_analyzed": timezone.now(),
+            },
+        )
+        competitor_records.append(obj)
+
+    if competitor_records:
+        job.competitors_analyzed.set(competitor_records)
+
     logger.info(
         "Research results saved",
         extra={
             "research_job_id": str(job.id),
             "channel_slug": channel.slug,
             "topics_created": len(created),
+            "competitors_created": len(competitor_records),
             "research_summary": output.research_summary[:200],
         },
     )

@@ -73,7 +73,7 @@ class ResearchJobAdmin(ModelAdmin):
             {
                 "fields": (
                     "search_keywords",
-                    "competitor_channels_analyzed",
+                    "competitors_analyzed",
                     "min_search_volume",
                     "max_competition",
                 ),
@@ -347,10 +347,10 @@ class TopicIdeaAdmin(ModelAdmin):
         return format_html(
             '<div style="background:#eee;border-radius:3px;width:100px">'
             '<div style="background:{};width:{}px;height:12px;border-radius:3px"></div>'
-            "</div> {:.0f}",
+            "</div> {}",
             color,
             width,
-            score,
+            f"{score:.0f}",
         )
 
     # ── Admin Actions ──────────────────────────────────────────────────

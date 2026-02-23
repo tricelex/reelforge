@@ -89,6 +89,7 @@ class ChannelAdmin(ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     inlines = [ChannelCompetitorInline, ChannelPlaylistInline]
     actions_row = ["validate_voice", "setup_youtube_oauth"]
+    actions = ["sync_analytics", "trigger_research"]
 
     fieldsets = (
         (

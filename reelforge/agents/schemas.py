@@ -68,6 +68,15 @@ class ResearchTopicIdea(BaseModel):
     why_it_works: str
 
 
+class DiscoveredCompetitor(BaseModel):
+    youtube_channel_id: str
+    channel_name: str
+    channel_url: str
+    subscriber_count: int = 0
+    notes: str = ""
+
+
 class ResearchAgentOutput(BaseModel):
     topics: list[ResearchTopicIdea]
     research_summary: str = ""
+    discovered_competitors: list[DiscoveredCompetitor] = []
