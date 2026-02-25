@@ -4,6 +4,7 @@ This is the single place where "stage changed" → "task triggered" lives.
 No more scattered .delay() calls across the codebase.
 """
 
+from django.db import transaction
 from django.dispatch import receiver
 from django_fsm.signals import post_transition
 
@@ -66,4 +67,4 @@ def _dispatch_task_for_state(run: PipelineRun, state: str) -> None:
 
     task_fn = dispatch_map.get(state)
     if task_fn:
-        task_fn()
+        transaction.on_commit(task_fn)

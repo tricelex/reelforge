@@ -30,10 +30,7 @@ class PydanticValidator:
         try:
             self.schema.model_validate(value)
         except PydanticValidationError as e:
-            errors = [
-                f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}"
-                for err in e.errors()
-            ]
+            errors = [f"{' -> '.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
             raise ValidationError(errors)
 
     def deconstruct(self) -> tuple[str, list[Any], dict[str, Any]]:

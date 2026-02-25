@@ -3,8 +3,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import NoReturn
 
-import httpx
+import googleapiclient.discovery
+from google.auth.credentials import AnonymousCredentials
+from google.oauth2.credentials import Credentials
+from googleapiclient.errors import HttpError
 
 from reelforge.services.youtube.exceptions import YouTubeAPIError
 from reelforge.services.youtube.exceptions import YouTubeAuthError
@@ -15,27 +19,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("reelforge.youtube.client")
 
-_YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
-
 
 class YouTubeClient:
-    def __init__(self, api_key: str = "") -> None:
+    def __init__(self, api_key: str) -> None:
+        if not api_key:
+            msg = "YouTubeClient requires an API key. Set YOUTUBE_API_KEY in .envs/.local/.django."
+            raise YouTubeAuthError(msg)
         self.api_key = api_key
         self._is_authenticated: bool = False
-        self._client = httpx.Client(
-            base_url=_YOUTUBE_API_BASE,
-            timeout=30.0,
+        self._service: Any = googleapiclient.discovery.build(
+            "youtube",
+            "v3",
+            developerKey=api_key,
+            credentials=AnonymousCredentials(),
         )
 
     @classmethod
     def from_credential(cls, credential: dict[str, Any]) -> YouTubeClient:
-        """Create a client from OAuth credential for authenticated operations."""
-        instance = cls(api_key="")
+        """Create a client from OAuth credential dict for authenticated operations."""
+        google_creds = Credentials(
+            token=credential.get("token", ""),
+            refresh_token=credential.get("refresh_token"),
+            token_uri=credential.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=credential.get("client_id"),
+            client_secret=credential.get("client_secret"),
+        )
+        instance: YouTubeClient = cls.__new__(cls)
+        instance.api_key = ""
         instance._is_authenticated = True
-        instance._client = httpx.Client(
-            base_url=_YOUTUBE_API_BASE,
-            headers={"Authorization": f"Bearer {credential.get('access_token', '')}"},
-            timeout=30.0,
+        instance._service = googleapiclient.discovery.build(
+            "youtube",
+            "v3",
+            credentials=google_creds,
         )
         return instance
 
@@ -46,8 +61,7 @@ class YouTubeClient:
         if not creds or not creds.get("token"):
             msg = f"Channel {channel.slug} has no OAuth credentials stored"
             raise YouTubeAuthError(msg)
-
-        return cls.from_credential({"access_token": creds["token"]})
+        return cls.from_credential(creds)
 
     def _require_auth(self) -> None:
         """Raise YouTubeAuthError if the client is not authenticated via OAuth."""
@@ -55,28 +69,23 @@ class YouTubeClient:
             msg = "This operation requires OAuth authentication. Use YouTubeClient.from_channel()."
             raise YouTubeAuthError(msg)
 
-    def _handle_errors(self, response: httpx.Response) -> None:
-        if response.status_code == 200:
-            return
-        if response.status_code == 401:
-            msg = f"YouTube API authentication failed: {response.text}"
-            raise YouTubeAuthError(msg)
-        if response.status_code == 403:
+    def _handle_http_error(self, exc: HttpError) -> NoReturn:
+        status = int(exc.resp.status)
+        if status == 401:  # noqa: PLR2004
+            msg = f"YouTube API authentication failed: {exc}"
+            raise YouTubeAuthError(msg) from exc
+        if status == 403:  # noqa: PLR2004
             try:
-                data = response.json()
-                reason = data.get("error", {}).get("errors", [{}])[0].get("reason", "")
-            except Exception:
+                reason = (exc.error_details or [{}])[0].get("reason", "")
+            except (TypeError, KeyError, IndexError):
                 reason = ""
             if reason == "quotaExceeded":
                 msg = "YouTube API quota exceeded"
-                raise YouTubeQuotaError(msg)
-            msg = f"YouTube API forbidden: {response.text}"
-            raise YouTubeAuthError(msg)
-        msg = f"YouTube API error: {response.text}"
-        raise YouTubeAPIError(
-            msg,
-            status_code=response.status_code,
-        )
+                raise YouTubeQuotaError(msg) from exc
+            msg = f"YouTube API forbidden: {exc}"
+            raise YouTubeAuthError(msg) from exc
+        msg = f"YouTube API error: {exc}"
+        raise YouTubeAPIError(msg, status_code=status) from exc
 
     def search_videos(
         self,
@@ -84,17 +93,21 @@ class YouTubeClient:
         max_results: int = 25,
         order: str = "relevance",
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {
-            "part": "snippet",
-            "q": query,
-            "type": "video",
-            "maxResults": max_results,
-            "order": order,
-            "key": self.api_key,
-        }
-        response = self._client.get("/search", params=params)
-        self._handle_errors(response)
-        return response.json().get("items", [])
+        try:
+            response: dict[str, Any] = (
+                self._service.search()
+                .list(
+                    part="snippet",
+                    q=query,
+                    type="video",
+                    maxResults=max_results,
+                    order=order,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        return response.get("items", [])
 
     def get_trending_videos(
         self,
@@ -102,65 +115,67 @@ class YouTubeClient:
         category_id: str = "",
         max_results: int = 50,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "part": "snippet,statistics,contentDetails",
             "chart": "mostPopular",
             "regionCode": region,
             "maxResults": max_results,
-            "key": self.api_key,
         }
         if category_id:
-            params["videoCategoryId"] = category_id
-        response = self._client.get("/videos", params=params)
-        self._handle_errors(response)
-        return response.json().get("items", [])
+            kwargs["videoCategoryId"] = category_id
+        try:
+            response: dict[str, Any] = self._service.videos().list(**kwargs).execute()
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        return response.get("items", [])
 
     def get_channel_videos(
         self,
         channel_id: str,
         max_results: int = 25,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {
-            "part": "snippet",
-            "channelId": channel_id,
-            "type": "video",
-            "order": "date",
-            "maxResults": max_results,
-            "key": self.api_key,
-        }
-        response = self._client.get("/search", params=params)
-        self._handle_errors(response)
-        return response.json().get("items", [])
+        try:
+            response: dict[str, Any] = (
+                self._service.search()
+                .list(
+                    part="snippet",
+                    channelId=channel_id,
+                    type="video",
+                    order="date",
+                    maxResults=max_results,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        return response.get("items", [])
 
     def get_channel_stats(self, channel_id: str) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "part": "statistics,snippet",
-            "id": channel_id,
-            "key": self.api_key,
-        }
-        response = self._client.get("/channels", params=params)
-        self._handle_errors(response)
-        items = response.json().get("items", [])
+        try:
+            response: dict[str, Any] = self._service.channels().list(part="statistics,snippet", id=channel_id).execute()
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        items: list[dict[str, Any]] = response.get("items", [])
         return items[0] if items else {}
 
     def get_video_details(self, video_id: str) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "part": "snippet,statistics,contentDetails",
-            "id": video_id,
-            "key": self.api_key,
-        }
-        response = self._client.get("/videos", params=params)
-        self._handle_errors(response)
-        items = response.json().get("items", [])
+        try:
+            response: dict[str, Any] = (
+                self._service.videos().list(part="snippet,statistics,contentDetails", id=video_id).execute()
+            )
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        items: list[dict[str, Any]] = response.get("items", [])
         return items[0] if items else {}
 
     def get_my_channel(self) -> dict[str, Any]:
         """Return the authenticated user's own channel info (requires OAuth)."""
         self._require_auth()
-        params: dict[str, Any] = {"part": "snippet,statistics", "mine": "true"}
-        response = self._client.get("/channels", params=params)
-        self._handle_errors(response)
-        items = response.json().get("items", [])
+        try:
+            response: dict[str, Any] = self._service.channels().list(part="snippet,statistics", mine=True).execute()
+        except HttpError as exc:
+            self._handle_http_error(exc)
+        items: list[dict[str, Any]] = response.get("items", [])
         return items[0] if items else {}
 
     def get_video_analytics(

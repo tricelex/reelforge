@@ -20,8 +20,6 @@ class AgentsConfig(AppConfig):
         container.config.from_dict(
             {
                 "youtube_api_key": getattr(settings, "YOUTUBE_API_KEY", ""),
-                "reddit_client_id": getattr(settings, "REDDIT_CLIENT_ID", ""),
-                "reddit_client_secret": getattr(settings, "REDDIT_CLIENT_SECRET", ""),
                 "perplexity_api_key": getattr(settings, "PERPLEXITY_API_KEY", ""),
                 "anthropic_api_key": getattr(settings, "ANTHROPIC_API_KEY", ""),
                 "openai_api_key": getattr(settings, "OPENAI_API_KEY", ""),

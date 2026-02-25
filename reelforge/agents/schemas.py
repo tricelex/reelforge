@@ -37,12 +37,12 @@ class TrendData:
 
 
 @dataclass
-class RedditPost:
+class CommunityPost:
     title: str
     score: int
     num_comments: int
     url: str
-    subreddit: str
+    source: str  # e.g. "hackernews", "perplexity"
 
 
 @dataclass
@@ -66,6 +66,10 @@ class ResearchTopicIdea(BaseModel):
     trend_direction: Literal["RISING", "STABLE", "DECLINING"]
     thumbnail_concept: str
     why_it_works: str
+    content_format: str  # "listicle"|"tutorial"|"comparison"|"explainer"|"case-study"|"myth-debunk"|"deep-dive"
+    source_signals: list[
+        str
+    ] = []  # which steps/tools surfaced this topic, e.g. ["community_step3", "competitor_gap_step4"]
 
 
 class DiscoveredCompetitor(BaseModel):
@@ -80,3 +84,4 @@ class ResearchAgentOutput(BaseModel):
     topics: list[ResearchTopicIdea]
     research_summary: str = ""
     discovered_competitors: list[DiscoveredCompetitor] = []
+    data_gaps: list[str] = []  # tools that returned poor or empty data during this run

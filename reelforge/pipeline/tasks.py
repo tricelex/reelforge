@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -12,12 +13,33 @@ from django.utils import timezone
 from reelforge.agents.containers import AgentContainer
 
 if TYPE_CHECKING:
-    from reelforge.agents.providers.protocols import RedditProvider
+    from reelforge.agents.providers.protocols import CommunitySearchProvider
     from reelforge.agents.providers.protocols import TrendsProvider
     from reelforge.agents.providers.protocols import VideoSearchProvider
+    from reelforge.agents.providers.protocols import WebSearchProvider
     from reelforge.services.youtube.client import YouTubeClient
 
 logger = get_task_logger(__name__)
+
+# GPT-4o pricing (per 1M tokens) — used to estimate cost per research run
+_GPT4O_INPUT_COST_PER_M = Decimal("2.50")
+_GPT4O_OUTPUT_COST_PER_M = Decimal("10.00")
+
+
+class _NullVideoSearchProvider:
+    """Fallback when no YouTube auth is available. Returns empty results for all calls."""
+
+    def search_trending(self, niche: str, days_back: int = 7, limit: int = 20) -> list[Any]:
+        return []
+
+    def search_videos(self, query: str, max_results: int = 25) -> list[Any]:
+        return []
+
+    def get_channel_videos(self, channel_id: str, max_results: int = 25) -> list[Any]:
+        return []
+
+    def analyze_competitors(self, channel_ids: list[str]) -> dict[str, Any]:
+        return {}
 
 
 # ── Orchestrator ────────────────────────────────────────────────────────────
@@ -40,34 +62,66 @@ def run_pipeline_orchestrator(self, channel_id: str, pipeline_run_id: str) -> No
 # ── Research ────────────────────────────────────────────────────────────────
 
 
-@shared_task(bind=True, max_retries=3, queue="research")
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    queue="research",
+    soft_time_limit=1800,
+    time_limit=2400,
+)
 @inject
 def run_research_job(
     self: Any,
     channel_id: str,
     research_job_id: str,
-    video_search: VideoSearchProvider = Provide[AgentContainer.video_search],
     trends: TrendsProvider = Provide[AgentContainer.trends],
-    reddit: RedditProvider = Provide[AgentContainer.reddit],
+    community: CommunitySearchProvider = Provide[AgentContainer.community],
+    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
 ) -> None:
     import asyncio
 
     from agents import Runner
+    from reelforge.agents.providers.youtube import YouTubeProvider
     from reelforge.agents.research_agent import build_research_agent
     from reelforge.channels.models import Channel
     from reelforge.research.models import ResearchJob
+    from reelforge.services.youtube.client import YouTubeClient
+    from reelforge.services.youtube.exceptions import YouTubeAuthError
 
-    job = ResearchJob.objects.get(id=research_job_id)
+    try:
+        job = ResearchJob.objects.get(id=research_job_id)
+    except ResearchJob.DoesNotExist:
+        logger.exception(
+            "ResearchJob %s not found — aborting task (will not retry)",
+            research_job_id,
+            extra={"research_job_id": research_job_id},
+        )
+        return
+
     job.mark_running(task_id=self.request.id)
 
     try:
         channel = Channel.objects.prefetch_related("competitors").get(id=channel_id)
-        agent = build_research_agent(channel, video_search, trends, reddit)
+
+        # Use channel OAuth credentials for YouTube API — no separate API key needed.
+        # Falls back to a null provider (empty results) if the channel has no OAuth yet.
+        try:
+            yt_client = YouTubeClient.from_channel(channel)
+            video_search: VideoSearchProvider = YouTubeProvider(client=yt_client)
+        except YouTubeAuthError:
+            logger.warning(
+                "Channel %s has no OAuth credentials; YouTube search disabled for this run",
+                channel.slug,
+            )
+            video_search = _NullVideoSearchProvider()
+
+        agent = build_research_agent(channel, video_search, trends, community, web_search)
         result = asyncio.run(
             Runner.run(
                 agent,
                 input=f"Research topics for channel {channel.name}. Niches: {channel.target_niches}",
-                max_turns=20,
+                max_turns=50,
             )
         )
         _save_research_results(job, result, channel)
@@ -102,7 +156,14 @@ def run_research_job_for_channel(self, channel_id: str) -> None:
 # ── Script Generation ────────────────────────────────────────────────────────
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=300, queue="default")
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=1200,
+    time_limit=1800,
+)
 def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
     """Build ScriptAgent and run it for the given topic."""
     import asyncio
@@ -145,7 +206,14 @@ def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
 # ── Asset Generation ─────────────────────────────────────────────────────────
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=300, queue="default")
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=1800,
+    time_limit=2400,
+)
 def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
     """Build AssetAgent and run it for the given script job."""
     import asyncio
@@ -380,7 +448,8 @@ def weekly_analytics_sync() -> None:
 
 
 def _save_research_results(job: Any, result: Any, channel: Any) -> None:
-    """Parse agent output and bulk-create TopicIdea records.
+    """Parse agent output and bulk-create TopicIdea records, then write back
+    token usage, cost, and raw data snapshots to the ResearchJob.
 
     Args:
         job: ResearchJob instance
@@ -407,6 +476,63 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
             )
             raise
 
+    # ── Token usage and cost ─────────────────────────────────────────────────
+    total_input = sum(r.usage.input_tokens for r in result.raw_responses)
+    total_output = sum(r.usage.output_tokens for r in result.raw_responses)
+    total_tokens = total_input + total_output
+
+    cost_usd = Decimal(str(total_input)) * _GPT4O_INPUT_COST_PER_M / Decimal(1000000) + Decimal(
+        str(total_output)
+    ) * _GPT4O_OUTPUT_COST_PER_M / Decimal(1000000)
+
+    agent_run_id = result.last_response_id or ""
+
+    # ── Raw data snapshots ────────────────────────────────────────────────────
+    trend_data_raw: dict[str, Any] = {
+        "youtube_results": [
+            {
+                "title_idea": t.title_idea,
+                "keyword": t.target_keyword,
+                "trend_direction": t.trend_direction,
+                "opportunity_score": t.opportunity_score,
+            }
+            for t in output.topics
+        ],
+        "data_gaps": output.data_gaps,
+        "collected_at": timezone.now().isoformat(),
+    }
+
+    competitor_data_raw: dict[str, Any] = {
+        "channels": {
+            dc.youtube_channel_id: {
+                "channel_name": dc.channel_name,
+                "channel_url": dc.channel_url,
+                "subscriber_count": dc.subscriber_count,
+                "notes": dc.notes,
+            }
+            for dc in output.discovered_competitors
+        },
+        "analyzed_at": timezone.now().isoformat(),
+    }
+
+    gap_analysis_raw: dict[str, Any] = {
+        "opportunities": [
+            {
+                "title_idea": t.title_idea,
+                "target_keyword": t.target_keyword,
+                "opportunity_score": t.opportunity_score,
+                "competition_level": t.competition_level,
+                "content_format": t.content_format,
+                "source_signals": t.source_signals,
+            }
+            for t in output.topics
+        ],
+        "coverage_gaps": [t.title_idea for t in output.topics if "competitor_gap_step4" in t.source_signals],
+        "research_summary": output.research_summary,
+        "analyzed_at": timezone.now().isoformat(),
+    }
+
+    # ── TopicIdea bulk_create ─────────────────────────────────────────────────
     comp_map: dict[str, str] = {
         "LOW": CompetitionLevel.LOW,
         "MEDIUM": CompetitionLevel.MEDIUM,
@@ -417,6 +543,8 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
         "STABLE": TrendDirection.STABLE,
         "DECLINING": TrendDirection.DECLINING,
     }
+
+    per_topic_cost = (cost_usd / len(output.topics)) if output.topics else Decimal(0)
 
     topic_objects = [
         TopicIdea(
@@ -433,13 +561,17 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
             trend_direction=trend_map.get(t.trend_direction, TrendDirection.STABLE),
             thumbnail_concept=t.thumbnail_concept,
             why_it_works=t.why_it_works,
+            agent_run_id=agent_run_id,
+            agent_tokens_used=total_tokens,
+            agent_cost_usd=per_topic_cost,
+            notes=("Sourced from: " + ", ".join(t.source_signals)) if t.source_signals else "",
         )
         for t in output.topics
     ]
 
     created = TopicIdea.objects.bulk_create(topic_objects)
 
-    # Upsert discovered competitors and link them to this research job
+    # ── Upsert competitors ────────────────────────────────────────────────────
     from reelforge.channels.models import ChannelCompetitor
 
     competitor_records = []
@@ -460,6 +592,29 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     if competitor_records:
         job.competitors_analyzed.set(competitor_records)
 
+    # ── Write back to ResearchJob ─────────────────────────────────────────────
+    job.topics_discovered = len(created)
+    job.notes = output.research_summary
+    job.agent_run_id = agent_run_id
+    job.agent_tokens_used = total_tokens
+    job.agent_cost_usd = cost_usd
+    job.trend_data_raw = trend_data_raw
+    job.competitor_data_raw = competitor_data_raw
+    job.gap_analysis_raw = gap_analysis_raw
+    job.save(
+        update_fields=[
+            "topics_discovered",
+            "notes",
+            "agent_run_id",
+            "agent_tokens_used",
+            "agent_cost_usd",
+            "trend_data_raw",
+            "competitor_data_raw",
+            "gap_analysis_raw",
+            "updated_at",
+        ]
+    )
+
     logger.info(
         "Research results saved",
         extra={
@@ -467,6 +622,8 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
             "channel_slug": channel.slug,
             "topics_created": len(created),
             "competitors_created": len(competitor_records),
+            "agent_tokens_used": total_tokens,
+            "agent_cost_usd": str(cost_usd),
             "research_summary": output.research_summary[:200],
         },
     )

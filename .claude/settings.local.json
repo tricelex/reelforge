@@ -28,7 +28,10 @@
       "Bash(COMPOSE_FILE=docker-compose.local.yml docker compose exec:*)",
       "Bash(set:*)",
       "Bash(source:*)",
-      "Bash(DATABASE_URL=sqlite:///test.db uv run python:*)"
+      "Bash(DATABASE_URL=sqlite:///test.db uv run python:*)",
+      "Bash(lsof:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)"
     ]
   }
 }

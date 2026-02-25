@@ -3,19 +3,20 @@ from __future__ import annotations
 from dependency_injector import containers
 from dependency_injector import providers
 
-from reelforge.agents.providers.reddit import RedditProvider
+from reelforge.agents.providers.hackernews import HackerNewsProvider
 from reelforge.agents.providers.trends import GoogleTrendsProvider
 from reelforge.agents.providers.web_search import PerplexityProvider
 from reelforge.agents.providers.youtube import YouTubeProvider
 from reelforge.services.exploding_topics.client import ExplodingTopicsClient
 from reelforge.services.google_trends.client import GoogleTrendsClient
+from reelforge.services.hackernews.client import HackerNewsClient
 from reelforge.services.perplexity.client import PerplexityClient
 from reelforge.services.providers.image.mock import MockImageProvider
 from reelforge.services.providers.llm.claude import ClaudeProvider
 from reelforge.services.providers.llm.openai import OpenAIProvider
 from reelforge.services.providers.tts.elevenlabs import ElevenLabsProvider
 from reelforge.services.providers.tts.mock import MockTTSProvider
-from reelforge.services.reddit.client import RedditClient
+from reelforge.services.rising_topics.client import RisingTopicsClient
 from reelforge.services.youtube.client import YouTubeClient
 
 
@@ -37,10 +38,14 @@ class AgentContainer(containers.DeclarativeContainer):
         ExplodingTopicsClient,
     )
 
-    reddit_client: providers.Singleton[RedditClient] = providers.Singleton(
-        RedditClient,
-        client_id=config.reddit_client_id,
-        client_secret=config.reddit_client_secret,
+    hackernews_client: providers.Singleton[HackerNewsClient] = providers.Singleton(
+        HackerNewsClient,
+    )
+
+    rising_topics_client: providers.Singleton[RisingTopicsClient] = providers.Singleton(
+        RisingTopicsClient,
+        google_client=google_trends_client,
+        hackernews_client=hackernews_client,
     )
 
     perplexity_client: providers.Singleton[PerplexityClient] = providers.Singleton(
@@ -58,12 +63,12 @@ class AgentContainer(containers.DeclarativeContainer):
     trends: providers.Singleton[GoogleTrendsProvider] = providers.Singleton(
         GoogleTrendsProvider,
         google_client=google_trends_client,
-        exploding_client=exploding_topics_client,
+        rising_client=rising_topics_client,
     )
 
-    reddit: providers.Singleton[RedditProvider] = providers.Singleton(
-        RedditProvider,
-        client=reddit_client,
+    community: providers.Singleton[HackerNewsProvider] = providers.Singleton(
+        HackerNewsProvider,
+        client=hackernews_client,
     )
 
     web_search: providers.Singleton[PerplexityProvider] = providers.Singleton(

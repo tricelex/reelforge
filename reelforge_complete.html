@@ -1,466 +1,570 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reelforge — Complete Codebase</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0a0a0f;
-    --surface: #111118;
-    --surface2: #16161f;
-    --border: #1e1e2e;
-    --accent: #7c6af7;
-    --accent2: #e85d75;
-    --accent3: #4ecdc4;
-    --text: #e0e0f0;
-    --muted: #6b6b8a;
-    --keyword: #c792ea;
-    --string: #c3e88d;
-    --comment: #546e7a;
-    --func: #82aaff;
-    --class: #ffcb6b;
-    --decorator: #f78c6c;
-    --number: #f78c6c;
-    --builtin: #4ecdc4;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reelforge — Complete Codebase</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap"
+          rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #111118;
+        --surface2: #16161f;
+        --border: #1e1e2e;
+        --accent: #7c6af7;
+        --accent2: #e85d75;
+        --accent3: #4ecdc4;
+        --text: #e0e0f0;
+        --muted: #6b6b8a;
+        --keyword: #c792ea;
+        --string: #c3e88d;
+        --comment: #546e7a;
+        --func: #82aaff;
+        --class: #ffcb6b;
+        --decorator: #f78c6c;
+        --number: #f78c6c;
+        --builtin: #4ecdc4;
+      }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Syne', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Syne', sans-serif;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
 
-  /* HEADER */
-  header {
-    padding: 48px 48px 32px;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
+      /* HEADER */
+      header {
+        padding: 48px 48px 32px;
+        border-bottom: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+      }
 
-  header::before {
-    content: '';
-    position: absolute;
-    top: -80px; left: -80px;
-    width: 400px; height: 400px;
-    background: radial-gradient(circle, rgba(124,106,247,0.12) 0%, transparent 70%);
-    pointer-events: none;
-  }
+      header::before {
+        content: '';
+        position: absolute;
+        top: -80px;
+        left: -80px;
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, rgba(124, 106, 247, 0.12) 0%, transparent 70%);
+        pointer-events: none;
+      }
 
-  header::after {
-    content: '';
-    position: absolute;
-    top: -40px; right: 100px;
-    width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(232,93,117,0.08) 0%, transparent 70%);
-    pointer-events: none;
-  }
+      header::after {
+        content: '';
+        position: absolute;
+        top: -40px;
+        right: 100px;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(232, 93, 117, 0.08) 0%, transparent 70%);
+        pointer-events: none;
+      }
 
-  .header-tag {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--accent);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    margin-bottom: 16px;
-  }
+      .header-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--accent);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
 
-  h1 {
-    font-size: 48px;
-    font-weight: 800;
-    letter-spacing: -1px;
-    line-height: 1;
-    background: linear-gradient(135deg, #e0e0f0 0%, var(--accent) 60%, var(--accent2) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 12px;
-  }
+      h1 {
+        font-size: 48px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        line-height: 1;
+        background: linear-gradient(135deg, #e0e0f0 0%, var(--accent) 60%, var(--accent2) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 12px;
+      }
 
-  .subtitle {
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 400;
-    letter-spacing: 0.5px;
-  }
+      .subtitle {
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 400;
+        letter-spacing: 0.5px;
+      }
 
-  .meta-pills {
-    display: flex;
-    gap: 8px;
-    margin-top: 20px;
-    flex-wrap: wrap;
-  }
+      .meta-pills {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
 
-  .pill {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 4px 12px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-  }
+      .pill {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 4px 12px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--muted);
+      }
 
-  .pill.accent { border-color: var(--accent); color: var(--accent); }
-  .pill.accent2 { border-color: var(--accent2); color: var(--accent2); }
-  .pill.accent3 { border-color: var(--accent3); color: var(--accent3); }
+      .pill.accent {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
 
-  /* LAYOUT */
-  .layout {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    min-height: calc(100vh - 180px);
-  }
+      .pill.accent2 {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
 
-  /* SIDEBAR */
-  .sidebar {
-    border-right: 1px solid var(--border);
-    padding: 24px 0;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    overflow-y: auto;
-    background: var(--surface);
-  }
+      .pill.accent3 {
+        border-color: var(--accent3);
+        color: var(--accent3);
+      }
 
-  .sidebar::-webkit-scrollbar { width: 4px; }
-  .sidebar::-webkit-scrollbar-track { background: transparent; }
-  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+      /* LAYOUT */
+      .layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        min-height: calc(100vh - 180px);
+      }
 
-  .sidebar-section {
-    margin-bottom: 4px;
-  }
+      /* SIDEBAR */
+      .sidebar {
+        border-right: 1px solid var(--border);
+        padding: 24px 0;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        background: var(--surface);
+      }
 
-  .sidebar-group {
-    padding: 8px 16px 4px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-top: 16px;
-  }
+      .sidebar::-webkit-scrollbar {
+        width: 4px;
+      }
 
-  .sidebar-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 16px;
-    cursor: pointer;
-    transition: all 0.15s;
-    border-left: 2px solid transparent;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11.5px;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+      .sidebar::-webkit-scrollbar-track {
+        background: transparent;
+      }
 
-  .sidebar-item:hover {
-    color: var(--text);
-    background: rgba(124,106,247,0.05);
-    border-left-color: var(--accent);
-  }
+      .sidebar::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
 
-  .sidebar-item.active {
-    color: var(--accent);
-    background: rgba(124,106,247,0.08);
-    border-left-color: var(--accent);
-  }
+      .sidebar-section {
+        margin-bottom: 4px;
+      }
 
-  .file-icon {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-    opacity: 0.7;
-  }
+      .sidebar-group {
+        padding: 8px 16px 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-top: 16px;
+      }
 
-  /* MAIN */
-  .main {
-    padding: 0;
-    overflow-y: auto;
-  }
+      .sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 16px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border-left: 2px solid transparent;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-  .file-block {
-    border-bottom: 1px solid var(--border);
-    display: none;
-  }
+      .sidebar-item:hover {
+        color: var(--text);
+        background: rgba(124, 106, 247, 0.05);
+        border-left-color: var(--accent);
+      }
 
-  .file-block.active { display: block; }
+      .sidebar-item.active {
+        color: var(--accent);
+        background: rgba(124, 106, 247, 0.08);
+        border-left-color: var(--accent);
+      }
 
-  .file-header {
-    padding: 20px 32px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+      .file-icon {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
 
-  .file-path {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-  }
+      /* MAIN */
+      .main {
+        padding: 0;
+        overflow-y: auto;
+      }
 
-  .file-path span {
-    color: var(--accent3);
-  }
+      .file-block {
+        border-bottom: 1px solid var(--border);
+        display: none;
+      }
 
-  .file-desc {
-    font-size: 13px;
-    color: var(--muted);
-    margin-top: 4px;
-    font-weight: 400;
-  }
+      .file-block.active {
+        display: block;
+      }
 
-  .copy-btn {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 6px 14px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    transition: all 0.15s;
-    flex-shrink: 0;
-  }
+      .file-header {
+        padding: 20px 32px 16px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
 
-  .copy-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+      .file-path {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
 
-  .copy-btn.copied {
-    border-color: var(--accent3);
-    color: var(--accent3);
-  }
+      .file-path span {
+        color: var(--accent3);
+      }
 
-  /* CODE */
-  pre {
-    margin: 0;
-    padding: 32px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    line-height: 1.8;
-    overflow-x: auto;
-    background: var(--bg);
-    tab-size: 4;
-  }
+      .file-desc {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+        font-weight: 400;
+      }
 
-  pre::-webkit-scrollbar { height: 4px; }
-  pre::-webkit-scrollbar-track { background: transparent; }
-  pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+      .copy-btn {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        padding: 6px 14px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        transition: all 0.15s;
+        flex-shrink: 0;
+      }
 
-  /* Syntax highlighting */
-  .kw { color: var(--keyword); }
-  .str { color: var(--string); }
-  .cmt { color: var(--comment); font-style: italic; }
-  .fn { color: var(--func); }
-  .cls { color: var(--class); }
-  .dec { color: var(--decorator); }
-  .num { color: var(--number); }
-  .blt { color: var(--builtin); }
-  .pun { color: var(--muted); }
+      .copy-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
 
-  /* STRUCTURE VIEW */
-  .tree-view {
-    padding: 32px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    line-height: 2;
-    color: var(--muted);
-  }
+      .copy-btn.copied {
+        border-color: var(--accent3);
+        color: var(--accent3);
+      }
 
-  .tree-view .dir { color: var(--accent3); }
-  .tree-view .file { color: var(--text); }
-  .tree-view .file-cmt { color: var(--comment); }
+      /* CODE */
+      pre {
+        margin: 0;
+        padding: 32px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        line-height: 1.8;
+        overflow-x: auto;
+        background: var(--bg);
+        tab-size: 4;
+      }
 
-  /* SCROLLBAR */
-  .main::-webkit-scrollbar { width: 4px; }
-  .main::-webkit-scrollbar-track { background: transparent; }
-  .main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-</style>
-</head>
-<body>
+      pre::-webkit-scrollbar {
+        height: 4px;
+      }
 
-<header>
-  <div class="header-tag">// reelforge</div>
-  <h1>Complete Codebase</h1>
-  <p class="subtitle">YouTube Automation SaaS — Research Agent, YouTube Service, DI Architecture</p>
-  <div class="meta-pills">
-    <span class="pill accent">Django</span>
-    <span class="pill accent">Celery</span>
-    <span class="pill accent2">OpenAI Agents SDK</span>
-    <span class="pill accent3">dependency-injector</span>
-    <span class="pill">Pydantic v2</span>
-    <span class="pill">YouTube Data API v3</span>
-    <span class="pill">SerpApi</span>
-  </div>
-</header>
+      pre::-webkit-scrollbar-track {
+        background: transparent;
+      }
 
-<div class="layout">
-  <aside class="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-group">Project</div>
-      <div class="sidebar-item active" onclick="show('structure')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2h14v2H1zm0 4h14v2H1zm0 4h14v2H1z"/></svg>
-        Project Structure
+      pre::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      /* Syntax highlighting */
+      .kw {
+        color: var(--keyword);
+      }
+
+      .str {
+        color: var(--string);
+      }
+
+      .cmt {
+        color: var(--comment);
+        font-style: italic;
+      }
+
+      .fn {
+        color: var(--func);
+      }
+
+      .cls {
+        color: var(--class);
+      }
+
+      .dec {
+        color: var(--decorator);
+      }
+
+      .num {
+        color: var(--number);
+      }
+
+      .blt {
+        color: var(--builtin);
+      }
+
+      .pun {
+        color: var(--muted);
+      }
+
+      /* STRUCTURE VIEW */
+      .tree-view {
+        padding: 32px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        line-height: 2;
+        color: var(--muted);
+      }
+
+      .tree-view .dir {
+        color: var(--accent3);
+      }
+
+      .tree-view .file {
+        color: var(--text);
+      }
+
+      .tree-view .file-cmt {
+        color: var(--comment);
+      }
+
+      /* SCROLLBAR */
+      .main::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .main::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .main::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-tag">// reelforge</div>
+      <h1>Complete Codebase</h1>
+      <p class="subtitle">YouTube Automation SaaS — Research Agent, YouTube Service, DI Architecture</p>
+      <div class="meta-pills">
+        <span class="pill accent">Django</span>
+        <span class="pill accent">Celery</span>
+        <span class="pill accent2">OpenAI Agents SDK</span>
+        <span class="pill accent3">dependency-injector</span>
+        <span class="pill">Pydantic v2</span>
+        <span class="pill">YouTube Data API v3</span>
+        <span class="pill">SerpApi</span>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-group">services/youtube</div>
-      <div class="sidebar-item" onclick="show('exceptions')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12a5 5 0 110-10A5 5 0 018 13zm-.5-8h1v5h-1zm0 6h1v1h-1z"/></svg>
-        exceptions.py
-      </div>
-      <div class="sidebar-item" onclick="show('oauth')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a3 3 0 00-3 3v1H3v10h10V5h-2V4a3 3 0 00-3-3zm0 1.5a1.5 1.5 0 011.5 1.5v1h-3V4A1.5 1.5 0 018 2.5z"/></svg>
-        oauth.py
-      </div>
-      <div class="sidebar-item" onclick="show('ytclient')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        client.py
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-group">agents/providers</div>
-      <div class="sidebar-item" onclick="show('schemas')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        schemas.py
-      </div>
-      <div class="sidebar-item" onclick="show('protocols')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        protocols.py
-      </div>
-      <div class="sidebar-item" onclick="show('ytprovider')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        providers/youtube.py
-      </div>
-      <div class="sidebar-item" onclick="show('serpapiprovider')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        providers/serpapi.py
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-group">agents</div>
-      <div class="sidebar-item" onclick="show('containers')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        containers.py
-      </div>
-      <div class="sidebar-item" onclick="show('tools')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        tools.py
-      </div>
-      <div class="sidebar-item" onclick="show('research_agent')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        research_agent.py
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-group">reelforge app</div>
-      <div class="sidebar-item" onclick="show('fields')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        fields.py
-      </div>
-      <div class="sidebar-item" onclick="show('models')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        models.py
-      </div>
-      <div class="sidebar-item" onclick="show('admin')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        admin.py
-      </div>
-      <div class="sidebar-item" onclick="show('tasks')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        tasks.py
-      </div>
-      <div class="sidebar-item" onclick="show('apps')">
-        <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v10H2zm1 1v8h10V4z"/></svg>
-        apps.py
-      </div>
-    </div>
-  </aside>
-
-  <main class="main">
-
-    <!-- STRUCTURE -->
-    <div class="file-block active" id="block-structure">
-      <div class="file-header">
-        <div>
-          <div class="file-path">Project Structure</div>
-          <div class="file-desc">Complete directory layout for the Reelforge Django app</div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-group">Project</div>
+          <div class="sidebar-item active" onclick="show('structure')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1 2h14v2H1zm0 4h14v2H1zm0 4h14v2H1z" />
+            </svg>
+            Project Structure
+          </div>
         </div>
-      </div>
-      <div class="tree-view">
-<span class="dir">reelforge/</span>
-├── <span class="file">apps.py</span>                   <span class="file-cmt"># AppConfig — wires DI container on startup</span>
-├── <span class="file">models.py</span>                 <span class="file-cmt"># ResearchJob, Channel, YouTubeCredential</span>
-├── <span class="file">admin.py</span>                  <span class="file-cmt"># Admin registrations + actions</span>
-├── <span class="file">tasks.py</span>                  <span class="file-cmt"># Celery tasks</span>
-├── <span class="file">fields.py</span>                 <span class="file-cmt"># PydanticField — schema-enforced JSONField</span>
-│
-├── <span class="dir">services/</span>
-│   └── <span class="dir">youtube/</span>
-│       ├── <span class="file">__init__.py</span>
-│       ├── <span class="file">client.py</span>             <span class="file-cmt"># Full YouTube Data API v3 client (public + OAuth)</span>
-│       ├── <span class="file">oauth.py</span>              <span class="file-cmt"># OAuth2 flow — auth URL, token exchange, refresh</span>
-│       └── <span class="file">exceptions.py</span>         <span class="file-cmt"># YouTubeClientError, AuthError, QuotaError, APIError</span>
-│
-└── <span class="dir">agents/</span>
-    ├── <span class="file">__init__.py</span>
-    ├── <span class="file">schemas.py</span>               <span class="file-cmt"># Shared dataclasses: VideoResult, SearchReport, etc.</span>
-    ├── <span class="file">containers.py</span>            <span class="file-cmt"># dependency-injector DI container</span>
-    ├── <span class="file">tools.py</span>                 <span class="file-cmt"># OpenAI Agents SDK function_tool definitions</span>
-    ├── <span class="file">research_agent.py</span>        <span class="file-cmt"># Agent definition + instructions</span>
-    │
-    └── <span class="dir">providers/</span>
-        ├── <span class="file">__init__.py</span>
-        ├── <span class="file">protocols.py</span>           <span class="file-cmt"># Protocol interfaces: VideoSearchProvider, WebSearchProvider</span>
-        ├── <span class="file">youtube.py</span>             <span class="file-cmt"># YouTubeProvider — delegates to services/youtube/client</span>
-        └── <span class="file">serpapi.py</span>             <span class="file-cmt"># SerpApiProvider — Google Search, YouTube SERP, Trends</span>
-
-
-<span class="file-cmt"># Dependencies</span>
-<span class="str">pip install django celery openai-agents dependency-injector httpx pydantic</span>
-
-<span class="file-cmt"># Required settings.py keys</span>
-<span class="str">YOUTUBE_API_KEY</span>      <span class="file-cmt"># YouTube Data API v3 key</span>
-<span class="str">SERPAPI_KEY</span>          <span class="file-cmt"># SerpApi key</span>
-<span class="str">OPENAI_API_KEY</span>       <span class="file-cmt"># OpenAI API key (also read from env by SDK automatically)</span>
-<span class="str">GOOGLE_CLIENT_ID</span>     <span class="file-cmt"># Google OAuth2 client ID</span>
-<span class="str">GOOGLE_CLIENT_SECRET</span> <span class="file-cmt"># Google OAuth2 client secret</span>
-      </div>
-    </div>
-
-    <!-- EXCEPTIONS -->
-    <div class="file-block" id="block-exceptions">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/services/youtube/<span>exceptions.py</span></div>
-          <div class="file-desc">YouTube-specific exception hierarchy</div>
+        <div class="sidebar-section">
+          <div class="sidebar-group">services/youtube</div>
+          <div class="sidebar-item" onclick="show('exceptions')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12a5 5 0 110-10A5 5 0 018 13zm-.5-8h1v5h-1zm0 6h1v1h-1z" />
+            </svg>
+            exceptions.py
+          </div>
+          <div class="sidebar-item" onclick="show('oauth')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1a3 3 0 00-3 3v1H3v10h10V5h-2V4a3 3 0 00-3-3zm0 1.5a1.5 1.5 0 011.5 1.5v1h-3V4A1.5 1.5 0 018 2.5z" />
+            </svg>
+            oauth.py
+          </div>
+          <div class="sidebar-item" onclick="show('ytclient')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            client.py
+          </div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-exceptions', this)">Copy</button>
-      </div>
-      <pre id="code-exceptions"><span class="cmt"># reelforge/services/youtube/exceptions.py</span>
-
-
+        <div class="sidebar-section">
+          <div class="sidebar-group">agents/providers</div>
+          <div class="sidebar-item" onclick="show('schemas')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            schemas.py
+          </div>
+          <div class="sidebar-item" onclick="show('protocols')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            protocols.py
+          </div>
+          <div class="sidebar-item" onclick="show('ytprovider')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            providers/youtube.py
+          </div>
+          <div class="sidebar-item" onclick="show('serpapiprovider')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            providers/serpapi.py
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-group">agents</div>
+          <div class="sidebar-item" onclick="show('containers')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            containers.py
+          </div>
+          <div class="sidebar-item" onclick="show('tools')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            tools.py
+          </div>
+          <div class="sidebar-item" onclick="show('research_agent')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            research_agent.py
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-group">reelforge app</div>
+          <div class="sidebar-item" onclick="show('fields')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            fields.py
+          </div>
+          <div class="sidebar-item" onclick="show('models')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            models.py
+          </div>
+          <div class="sidebar-item" onclick="show('admin')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            admin.py
+          </div>
+          <div class="sidebar-item" onclick="show('tasks')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            tasks.py
+          </div>
+          <div class="sidebar-item" onclick="show('apps')">
+            <svg class="file-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 3h12v10H2zm1 1v8h10V4z" />
+            </svg>
+            apps.py
+          </div>
+        </div>
+      </aside>
+      <main class="main">
+        <!-- STRUCTURE -->
+        <div class="file-block active" id="block-structure">
+          <div class="file-header">
+            <div>
+              <div class="file-path">Project Structure</div>
+              <div class="file-desc">Complete directory layout for the Reelforge Django app</div>
+            </div>
+          </div>
+          <div class="tree-view">
+            <span class="dir">reelforge/</span>
+            ├── <span class="file">apps.py</span>                   <span class="file-cmt"># AppConfig — wires DI container on startup</span>
+            ├── <span class="file">models.py</span>                 <span class="file-cmt"># ResearchJob, Channel, YouTubeCredential</span>
+            ├── <span class="file">admin.py</span>                  <span class="file-cmt"># Admin registrations + actions</span>
+            ├── <span class="file">tasks.py</span>                  <span class="file-cmt"># Celery tasks</span>
+            ├── <span class="file">fields.py</span>                 <span class="file-cmt"># PydanticField — schema-enforced JSONField</span>
+            │
+            ├── <span class="dir">services/</span>
+            │   └── <span class="dir">youtube/</span>
+            │       ├── <span class="file">__init__.py</span>
+            │       ├── <span class="file">client.py</span>             <span class="file-cmt"># Full YouTube Data API v3 client (public + OAuth)</span>
+            │       ├── <span class="file">oauth.py</span>              <span class="file-cmt"># OAuth2 flow — auth URL, token exchange, refresh</span>
+            │       └── <span class="file">exceptions.py</span>         <span class="file-cmt"># YouTubeClientError, AuthError, QuotaError, APIError</span>
+            │
+            └── <span class="dir">agents/</span>
+            ├── <span class="file">__init__.py</span>
+            ├── <span class="file">schemas.py</span>               <span class="file-cmt"># Shared dataclasses: VideoResult, SearchReport, etc.</span>
+            ├── <span class="file">containers.py</span>            <span class="file-cmt"># dependency-injector DI container</span>
+            ├── <span class="file">tools.py</span>                 <span class="file-cmt"># OpenAI Agents SDK function_tool definitions</span>
+            ├── <span class="file">research_agent.py</span>        <span class="file-cmt"># Agent definition + instructions</span>
+            │
+            └── <span class="dir">providers/</span>
+            ├── <span class="file">__init__.py</span>
+            ├── <span class="file">protocols.py</span>           <span class="file-cmt"># Protocol interfaces: VideoSearchProvider, WebSearchProvider</span>
+            ├── <span class="file">youtube.py</span>             <span class="file-cmt"># YouTubeProvider — delegates to services/youtube/client</span>
+            └── <span class="file">serpapi.py</span>             <span class="file-cmt"># SerpApiProvider — Google Search, YouTube SERP, Trends</span>
+            <span class="file-cmt"># Dependencies</span>
+            <span class="str">pip install django celery openai-agents dependency-injector httpx pydantic</span>
+            <span class="file-cmt"># Required settings.py keys</span>
+            <span class="str">YOUTUBE_API_KEY</span>      <span class="file-cmt"># YouTube Data API v3 key</span>
+            <span class="str">SERPAPI_KEY</span>          <span class="file-cmt"># SerpApi key</span>
+            <span class="str">OPENAI_API_KEY</span>       <span class="file-cmt"># OpenAI API key (also read from env by SDK automatically)</span>
+            <span class="str">GOOGLE_CLIENT_ID</span>     <span class="file-cmt"># Google OAuth2 client ID</span>
+            <span class="str">GOOGLE_CLIENT_SECRET</span> <span class="file-cmt"># Google OAuth2 client secret</span>
+          </div>
+        </div>
+        <!-- EXCEPTIONS -->
+        <div class="file-block" id="block-exceptions">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/services/youtube/<span>exceptions.py</span>
+              </div>
+              <div class="file-desc">YouTube-specific exception hierarchy</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-exceptions', this)">Copy</button>
+          </div>
+          <pre id="code-exceptions"><span class="cmt"># reelforge/services/youtube/exceptions.py</span>
 <span class="kw">class</span> <span class="cls">YouTubeClientError</span>(<span class="blt">Exception</span>):
     <span class="str">"""Base exception for all YouTube client errors."""</span>
 
@@ -480,19 +584,19 @@
         <span class="blt">self</span>.status_code = status_code
         <span class="blt">super</span>().__init__(message)
 </pre>
-    </div>
-
-    <!-- OAUTH -->
-    <div class="file-block" id="block-oauth">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/services/youtube/<span>oauth.py</span></div>
-          <div class="file-desc">OAuth2 authorization URL, code exchange, token refresh, credential persistence</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-oauth', this)">Copy</button>
-      </div>
-      <pre id="code-oauth"><span class="cmt"># reelforge/services/youtube/oauth.py</span>
-
+        <!-- OAUTH -->
+        <div class="file-block" id="block-oauth">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/services/youtube/<span>oauth.py</span>
+              </div>
+              <div class="file-desc">OAuth2 authorization URL, code exchange, token refresh, credential persistence</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-oauth', this)">Copy</button>
+          </div>
+          <pre id="code-oauth"><span class="cmt"># reelforge/services/youtube/oauth.py</span>
 <span class="kw">import</span> httpx
 <span class="kw">from</span> datetime <span class="kw">import</span> timedelta
 <span class="kw">from</span> urllib.parse <span class="kw">import</span> urlencode
@@ -569,19 +673,19 @@ GOOGLE_AUTH_URL = <span class="str">"https://accounts.google.com/o/oauth2/v2/aut
     )
     <span class="kw">return</span> cred
 </pre>
-    </div>
-
-    <!-- YOUTUBE CLIENT -->
-    <div class="file-block" id="block-ytclient">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/services/youtube/<span>client.py</span></div>
-          <div class="file-desc">Full-featured YouTube Data API v3 client — public (API key) + authenticated (OAuth) modes</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-ytclient', this)">Copy</button>
-      </div>
-      <pre id="code-ytclient"><span class="cmt"># reelforge/services/youtube/client.py</span>
-
+        <!-- YOUTUBE CLIENT -->
+        <div class="file-block" id="block-ytclient">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/services/youtube/<span>client.py</span>
+              </div>
+              <div class="file-desc">Full-featured YouTube Data API v3 client — public (API key) + authenticated (OAuth) modes</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-ytclient', this)">Copy</button>
+          </div>
+          <pre id="code-ytclient"><span class="cmt"># reelforge/services/youtube/client.py</span>
 <span class="kw">import</span> httpx
 <span class="kw">from</span> datetime <span class="kw">import</span> timedelta
 <span class="kw">from</span> django.conf <span class="kw">import</span> settings
@@ -851,19 +955,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
         })
         <span class="kw">return</span> data.get(<span class="str">"items"</span>, [])
 </pre>
-    </div>
-
-    <!-- SCHEMAS -->
-    <div class="file-block" id="block-schemas">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/<span>schemas.py</span></div>
-          <div class="file-desc">Shared normalized data schemas used across providers and tools</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-schemas', this)">Copy</button>
-      </div>
-      <pre id="code-schemas"><span class="cmt"># reelforge/agents/schemas.py</span>
-
+        <!-- SCHEMAS -->
+        <div class="file-block" id="block-schemas">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/agents/<span>schemas.py</span>
+              </div>
+              <div class="file-desc">Shared normalized data schemas used across providers and tools</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-schemas', this)">Copy</button>
+          </div>
+          <pre id="code-schemas"><span class="cmt"># reelforge/agents/schemas.py</span>
 <span class="kw">from</span> dataclasses <span class="kw">import</span> dataclass, field
 <span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel
 
@@ -938,19 +1042,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
     recommended_angle: <span class="cls">ContentAngle</span> | <span class="kw">None</span> = <span class="kw">None</span>
     competitor_insights: <span class="blt">str</span> = <span class="str">""</span>
 </pre>
-    </div>
-
-    <!-- PROTOCOLS -->
-    <div class="file-block" id="block-protocols">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/providers/<span>protocols.py</span></div>
-          <div class="file-desc">Protocol interfaces for providers — structural typing, no inheritance required</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-protocols', this)">Copy</button>
-      </div>
-      <pre id="code-protocols"><span class="cmt"># reelforge/agents/providers/protocols.py</span>
-
+        <!-- PROTOCOLS -->
+        <div class="file-block" id="block-protocols">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/agents/providers/<span>protocols.py</span>
+              </div>
+              <div class="file-desc">Protocol interfaces for providers — structural typing, no inheritance required</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-protocols', this)">Copy</button>
+          </div>
+          <pre id="code-protocols"><span class="cmt"># reelforge/agents/providers/protocols.py</span>
 <span class="kw">from</span> typing <span class="kw">import</span> Protocol, runtime_checkable
 <span class="kw">from</span> ..schemas <span class="kw">import</span> VideoResult, SearchReport, TrendData
 
@@ -981,19 +1085,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
 
     <span class="kw">def</span> <span class="fn">get_trends</span>(<span class="blt">self</span>, keyword: <span class="blt">str</span>, region: <span class="blt">str</span> = <span class="str">"US"</span>) -> <span class="cls">TrendData</span>: ...
 </pre>
-    </div>
-
-    <!-- YOUTUBE PROVIDER -->
-    <div class="file-block" id="block-ytprovider">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/providers/<span>youtube.py</span></div>
-          <div class="file-desc">YouTubeProvider — satisfies VideoSearchProvider, delegates HTTP to the service client</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-ytprovider', this)">Copy</button>
-      </div>
-      <pre id="code-ytprovider"><span class="cmt"># reelforge/agents/providers/youtube.py</span>
-
+        <!-- YOUTUBE PROVIDER -->
+        <div class="file-block" id="block-ytprovider">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/agents/providers/<span>youtube.py</span>
+              </div>
+              <div class="file-desc">YouTubeProvider — satisfies VideoSearchProvider, delegates HTTP to the service client</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-ytprovider', this)">Copy</button>
+          </div>
+          <pre id="code-ytprovider"><span class="cmt"># reelforge/agents/providers/youtube.py</span>
 <span class="kw">from</span> ...services.youtube.client <span class="kw">import</span> YouTubeClient
 <span class="kw">from</span> ..schemas <span class="kw">import</span> VideoResult
 
@@ -1037,19 +1141,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
             published_at=item[<span class="str">"snippet"</span>][<span class="str">"publishedAt"</span>],
         )
 </pre>
-    </div>
-
-    <!-- SERPAPI PROVIDER -->
-    <div class="file-block" id="block-serpapiprovider">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/providers/<span>serpapi.py</span></div>
-          <div class="file-desc">SerpApiProvider — satisfies WebSearchProvider protocol (Google, YouTube SERP, Trends)</div>
         </div>
-        <button class="copy-btn" onclick="copyCode('code-serpapiprovider', this)">Copy</button>
-      </div>
-      <pre id="code-serpapiprovider"><span class="cmt"># reelforge/agents/providers/serpapi.py</span>
-
+        <!-- SERPAPI PROVIDER -->
+        <div class="file-block" id="block-serpapiprovider">
+          <div class="file-header">
+            <div>
+              <div class="file-path">
+                reelforge/agents/providers/<span>serpapi.py</span>
+              </div>
+              <div class="file-desc">SerpApiProvider — satisfies WebSearchProvider protocol (Google, YouTube SERP, Trends)</div>
+            </div>
+            <button class="copy-btn" onclick="copyCode('code-serpapiprovider', this)">Copy</button>
+          </div>
+          <pre id="code-serpapiprovider"><span class="cmt"># reelforge/agents/providers/serpapi.py</span>
 <span class="kw">import</span> httpx
 <span class="kw">from</span> django.conf <span class="kw">import</span> settings
 <span class="kw">from</span> ..schemas <span class="kw">import</span> VideoResult, SearchReport, SearchResult, TrendData
@@ -1126,19 +1230,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
             ],
         )
 </pre>
-    </div>
-
-    <!-- CONTAINERS -->
-    <div class="file-block" id="block-containers">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/<span>containers.py</span></div>
-          <div class="file-desc">dependency-injector DI container — wires providers, manages lifetimes</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-containers', this)">Copy</button>
-      </div>
-      <pre id="code-containers"><span class="cmt"># reelforge/agents/containers.py</span>
-
+</div>
+<!-- CONTAINERS -->
+<div class="file-block" id="block-containers">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/agents/<span>containers.py</span>
+</div>
+<div class="file-desc">dependency-injector DI container — wires providers, manages lifetimes</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-containers', this)">Copy</button>
+</div>
+<pre id="code-containers"><span class="cmt"># reelforge/agents/containers.py</span>
 <span class="kw">from</span> dependency_injector <span class="kw">import</span> containers, providers
 <span class="kw">from</span> .providers.youtube <span class="kw">import</span> YouTubeProvider
 <span class="kw">from</span> .providers.serpapi <span class="kw">import</span> SerpApiProvider
@@ -1176,19 +1280,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
         api_key=config.serpapi_key,
     )
 </pre>
-    </div>
-
-    <!-- TOOLS -->
-    <div class="file-block" id="block-tools">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/<span>tools.py</span></div>
-          <div class="file-desc">OpenAI Agents SDK function_tool definitions — provider-agnostic, injected via DI</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-tools', this)">Copy</button>
-      </div>
-      <pre id="code-tools"><span class="cmt"># reelforge/agents/tools.py</span>
-
+</div>
+<!-- TOOLS -->
+<div class="file-block" id="block-tools">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/agents/<span>tools.py</span>
+</div>
+<div class="file-desc">OpenAI Agents SDK function_tool definitions — provider-agnostic, injected via DI</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-tools', this)">Copy</button>
+</div>
+<pre id="code-tools"><span class="cmt"># reelforge/agents/tools.py</span>
 <span class="kw">import</span> json
 <span class="kw">import</span> httpx
 <span class="kw">from</span> agents <span class="kw">import</span> function_tool
@@ -1281,19 +1385,19 @@ BASE_URL = <span class="str">"https://www.googleapis.com/youtube/v3"</span>
     response = httpx.get(<span class="str">f"https://r.jina.ai/</span>{url}<span class="str">"</span>, timeout=<span class="num">15</span>)
     <span class="kw">return</span> response.text[:<span class="num">3000</span>]
 </pre>
-    </div>
-
-    <!-- RESEARCH AGENT -->
-    <div class="file-block" id="block-research_agent">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/agents/<span>research_agent.py</span></div>
-          <div class="file-desc">Agent definition — instructions, tools, model configuration</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-research_agent', this)">Copy</button>
-      </div>
-      <pre id="code-research_agent"><span class="cmt"># reelforge/agents/research_agent.py</span>
-
+</div>
+<!-- RESEARCH AGENT -->
+<div class="file-block" id="block-research_agent">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/agents/<span>research_agent.py</span>
+</div>
+<div class="file-desc">Agent definition — instructions, tools, model configuration</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-research_agent', this)">Copy</button>
+</div>
+<pre id="code-research_agent"><span class="cmt"># reelforge/agents/research_agent.py</span>
 <span class="kw">from</span> agents <span class="kw">import</span> Agent
 <span class="kw">from</span> .tools <span class="kw">import</span> (
     search_youtube_videos,
@@ -1361,19 +1465,19 @@ Return ONLY the JSON object. No markdown fences, no preamble, no explanation.
         model=<span class="str">"gpt-4o"</span>,
     )
 </pre>
-    </div>
-
-    <!-- FIELDS -->
-    <div class="file-block" id="block-fields">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/<span>fields.py</span></div>
-          <div class="file-desc">PydanticField — schema-enforced JSONField that returns Pydantic model instances</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-fields', this)">Copy</button>
-      </div>
-      <pre id="code-fields"><span class="cmt"># reelforge/fields.py</span>
-
+</div>
+<!-- FIELDS -->
+<div class="file-block" id="block-fields">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/<span>fields.py</span>
+</div>
+<div class="file-desc">PydanticField — schema-enforced JSONField that returns Pydantic model instances</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-fields', this)">Copy</button>
+</div>
+<pre id="code-fields"><span class="cmt"># reelforge/fields.py</span>
 <span class="kw">from</span> typing <span class="kw">import</span> Type, TypeVar
 <span class="kw">from</span> django.db <span class="kw">import</span> models
 <span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel
@@ -1427,19 +1531,19 @@ T = TypeVar(<span class="str">"T"</span>, bound=<span class="cls">BaseModel</spa
             value = value.model_dump()
         <span class="kw">return</span> <span class="blt">super</span>().get_prep_value(value)
 </pre>
-    </div>
-
-    <!-- MODELS -->
-    <div class="file-block" id="block-models">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/<span>models.py</span></div>
-          <div class="file-desc">ResearchJob, Channel, YouTubeCredential models</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-models', this)">Copy</button>
-      </div>
-      <pre id="code-models"><span class="cmt"># reelforge/models.py</span>
-
+</div>
+<!-- MODELS -->
+<div class="file-block" id="block-models">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/<span>models.py</span>
+</div>
+<div class="file-desc">ResearchJob, Channel, YouTubeCredential models</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-models', this)">Copy</button>
+</div>
+<pre id="code-models"><span class="cmt"># reelforge/models.py</span>
 <span class="kw">from</span> django.db <span class="kw">import</span> models
 <span class="kw">from</span> django.contrib.auth <span class="kw">import</span> get_user_model
 <span class="kw">from</span> django.utils <span class="kw">import</span> timezone
@@ -1518,19 +1622,21 @@ User = get_user_model()
     <span class="kw">def</span> <span class="fn">__str__</span>(<span class="blt">self</span>):
         <span class="kw">return</span> <span class="str">f"</span>{<span class="blt">self</span>.topic}<span class="str"> — </span>{<span class="blt">self</span>.status}<span class="str">"</span>
 </pre>
-    </div>
-
-    <!-- ADMIN -->
-    <div class="file-block" id="block-admin">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/<span>admin.py</span></div>
-          <div class="file-desc">Django admin registrations with custom actions for triggering jobs and syncing channel stats</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-admin', this)">Copy</button>
-      </div>
-      <pre id="code-admin"><span class="cmt"># reelforge/admin.py</span>
-
+</div>
+<!-- ADMIN -->
+<div class="file-block" id="block-admin">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/<span>admin.py</span>
+</div>
+<div class="file-desc">
+Django admin registrations with custom actions for triggering jobs and syncing channel stats
+</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-admin', this)">Copy</button>
+</div>
+<pre id="code-admin"><span class="cmt"># reelforge/admin.py</span>
 <span class="kw">from</span> django.contrib <span class="kw">import</span> admin, messages
 <span class="kw">from</span> django.utils <span class="kw">import</span> timezone
 <span class="kw">from</span> .models <span class="kw">import</span> ResearchJob, Channel, YouTubeCredential
@@ -1641,19 +1747,19 @@ User = get_user_model()
     <span class="kw">def</span> <span class="fn">is_expired</span>(<span class="blt">self</span>, obj):
         <span class="kw">return</span> obj.is_expired
 </pre>
-    </div>
-
-    <!-- TASKS -->
-    <div class="file-block" id="block-tasks">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/<span>tasks.py</span></div>
-          <div class="file-desc">Celery task — runs the research agent asynchronously and persists the report</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-tasks', this)">Copy</button>
-      </div>
-      <pre id="code-tasks"><span class="cmt"># reelforge/tasks.py</span>
-
+</div>
+<!-- TASKS -->
+<div class="file-block" id="block-tasks">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/<span>tasks.py</span>
+</div>
+<div class="file-desc">Celery task — runs the research agent asynchronously and persists the report</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-tasks', this)">Copy</button>
+</div>
+<pre id="code-tasks"><span class="cmt"># reelforge/tasks.py</span>
 <span class="kw">from</span> celery <span class="kw">import</span> shared_task
 <span class="kw">from</span> django.utils <span class="kw">import</span> timezone
 <span class="kw">from</span> agents <span class="kw">import</span> Runner
@@ -1698,19 +1804,19 @@ User = get_user_model()
         job.save(update_fields=[<span class="str">"status"</span>, <span class="str">"error_message"</span>])
         <span class="kw">raise</span> <span class="blt">self</span>.retry(exc=exc, countdown=<span class="num">60</span>)
 </pre>
-    </div>
-
-    <!-- APPS -->
-    <div class="file-block" id="block-apps">
-      <div class="file-header">
-        <div>
-          <div class="file-path">reelforge/<span>apps.py</span></div>
-          <div class="file-desc">AppConfig — initializes and wires the DI container when Django starts up</div>
-        </div>
-        <button class="copy-btn" onclick="copyCode('code-apps', this)">Copy</button>
-      </div>
-      <pre id="code-apps"><span class="cmt"># reelforge/apps.py</span>
-
+</div>
+<!-- APPS -->
+<div class="file-block" id="block-apps">
+<div class="file-header">
+<div>
+<div class="file-path">
+reelforge/<span>apps.py</span>
+</div>
+<div class="file-desc">AppConfig — initializes and wires the DI container when Django starts up</div>
+</div>
+<button class="copy-btn" onclick="copyCode('code-apps', this)">Copy</button>
+</div>
+<pre id="code-apps"><span class="cmt"># reelforge/apps.py</span>
 <span class="kw">from</span> django.apps <span class="kw">import</span> AppConfig
 <span class="kw">from</span> django.conf <span class="kw">import</span> settings
 
@@ -1736,11 +1842,9 @@ User = get_user_model()
         <span class="cmt"># Expose container for testing and external access if needed</span>
         ReelforgeConfig.container = container
 </pre>
-    </div>
-
-  </main>
 </div>
-
+</main>
+</div>
 <script>
   function show(id) {
     // Hide all blocks
@@ -1765,6 +1869,5 @@ User = get_user_model()
     });
   }
 </script>
-
 </body>
 </html>

@@ -19,6 +19,11 @@ up:
     @echo "Starting up containers..."
     @docker compose up -d --remove-orphans
 
+# debug: Start containers with debugpy remote attach (Django: 5678, Celery: 5679).
+debug:
+    @echo "Starting up containers in debug mode..."
+    @COMPOSE_FILE="docker-compose.local.yml:docker-compose.debug.yml" docker compose up -d --remove-orphans
+
 # down: Stop containers.
 down:
     @echo "Stopping containers..."

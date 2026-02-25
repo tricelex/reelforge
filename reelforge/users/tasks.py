@@ -13,3 +13,4 @@ def get_users_count() -> int:
 def print_users_count() -> None:
     """A pointless Celery task to demonstrate usage."""
     User.objects.count()
+    return 9999

@@ -98,6 +98,16 @@ class ResearchJob(PipelineStageModel):
             return 0.0
         return (self.topics_approved / self.topics_discovered) * 100
 
+    def sync_topic_counts(self) -> None:
+        """Recount approved/rejected topics and persist to the DB.
+        Called by the TopicIdea post_save signal whenever a topic is reviewed.
+        """
+        approved = self.topics.filter(approved=True).count()
+        rejected = self.topics.exclude(rejection_reason="").count()
+        self.topics_approved = approved
+        self.topics_rejected = rejected
+        self.save(update_fields=["topics_approved", "topics_rejected", "updated_at"])
+
 
 class TopicIdea(PipelineStageModel):
     """A single topic candidate from a research job.
@@ -156,7 +166,7 @@ class TopicIdea(PipelineStageModel):
     thumbnail_concept = models.TextField(blank=True)
     why_it_works = models.TextField(blank=True)
     suggested_sources = ArrayField(models.URLField(), default=list)
-    reddit_questions = ArrayField(models.TextField(), default=list)
+    community_questions = ArrayField(models.TextField(), default=list)
 
     # Approval
     approved = models.BooleanField(default=False)

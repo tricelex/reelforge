@@ -647,10 +647,6 @@ REPLICATE_API_KEY = env("REPLICATE_API_KEY", default="")
 # YouTube API (for research and analytics)
 YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
 
-# Reddit API (for research)
-REDDIT_CLIENT_ID = env("REDDIT_CLIENT_ID", default="")
-REDDIT_CLIENT_SECRET = env("REDDIT_CLIENT_SECRET", default="")
-
 # Perplexity API (for research)
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
