@@ -22,10 +22,9 @@ class VoiceoverSegmentInline(TabularInline):
     fields = ["segment_id", "section", "text_preview", "duration_sec", "status", "audio_file"]
     readonly_fields = ["text_preview", "duration_sec", "audio_file", "status"]
 
+    @admin.display(description=_("Script Text"))
     def text_preview(self, obj: VoiceoverSegment) -> str:
         return obj.text[:100] + "..." if len(obj.text) > 100 else obj.text
-
-    text_preview.short_description = _("Script Text")  # type: ignore
 
 
 class GeneratedImageInline(TabularInline):
@@ -35,10 +34,9 @@ class GeneratedImageInline(TabularInline):
     fields = ["position_idx", "section", "prompt_preview", "is_selected", "image_file", "provider"]
     readonly_fields = ["prompt_preview", "image_file", "provider"]
 
+    @admin.display(description=_("Prompt"))
     def prompt_preview(self, obj: GeneratedImage) -> str:
         return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
-
-    prompt_preview.short_description = _("Prompt")  # type: ignore
 
 
 class ThumbnailOptionInline(TabularInline):
@@ -250,10 +248,9 @@ class VoiceoverSegmentAdmin(ModelAdmin):
     readonly_fields = ["id", "created_at", "updated_at"]
     ordering = ["asset_job", "segment_id"]
 
+    @admin.display(description=_("Script Text"))
     def text_preview(self, obj: VoiceoverSegment) -> str:
         return obj.text[:100] + "..." if len(obj.text) > 100 else obj.text
-
-    text_preview.short_description = _("Script Text")  # type: ignore
 
 
 @admin.register(GeneratedImage)
@@ -264,10 +261,9 @@ class GeneratedImageAdmin(ModelAdmin):
     readonly_fields = ["id", "created_at", "updated_at"]
     ordering = ["asset_job", "position_idx"]
 
+    @admin.display(description=_("Prompt"))
     def prompt_preview(self, obj: GeneratedImage) -> str:
         return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
-
-    prompt_preview.short_description = _("Prompt")  # type: ignore
 
 
 @admin.register(ThumbnailOption)
@@ -278,7 +274,6 @@ class ThumbnailOptionAdmin(ModelAdmin):
     readonly_fields = ["id", "created_at", "updated_at"]
     ordering = ["asset_job", "-ctr_score"]
 
+    @admin.display(description=_("Prompt"))
     def prompt_preview(self, obj: ThumbnailOption) -> str:
         return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
-
-    prompt_preview.short_description = _("Prompt")  # type: ignore

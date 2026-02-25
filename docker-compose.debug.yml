@@ -1,0 +1,11 @@
+# Debug overlay — use with: just debug
+# debugpy inside the container connects OUT to PyCharm (host.docker.internal).
+# Start PyCharm debug server first, then run: just debug
+# Django: port 5678  |  Celery worker: port 5679
+
+services:
+  django:
+    command: /start-debug
+
+  celeryworker:
+    command: /start-celeryworker-debug

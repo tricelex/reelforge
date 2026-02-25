@@ -13,7 +13,7 @@ class TrendDataRaw(BaseModel):
 
     google_trends: list[dict[str, Any]] = []
     youtube_results: list[dict[str, Any]] = []
-    reddit_data: list[dict[str, Any]] = []
+    community_data: list[dict[str, Any]] = []
     collected_at: str = ""
 
 

@@ -278,7 +278,7 @@ class TopicIdeaAdmin(ModelAdmin):
                     "thumbnail_concept",
                     "why_it_works",
                     "suggested_sources",
-                    "reddit_questions",
+                    "community_questions",
                 ),
             },
         ),

@@ -20,8 +20,8 @@ class PerplexityProvider:
         """Research a topic using Perplexity AI with web grounding."""
         try:
             return self._client.research(topic=topic, depth=depth)
-        except Exception:
-            logger.exception("PerplexityProvider.research failed for topic='%s'", topic)
+        except Exception as exc:
+            logger.warning("PerplexityProvider.research failed for topic='%s': %s", topic, exc)
             return {
                 "query": topic,
                 "answer": "",

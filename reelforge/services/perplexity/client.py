@@ -54,6 +54,10 @@ class PerplexityClient:
         Returns:
             Dict with answer, sources, and raw response data
         """
+        if not self.api_key:
+            msg = "PERPLEXITY_API_KEY is not configured"
+            raise PerplexityAuthError(msg)
+
         system_prompt = (
             "You are a research assistant. Provide factual, well-sourced information "
             "about the given topic. Include relevant statistics, trends, and expert "

@@ -8,14 +8,14 @@ from ***REMOVED***.agents.schemas import TrendData
 from ***REMOVED***.agents.schemas import TrendPoint
 
 if TYPE_CHECKING:
-    from ***REMOVED***.services.exploding_topics.client import ExplodingTopicsClient
     from ***REMOVED***.services.google_trends.client import GoogleTrendsClient
+    from ***REMOVED***.services.rising_topics.client import RisingTopicsClient
 
 logger = logging.getLogger("***REMOVED***.agents.providers.trends")
 
 
 class GoogleTrendsProvider:
-    """Provider that wraps GoogleTrendsClient and ExplodingTopicsClient.
+    """Provider that wraps GoogleTrendsClient and RisingTopicsClient.
 
     Satisfies TrendsProvider protocol.
     """
@@ -23,10 +23,10 @@ class GoogleTrendsProvider:
     def __init__(
         self,
         google_client: GoogleTrendsClient,
-        exploding_client: ExplodingTopicsClient,
+        rising_client: RisingTopicsClient,
     ) -> None:
         self._google = google_client
-        self._exploding = exploding_client
+        self._rising = rising_client
 
     def get_interest(self, keyword: str, timeframe: str = "today 30-d") -> TrendData:
         """Get search interest data for a keyword."""
@@ -61,9 +61,9 @@ class GoogleTrendsProvider:
             return []
 
     def get_rising_topics(self, category: str = "") -> list[RisingTopic]:
-        """Get rising topics — delegates to ExplodingTopicsClient."""
+        """Get rising topics — delegates to RisingTopicsClient."""
         try:
-            raw_topics = self._exploding.get_rising(category=category)
+            raw_topics = self._rising.get_rising(category=category)
             return [
                 RisingTopic(
                     keyword=t.get("keyword", ""),

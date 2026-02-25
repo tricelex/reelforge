@@ -6,7 +6,7 @@ from typing import Protocol
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
-    from ***REMOVED***.agents.schemas import RedditPost
+    from ***REMOVED***.agents.schemas import CommunityPost
     from ***REMOVED***.agents.schemas import RisingTopic
     from ***REMOVED***.agents.schemas import TrendData
     from ***REMOVED***.agents.schemas import VideoResult
@@ -36,8 +36,8 @@ class TrendsProvider(Protocol):
 
 
 @runtime_checkable
-class RedditProvider(Protocol):
-    def get_top_posts(self, niche: str, subreddits: list[str] | None, limit: int) -> list[RedditPost]: ...
+class CommunitySearchProvider(Protocol):
+    def search_discussions(self, niche: str, query: str | None, limit: int) -> list[CommunityPost]: ...
 
 
 @runtime_checkable

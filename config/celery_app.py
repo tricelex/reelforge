@@ -4,7 +4,6 @@ import os
 from typing import Any
 
 from celery import Celery
-from celery.schedules import crontab
 from celery.signals import setup_logging
 
 # set the default Django settings module for the 'celery' program.
@@ -13,18 +12,18 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
 app = Celery("***REMOVED***")
 
 CELERYBEAT_SCHEDULE = {
-    "daily-pipeline-trigger": {
-        "task": "***REMOVED***.pipeline.tasks.daily_pipeline_trigger",
-        "schedule": crontab(hour=6, minute=0),
-    },
-    "weekly-analytics-sync": {
-        "task": "***REMOVED***.pipeline.tasks.weekly_analytics_sync",
-        "schedule": crontab(day_of_week="monday", hour=9, minute=0),
-    },
-    "print_users_count": {
-        "task": "***REMOVED***.users.tasks.print_users_count",
-        "schedule": crontab(minute="*/2"),  # Every 2 minutes
-    },
+    # "daily-pipeline-trigger": {
+    #     "task": "***REMOVED***.pipeline.tasks.daily_pipeline_trigger",
+    #     "schedule": crontab(hour=6, minute=0),
+    # },
+    # "weekly-analytics-sync": {
+    #     "task": "***REMOVED***.pipeline.tasks.weekly_analytics_sync",
+    #     "schedule": crontab(day_of_week="monday", hour=9, minute=0),
+    # },
+    # "print_users_count": {
+    #     "task": "***REMOVED***.users.tasks.print_users_count",
+    #     "schedule": crontab(minute="*/2"),  # Every 2 minutes
+    # },
 }
 
 
