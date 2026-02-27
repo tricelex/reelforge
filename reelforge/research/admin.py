@@ -8,12 +8,13 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import action
 from unfold.decorators import display
 
+from reelforge.core.admin import FSMModelAdminMixin
 from reelforge.research.models import ResearchJob
 from reelforge.research.models import TopicIdea
 
 
 @admin.register(ResearchJob)
-class ResearchJobAdmin(ModelAdmin):
+class ResearchJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "channel",
@@ -180,7 +181,7 @@ class ResearchJobAdmin(ModelAdmin):
 
 
 @admin.register(TopicIdea)
-class TopicIdeaAdmin(ModelAdmin):
+class TopicIdeaAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "title_idea",

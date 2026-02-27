@@ -43,6 +43,7 @@ class ScriptJob(PipelineStageModel):
     research_sources = ArrayField(
         models.URLField(),
         default=list,
+        blank=True,
         help_text=_("URLs of sources used in script"),
     )
 
@@ -84,6 +85,7 @@ class ScriptJob(PipelineStageModel):
     main_points = ArrayField(
         models.TextField(),
         default=list,
+        blank=True,
         help_text=_("Key points covered in script"),
     )
 
@@ -114,6 +116,7 @@ class ScriptJob(PipelineStageModel):
     seo_tags = ArrayField(
         models.CharField(max_length=100),
         default=list,
+        blank=True,
     )
     category = models.CharField(
         max_length=100,
@@ -122,6 +125,7 @@ class ScriptJob(PipelineStageModel):
     )
     chapters = models.JSONField(
         default=list,
+        blank=True,
         help_text=_("YouTube chapter markers for the video."),
         validators=[pydantic_validator(ChapterList)],
     )

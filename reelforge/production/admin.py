@@ -5,11 +5,12 @@ from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 
+from reelforge.core.admin import FSMModelAdminMixin
 from reelforge.production.models import ProductionJob
 
 
 @admin.register(ProductionJob)
-class ProductionJobAdmin(ModelAdmin):
+class ProductionJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "channel",

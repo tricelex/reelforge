@@ -14,6 +14,7 @@ from reelforge.agents.containers import AgentContainer
 
 if TYPE_CHECKING:
     from reelforge.agents.providers.protocols import CommunitySearchProvider
+    from reelforge.agents.providers.protocols import LLMProvider
     from reelforge.agents.providers.protocols import TrendsProvider
     from reelforge.agents.providers.protocols import VideoSearchProvider
     from reelforge.agents.providers.protocols import WebSearchProvider
@@ -164,7 +165,14 @@ def run_research_job_for_channel(self, channel_id: str) -> None:
     soft_time_limit=1200,
     time_limit=1800,
 )
-def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
+@inject
+def run_script_job(
+    self: Any,
+    topic_id: str,
+    pipeline_run_id: str,
+    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
+    llm: LLMProvider = Provide[AgentContainer.llm_openai],
+) -> None:
     """Build ScriptAgent and run it for the given topic."""
     import asyncio
 
@@ -185,14 +193,15 @@ def run_script_job(self, topic_id: str, pipeline_run_id: str) -> None:
     job.mark_running(task_id=self.request.id)
 
     try:
-        agent = build_script_agent(channel, topic)
-        asyncio.run(
+        agent = build_script_agent(channel, topic, web_search, llm)
+        result = asyncio.run(
             Runner.run(
                 agent,
                 input=f"Write a full script for: {topic.title_idea}",
                 max_turns=30,
             )
         )
+        _save_script_results(job, result)
         job.mark_completed()
 
         # Update PipelineRun to link the script job
@@ -625,6 +634,79 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
             "agent_tokens_used": total_tokens,
             "agent_cost_usd": str(cost_usd),
             "research_summary": output.research_summary[:200],
+        },
+    )
+
+
+def _save_script_results(job: Any, result: Any) -> None:
+    """Parse the ScriptAgent RunResult and persist all output fields to ScriptJob.
+
+    Args:
+        job: ScriptJob instance
+        result: RunResult from Runner.run()
+    """
+    from reelforge.agents.schemas import ScriptAgentOutput
+
+    if isinstance(result.final_output, ScriptAgentOutput):
+        output = result.final_output
+    else:
+        raw: str = result.final_output or ""
+        try:
+            output = ScriptAgentOutput.model_validate_json(raw)
+        except Exception:
+            logger.exception(
+                "Failed to parse ScriptAgent output",
+                extra={"script_job_id": str(job.id), "raw_output": raw[:500]},
+            )
+            raise
+
+    seo = output.seo_metadata
+
+    # Convert broll_suggestions: list[str] → list[{"timestamp_approx": 0, "description": str}]
+    broll = [{"timestamp_approx": 0, "description": s} for s in output.broll_suggestions]
+
+    # Convert chapters: ScriptChapter(time, label) → Chapter(timestamp, title)
+    chapters = [{"timestamp": c.time, "title": c.label} for c in seo.chapters]
+
+    # Store hook_used as a single generated_hooks entry (full list not in final output)
+    generated_hooks: list[dict[str, Any]] = []
+    if output.hook_used:
+        generated_hooks = [{"text": output.hook_used, "type": "statement", "score": 0.0}]
+
+    job.script_text = output.script_text
+    job.word_count = output.word_count
+    job.estimated_duration_mins = output.estimated_duration_mins
+    job.broll_suggestions = broll
+    job.final_title = seo.final_title
+    job.final_description = seo.description
+    job.seo_tags = seo.tags
+    job.chapters = chapters
+    job.pinned_comment = seo.pinned_comment
+    job.generated_hooks = generated_hooks
+
+    job.save(
+        update_fields=[
+            "script_text",
+            "word_count",
+            "estimated_duration_mins",
+            "broll_suggestions",
+            "final_title",
+            "final_description",
+            "seo_tags",
+            "chapters",
+            "pinned_comment",
+            "generated_hooks",
+            "updated_at",
+        ]
+    )
+
+    logger.info(
+        "Script results saved to ScriptJob",
+        extra={
+            "script_job_id": str(job.id),
+            "word_count": job.word_count,
+            "final_title": job.final_title,
+            "broll_count": len(broll),
         },
     )
 

@@ -11,6 +11,7 @@ from reelforge.assets.models import AssetJob
 from reelforge.assets.models import GeneratedImage
 from reelforge.assets.models import ThumbnailOption
 from reelforge.assets.models import VoiceoverSegment
+from reelforge.core.admin import FSMModelAdminMixin
 
 # ── Inlines ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ class ThumbnailOptionInline(TabularInline):
 
 
 @admin.register(AssetJob)
-class AssetJobAdmin(ModelAdmin):
+class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "script_job_link",

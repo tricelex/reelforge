@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agents import Agent
-from agents import Tool
+from agents import function_tool
 
 
 def build_qa_agent() -> Agent:
@@ -10,7 +10,7 @@ def build_qa_agent() -> Agent:
     TODO: Implement full QA tools for script and video quality checks.
     """
 
-    @Tool(name="check_script_quality", description="Check script quality against standards.")
+    @function_tool(name_override="check_script_quality", description_override="Check script quality against standards.")
     def check_script_quality(script_text: str, word_count: int, hook_score: float) -> dict:
         """Placeholder: Check script quality.
 
@@ -28,7 +28,9 @@ def build_qa_agent() -> Agent:
             "recommendations": ["Mock recommendation"],
         }
 
-    @Tool(name="check_video_quality", description="Check video quality against technical standards.")
+    @function_tool(
+        name_override="check_video_quality", description_override="Check video quality against technical standards."
+    )
     def check_video_quality(video_path: str) -> dict:
         """Placeholder: Check video quality.
 

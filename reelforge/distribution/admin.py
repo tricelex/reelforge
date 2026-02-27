@@ -7,6 +7,7 @@ from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
 from unfold.decorators import display
 
+from reelforge.core.admin import FSMModelAdminMixin
 from reelforge.distribution.models import AnalyticsSnapshot
 from reelforge.distribution.models import DistributionJob
 
@@ -29,7 +30,7 @@ class AnalyticsSnapshotInline(TabularInline):
 
 
 @admin.register(DistributionJob)
-class DistributionJobAdmin(ModelAdmin):
+class DistributionJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "channel",

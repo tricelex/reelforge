@@ -85,3 +85,30 @@ class ResearchAgentOutput(BaseModel):
     research_summary: str = ""
     discovered_competitors: list[DiscoveredCompetitor] = []
     data_gaps: list[str] = []  # tools that returned poor or empty data during this run
+
+
+# ── Script Agent Output ───────────────────────────────────────────────────────
+
+
+class ScriptChapter(BaseModel):
+    """Chapter marker as returned by the ScriptAgent (maps to ChapterList schema on save)."""
+
+    time: str = "0:00"
+    label: str = ""
+
+
+class ScriptSEOMetadata(BaseModel):
+    final_title: str = ""
+    description: str = ""
+    tags: list[str] = []
+    chapters: list[ScriptChapter] = []
+    pinned_comment: str = ""
+
+
+class ScriptAgentOutput(BaseModel):
+    script_text: str = ""  # Full script with [SECTION] markers
+    hook_used: str = ""  # Text of the winning hook
+    word_count: int = 0
+    estimated_duration_mins: float = 0.0
+    broll_suggestions: list[str] = []  # Plain strings; converted to BRollSuggestion on save
+    seo_metadata: ScriptSEOMetadata = ScriptSEOMetadata()
