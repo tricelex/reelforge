@@ -9,6 +9,7 @@ from unfold.admin import TabularInline
 from unfold.decorators import action
 from unfold.decorators import display
 
+from ***REMOVED***.core.admin import FSMModelAdminMixin
 from ***REMOVED***.scripts.models import ScriptJob
 from ***REMOVED***.scripts.models import ScriptRevision
 
@@ -29,7 +30,7 @@ class ScriptRevisionInline(TabularInline):
 
 
 @admin.register(ScriptJob)
-class ScriptJobAdmin(ModelAdmin):
+class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "channel_name",

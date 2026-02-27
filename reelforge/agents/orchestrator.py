@@ -8,7 +8,7 @@ from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 
 from agents import Agent
 from agents import Runner
-from agents import Tool
+from agents import function_tool
 from agents import handoff
 from agents import trace
 
@@ -53,7 +53,9 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
     handoff_list.append(handoff(qa_agent, tool_name_override="delegate_to_qa_agent"))
 
     # Status reporting tools
-    @Tool(name="get_pipeline_status", description="Get the current state of the pipeline run.")
+    @function_tool(
+        name_override="get_pipeline_status", description_override="Get the current state of the pipeline run."
+    )
     def get_pipeline_status(pipeline_run_id: str) -> dict[str, Any]:
         from ***REMOVED***.pipeline.models import PipelineRun
 
@@ -69,7 +71,11 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
             "last_error": last_error_event.message if last_error_event else None,
         }
 
-    @Tool(name="log_pipeline_event", description="Log an event to the pipeline audit trail.")
+    @function_tool(
+        name_override="log_pipeline_event",
+        description_override="Log an event to the pipeline audit trail.",
+        strict_mode=False,
+    )
     def log_pipeline_event(
         pipeline_run_id: str, event_name: str, event_type: str, message: str, detail: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -88,7 +94,9 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
         )
         return {"logged": True, "event_id": str(event.id)}
 
-    @Tool(name="advance_pipeline_stage", description="Advance the pipeline run to a new stage.")
+    @function_tool(
+        name_override="advance_pipeline_stage", description_override="Advance the pipeline run to a new stage."
+    )
     def advance_pipeline_stage(pipeline_run_id: str, new_stage: str) -> dict[str, Any]:
         from django_fsm import TransitionNotAllowed
 
@@ -106,7 +114,9 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
                 "valid_transitions": run.available_transitions,
             }
 
-    @Tool(name="pause_pipeline_for_review", description="Pause pipeline and request operator review.")
+    @function_tool(
+        name_override="pause_pipeline_for_review", description_override="Pause pipeline and request operator review."
+    )
     def pause_pipeline_for_review(pipeline_run_id: str, reason: str) -> dict[str, Any]:
         from ***REMOVED***.pipeline.models import PipelineRun
 
@@ -115,7 +125,11 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
         run.save(update_fields=["overall_status", "current_stage", "last_agent_decision", "updated_at"])
         return {"paused": True, "reason": reason}
 
-    @Tool(name="trigger_celery_task", description="Trigger a specific Celery task for heavy processing.")
+    @function_tool(
+        name_override="trigger_celery_task",
+        description_override="Trigger a specific Celery task for heavy processing.",
+        strict_mode=False,
+    )
     def trigger_celery_task(task_name: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Celery handles CPU/GPU intensive work; agent handles logic/decisions."""
         from celery import current_app
@@ -123,7 +137,11 @@ def build_orchestrator(channel: Channel, pipeline_run: PipelineRun) -> Agent:
         result = current_app.send_task(task_name, kwargs=kwargs)
         return {"task_id": result.id, "task_name": task_name}
 
-    @Tool(name="evaluate_stage_output", description="Evaluate the quality of a pipeline stage output.")
+    @function_tool(
+        name_override="evaluate_stage_output",
+        description_override="Evaluate the quality of a pipeline stage output.",
+        strict_mode=False,
+    )
     def evaluate_stage_output(
         stage: str, output_data: dict[str, Any], channel_config: dict[str, Any]
     ) -> dict[str, Any]:

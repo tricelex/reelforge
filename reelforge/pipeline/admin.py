@@ -11,6 +11,7 @@ from unfold.admin import TabularInline
 from unfold.decorators import action
 from unfold.decorators import display
 
+from ***REMOVED***.core.admin import FSMModelAdminMixin
 from ***REMOVED***.pipeline.models import PipelineEvent
 from ***REMOVED***.pipeline.models import PipelineRun
 
@@ -56,7 +57,7 @@ class PipelineEventInline(TabularInline):
 
 
 @admin.register(PipelineRun)
-class PipelineRunAdmin(ModelAdmin):
+class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "channel",
@@ -105,6 +106,25 @@ class PipelineRunAdmin(ModelAdmin):
         "asset_job",
         "production_job",
         "distribution_job",
+    ]
+    actions = [
+        "start_pipeline",
+        "advance_to_scripting",
+        "skip_to_scripting_action",
+        "skip_to_assets_action",
+        "skip_scripting_to_assets_action",
+        "approve_to_assets",
+        "begin_rendering_action",
+        "begin_upload_action",
+        "retry_scripting_action",
+        "retry_assets_action",
+        "retry_rendering_action",
+        "retry_upload_action",
+        "resume_to_assets_action",
+        "resume_to_rendering_action",
+        "resume_to_upload_action",
+        "pause_action",
+        "reject_run",
     ]
     inlines = [PipelineEventInline]
 
@@ -261,6 +281,120 @@ class PipelineRunAdmin(ModelAdmin):
 
     # ── Admin Actions ──────────────────────────────────────────────────
 
+    @action(description="▶ Start Pipeline")
+    def start_pipeline(self, request, queryset) -> None:
+        """Advance INITIALIZING → RESEARCHING and dispatch the research task."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.begin_research):
+                run.begin_research()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot start '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) started.")
+
+    @action(description="⏭ Advance to Scripting")
+    def advance_to_scripting(self, request, queryset) -> None:
+        """Advance RESEARCHING → SCRIPTING. Warns if no topic is set (signal won't dispatch a task)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.begin_scripting):
+                if not run.topic:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no topic set — scripting task will not be dispatched.",
+                        level="WARNING",
+                    )
+                run.begin_scripting()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot advance '{run}' to scripting — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) advanced to scripting.")
+
+    @action(description="⏭ Skip to Scripting (use existing topic)")
+    def skip_to_scripting_action(self, request, queryset) -> None:
+        """Skip research entirely (INITIALIZING → SCRIPTING). Operator must have set topic FK."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.skip_to_scripting):
+                if not run.topic:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no topic set — set the topic FK first or scripting will stall.",
+                        level="WARNING",
+                    )
+                run.skip_to_scripting()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot skip to scripting for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) skipped to scripting.")
+
+    @action(description="⏭ Skip to Assets (use existing script)")
+    def skip_to_assets_action(self, request, queryset) -> None:
+        """Skip research + scripting (INITIALIZING → GENERATING_ASSETS). Operator must have set script_job FK."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.skip_to_assets):
+                if not run.script_job:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no script_job set — set the script_job FK first or assets will stall.",
+                        level="WARNING",
+                    )
+                run.skip_to_assets()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot skip to assets for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) skipped to asset generation.")
+
+    @action(description="⏭ Skip Scripting → Assets (use existing script)")
+    def skip_scripting_to_assets_action(self, request, queryset) -> None:
+        """Skip scripting stage (RESEARCHING → GENERATING_ASSETS). Operator must have set script_job FK."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.skip_scripting_to_assets):
+                if not run.script_job:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no script_job set — set the script_job FK first or assets will stall.",
+                        level="WARNING",
+                    )
+                run.skip_scripting_to_assets()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot skip scripting for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) advanced to asset generation.")
+
     @action(description="▶ Approve & Continue to Assets")
     def approve_to_assets(self, request, queryset) -> None:
         """Only valid when run is in AWAITING_APPROVAL state."""
@@ -279,6 +413,90 @@ class PipelineRunAdmin(ModelAdmin):
         if count > 0:
             self.message_user(request, f"{count} runs approved and advancing to asset generation.")
 
+    @action(description="🎬 Begin Rendering")
+    def begin_rendering_action(self, request, queryset) -> None:
+        """Advance GENERATING_ASSETS → RENDERING. Warns if no production_job is set."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.begin_rendering):
+                if not run.production_job:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no production_job set — render task will not be dispatched.",
+                        level="WARNING",
+                    )
+                run.begin_rendering()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot begin rendering for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) advanced to rendering.")
+
+    @action(description="📤 Begin Upload")
+    def begin_upload_action(self, request, queryset) -> None:
+        """Advance QA → UPLOADING. Warns if no distribution_job is set."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.begin_upload):
+                if not run.distribution_job:
+                    self.message_user(
+                        request,
+                        f"'{run}' has no distribution_job set — upload task will not be dispatched.",
+                        level="WARNING",
+                    )
+                run.begin_upload()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot begin upload for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) advanced to uploading.")
+
+    @action(description="🔄 Retry Scripting")
+    def retry_scripting_action(self, request, queryset) -> None:
+        """Retry scripting for failed pipelines (FAILED → SCRIPTING)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.retry_scripting):
+                run.retry_scripting()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot retry scripting for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) set to retry scripting.")
+
+    @action(description="🔄 Retry Asset Generation")
+    def retry_assets_action(self, request, queryset) -> None:
+        """Retry asset generation for failed pipelines (FAILED → GENERATING_ASSETS)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.retry_assets):
+                run.retry_assets()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot retry assets for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) set to retry asset generation.")
+
     @action(description="🔄 Retry Rendering")
     def retry_rendering_action(self, request, queryset) -> None:
         """Retry rendering for failed pipelines."""
@@ -296,6 +514,78 @@ class PipelineRunAdmin(ModelAdmin):
                 )
         if count > 0:
             self.message_user(request, f"{count} runs set to retry rendering.")
+
+    @action(description="🔄 Retry Upload")
+    def retry_upload_action(self, request, queryset) -> None:
+        """Retry upload for failed pipelines (FAILED → UPLOADING)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.retry_upload):
+                run.retry_upload()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot retry upload for '{run}' — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) set to retry upload.")
+
+    @action(description="▶ Resume → Assets")
+    def resume_to_assets_action(self, request, queryset) -> None:
+        """Resume paused pipelines to asset generation (PAUSED → GENERATING_ASSETS)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.resume_to_assets):
+                run.resume_to_assets()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot resume '{run}' to assets — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) resumed to asset generation.")
+
+    @action(description="▶ Resume → Rendering")
+    def resume_to_rendering_action(self, request, queryset) -> None:
+        """Resume paused pipelines to rendering (PAUSED → RENDERING)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.resume_to_rendering):
+                run.resume_to_rendering()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot resume '{run}' to rendering — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) resumed to rendering.")
+
+    @action(description="▶ Resume → Upload")
+    def resume_to_upload_action(self, request, queryset) -> None:
+        """Resume paused pipelines to upload (PAUSED → UPLOADING)."""
+        count = 0
+        for run in queryset:
+            if can_proceed(run.resume_to_upload):
+                run.resume_to_upload()
+                run.save()
+                count += 1
+            else:
+                self.message_user(
+                    request,
+                    f"Cannot resume '{run}' to upload — current state: {run.overall_status}",
+                    level="ERROR",
+                )
+        if count > 0:
+            self.message_user(request, f"{count} run(s) resumed to upload.")
 
     @action(description="⏸ Pause Pipeline")
     def pause_action(self, request, queryset) -> None:

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from agents import Agent
-from agents import Tool
+from agents import function_tool
 
 if TYPE_CHECKING:
     from ***REMOVED***.channels.models import Channel
@@ -71,7 +71,11 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
             f"High-impact thumbnail for {niche} video: '{title}', minimal text, vibrant colors",
         ]
 
-    @Tool(name="generate_voiceover_segment", description="Generate TTS audio for a script segment.")
+    @function_tool(
+        name_override="generate_voiceover_segment",
+        description_override="Generate TTS audio for a script segment.",
+        strict_mode=False,
+    )
     def generate_voiceover_segment(segment_id: str, text: str, voice_settings: dict[str, Any]) -> dict[str, Any]:
         from ***REMOVED***.services.providers.registry import get_tts_provider
 
@@ -86,7 +90,10 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
         path = save_audio_segment(segment_id, response.audio_bytes)
         return {"segment_id": segment_id, "path": path, "duration_sec": response.duration_sec}
 
-    @Tool(name="generate_background_image", description="Generate a background image for a script section.")
+    @function_tool(
+        name_override="generate_background_image",
+        description_override="Generate a background image for a script section.",
+    )
     def generate_background_image(prompt: str, section: str, position_idx: int) -> dict[str, Any]:
         from ***REMOVED***.services.providers.registry import get_image_provider
 
@@ -100,7 +107,9 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
         path = save_image(responses[0].image_bytes, position_idx)
         return {"path": path, "position_idx": position_idx, "prompt_used": prompt}
 
-    @Tool(name="generate_thumbnail_options", description="Generate 3 thumbnail options for the video.")
+    @function_tool(
+        name_override="generate_thumbnail_options", description_override="Generate 3 thumbnail options for the video."
+    )
     def generate_thumbnail_options(title: str, niche: str, brand_color: str) -> list[dict[str, Any]]:
         from ***REMOVED***.services.providers.registry import get_image_provider
 
@@ -113,7 +122,10 @@ def build_asset_agent(channel: Channel, script_job: ScriptJob) -> Agent:
             options.append({"option": i, "path": path, "prompt": prompt})
         return options
 
-    @Tool(name="select_background_music", description="Select the best music track for the video's tone.")
+    @function_tool(
+        name_override="select_background_music",
+        description_override="Select the best music track for the video's tone.",
+    )
     def select_background_music(niche: str, script_tone: str) -> dict[str, str]:
         import os
         import random

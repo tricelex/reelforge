@@ -11,6 +11,7 @@ from ***REMOVED***.assets.models import AssetJob
 from ***REMOVED***.assets.models import GeneratedImage
 from ***REMOVED***.assets.models import ThumbnailOption
 from ***REMOVED***.assets.models import VoiceoverSegment
+from ***REMOVED***.core.admin import FSMModelAdminMixin
 
 # ── Inlines ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ class ThumbnailOptionInline(TabularInline):
 
 
 @admin.register(AssetJob)
-class AssetJobAdmin(ModelAdmin):
+class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
         "id",
         "script_job_link",

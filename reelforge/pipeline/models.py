@@ -254,6 +254,38 @@ class PipelineRun(BaseAbstractModel):
         if reason:
             self.last_agent_decision = {"action": "pause", "reason": reason}
 
+    # Skip-to transitions (from INITIALIZING or RESEARCHING, bypassing stages)
+    @transition(
+        field=overall_status,
+        source=PipelineStatus.INITIALIZING,
+        target=PipelineStatus.SCRIPTING,
+    )
+    def skip_to_scripting(self) -> None:
+        """Skip research entirely; operator has an existing TopicIdea."""
+        self.current_stage = PipelineStatus.SCRIPTING
+        if not self.started_at:
+            self.started_at = timezone.now()
+
+    @transition(
+        field=overall_status,
+        source=PipelineStatus.INITIALIZING,
+        target=PipelineStatus.GENERATING_ASSETS,
+    )
+    def skip_to_assets(self) -> None:
+        """Skip research + scripting; operator has an existing ScriptJob."""
+        self.current_stage = PipelineStatus.GENERATING_ASSETS
+        if not self.started_at:
+            self.started_at = timezone.now()
+
+    @transition(
+        field=overall_status,
+        source=PipelineStatus.RESEARCHING,
+        target=PipelineStatus.GENERATING_ASSETS,
+    )
+    def skip_scripting_to_assets(self) -> None:
+        """Research complete, skip scripting; operator has an existing ScriptJob."""
+        self.current_stage = PipelineStatus.GENERATING_ASSETS
+
     # Resume transitions (from PAUSED back to correct stage)
     @transition(
         field=overall_status,
