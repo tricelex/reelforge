@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from reelforge.agents.schemas import RisingTopic
@@ -42,8 +43,15 @@ class GoogleTrendsProvider:
                 interest_over_time=interest_over_time,
                 related_queries=raw.get("related_queries", []),
             )
-        except Exception:
-            logger.exception("GoogleTrendsProvider.get_interest failed for keyword='%s'", keyword)
+        except Exception as exc:
+            exc_str = str(exc)
+            if "429" in exc_str or "TooManyRequests" in exc_str:
+                logger.warning(
+                    "GoogleTrendsProvider.get_interest rate-limited (429) for keyword='%s' — returning empty TrendData",
+                    keyword,
+                )
+            else:
+                logger.exception("GoogleTrendsProvider.get_interest failed for keyword='%s'", keyword)
             return TrendData(
                 keyword=keyword,
                 interest_score=0,
@@ -52,12 +60,28 @@ class GoogleTrendsProvider:
                 related_queries=[],
             )
 
+    def get_interest_batch(self, keywords: list[str], timeframe: str = "today 3-m") -> list[TrendData]:
+        """Fetch trend data for multiple keywords in a single batch call."""
+        results = []
+        for i, kw in enumerate(keywords):
+            if i > 0:
+                time.sleep(2)
+            results.append(self.get_interest(keyword=kw, timeframe=timeframe))
+        return results
+
     def get_trending_searches(self, region: str = "US") -> list[str]:
         """Get currently trending search queries for a region."""
         try:
             return self._google.get_trending_searches(region=region)
-        except Exception:
-            logger.exception("GoogleTrendsProvider.get_trending_searches failed for region='%s'", region)
+        except Exception as exc:
+            exc_str = str(exc)
+            if "429" in exc_str or "TooManyRequests" in exc_str:
+                logger.warning(
+                    "GoogleTrendsProvider.get_trending_searches rate-limited (429) for region='%s' — returning empty list",
+                    region,
+                )
+            else:
+                logger.exception("GoogleTrendsProvider.get_trending_searches failed for region='%s'", region)
             return []
 
     def get_rising_topics(self, category: str = "") -> list[RisingTopic]:

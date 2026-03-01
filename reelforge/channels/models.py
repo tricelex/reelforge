@@ -127,7 +127,13 @@ class ChannelCompetitor(BaseAbstractModel):
     last_analyzed = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        ordering = ["channel", "channel_name"]
         unique_together = ["channel", "youtube_channel_id"]
+        verbose_name = "Channel Competitor"
+        verbose_name_plural = "Channel Competitors"
+
+    def __str__(self) -> str:
+        return f"{self.channel_name} (competitor of {self.channel.slug})"
 
 
 class ChannelPlaylist(BaseAbstractModel):
@@ -138,4 +144,12 @@ class ChannelPlaylist(BaseAbstractModel):
     name = models.CharField(max_length=255)
     niche_tag = models.CharField(max_length=100, blank=True)
     auto_assign = models.BooleanField(default=True)
-    video_count = models.PositiveIntegerField(default=0)  # Create your models here.
+    video_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["channel", "name"]
+        verbose_name = "Channel Playlist"
+        verbose_name_plural = "Channel Playlists"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.channel.slug})"

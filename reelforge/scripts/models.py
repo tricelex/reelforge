@@ -13,6 +13,9 @@ from reelforge.scripts.schemas import GeneratedHooks
 from reelforge.scripts.schemas import Hook
 from reelforge.scripts.schemas import QAIssueList
 from reelforge.scripts.schemas import ResearchData
+from reelforge.scripts.schemas import ResearchSourceList
+from reelforge.scripts.schemas import ScriptQualityFlagsSchema
+from reelforge.scripts.schemas import ScriptSectionList
 from reelforge.scripts.schemas import SegmentList
 
 
@@ -40,11 +43,11 @@ class ScriptJob(PipelineStageModel):
         help_text=_("Facts, stats, sources gathered during script research"),
         validators=[pydantic_validator(ResearchData)],
     )
-    research_sources = ArrayField(
-        models.URLField(),
+    research_sources = models.JSONField(
         default=list,
         blank=True,
-        help_text=_("URLs of sources used in script"),
+        help_text=_("Sources used in script with URL, title, and key claim."),
+        validators=[pydantic_validator(ResearchSourceList)],
     )
 
     # Generated hooks (agent creates multiple options, operator selects best)
@@ -87,6 +90,28 @@ class ScriptJob(PipelineStageModel):
         default=list,
         blank=True,
         help_text=_("Key points covered in script"),
+    )
+    sections = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_("Parsed script sections with per-section narration and b-roll indices."),
+        validators=[pydantic_validator(ScriptSectionList)],
+    )
+
+    # Quality gate
+    ready_for_production = models.BooleanField(
+        default=False,
+        help_text=_("True when agent self-review passes all quality checks."),
+    )
+    revision_notes = models.TextField(
+        blank=True,
+        help_text=_("Agent explanation if ready_for_production is False."),
+    )
+    quality_flags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Agent quality self-assessment (hook_score, faceless_compliance, etc.)."),
+        validators=[pydantic_validator(ScriptQualityFlagsSchema)],
     )
 
     # QA tracking
@@ -132,6 +157,22 @@ class ScriptJob(PipelineStageModel):
     pinned_comment = models.TextField(
         blank=True,
         help_text=_("Comment to pin on video"),
+    )
+    thumbnail_text = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_("2-5 word overlay text for thumbnail generation agent."),
+    )
+    thumbnail_emotion = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text=_("Single emotion word for thumbnail style (e.g. shock, curiosity)."),
+    )
+    search_hashtags = ArrayField(
+        models.CharField(max_length=50),
+        default=list,
+        blank=True,
+        help_text=_("3-5 hashtags for video description footer."),
     )
 
     # B-roll suggestions (structured for AssetJob)

@@ -40,10 +40,15 @@ def build_research_agent(
         return json.dumps([asdict(r) for r in results], default=str)
 
     @function_tool
-    def check_google_trends(keyword: str, timeframe: str = "today 30-d") -> str:
-        """Get search volume trend data for a keyword from Google Trends."""
-        data = trends.get_interest(keyword=keyword, timeframe=timeframe)
-        return json.dumps(asdict(data), default=str)
+    def check_google_trends_batch(keywords: list[str], timeframe: str = "today 3-m") -> str:
+        """Get search volume trend data for multiple keywords in a single call.
+
+        Pass ALL candidate keywords at once (max 10). Do not call this tool
+        one keyword at a time — always batch them into a single call.
+        Returns a list of TrendData objects, one per keyword.
+        """
+        results = trends.get_interest_batch(keywords=keywords[:10], timeframe=timeframe)
+        return json.dumps([asdict(r) for r in results], default=str)
 
     @function_tool
     def search_community_discussions(
@@ -85,38 +90,6 @@ def build_research_agent(
         """Find rising keyword trends before they peak using ExplodingTopics data."""
         rising = trends.get_rising_topics(category=category)
         return json.dumps([asdict(t) for t in rising], default=str)
-
-    @function_tool
-    def score_topic_opportunity(
-        title_idea: str,
-        keyword: str,
-        search_vol: int,
-        competition: str,
-        trend: str,
-    ) -> str:
-        """Score a topic idea on opportunity (search vol, competition, trend direction). Returns 0-100."""
-        score = 0.0
-        if search_vol > 50000:
-            score += 30
-        elif search_vol > 20000:
-            score += 20
-        elif search_vol > 5000:
-            score += 10
-        comp_map = {"LOW": 35, "MEDIUM": 20, "HIGH": 5}
-        score += comp_map.get(competition.upper(), 10)
-        trend_map = {"RISING": 25, "STABLE": 10, "DECLINING": 0}
-        score += trend_map.get(trend.upper(), 10)
-        result = {
-            "title_idea": title_idea,
-            "keyword": keyword,
-            "score": round(min(score, 100), 1),
-            "breakdown": {
-                "search_volume_score": min(search_vol // 2000, 30),
-                "competition_score": comp_map.get(competition.upper(), 10),
-                "trend_score": trend_map.get(trend.upper(), 10),
-            },
-        }
-        return json.dumps(result)
 
     channel_keywords_str = ", ".join(channel.channel_keywords) or "none yet"
     target_locations_str = ", ".join(channel.target_location) or "global"
@@ -183,8 +156,10 @@ STEP 1 — YouTube Trend Discovery
   Flag: any niche returning < 5 results → retry with a broader term before moving on.
 
 STEP 2 — Keyword Demand Validation
-  Call: check_google_trends for each top keyword (timeframe="today 3-m")
-  Read from TrendData:
+  After Step 1, collect ALL top candidate keywords (max 10).
+  Call: check_google_trends_batch ONCE with the full list (timeframe="today 3-m").
+  Do NOT call any trends tool one keyword at a time — always batch into a single call.
+  Read from each TrendData result:
     • interest_score    → < 15 = low demand (only proceed if Steps 3 + 4 signals are strong)
                           > 80 with HIGH competition = likely oversaturated; deprioritize
     • trend_direction   → prefer RISING; STABLE acceptable; DECLINING = skip unless unique angle
@@ -225,10 +200,27 @@ STEP 5 — Rising / Pre-Peak Trend Detection
     • category      → confirm it aligns with channel target_niches before including
 
 STEP 6 — Score and Rank All Candidates
-  Call: score_topic_opportunity for every candidate topic.
-  Bonus rule: add +10 to the score for any topic that appeared in BOTH Step 3 community pain points
+  Apply this scoring table directly to each candidate topic (no tool call needed):
+
+    Search volume score:
+      search_vol > 50,000  → +30
+      search_vol > 20,000  → +20
+      search_vol > 5,000   → +10
+      search_vol ≤ 5,000   → +0
+
+    Competition score:
+      LOW    → +35
+      MEDIUM → +20
+      HIGH   → +5
+
+    Trend score:
+      RISING   → +25
+      STABLE   → +10
+      DECLINING → +0
+
+  Bonus rule: add +10 for any topic that appeared in BOTH Step 3 community pain points
               AND a Step 4 competitor content gap.
-  Minimum threshold: score >= 60. Discard topics below this threshold.
+  Minimum threshold: total score >= 60. Discard topics below this threshold.
   Select the top 8–12 topics by score for the final output.
 
 ═══════════════════════════════════════════════════════════════
@@ -288,8 +280,8 @@ Good: "Close-up of a surprised 30-something man looking directly at camera, mout
 WHEN TOOLS RETURN POOR DATA
 ═══════════════════════════════════════════════════════════════
   • search_youtube_trends < 5 results           → retry with a broader niche term
-  • check_google_trends interest_score < 10     → low confidence; usable only if community
-                                                  + competitor signals are both strong
+  • check_google_trends_batch interest_score < 10 → low confidence; usable only if community
+                                                   + competitor signals are both strong
   • search_community_discussions < 5 posts      → retry with a broader term
   • research_audience_questions empty answer    → note in data_gaps; proceed with other signals
   • analyze_competitor_channels empty           → note in data_gaps; NEVER invent channel names
@@ -302,7 +294,7 @@ PRE-OUTPUT QUALITY GATE
 ═══════════════════════════════════════════════════════════════
 Before finalizing, run this checklist on EVERY topic:
 
-  □ score_topic_opportunity was called and returned score >= 60?
+  □ opportunity_score was computed using the Step 6 scoring table and is >= 60?
   □ why_it_works cites a specific number from a tool result (views, upvotes, interest_score)?
   □ hook_angle names a psychological trigger AND describes the first 15 seconds?
   □ thumbnail_concept specifies subject, emotion, text overlay, and color scheme?
@@ -354,11 +346,10 @@ Return a JSON object matching this exact schema:
 """,
         tools=[
             search_youtube_trends,
-            check_google_trends,
+            check_google_trends_batch,
             search_community_discussions,
             research_audience_questions,
             analyze_competitor_channels,
             check_exploding_topics,
-            score_topic_opportunity,
         ],
     )

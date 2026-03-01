@@ -31,7 +31,9 @@
       "Bash(DATABASE_URL=sqlite:///test.db uv run python:*)",
       "Bash(lsof:*)",
       "Bash(tail:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(docker compose:*)",
+      "Bash(uv:*)"
     ]
   }
 }

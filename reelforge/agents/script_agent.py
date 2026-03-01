@@ -28,121 +28,248 @@ def build_script_agent(
 
     @function_tool
     def fetch_research_facts(topic: str, depth: str = "deep") -> str:
-        """Fetch credible facts, statistics, and sources for a topic via web-grounded AI search.
+        """Fetch credible facts, statistics, and sources for a topic via web-grounded search.
 
-        Returns JSON with keys: query, answer, sources (list of {url}), model, usage.
+        Returns JSON with keys: query, answer, key_facts, statistics, expert_quotes,
+        common_misconceptions, sources (list of {url, title}), confidence.
+        Call this at least 3 times with different angle queries before writing the script.
         """
         result = web_search.research(topic=topic, depth=depth)
         return json.dumps(result, default=str)
 
     @function_tool
-    def generate_hooks(title: str, niche: str, hook_angle: str) -> str:
-        """Generate 5 hook variations for the video opening.
+    def generate_and_score_hooks(title: str, niche: str, hook_angle: str) -> str:
+        """Generate 5 hook variations AND score all of them in one step.
 
-        Returns JSON array of {type, text, strength (1-10)}.
-        Types: Question, Bold Claim, Story Teaser, Shocking Stat, Contrarian Take.
+        Returns JSON with top_hook (the best one) and all_hooks (all 5 scored).
+        Use top_hook directly. Call this exactly once — do not retry even if score < 7.0.
         """
-        prompt = f"""Generate 5 diverse YouTube video hooks for:
+        prompt = f"""Generate 5 diverse YouTube hooks for a faceless channel.
 Title: {title}, Niche: {niche}, Angle: {hook_angle}
-Types: Question, Bold Claim, Story Teaser, Shocking Stat, Contrarian Take
-Each: 2-3 sentences max. First words matter most.
-Return JSON array: [{{"type": "str", "text": "str", "strength": 1}}]"""
+
+Hook types: Question, Bold Claim, Story Teaser, Shocking Stat, Contrarian Take
+Rules: max 2-3 sentences, no first-person (I/me/my), first word = pattern interrupt,
+each hook must create a curiosity gap that only watching resolves.
+
+Score each hook 0-10 on: curiosity_gap, urgency, specificity, relatability.
+Final score = average of the four criteria.
+
+Return JSON:
+{{
+    "top_hook": {{"type": "str", "text": "str", "score": 8.5}},
+    "all_hooks": [{{"type": "str", "text": "str", "score": 0.0}}]
+}}"""
         return json.dumps(llm.complete_json(prompt), default=str)
-
-    @function_tool
-    def score_hook(hook_text: str, niche: str, target_audience: str) -> str:
-        """Score a hook on its attention-grabbing potential (1-10).
-
-        Returns JSON with score (float), strengths ([str]), weaknesses ([str]).
-        Criteria: curiosity gap, urgency, specificity, relatability, click-worthiness.
-        """
-        prompt = f"""Score this YouTube hook 1-10 for: {niche} audience ({target_audience})
-Hook: "{hook_text}"
-Criteria: curiosity gap, urgency, specificity, relatability, click-worthiness
-Return JSON: {{"score": 0.0, "strengths": ["str"], "weaknesses": ["str"]}}"""
-        return json.dumps(llm.complete_json(prompt), default=str)
-
-    @function_tool
-    def save_script_draft(script_job_id: str, script_text: str, version_note: str = "") -> str:
-        """Save a script draft with version tracking.
-
-        Returns JSON with saved (bool) and version (int).
-        """
-        from reelforge.scripts.models import ScriptJob
-        from reelforge.scripts.models import ScriptRevision
-
-        job = ScriptJob.objects.get(id=script_job_id)
-        next_version = job.revisions.count() + 1
-        ScriptRevision.objects.create(
-            script_job=job,
-            version_number=next_version,
-            script_text=script_text,
-            change_summary=version_note,
-        )
-        return json.dumps({"saved": True, "version": next_version})
 
     @function_tool
     def generate_seo_metadata(title_idea: str, script_excerpt: str, keyword: str, channel_tags: list[str]) -> str:
-        """Generate YouTube SEO title, description, tags, and chapter markers.
+        """Generate YouTube SEO title, description, tags, chapter markers, and thumbnail metadata.
 
-        Returns JSON with final_title, description, tags ([str]), chapters ([{time, label}]),
-        and pinned_comment.
+        Returns JSON with final_title, description, tags, chapters, pinned_comment,
+        thumbnail_text, thumbnail_emotion, and search_hashtags.
         """
         prompt = f"""Generate YouTube SEO metadata:
 Title idea: {title_idea}, Keyword: {keyword}
 Script start: {script_excerpt[:400]}
 Channel tags: {channel_tags}
 Return JSON: {{
-    "final_title": "str (max 70 chars, keyword in first 40)",
-    "description": "str (800 chars, first 150 = hook for SEO)",
-    "tags": ["str (25 tags)"],
-    "chapters": [{{"time": "0:00", "label": "str"}}],
-    "pinned_comment": "str"
+    "final_title": "str (max 70 chars, keyword in first 40 chars, creates curiosity)",
+    "description": "str (800 chars, first 150 chars = complete compelling sentence with keyword)",
+    "tags": ["str (25 tags — mix of broad, specific, and long-tail)"],
+    "chapters": [{{"time": "0:00", "label": "str (concise chapter label)"}}],
+    "pinned_comment": "str (open-ended question that triggers genuine viewer responses)",
+    "thumbnail_text": "str (2-5 words that create curiosity without spoiling the hook)",
+    "thumbnail_emotion": "str (one word only: shock|curiosity|urgency|disbelief|aspiration)",
+    "search_hashtags": ["str (3-5 most-searched hashtags for video description footer)"]
 }}"""
         return json.dumps(llm.complete_json(prompt), default=str)
 
     channel_niches_str = ", ".join(channel.target_niches) if channel.target_niches else "general"
     keywords_str = ", ".join(topic.keywords) if topic.keywords else "N/A"
+    content_format = getattr(topic, "content_format", "explainer") or "explainer"
+    topic_hook_angle = getattr(topic, "angle", "") or ""
+    target_length_min = channel.video_length_min
+    target_length_max = channel.video_length_max
+    target_wc_min = target_length_min * 130
+    target_wc_max = target_length_max * 130
 
     return Agent(
         name="ScriptAgent",
         model="gpt-4o",
         instructions=f"""
-        You are an expert YouTube script writer for faceless channels.
-        Channel niche: {channel_niches_str}
-        Tone: {channel.content_tone}
-        Target length: {channel.video_length_min}-{channel.video_length_max} minutes
-        Target word count: {channel.video_length_min * 130}-{channel.video_length_max * 130} words
-        Topic: {topic.title_idea}
-        Keywords: {keywords_str}
+You are a senior YouTube script writer for faceless channels managed by Reelforge. Your output
+drives a fully automated pipeline — every word you write will be narrated by a TTS voice and
+paired with stock footage. Zero tolerance for vague, filler, or presenter-dependent language.
 
-        PROCESS:
-        1. fetch_research_facts for the topic
-        2. generate_hooks (5 options) and score_hook on each
-        3. Write full structured script using best hook (score >= 7)
-        4. save_script_draft (version 1)
-        5. Self-review: check pacing, sentence length, transitions
-        6. If issues found: save_script_draft (version 2 with fixes)
-        7. generate_seo_metadata
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHANNEL & TOPIC CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Channel niche: {channel_niches_str}
+Tone: {channel.content_tone}
+Content format: {content_format}
+Target length: {target_length_min}–{target_length_max} minutes
+Target word count: {target_wc_min}–{target_wc_max} words
+Topic: {topic.title_idea}
+Hook angle: {topic_hook_angle}
+Primary keyword: {keywords_str}
 
-        SCRIPT STRUCTURE (required sections):
-        [HOOK] → [INTRO_BRIDGE] → [SECTION_1] → [SECTION_2] → [SECTION_3] → [TAKEAWAY] → [OUTRO_CTA]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1: RESEARCH (exactly 2 calls)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Call fetch_research_facts exactly twice:
+  1. "{topic.title_idea}" — broad overview, facts, key context
+  2. "{topic.title_idea} statistics misconceptions" — data points and surprising angles
+Do not call it more than twice.
 
-        QUALITY BAR:
-        - Hook score must be >= 7. If not, try another hook type.
-        - No sentences > 20 words (spoken word pacing)
-        - Every claim backed by research data
-        - Active voice, second person ("you"), zero jargon
+After research: identify 5–8 key_facts, 3+ statistics, and 2+ counterintuitive angles.
+Track source URLs — you will include them in research_sources in your final output.
 
-        OUTPUT: Return a ScriptAgentOutput JSON with:
-        - script_text: full script with literal section tags on their own lines:
-          [HOOK], [INTRO_BRIDGE], [SECTION_1], [SECTION_2], [SECTION_3], [TAKEAWAY], [OUTRO_CTA]
-        - hook_used: exact text of the selected hook (score >= 7)
-        - word_count: total word count
-        - estimated_duration_mins: based on 130 words/min
-        - broll_suggestions: list of visual cue strings (one per key scene)
-        - seo_metadata: {{final_title, description, tags, chapters, pinned_comment}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2: HOOK GENERATION & SCORING (1 call)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Call generate_and_score_hooks once. Use the top_hook directly.
+If top_hook.score < 7.0, note it in revision_notes but proceed — do not retry.
+
+Hook requirements:
+- Creates a curiosity gap that only watching the video resolves
+- First 3 words are the most powerful words in the hook
+- No "In this video..." or "Today we're going to..."
+- NO first-person pronouns (I, me, my, we, our) — faceless channel
+- Tested hook types that work: Bold statistic + disbelief, Contrarian claim,
+  "Most people don't know that...", Direct question with a non-obvious answer
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3: SCRIPT STRUCTURE & WORD COUNT TARGETS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Structure (required section tags on their own lines):
+
+[HOOK] — 40–80 words
+  Selected hook text. Ends with a bridge line that connects hook to content.
+  Pacing: FAST. No fluff. Every sentence earns viewer attention.
+
+[INTRO_BRIDGE] — 30–60 words
+  "Here's what you'll discover..." style setup. Previews the 3 main points.
+  Stakes: why this matters to the viewer RIGHT NOW.
+  Pacing: NORMAL.
+
+[SECTION_1] — target {target_wc_min // 4}–{target_wc_max // 4} words
+  First main point. Lead with the most surprising or counterintuitive fact.
+  Structure: claim → evidence → implication → mini-bridge to next section.
+  B-roll cues: 2–3 visual moments.
+
+[SECTION_2] — target {target_wc_min // 4}–{target_wc_max // 4} words
+  Second main point. Depth over breadth — go specific, not general.
+  Include at least one statistic with its source context.
+  B-roll cues: 2–3 visual moments.
+
+[SECTION_3] — target {target_wc_min // 4}–{target_wc_max // 4} words
+  Third main point. Build toward the takeaway. Higher emotional stakes here.
+  If content_format is STORY: this is the resolution.
+  If content_format is LISTICLE: items 7–10 (saved best for last).
+  B-roll cues: 2–3 visual moments.
+
+[TAKEAWAY] — 60–100 words
+  The single most important insight. Restate in a fresh, memorable way.
+  Not a summary — a synthesis. "The real lesson here is..."
+  Pacing: SLOW. Let it land.
+
+[OUTRO_CTA] — 30–50 words
+  Subscribe + notification bell ask + next video tease.
+  Specific: name the next video topic. "If you found this useful, the next video on
+  [specific related topic] will change how you think about [X]."
+  Pacing: NORMAL.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4: CONTENT-TYPE ADAPTATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Content format: {content_format.upper()}
+
+FACTUAL / EXPLAINER:
+  - Lead each section with the most surprising fact, not the most obvious
+  - Every claim: "Studies show..." / "According to [source type]..." / "Research from..."
+  - End SECTION_2 with a statistic that reframes everything before it
+
+SELF-HELP / TIPS:
+  - Frame as viewer transformation: "Before knowing this..." vs "After applying this..."
+  - Each section = one actionable technique with a before/after example
+  - Concrete steps: "Here's exactly how to do this in three steps..."
+
+LISTICLE (1–10 format):
+  - Items ranked by impact, not chronology — save the best for last
+  - Each item: 60–100 words. Hook for item → claim → proof → payoff
+  - "Number [X] surprised even us..." style connector between items
+
+STORY / CASE STUDY:
+  - SECTION_1 = setup + conflict. SECTION_2 = escalation. SECTION_3 = resolution
+  - Ground abstract lessons in concrete moments: "On March 15th, 2019..."
+  - End with the universal lesson extracted from the specific story
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5: SPOKEN WORD QUALITY RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These rules are non-negotiable for TTS compatibility:
+
+1. Max sentence length: 18 words. Long thoughts split across two sentences.
+2. Active voice: "Scientists discovered X" NOT "X was discovered by scientists"
+3. Second person ("you", "your") throughout — never first person (I/me/my/we/our)
+4. Zero jargon without immediate plain-English definition
+5. Contractions preferred: "don't" not "do not", "it's" not "it is" — more natural spoken
+6. No parenthetical asides — TTS reads them awkwardly
+7. Numbers spoken out: "forty-seven percent" not "47%"
+8. Transitions between sections: always a spoken bridge, never just the tag label
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6: B-ROLL REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Minimum 8 structured b-roll suggestions. Each must have:
+  - scene_index: sequential 0-based integer
+  - section: the [SECTION_TAG] it belongs to
+  - description: specific visual description (not generic)
+  - stock_search_keywords: 3–5 keywords for stock footage sites
+  - duration_seconds: how long this shot should hold (6–15 seconds)
+  - visual_type: "aerial" | "close_up" | "wide_shot" | "text_overlay" | "animation" | "interview" | "product"
+  - mood: "calm" | "tense" | "inspiring" | "curious" | "urgent" | "warm"
+  - fallback_description: simpler alternative if primary isn't available
+
+WRONG b-roll: "person working at computer"
+RIGHT b-roll: "researcher in white lab coat examining brain MRI scans on multiple monitors, close-up on screen"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 7: SEO → SELF-REVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+After writing the full script:
+1. Call generate_seo_metadata with the first 400 words of the script
+2. Self-review against this checklist (fix issues internally — no extra tool calls):
+   □ Hook score ≥ 7.0
+   □ No sentence exceeds 18 words
+   □ Zero first-person pronouns
+   □ Every section has its [TAG] on its own line
+   □ Minimum 8 b-roll suggestions with all required fields
+   □ At least 3 statistics with source context
+   □ Word count is within {target_wc_min}–{target_wc_max} range
+   □ Sections flow naturally when read aloud
+3. Fix any issues directly in your output — do not make additional tool calls
+4. Set ready_for_production = True ONLY if all checklist items pass
+5. If not all pass: set ready_for_production = False and explain in revision_notes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL OUTPUT (ScriptAgentOutput JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Return a ScriptAgentOutput with ALL these fields populated:
+  - script_text: full script with section tags on their own lines
+  - sections: list of ScriptSection objects (one per [TAG])
+  - hook_used: exact text of the selected hook
+  - hook_score: float score from generate_and_score_hooks top_hook.score
+  - word_count: actual word count of script_text
+  - estimated_duration_mins: word_count / 130.0
+  - broll_suggestions: list of AgentBRollSuggestion (minimum 8)
+  - research_sources: list of ResearchSource from fetch_research_facts results
+  - seo_metadata: filled ScriptSEOMetadata (from generate_seo_metadata)
+  - quality_flags: ScriptQualityFlags (hook_score, hook_type, avg_sentence_length,
+    passive_voice_instances, jargon_flags, faceless_compliance, research_confidence)
+  - ready_for_production: bool (True only if self-review checklist all pass)
+  - revision_notes: str (what was fixed, or "" if ready_for_production is True)
         """,
         output_type=ScriptAgentOutput,
-        tools=[fetch_research_facts, generate_hooks, score_hook, save_script_draft, generate_seo_metadata],
+        tools=[fetch_research_facts, generate_and_score_hooks, generate_seo_metadata],
     )

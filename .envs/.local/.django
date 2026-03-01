@@ -19,6 +19,7 @@ YOUTUBE_API_KEY=
 REDDIT_CLIENT_ID=
 REDDIT_CLIENT_SECRET=
 PERPLEXITY_API_KEY=
+TAVILY_API_KEY=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
 
 # YouTube OAuth (web application credentials from Google Cloud Console)
 # ------------------------------------------------------------------------------

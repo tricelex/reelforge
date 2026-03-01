@@ -647,8 +647,11 @@ REPLICATE_API_KEY = env("REPLICATE_API_KEY", default="")
 # YouTube API (for research and analytics)
 YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
 
-# Perplexity API (for research)
+# Perplexity API (for research — kept as alternative web_search_perplexity provider)
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+
+# Tavily AI search (primary web_search provider)
+TAVILY_API_KEY = env("TAVILY_API_KEY", default="")
 
 
 # === API Keys ===
