@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel
@@ -90,6 +91,48 @@ class ResearchAgentOutput(BaseModel):
 # ── Script Agent Output ───────────────────────────────────────────────────────
 
 
+class ScriptSectionTag(StrEnum):
+    HOOK = "HOOK"
+    INTRO_BRIDGE = "INTRO_BRIDGE"
+    SECTION_1 = "SECTION_1"
+    SECTION_2 = "SECTION_2"
+    SECTION_3 = "SECTION_3"
+    TAKEAWAY = "TAKEAWAY"
+    OUTRO_CTA = "OUTRO_CTA"
+
+
+class NarratorPacing(StrEnum):
+    SLOW = "SLOW"
+    NORMAL = "NORMAL"
+    FAST = "FAST"
+    WHISPER = "WHISPER"
+
+
+class AgentBRollSuggestion(BaseModel):
+    """Structured B-roll cue as returned by the ScriptAgent."""
+
+    scene_index: int = 0
+    section: ScriptSectionTag = ScriptSectionTag.SECTION_1
+    description: str = ""
+    stock_search_keywords: list[str] = []
+    duration_seconds: int = 8
+    visual_type: str = ""
+    mood: str = ""
+    fallback_description: str = ""
+
+
+class ScriptSection(BaseModel):
+    """A single script section with narration and b-roll metadata."""
+
+    tag: ScriptSectionTag
+    content: str = ""
+    word_count: int = 0
+    estimated_duration_seconds: int = 0
+    narrator_pacing: NarratorPacing = NarratorPacing.NORMAL
+    narrator_notes: str = ""
+    broll_indices: list[int] = []
+
+
 class ScriptChapter(BaseModel):
     """Chapter marker as returned by the ScriptAgent (maps to ChapterList schema on save)."""
 
@@ -103,12 +146,41 @@ class ScriptSEOMetadata(BaseModel):
     tags: list[str] = []
     chapters: list[ScriptChapter] = []
     pinned_comment: str = ""
+    thumbnail_text: str = ""
+    thumbnail_emotion: str = ""
+    search_hashtags: list[str] = []
+
+
+class ResearchSource(BaseModel):
+    """A research source cited in the script."""
+
+    url: str = ""
+    title: str = ""
+    key_claim: str = ""
+
+
+class ScriptQualityFlags(BaseModel):
+    """Agent self-assessment of script quality."""
+
+    hook_score: float = 0.0
+    hook_type: str = ""
+    avg_sentence_length: float = 0.0
+    passive_voice_instances: int = 0
+    jargon_flags: list[str] = []
+    faceless_compliance: bool = False
+    research_confidence: str = "LOW"
 
 
 class ScriptAgentOutput(BaseModel):
     script_text: str = ""  # Full script with [SECTION] markers
+    sections: list[ScriptSection] = []
     hook_used: str = ""  # Text of the winning hook
+    hook_score: float = 0.0
     word_count: int = 0
     estimated_duration_mins: float = 0.0
-    broll_suggestions: list[str] = []  # Plain strings; converted to BRollSuggestion on save
+    broll_suggestions: list[AgentBRollSuggestion] = []
+    research_sources: list[ResearchSource] = []
     seo_metadata: ScriptSEOMetadata = ScriptSEOMetadata()
+    quality_flags: ScriptQualityFlags = ScriptQualityFlags()
+    ready_for_production: bool = False
+    revision_notes: str = ""

@@ -707,10 +707,10 @@ class PipelineEventAdmin(ModelAdmin):
         return False
 
     def has_change_permission(self, request: HttpRequest, obj: PipelineEvent | None = None) -> bool:
-        return False
+        return True
 
     def has_delete_permission(self, request: HttpRequest, obj: PipelineEvent | None = None) -> bool:
-        return False
+        return True
 
     @display(
         description=_("Event Type"),

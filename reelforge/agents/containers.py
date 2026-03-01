@@ -4,6 +4,7 @@ from dependency_injector import containers
 from dependency_injector import providers
 
 from ***REMOVED***.agents.providers.hackernews import HackerNewsProvider
+from ***REMOVED***.agents.providers.tavily import TavilyProvider
 from ***REMOVED***.agents.providers.trends import GoogleTrendsProvider
 from ***REMOVED***.agents.providers.web_search import PerplexityProvider
 from ***REMOVED***.agents.providers.youtube import YouTubeProvider
@@ -17,6 +18,7 @@ from ***REMOVED***.services.providers.llm.openai import OpenAIProvider
 from ***REMOVED***.services.providers.tts.elevenlabs import ElevenLabsProvider
 from ***REMOVED***.services.providers.tts.mock import MockTTSProvider
 from ***REMOVED***.services.rising_topics.client import RisingTopicsClient
+from ***REMOVED***.services.tavily.client import TavilyResearchClient
 from ***REMOVED***.services.youtube.client import YouTubeClient
 
 
@@ -53,6 +55,11 @@ class AgentContainer(containers.DeclarativeContainer):
         api_key=config.perplexity_api_key,
     )
 
+    tavily_client: providers.Singleton[TavilyResearchClient] = providers.Singleton(
+        TavilyResearchClient,
+        api_key=config.tavily_api_key,
+    )
+
     # ── Providers — what consumers depend on ─────────────────────────────────
 
     video_search: providers.Singleton[YouTubeProvider] = providers.Singleton(
@@ -71,7 +78,7 @@ class AgentContainer(containers.DeclarativeContainer):
         client=hackernews_client,
     )
 
-    web_search: providers.Singleton[PerplexityProvider] = providers.Singleton(
+    web_search_perplexity: providers.Singleton[PerplexityProvider] = providers.Singleton(
         PerplexityProvider,
         client=perplexity_client,
     )
@@ -87,6 +94,14 @@ class AgentContainer(containers.DeclarativeContainer):
         OpenAIProvider,
         api_key=config.openai_api_key,
     )
+
+    web_search_tavily: providers.Singleton[TavilyProvider] = providers.Singleton(
+        TavilyProvider,
+        client=tavily_client,
+    )
+
+    # Default web_search uses Tavily AI search
+    web_search = web_search_tavily
 
     # ── TTS providers ─────────────────────────────────────────────────────────
 

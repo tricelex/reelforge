@@ -58,16 +58,66 @@ class ChapterList(RootModel[list[Chapter]]):
 
 
 class BRollSuggestion(BaseModel):
-    """A single B-roll cue for image generation."""
+    """A single B-roll cue for image generation (stored format for AssetJob consumption)."""
 
-    timestamp_approx: int = 0  # seconds from start
+    scene_index: int = 0
+    section: str = ""
     description: str = ""
+    stock_search_keywords: list[str] = []
+    duration_seconds: int = 8
+    visual_type: str = ""
+    mood: str = ""
+    fallback_description: str = ""
 
 
 class BRollSuggestions(RootModel[list[BRollSuggestion]]):
     """B-roll cues consumed by AssetJob for image generation."""
 
     root: list[BRollSuggestion] = []
+
+
+class ScriptSectionItem(BaseModel):
+    """Stored script section (mirrors AgentScriptSection but uses plain strings for DB)."""
+
+    tag: str = ""
+    content: str = ""
+    word_count: int = 0
+    estimated_duration_seconds: int = 0
+    narrator_pacing: str = "NORMAL"
+    narrator_notes: str = ""
+    broll_indices: list[int] = []
+
+
+class ScriptSectionList(RootModel[list[ScriptSectionItem]]):
+    """Parsed script sections stored on ScriptJob."""
+
+    root: list[ScriptSectionItem] = []
+
+
+class ScriptQualityFlagsSchema(BaseModel):
+    """Agent quality self-assessment stored on ScriptJob."""
+
+    hook_score: float = 0.0
+    hook_type: str = ""
+    avg_sentence_length: float = 0.0
+    passive_voice_instances: int = 0
+    jargon_flags: list[str] = []
+    faceless_compliance: bool = False
+    research_confidence: str = "LOW"
+
+
+class ResearchSourceItem(BaseModel):
+    """A single research source stored on ScriptJob."""
+
+    url: str = ""
+    title: str = ""
+    key_claim: str = ""
+
+
+class ResearchSourceList(RootModel[list[ResearchSourceItem]]):
+    """Research sources stored on ScriptJob."""
+
+    root: list[ResearchSourceItem] = []
 
 
 class Segment(BaseModel):

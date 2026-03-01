@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import ROUND_HALF_UP
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from typing import Any
@@ -25,6 +26,7 @@ logger = get_task_logger(__name__)
 # GPT-4o pricing (per 1M tokens) — used to estimate cost per research run
 _GPT4O_INPUT_COST_PER_M = Decimal("2.50")
 _GPT4O_OUTPUT_COST_PER_M = Decimal("10.00")
+_SIX_PLACES = Decimal("0.000001")
 
 
 class _NullVideoSearchProvider:
@@ -198,7 +200,7 @@ def run_script_job(
             Runner.run(
                 agent,
                 input=f"Write a full script for: {topic.title_idea}",
-                max_turns=30,
+                max_turns=12,
             )
         )
         _save_script_results(job, result)
@@ -490,9 +492,10 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     total_output = sum(r.usage.output_tokens for r in result.raw_responses)
     total_tokens = total_input + total_output
 
-    cost_usd = Decimal(str(total_input)) * _GPT4O_INPUT_COST_PER_M / Decimal(1000000) + Decimal(
-        str(total_output)
-    ) * _GPT4O_OUTPUT_COST_PER_M / Decimal(1000000)
+    cost_usd = (
+        Decimal(str(total_input)) * _GPT4O_INPUT_COST_PER_M / Decimal(1000000)
+        + Decimal(str(total_output)) * _GPT4O_OUTPUT_COST_PER_M / Decimal(1000000)
+    ).quantize(_SIX_PLACES, rounding=ROUND_HALF_UP)
 
     agent_run_id = result.last_response_id or ""
 
@@ -553,7 +556,9 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
         "DECLINING": TrendDirection.DECLINING,
     }
 
-    per_topic_cost = (cost_usd / len(output.topics)) if output.topics else Decimal(0)
+    per_topic_cost = (
+        (cost_usd / len(output.topics)).quantize(_SIX_PLACES, rounding=ROUND_HALF_UP) if output.topics else Decimal(0)
+    )
 
     topic_objects = [
         TopicIdea(
@@ -662,42 +667,113 @@ def _save_script_results(job: Any, result: Any) -> None:
 
     seo = output.seo_metadata
 
-    # Convert broll_suggestions: list[str] → list[{"timestamp_approx": 0, "description": str}]
-    broll = [{"timestamp_approx": 0, "description": s} for s in output.broll_suggestions]
+    # Convert AgentBRollSuggestion → stored BRollSuggestion format
+    broll = [
+        {
+            "scene_index": b.scene_index,
+            "section": b.section,
+            "description": b.description,
+            "stock_search_keywords": b.stock_search_keywords,
+            "duration_seconds": b.duration_seconds,
+            "visual_type": b.visual_type,
+            "mood": b.mood,
+            "fallback_description": b.fallback_description,
+        }
+        for b in output.broll_suggestions
+    ]
+
+    # Convert ScriptSection → stored format
+    sections = [
+        {
+            "tag": s.tag,
+            "content": s.content,
+            "word_count": s.word_count,
+            "estimated_duration_seconds": s.estimated_duration_seconds,
+            "narrator_pacing": s.narrator_pacing,
+            "narrator_notes": s.narrator_notes,
+            "broll_indices": s.broll_indices,
+        }
+        for s in output.sections
+    ]
+
+    # Convert ResearchSource → stored format
+    research_sources = [{"url": r.url, "title": r.title, "key_claim": r.key_claim} for r in output.research_sources]
 
     # Convert chapters: ScriptChapter(time, label) → Chapter(timestamp, title)
     chapters = [{"timestamp": c.time, "title": c.label} for c in seo.chapters]
 
-    # Store hook_used as a single generated_hooks entry (full list not in final output)
+    # Store hook_used as a generated_hooks entry with score from quality_flags
     generated_hooks: list[dict[str, Any]] = []
     if output.hook_used:
-        generated_hooks = [{"text": output.hook_used, "type": "statement", "score": 0.0}]
+        hook_type = output.quality_flags.hook_type or "statement"
+        generated_hooks = [{"text": output.hook_used, "type": hook_type, "score": output.hook_score}]
+
+    # Quality flags dict
+    qf = output.quality_flags
+    quality_flags: dict[str, Any] = {
+        "hook_score": qf.hook_score,
+        "hook_type": qf.hook_type,
+        "avg_sentence_length": qf.avg_sentence_length,
+        "passive_voice_instances": qf.passive_voice_instances,
+        "jargon_flags": qf.jargon_flags,
+        "faceless_compliance": qf.faceless_compliance,
+        "research_confidence": qf.research_confidence,
+    }
 
     job.script_text = output.script_text
+    job.sections = sections
     job.word_count = output.word_count
     job.estimated_duration_mins = output.estimated_duration_mins
     job.broll_suggestions = broll
+    job.research_sources = research_sources
+    job.hook_score = output.hook_score
+    job.generated_hooks = generated_hooks
+    job.quality_flags = quality_flags
+    job.ready_for_production = output.ready_for_production
+    job.revision_notes = output.revision_notes
     job.final_title = seo.final_title
     job.final_description = seo.description
     job.seo_tags = seo.tags
     job.chapters = chapters
     job.pinned_comment = seo.pinned_comment
-    job.generated_hooks = generated_hooks
+    job.thumbnail_text = seo.thumbnail_text
+    job.thumbnail_emotion = seo.thumbnail_emotion
+    job.search_hashtags = list(seo.search_hashtags)
 
     job.save(
         update_fields=[
             "script_text",
+            "sections",
             "word_count",
             "estimated_duration_mins",
             "broll_suggestions",
+            "research_sources",
+            "hook_score",
+            "generated_hooks",
+            "quality_flags",
+            "ready_for_production",
+            "revision_notes",
             "final_title",
             "final_description",
             "seo_tags",
             "chapters",
             "pinned_comment",
-            "generated_hooks",
+            "thumbnail_text",
+            "thumbnail_emotion",
+            "search_hashtags",
             "updated_at",
         ]
+    )
+
+    # Auto-create version 1 revision — replaces save_script_draft tool call
+    from ***REMOVED***.scripts.models import ScriptRevision
+
+    ScriptRevision.objects.create(
+        script_job=job,
+        version_number=1,
+        script_text=output.script_text,
+        word_count=output.word_count,
+        change_summary="Agent v1 — auto-saved from pipeline",
     )
 
     logger.info(
@@ -707,6 +783,9 @@ def _save_script_results(job: Any, result: Any) -> None:
             "word_count": job.word_count,
             "final_title": job.final_title,
             "broll_count": len(broll),
+            "ready_for_production": output.ready_for_production,
+            "hook_score": output.hook_score,
+            "research_sources_count": len(research_sources),
         },
     )
 

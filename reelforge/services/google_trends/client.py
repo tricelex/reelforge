@@ -8,6 +8,35 @@ from ***REMOVED***.services.google_trends.exceptions import GoogleTrendsAPIError
 logger = logging.getLogger("***REMOVED***.google_trends.client")
 
 
+def _patch_urllib3_for_pytrends() -> None:
+    """Translate deprecated method_whitelist → allowed_methods for pytrends compatibility.
+
+    pytrends>=4.9.2 passes method_whitelist to urllib3.Retry, which was renamed to
+    allowed_methods in urllib3>=2.0. This shim prevents the TypeError on every call.
+    """
+    try:
+        import urllib3.util.retry as _retry_mod  # type: ignore[import-untyped]
+
+        _orig_init = _retry_mod.Retry.__init__
+
+        def _compat_init(
+            self: Any,
+            *args: Any,
+            method_whitelist: Any = None,
+            **kwargs: Any,
+        ) -> None:
+            if method_whitelist is not None and "allowed_methods" not in kwargs:
+                kwargs["allowed_methods"] = method_whitelist
+            _orig_init(self, *args, **kwargs)
+
+        _retry_mod.Retry.__init__ = _compat_init  # type: ignore[method-assign]
+    except Exception:
+        logger.warning("Could not patch urllib3.Retry for pytrends compatibility")
+
+
+_patch_urllib3_for_pytrends()
+
+
 class GoogleTrendsClient:
     """Google Trends client using the pytrends library (unofficial API)."""
 
@@ -18,7 +47,7 @@ class GoogleTrendsClient:
         if self._pytrends is None:
             from pytrends.request import TrendReq  # type: ignore[import-untyped]
 
-            self._pytrends = TrendReq(hl="en-US", tz=360, timeout=(10, 25))
+            self._pytrends = TrendReq(hl="en-US", tz=360, timeout=(10, 25), retries=3, backoff_factor=0.1)
         return self._pytrends
 
     def get_interest(self, keyword: str, timeframe: str = "today 30-d") -> dict[str, Any]:

@@ -295,4 +295,5 @@ dependencies = [
     "google-api-python-client>=2.0.0",
     "google-auth-oauthlib>=1.2.4",
     "elevenlabs>=2.36.1",
+    "tavily-python>=0.5.0",
 ]

@@ -186,19 +186,19 @@ class PipelineStageModel(BaseAbstractModel):
 
     def mark_completed(self) -> None:
         self.complete()
-        self.save()
+        self.save(update_fields=["status", "completed_at"])
 
     def mark_failed(self, error: str, trace: str = "") -> None:
         self.fail(error=error, trace=trace)
-        self.save()
+        self.save(update_fields=["status", "last_error", "error_trace"])
 
     def mark_paused(self, reason: str = "") -> None:
         self.pause(reason=reason)
-        self.save()
+        self.save(update_fields=["status", "notes"])
 
     def increment_retry(self) -> None:
         self.retry()
-        self.save()
+        self.save(update_fields=["status", "retry_count", "last_error", "started_at"])
 
     @property
     def available_transitions(self) -> list[str]:

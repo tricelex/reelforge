@@ -26,13 +26,12 @@ class ChannelCompetitorInline(TabularInline):
     model = ChannelCompetitor
     extra = 0
     fields = [
-        "youtube_channel_id",
-        "channel_name",
+        # "channel_name",
         "channel_url",
         "subscriber_count",
         "last_analyzed",
     ]
-    readonly_fields = ["last_analyzed"]
+    readonly_fields = ["last_analyzed", "subscriber_count"]
 
 
 class ChannelPlaylistInline(TabularInline):
