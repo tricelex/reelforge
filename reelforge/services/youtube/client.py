@@ -21,16 +21,20 @@ logger = logging.getLogger("***REMOVED***.youtube.client")
 
 
 class YouTubeClient:
-    def __init__(self, api_key: str) -> None:
-        if not api_key:
-            msg = "YouTubeClient requires an API key. Set YOUTUBE_API_KEY in .envs/.local/.django."
-            raise YouTubeAuthError(msg)
+    """YouTube Data API v3 client — OAuth-only operations (upload, analytics).
+
+    Use `from_channel()` or `from_credential()` to instantiate with OAuth.
+    Direct instantiation is provided for completeness but all current methods
+    require OAuth via `_require_auth()`.
+    """
+
+    def __init__(self, api_key: str = "") -> None:
         self.api_key = api_key
         self._is_authenticated: bool = False
         self._service: Any = googleapiclient.discovery.build(
             "youtube",
             "v3",
-            developerKey=api_key,
+            developerKey=api_key or None,
             credentials=AnonymousCredentials(),
         )
 
@@ -86,87 +90,6 @@ class YouTubeClient:
             raise YouTubeAuthError(msg) from exc
         msg = f"YouTube API error: {exc}"
         raise YouTubeAPIError(msg, status_code=status) from exc
-
-    def search_videos(
-        self,
-        query: str,
-        max_results: int = 25,
-        order: str = "relevance",
-    ) -> list[dict[str, Any]]:
-        try:
-            response: dict[str, Any] = (
-                self._service.search()
-                .list(
-                    part="snippet",
-                    q=query,
-                    type="video",
-                    maxResults=max_results,
-                    order=order,
-                )
-                .execute()
-            )
-        except HttpError as exc:
-            self._handle_http_error(exc)
-        return response.get("items", [])
-
-    def get_trending_videos(
-        self,
-        region: str = "US",
-        category_id: str = "",
-        max_results: int = 50,
-    ) -> list[dict[str, Any]]:
-        kwargs: dict[str, Any] = {
-            "part": "snippet,statistics,contentDetails",
-            "chart": "mostPopular",
-            "regionCode": region,
-            "maxResults": max_results,
-        }
-        if category_id:
-            kwargs["videoCategoryId"] = category_id
-        try:
-            response: dict[str, Any] = self._service.videos().list(**kwargs).execute()
-        except HttpError as exc:
-            self._handle_http_error(exc)
-        return response.get("items", [])
-
-    def get_channel_videos(
-        self,
-        channel_id: str,
-        max_results: int = 25,
-    ) -> list[dict[str, Any]]:
-        try:
-            response: dict[str, Any] = (
-                self._service.search()
-                .list(
-                    part="snippet",
-                    channelId=channel_id,
-                    type="video",
-                    order="date",
-                    maxResults=max_results,
-                )
-                .execute()
-            )
-        except HttpError as exc:
-            self._handle_http_error(exc)
-        return response.get("items", [])
-
-    def get_channel_stats(self, channel_id: str) -> dict[str, Any]:
-        try:
-            response: dict[str, Any] = self._service.channels().list(part="statistics,snippet", id=channel_id).execute()
-        except HttpError as exc:
-            self._handle_http_error(exc)
-        items: list[dict[str, Any]] = response.get("items", [])
-        return items[0] if items else {}
-
-    def get_video_details(self, video_id: str) -> dict[str, Any]:
-        try:
-            response: dict[str, Any] = (
-                self._service.videos().list(part="snippet,statistics,contentDetails", id=video_id).execute()
-            )
-        except HttpError as exc:
-            self._handle_http_error(exc)
-        items: list[dict[str, Any]] = response.get("items", [])
-        return items[0] if items else {}
 
     def get_my_channel(self) -> dict[str, Any]:
         """Return the authenticated user's own channel info (requires OAuth)."""

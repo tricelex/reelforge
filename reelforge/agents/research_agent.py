@@ -56,10 +56,10 @@ def build_research_agent(
         query: str | None = None,
         limit: int = 20,
     ) -> str:
-        """Search HackerNews for upvoted discussions and Ask HN questions about a niche.
+        """Search web community discussions (Reddit, forums, HN) about a niche.
 
-        Returns posts sorted by score (upvotes). High scores indicate strong community
-        interest. 'Ask HN:' posts reveal real questions people want answered.
+        Returns posts sorted by position. High-ranking results indicate strong community
+        interest. Forum questions reveal real topics people want answered on video.
         """
         posts = community.search_discussions(niche=niche, query=query, limit=limit)
         return json.dumps([asdict(p) for p in posts], default=str)
@@ -87,7 +87,7 @@ def build_research_agent(
 
     @function_tool
     def check_exploding_topics(category: str) -> str:
-        """Find rising keyword trends before they peak using ExplodingTopics data."""
+        """Find rising keyword trends before they peak using Google Trends rising topics data via SerpAPI."""
         rising = trends.get_rising_topics(category=category)
         return json.dumps([asdict(t) for t in rising], default=str)
 
@@ -169,13 +169,11 @@ STEP 2 — Keyword Demand Validation
 STEP 3 — Community Intelligence
   Call: search_community_discussions for each niche (limit=25)
   Then call: research_audience_questions for each niche
-  Read from CommunityPost (HackerNews):
-    • score (upvotes)         → demand proxy — higher = more people care about this topic
-    • num_comments >= 50      → confusion or controversy signal → prime video opportunity
-    • high score + low comments → passive agreement → evergreen explanation topic
+  Read from CommunityPost (web community discussions):
+    • score (position)        → lower position = more relevant result from Google
     • post title vocabulary   → exact words to use in the video title (audiences search
-                                 the same words they write in posts)
-    • "Ask HN:" prefix        → these are literal questions people want answered on video
+                                 the same words they write in forum posts)
+    • url domain              → reddit.com, news.ycombinator.com, quora.com = high trust sources
   Read from research_audience_questions (Perplexity web search):
     • Identifies pain points and beginner confusions across all niches
     • Use cited questions as title angles — real vocabulary from real audiences

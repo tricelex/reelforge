@@ -19,8 +19,7 @@ class AgentsConfig(AppConfig):
         container = AgentContainer()
         container.config.from_dict(
             {
-                "youtube_api_key": getattr(settings, "YOUTUBE_API_KEY", ""),
-                "perplexity_api_key": getattr(settings, "PERPLEXITY_API_KEY", ""),
+                "serpapi_api_key": getattr(settings, "SERPAPI_API_KEY", ""),
                 "tavily_api_key": getattr(settings, "TAVILY_API_KEY", ""),
                 "anthropic_api_key": getattr(settings, "ANTHROPIC_API_KEY", ""),
                 "openai_api_key": getattr(settings, "OPENAI_API_KEY", ""),

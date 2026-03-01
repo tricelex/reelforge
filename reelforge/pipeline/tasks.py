@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ***REMOVED***.agents.providers.protocols import TrendsProvider
     from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
     from ***REMOVED***.agents.providers.protocols import WebSearchProvider
-    from ***REMOVED***.services.youtube.client import YouTubeClient
+    from ***REMOVED***.services.youtube.client import YouTubeClient  # used by upload/analytics tasks below
 
 logger = get_task_logger(__name__)
 
@@ -27,22 +27,6 @@ logger = get_task_logger(__name__)
 _GPT4O_INPUT_COST_PER_M = Decimal("2.50")
 _GPT4O_OUTPUT_COST_PER_M = Decimal("10.00")
 _SIX_PLACES = Decimal("0.000001")
-
-
-class _NullVideoSearchProvider:
-    """Fallback when no YouTube auth is available. Returns empty results for all calls."""
-
-    def search_trending(self, niche: str, days_back: int = 7, limit: int = 20) -> list[Any]:
-        return []
-
-    def search_videos(self, query: str, max_results: int = 25) -> list[Any]:
-        return []
-
-    def get_channel_videos(self, channel_id: str, max_results: int = 25) -> list[Any]:
-        return []
-
-    def analyze_competitors(self, channel_ids: list[str]) -> dict[str, Any]:
-        return {}
 
 
 # ── Orchestrator ────────────────────────────────────────────────────────────
@@ -78,6 +62,7 @@ def run_research_job(
     self: Any,
     channel_id: str,
     research_job_id: str,
+    video_search: VideoSearchProvider = Provide[AgentContainer.video_search],
     trends: TrendsProvider = Provide[AgentContainer.trends],
     community: CommunitySearchProvider = Provide[AgentContainer.community],
     web_search: WebSearchProvider = Provide[AgentContainer.web_search],
@@ -85,12 +70,9 @@ def run_research_job(
     import asyncio
 
     from agents import Runner
-    from ***REMOVED***.agents.providers.youtube import YouTubeProvider
     from ***REMOVED***.agents.research_agent import build_research_agent
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.research.models import ResearchJob
-    from ***REMOVED***.services.youtube.client import YouTubeClient
-    from ***REMOVED***.services.youtube.exceptions import YouTubeAuthError
 
     try:
         job = ResearchJob.objects.get(id=research_job_id)
@@ -106,18 +88,6 @@ def run_research_job(
 
     try:
         channel = Channel.objects.prefetch_related("competitors").get(id=channel_id)
-
-        # Use channel OAuth credentials for YouTube API — no separate API key needed.
-        # Falls back to a null provider (empty results) if the channel has no OAuth yet.
-        try:
-            yt_client = YouTubeClient.from_channel(channel)
-            video_search: VideoSearchProvider = YouTubeProvider(client=yt_client)
-        except YouTubeAuthError:
-            logger.warning(
-                "Channel %s has no OAuth credentials; YouTube search disabled for this run",
-                channel.slug,
-            )
-            video_search = _NullVideoSearchProvider()
 
         agent = build_research_agent(channel, video_search, trends, community, web_search)
         result = asyncio.run(
