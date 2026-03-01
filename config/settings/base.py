@@ -644,11 +644,8 @@ ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", default="")
 FAL_API_KEY = env("FAL_API_KEY", default="")
 REPLICATE_API_KEY = env("REPLICATE_API_KEY", default="")
 
-# YouTube API (for research and analytics)
-YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
-
-# Perplexity API (for research — kept as alternative web_search_perplexity provider)
-PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+# SerpAPI (YouTube search, Google Trends, Google Search)
+SERPAPI_API_KEY = env("SERPAPI_API_KEY", default="")
 
 # Tavily AI search (primary web_search provider)
 TAVILY_API_KEY = env("TAVILY_API_KEY", default="")

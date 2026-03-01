@@ -7,105 +7,114 @@ from typing import Any
 from reelforge.agents.schemas import VideoResult
 
 if TYPE_CHECKING:
-    from reelforge.services.youtube.client import YouTubeClient
+    from reelforge.services.serpapi.client import SerpApiClient
 
 logger = logging.getLogger("reelforge.agents.providers.youtube")
 
-_ISO8601_DURATION_SUFFIXES = {"H": 3600, "M": 60, "S": 1}
 
-
-def _parse_duration(iso_duration: str) -> int | None:
-    """Parse ISO 8601 duration string (e.g. PT1H2M3S) to seconds."""
-    if not iso_duration or not iso_duration.startswith("PT"):
+def _parse_duration_from_str(duration_str: str) -> int | None:
+    """Parse a duration string like '10:23' or '1:02:45' to total seconds."""
+    if not duration_str:
         return None
-    total = 0
-    current = ""
-    for ch in iso_duration[2:]:
-        if ch.isdigit():
-            current += ch
-        elif ch in _ISO8601_DURATION_SUFFIXES and current:
-            total += int(current) * _ISO8601_DURATION_SUFFIXES[ch]
-            current = ""
-    return total
+    parts = duration_str.strip().split(":")
+    try:
+        int_parts = [int(p) for p in parts]
+    except ValueError:
+        return None
+    if len(int_parts) == 2:  # mm:ss  # noqa: PLR2004
+        return int_parts[0] * 60 + int_parts[1]
+    if len(int_parts) == 3:  # hh:mm:ss  # noqa: PLR2004
+        return int_parts[0] * 3600 + int_parts[1] * 60 + int_parts[2]
+    return None
 
 
-def _item_to_video_result(item: dict[str, Any]) -> VideoResult:
-    snippet = item.get("snippet", {})
-    stats = item.get("statistics", {})
-    details = item.get("contentDetails", {})
-    video_id = item.get("id", "")
-    if isinstance(video_id, dict):
-        video_id = video_id.get("videoId", "")
+def _parse_views(views: Any) -> int | None:
+    """Parse views from int, str, or None."""
+    if views is None:
+        return None
+    if isinstance(views, int):
+        return views
+    try:
+        cleaned = str(views).replace(",", "").strip()
+        return int(cleaned)
+    except (ValueError, AttributeError):
+        return None
 
+
+def _video_dict_to_result(item: dict[str, Any]) -> VideoResult:
     return VideoResult(
-        title=snippet.get("title", ""),
-        url=f"https://youtube.com/watch?v={video_id}",
-        channel=snippet.get("channelTitle", ""),
-        channel_id=snippet.get("channelId", ""),
-        views=int(stats["viewCount"]) if "viewCount" in stats else None,
-        likes=int(stats["likeCount"]) if "likeCount" in stats else None,
-        published_at=snippet.get("publishedAt"),
-        duration_seconds=_parse_duration(details.get("duration", "")) if details else None,
+        title=item.get("title", ""),
+        url=item.get("url", ""),
+        channel=item.get("channel_name", ""),
+        channel_id=item.get("channel_id", ""),
+        views=_parse_views(item.get("views")),
+        likes=None,
+        published_at=item.get("published_date"),
+        duration_seconds=item.get("duration_seconds"),
     )
 
 
-class YouTubeProvider:
-    """Provider that wraps YouTubeClient and satisfies VideoSearchProvider protocol."""
+class SerpApiYouTubeProvider:
+    """VideoSearchProvider backed by SerpAPI YouTube engine."""
 
-    def __init__(self, client: YouTubeClient) -> None:
+    def __init__(self, client: SerpApiClient) -> None:
         self._client = client
 
     def search_trending(self, niche: str, days_back: int = 7, limit: int = 20) -> list[VideoResult]:
         """Search for trending YouTube videos in a niche."""
         try:
-            items = self._client.search_videos(
-                query=niche,
-                max_results=min(limit, 50),
-                order="viewCount",
-            )
-            return [_item_to_video_result(item) for item in items]
+            items = self._client.search_videos(query=niche, max_results=limit)
+            return [_video_dict_to_result(item) for item in items]
         except Exception:
-            logger.exception("YouTubeProvider.search_trending failed for niche='%s'", niche)
+            logger.exception("SerpApiYouTubeProvider.search_trending failed for niche='%s'", niche)
             return []
 
     def search_videos(self, query: str, max_results: int = 25) -> list[VideoResult]:
         """Search YouTube videos by query."""
         try:
             items = self._client.search_videos(query=query, max_results=max_results)
-            return [_item_to_video_result(item) for item in items]
+            return [_video_dict_to_result(item) for item in items]
         except Exception:
-            logger.exception("YouTubeProvider.search_videos failed for query='%s'", query)
+            logger.exception("SerpApiYouTubeProvider.search_videos failed for query='%s'", query)
             return []
 
     def get_channel_videos(self, channel_id: str, max_results: int = 25) -> list[VideoResult]:
-        """Get recent videos from a YouTube channel."""
+        """Get recent videos from a YouTube channel by searching for its channel page."""
         try:
-            items = self._client.get_channel_videos(channel_id=channel_id, max_results=max_results)
-            return [_item_to_video_result(item) for item in items]
+            items = self._client.search_videos(
+                query=f"site:youtube.com/channel/{channel_id}",
+                max_results=max_results,
+            )
+            matched = [item for item in items if item.get("channel_id") == channel_id]
+            return [_video_dict_to_result(item) for item in matched]
         except Exception:
-            logger.exception("YouTubeProvider.get_channel_videos failed for channel_id='%s'", channel_id)
+            logger.exception("SerpApiYouTubeProvider.get_channel_videos failed for channel_id='%s'", channel_id)
             return []
 
     def analyze_competitors(self, channel_ids: list[str]) -> dict[str, Any]:
-        """Analyze competitor YouTube channels for content patterns and gaps."""
+        """Analyze competitor YouTube channels for content patterns."""
         results: dict[str, Any] = {}
         for channel_id in channel_ids:
             try:
-                stats = self._client.get_channel_stats(channel_id)
-                videos = self._client.get_channel_videos(channel_id, max_results=10)
+                channels = self._client.search_channels(channel_id, max_results=3)
+                match = next((c for c in channels if c.get("channel_id") == channel_id), None)
+                if not match and channels:
+                    match = channels[0]
 
-                channel_stats = stats.get("statistics", {})
-                snippet = stats.get("snippet", {})
+                videos = self._client.search_videos(
+                    query=f"site:youtube.com/channel/{channel_id}",
+                    max_results=10,
+                )
+                recent_titles = [v.get("title", "") for v in videos[:10]]
 
                 results[channel_id] = {
-                    "channel_name": snippet.get("title", ""),
-                    "subscriber_count": int(channel_stats.get("subscriberCount", 0)),
-                    "total_videos": int(channel_stats.get("videoCount", 0)),
-                    "total_views": int(channel_stats.get("viewCount", 0)),
-                    "recent_video_titles": [v.get("snippet", {}).get("title", "") for v in videos[:10]],
+                    "channel_name": match.get("channel_name", "") if match else "",
+                    "subscriber_count": match.get("subscribers_count", 0) if match else 0,
+                    "total_videos": match.get("video_count") if match else None,
+                    "recent_video_titles": recent_titles,
                 }
             except Exception:
-                logger.warning("Failed to analyze competitor channel_id='%s'", channel_id)
+                logger.warning("SerpApiYouTubeProvider.analyze_competitors failed for channel_id='%s'", channel_id)
                 results[channel_id] = {"error": "failed to fetch"}
 
         return results

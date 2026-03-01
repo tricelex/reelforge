@@ -15,10 +15,7 @@ CELERY_FLOWER_PASSWORD=debug
 
 # Research Provider API Keys
 # ------------------------------------------------------------------------------
-YOUTUBE_API_KEY=
-REDDIT_CLIENT_ID=
-REDDIT_CLIENT_SECRET=
-PERPLEXITY_API_KEY=
+SERPAPI_API_KEY=7ff93040475cb7b0acdaead3a52f467ffb44824e419780c4a5400a8d2533e9a0
 TAVILY_API_KEY=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
 
 # YouTube OAuth (web application credentials from Google Cloud Console)

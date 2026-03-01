@@ -33,7 +33,9 @@
       "Bash(tail:*)",
       "Bash(head:*)",
       "Bash(docker compose:*)",
-      "Bash(uv:*)"
+      "Bash(uv:*)",
+      "WebFetch(domain:serpapi.com)",
+      "WebFetch(domain:pypi.org)"
     ]
   }
 }
