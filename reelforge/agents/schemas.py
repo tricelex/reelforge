@@ -16,6 +16,7 @@ class VideoResult:
     url: str
     channel: str
     channel_id: str
+    channel_handle: str
     views: int | None
     likes: int | None
     published_at: str | None

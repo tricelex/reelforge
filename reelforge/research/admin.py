@@ -16,7 +16,6 @@ from reelforge.research.models import TopicIdea
 @admin.register(ResearchJob)
 class ResearchJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
-        "id",
         "channel",
         "status_badge",
         "trigger_source",
@@ -183,7 +182,6 @@ class ResearchJobAdmin(FSMModelAdminMixin, ModelAdmin):
 @admin.register(TopicIdea)
 class TopicIdeaAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
-        "id",
         "title_idea",
         "channel",
         "status_badge",

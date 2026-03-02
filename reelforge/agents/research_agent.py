@@ -152,7 +152,7 @@ STEP 1 — YouTube Trend Discovery
     • title patterns    → note recurring structures (number lists, questions, "How to",
                           "The Truth About") — high-performers signal proven formats
     • views             → proxy for audience size for this specific angle
-    • channel_id        → collect every channel_id for use in Step 4
+    • channel_handle        → collect every channel_handle for use in Step 4
   Flag: any niche returning < 5 results → retry with a broader term before moving on.
 
 STEP 2 — Keyword Demand Validation
@@ -174,19 +174,69 @@ STEP 3 — Community Intelligence
     • post title vocabulary   → exact words to use in the video title (audiences search
                                  the same words they write in forum posts)
     • url domain              → reddit.com, news.ycombinator.com, quora.com = high trust sources
-  Read from research_audience_questions (Perplexity web search):
+  Read from research_audience_questions (Tavily web search):
     • Identifies pain points and beginner confusions across all niches
     • Use cited questions as title angles — real vocabulary from real audiences
   Flag: < 5 community posts returned → retry with a broader term; note in data_gaps if still thin.
 
 STEP 4 — Competitor Content Gap Analysis
-  Call: analyze_competitor_channels with ALL known channel IDs (from CHANNEL CONTEXT above)
-        PLUS every channel_id collected from Step 1 trending results.
-  Read from results:
+  Call: analyze_competitor_channels with ALL known channel handles (from CHANNEL CONTEXT above)
+        PLUS every channel_handles collected from Step 1 trending results.
+
+  For each competitor returned, extract every available field and apply this analysis:
+
+  GAP IDENTIFICATION (core)
     • recent_video_titles  → cross-reference against community pain points from Step 3
                               topics present in community discussions but absent from competitor titles = content gap
     • view distributions   → infer what video length and format competitors bet on
   A topic with community demand AND zero competitor coverage = top-tier gap (+10 bonus at Step 6 scoring).
+
+  VIEW VELOCITY / VIRAL OUTLIER DETECTION
+    • Compare view counts across all recent videos for each competitor.
+    • Identify the single highest-viewed video and flag it as a "proven angle" — note the title,
+      view count, and what format/hook likely drove the performance.
+    • Any video with > 5x the competitor's average recent views = viral outlier signal.
+    • These are NOT topics to copy — they are angle/format inspiration. Record in competitor notes.
+    • Example: "Best of Claude Code (126k views, 3 weeks old) vs. channel avg ~5k → proven format
+      for deep-dive explainers; audience responds strongly to comprehensive tool breakdowns."
+
+  RECENCY-WEIGHTED GAP IDENTIFICATION
+    • Use published_date fields to classify the freshness of each gap:
+        – Topic absent from last 14 days of uploads = FRESH GAP (highest opportunity)
+        – Topic absent for 30–90 days = AGING GAP (good opportunity, confirm community demand)
+        – Topic absent for 90+ days = STALE GAP (competitor may have intentionally avoided it;
+          only pursue if community demand from Step 3 is very strong)
+    • Prioritize FRESH GAPs in the final topic list.
+
+  CONTENT FORMAT PATTERN FROM DURATION
+    • Classify each video by duration_seconds into format buckets:
+        – < 120s    = Shorts / teaser
+        – 120–900s  = Quick tutorial (2–15 min)
+        – 900–2400s = Deep dive (15–40 min)
+        – > 2400s   = Mega course / comprehensive guide (40+ min)
+    • Identify the dominant format bucket for each competitor.
+    • If the channel's target length ({channel.video_length_min}–{channel.video_length_max} min)
+      differs from the competitor's dominant format, that length range is itself a positioning gap.
+
+  UPLOAD VELOCITY
+    • Infer posting cadence from the spread of published_date values across returned videos.
+    • If a competitor has slowed posting in a particular topic cluster recently
+      (e.g. 3 videos on "AI tools" 2 months ago, then nothing), that cluster is an opportunity window.
+    • Note posting cadence and any slowdowns in the competitor's notes field.
+
+  TOPIC CLUSTERING FOR COVERAGE DENSITY
+    • Group all returned video titles for each competitor into 3–5 topic clusters.
+    • Clusters with 5+ videos = SATURATED (avoid unless uniquely differentiated angle available).
+    • Clusters with 1–2 videos = LIGHTLY COVERED (high-priority gap if community demand confirmed).
+    • Clusters with 0 competitor videos but strong Step 3 community demand = OPEN GAP (top-tier).
+    • Document cluster coverage density in the competitor's notes field.
+
+  latest_from_* vs video_results PRIORITIZATION
+    • Treat videos from latest_from_* (channel's own recent uploads) as the primary recency signal.
+    • Use video_results for broader historical topic coverage mapping.
+    • When a topic appears in older video_results but NOT in latest_from_* entries:
+      the competitor has likely moved away from it — note this as a potential opportunity.
+
   Flag: returns empty → note in data_gaps; NEVER invent subscriber counts or channel titles.
 
 STEP 5 — Rising / Pre-Peak Trend Detection
