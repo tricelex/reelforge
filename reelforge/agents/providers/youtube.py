@@ -47,6 +47,7 @@ def _video_dict_to_result(item: dict[str, Any]) -> VideoResult:
         url=item.get("url", ""),
         channel=item.get("channel_name", ""),
         channel_id=item.get("channel_id", ""),
+        channel_handle=item.get("channel_handle", ""),
         views=_parse_views(item.get("views")),
         likes=None,
         published_at=item.get("published_date"),
@@ -81,11 +82,19 @@ class SerpApiYouTubeProvider:
     def get_channel_videos(self, channel_id: str, max_results: int = 25) -> list[VideoResult]:
         """Get recent videos from a YouTube channel by searching for its channel page."""
         try:
-            items = self._client.search_videos(
-                query=f"site:youtube.com/channel/{channel_id}",
-                max_results=max_results,
-            )
-            matched = [item for item in items if item.get("channel_id") == channel_id]
+            if channel_id.startswith("@"):
+                handle = channel_id.lstrip("@")
+                items = self._client.search_videos(
+                    query=f"site:youtube.com/@{handle}",
+                    max_results=max_results,
+                )
+                matched = [item for item in items if handle.lower() in item.get("channel_url", "").lower()]
+            else:
+                items = self._client.search_videos(
+                    query=f"site:youtube.com/channel/{channel_id}",
+                    max_results=max_results,
+                )
+                matched = [item for item in items if item.get("channel_id") == channel_id]
             return [_video_dict_to_result(item) for item in matched]
         except Exception:
             logger.exception("SerpApiYouTubeProvider.get_channel_videos failed for channel_id='%s'", channel_id)
@@ -94,27 +103,25 @@ class SerpApiYouTubeProvider:
     def analyze_competitors(self, channel_ids: list[str]) -> dict[str, Any]:
         """Analyze competitor YouTube channels for content patterns."""
         results: dict[str, Any] = {}
-        for channel_id in channel_ids:
+        seen: set[str] = set()
+        for identifier in channel_ids:
+            if not identifier or identifier in seen:
+                continue
+            seen.add(identifier)
             try:
-                channels = self._client.search_channels(channel_id, max_results=3)
-                match = next((c for c in channels if c.get("channel_id") == channel_id), None)
-                if not match and channels:
-                    match = channels[0]
-
-                videos = self._client.search_videos(
-                    query=f"site:youtube.com/channel/{channel_id}",
-                    max_results=10,
-                )
-                recent_titles = [v.get("title", "") for v in videos[:10]]
-
-                results[channel_id] = {
-                    "channel_name": match.get("channel_name", "") if match else "",
-                    "subscriber_count": match.get("subscribers_count", 0) if match else 0,
-                    "total_videos": match.get("video_count") if match else None,
-                    "recent_video_titles": recent_titles,
+                data = self._client.search_channel_with_videos(query=identifier)
+                results[identifier] = {
+                    "channel_name": data["channel_name"],
+                    "channel_handle": data["channel_handle"],
+                    "channel_url": data["channel_url"],
+                    "subscriber_count": data["subscriber_count"],
+                    "recent_video_titles": data["recent_video_titles"],
                 }
-            except Exception:
-                logger.warning("SerpApiYouTubeProvider.analyze_competitors failed for channel_id='%s'", channel_id)
-                results[channel_id] = {"error": "failed to fetch"}
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "SerpApiYouTubeProvider.analyze_competitors failed for identifier='%s'",
+                    identifier,
+                )
+                results[identifier] = {"error": "failed to fetch"}
 
         return results

@@ -560,9 +560,21 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
 
     competitor_records = []
     for dc in output.discovered_competitors:
+        channel_id = dc.youtube_channel_id or dc.channel_name
+        if not channel_id:
+            logger.warning(
+                "Skipping discovered competitor with no identifier",
+                extra={"research_job_id": str(job.id)},
+            )
+            continue
+        if not dc.youtube_channel_id:
+            logger.warning(
+                "Discovered competitor missing youtube_channel_id; falling back to channel_name",
+                extra={"channel_name": dc.channel_name, "research_job_id": str(job.id)},
+            )
         obj, _ = ChannelCompetitor.objects.update_or_create(
             channel=channel,
-            youtube_channel_id=dc.youtube_channel_id,
+            youtube_channel_id=channel_id,
             defaults={
                 "channel_name": dc.channel_name,
                 "channel_url": dc.channel_url,

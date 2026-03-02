@@ -63,14 +63,17 @@ class SerpApiClient:
         raw_videos: list[dict[str, Any]] = results.get("video_results", [])
         normalized: list[dict[str, Any]] = []
         for item in raw_videos[:max_results]:
+            channel_info = item.get("channel") or {}
+            channel_link = channel_info.get("link", "")
             normalized.append(
                 {
                     "title": item.get("title", ""),
                     "video_id": item.get("id", ""),
                     "url": item.get("link", ""),
-                    "channel_name": (item.get("channel") or {}).get("name", ""),
-                    "channel_id": (item.get("channel") or {}).get("id", ""),
-                    "channel_url": (item.get("channel") or {}).get("link", ""),
+                    "channel_name": channel_info.get("name", ""),
+                    "channel_id": channel_info.get("id", ""),
+                    "channel_handle": _extract_channel_handle(channel_link),
+                    "channel_url": channel_link,
                     "views": item.get("views"),
                     "duration_seconds": _parse_duration_str(item.get("length", "")),
                     "published_date": item.get("published_date"),
@@ -99,20 +102,90 @@ class SerpApiClient:
         raw_channels: list[dict[str, Any]] = results.get("channel_results", [])
         normalized: list[dict[str, Any]] = []
         for item in raw_channels[:max_results]:
-            subs_text: str = item.get("subscribers", "") or ""
+            subs_raw = item.get("subscribers")
+            subscribers_count = (
+                int(subs_raw) if isinstance(subs_raw, (int, float)) else _parse_subscriber_count(str(subs_raw or ""))
+            )
+            channel_link = item.get("link", "")
+            handle = item.get("handle", "") or _extract_channel_handle(channel_link)
+            thumb_raw = item.get("thumbnail") or ""
+            thumbnail = (
+                thumb_raw
+                if isinstance(thumb_raw, str)
+                else (thumb_raw.get("static", "") if isinstance(thumb_raw, dict) else "")
+            )
             normalized.append(
                 {
                     "channel_name": item.get("title", ""),
                     "channel_id": item.get("id", ""),
-                    "channel_url": item.get("link", ""),
-                    "subscribers_text": subs_text,
-                    "subscribers_count": _parse_subscriber_count(subs_text),
+                    "channel_handle": handle,
+                    "channel_url": channel_link,
+                    "subscribers_count": subscribers_count,
                     "video_count": item.get("video_count"),
                     "description": item.get("description", ""),
-                    "thumbnail": (item.get("thumbnail") or {}).get("static", ""),
+                    "thumbnail": thumbnail,
                 }
             )
         return normalized
+
+    def search_channel_with_videos(
+        self,
+        query: str,
+        max_videos: int = 10,
+        gl: str = "us",
+        hl: str = "en",
+    ) -> dict[str, Any]:
+        """Search YouTube for a channel and return metadata + recent video titles in one call.
+
+        Returns:
+            {
+                "channel_name": str,
+                "channel_handle": str,   # e.g. "@simonscrapes"
+                "channel_url": str,
+                "subscriber_count": int,
+                "description": str,
+                "thumbnail": str,
+                "recent_video_titles": list[str],
+                "found": bool,           # False if channel_results was empty
+            }
+        """
+        try:
+            results = self._client.search({"engine": "youtube", "search_query": query, "gl": gl, "hl": hl})
+        except Exception as exc:
+            raise _classify_error(exc) from exc
+
+        channel_results: list[dict[str, Any]] = results.get("channel_results", [])
+        ch = channel_results[0] if channel_results else {}
+
+        subs_raw = ch.get("subscribers")
+        subscriber_count = (
+            int(subs_raw) if isinstance(subs_raw, (int, float)) else _parse_subscriber_count(str(subs_raw or ""))
+        )
+        channel_link = ch.get("link", "")
+        handle = ch.get("handle", "") or _extract_channel_handle(channel_link)
+        thumb_raw = ch.get("thumbnail") or ""
+        thumbnail = (
+            thumb_raw
+            if isinstance(thumb_raw, str)
+            else (thumb_raw.get("static", "") if isinstance(thumb_raw, dict) else "")
+        )
+
+        latest_key = next((k for k in results if k.startswith("latest_from_")), None)
+        video_list: list[dict[str, Any]] = (
+            results.get(latest_key, []) if latest_key else results.get("video_results", [])
+        )
+        recent_titles = [v.get("title", "") for v in video_list[:max_videos] if v.get("title")]
+
+        return {
+            "channel_name": ch.get("title", ""),
+            "channel_handle": handle,
+            "channel_url": channel_link,
+            "subscriber_count": subscriber_count,
+            "description": ch.get("description", ""),
+            "thumbnail": thumbnail,
+            "recent_video_titles": recent_titles,
+            "found": bool(channel_results),
+        }
 
     def search_shorts(
         self,
@@ -331,6 +404,14 @@ def _parse_duration_str(duration_str: str) -> int | None:
     if len(int_parts) == 3:  # hh:mm:ss  # noqa: PLR2004
         return int_parts[0] * 3600 + int_parts[1] * 60 + int_parts[2]
     return None
+
+
+def _extract_channel_handle(url: str) -> str:
+    """Extract '@Handle' from 'https://www.youtube.com/@Handle'."""
+    if not url:
+        return ""
+    match = re.search(r"youtube\.com/@([\w.-]+)", url)
+    return f"@{match.group(1)}" if match else ""
 
 
 def _parse_subscriber_count(text: str) -> int:
