@@ -47,7 +47,7 @@ def build_script_agent(
         prompt = f"""Generate 5 diverse YouTube hooks for a faceless channel.
 Title: {title}, Niche: {niche}, Angle: {hook_angle}
 
-Hook types: Question, Bold Claim, Story Teaser, Shocking Stat, Contrarian Take
+Hook types (use exactly these values in the type field): question, statement, story, stat, contrarian
 Rules: max 2-3 sentences, no first-person (I/me/my), first word = pattern interrupt,
 each hook must create a curiosity gap that only watching resolves.
 
@@ -93,9 +93,23 @@ Return JSON: {{
     target_wc_min = target_length_min * 130
     target_wc_max = target_length_max * 130
 
+    description_str = topic.description or "N/A"
+    why_it_works_str = topic.why_it_works or ""
+    thumbnail_concept_str = topic.thumbnail_concept or ""
+    community_questions_str = (
+        "\n".join(f"  - {q}" for q in topic.community_questions)
+        if topic.community_questions
+        else "  None captured"
+    )
+    suggested_sources_str = (
+        "\n".join(f"  - {s}" for s in topic.suggested_sources)
+        if topic.suggested_sources
+        else "  None captured"
+    )
+
     return Agent(
         name="ScriptAgent",
-        model="gpt-4o",
+        model="gpt-5.2",
         instructions=f"""
 You are a senior YouTube script writer for faceless channels managed by Reelforge. Your output
 drives a fully automated pipeline — every word you write will be narrated by a TTS voice and
@@ -113,13 +127,33 @@ Topic: {topic.title_idea}
 Hook angle: {topic_hook_angle}
 Primary keyword: {keywords_str}
 
+RESEARCH INTELLIGENCE (populated by ResearchAgent — use to inform every decision below)
+Topic description: {description_str}
+Why this topic works: {why_it_works_str}
+Thumbnail concept (from research): {thumbnail_concept_str}
+
+Market signals:
+- Monthly search volume: ~{topic.estimated_search_volume:,}
+- Competition: {topic.competition_level} ({topic.competitor_video_count} competitor videos, avg {topic.avg_competitor_views:,} views)
+- Trend direction: {topic.trend_direction} (trend score {topic.trend_score:.1f}/10)
+- Gap opportunity score: {topic.gap_opportunity_score:.1f}/10
+
+Community questions to answer in this script:
+{community_questions_str}
+
+Suggested research sources (pre-vetted, prioritise in fetch_research_facts):
+{suggested_sources_str}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1: RESEARCH (exactly 2 calls)
+STEP 1: RESEARCH (2–3 calls)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Call fetch_research_facts exactly twice:
+Call fetch_research_facts 2–3 times:
   1. "{topic.title_idea}" — broad overview, facts, key context
   2. "{topic.title_idea} statistics misconceptions" — data points and surprising angles
-Do not call it more than twice.
+  3. If community questions are listed above, pick the most insightful one and search it directly
+
+If suggested sources are listed above, treat them as authoritative starting points when
+citing sources in research_sources output.
 
 After research: identify 5–8 key_facts, 3+ statistics, and 2+ counterintuitive angles.
 Track source URLs — you will include them in research_sources in your final output.
@@ -238,7 +272,9 @@ RIGHT b-roll: "researcher in white lab coat examining brain MRI scans on multipl
 STEP 7: SEO → SELF-REVIEW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 After writing the full script:
-1. Call generate_seo_metadata with the first 400 words of the script
+1. Call generate_seo_metadata with the first 400 words of the script.
+   Use the thumbnail concept from research ("{thumbnail_concept_str}") to inform
+   thumbnail_text and thumbnail_emotion in the SEO metadata output.
 2. Self-review against this checklist (fix issues internally — no extra tool calls):
    □ Hook score ≥ 7.0
    □ No sentence exceeds 18 words

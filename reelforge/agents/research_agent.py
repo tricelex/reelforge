@@ -97,7 +97,7 @@ def build_research_agent(
 
     return Agent(
         name="ResearchAgent",
-        model="gpt-5",
+        model="gpt-5.2",
         output_type=ResearchAgentOutput,
         instructions=f"""
 You are an expert YouTube content research strategist operating the research phase of the

@@ -10,13 +10,17 @@ OPENAI_PRICING = {
     "gpt-4o-mini": {"input": 0.150, "output": 0.600},
     "gpt-4-turbo": {"input": 10.00, "output": 30.00},
     "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    "gpt-5.2": {"input": 0.50, "output": 1.50},
 }
+
+# Models that use max_completion_tokens instead of max_tokens
+_MAX_COMPLETION_TOKENS_MODELS = ("o1", "o3", "gpt-5")
 
 
 class OpenAIProvider(BaseLLMProvider):
     name = "openai"
 
-    def __init__(self, api_key: str, default_model: str = "gpt-4o") -> None:
+    def __init__(self, api_key: str, default_model: str = "gpt-5.2") -> None:
         self.client = OpenAI(api_key=api_key)
         self.default_model = default_model
 
@@ -36,11 +40,20 @@ class OpenAIProvider(BaseLLMProvider):
             messages.append({"role": "system", "content": system or "You are an expert YouTube content strategist."})
         messages.append({"role": "user", "content": prompt})
 
+        uses_max_completion_tokens = any(
+            model.startswith(prefix) for prefix in _MAX_COMPLETION_TOKENS_MODELS
+        )
+        token_kwarg = (
+            {"max_completion_tokens": max_tokens}
+            if uses_max_completion_tokens
+            else {"max_tokens": max_tokens}
+        )
+
         response = self.client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            **token_kwarg,
             **kwargs,
         )
 
