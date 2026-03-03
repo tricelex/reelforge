@@ -107,6 +107,11 @@ class ScriptJob(PipelineStageModel):
         blank=True,
         help_text=_("Agent explanation if ready_for_production is False."),
     )
+    change_request = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Operator change request for the next script revision. Cleared after the revision task runs."),
+    )
     quality_flags = models.JSONField(
         default=dict,
         blank=True,

@@ -161,6 +161,17 @@ class PipelineStageModel(BaseAbstractModel):
     def enqueue(self) -> None:
         """Transition PENDING → QUEUED when added to Celery queue."""
 
+    @transition(
+        field=status,
+        source=[PipelineStatusChoices.COMPLETED, PipelineStatusChoices.FAILED, PipelineStatusChoices.PAUSED],
+        target=PipelineStatusChoices.RUNNING,
+        on_error=PipelineStatusChoices.FAILED,
+    )
+    def begin_revision(self, task_id: str = "") -> None:
+        """COMPLETED/FAILED/PAUSED → RUNNING for reruns and revisions."""
+        self.started_at = timezone.now()
+        self.celery_task_id = task_id
+
     @transition(field=status, source="*", target=PipelineStatusChoices.REJECTED)
     def reject(self, reason: str = "") -> None:
         """Manual rejection by operator."""
@@ -172,7 +183,7 @@ class PipelineStageModel(BaseAbstractModel):
         return self.retry_count < self.max_retries
 
     def mark_running(self, task_id: str = "") -> None:
-        """Convenience wrapper — handles PENDING, QUEUED, and FAILED/PAUSED (Celery retry) source states."""
+        """Convenience wrapper — handles PENDING, QUEUED, FAILED/PAUSED (Celery retry), and COMPLETED (revision) source states."""
         if self.status == PipelineStatusChoices.QUEUED:
             self.start_from_queue(task_id=task_id)
         elif self.status in (PipelineStatusChoices.FAILED, PipelineStatusChoices.PAUSED):
@@ -180,6 +191,9 @@ class PipelineStageModel(BaseAbstractModel):
             # TransitionNotAllowed will propagate naturally if retry budget is exhausted.
             self.retry()
             self.celery_task_id = task_id
+        elif self.status == PipelineStatusChoices.COMPLETED:
+            # Revision/re-run path: COMPLETED → RUNNING via begin_revision().
+            self.begin_revision(task_id=task_id)
         else:
             self.start(task_id=task_id)
         self.save(update_fields=["status", "started_at", "celery_task_id", "retry_count", "last_error"])

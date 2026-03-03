@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.contrib import admin
+from django.db import transaction
 from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
@@ -8,6 +11,10 @@ from unfold.admin import ModelAdmin
 from unfold.admin import TabularInline
 from unfold.decorators import action
 from unfold.decorators import display
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from django.http import HttpRequest
 
 from ***REMOVED***.core.admin import FSMModelAdminMixin
 from ***REMOVED***.scripts.models import ScriptJob
@@ -78,12 +85,14 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "total_segments",
         "broll_count",
         "readability_score",
+        "revision_notes",
         "script_preview",
         "hook_preview",
         "seo_preview",
     ]
     autocomplete_fields = ["channel", "topic", "approved_by"]
     inlines = [ScriptRevisionInline]
+    actions = ["approve_script", "rerun_script_with_changes"]
 
     fieldsets = (
         (
@@ -127,6 +136,7 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
                     "script_file",
                     "word_count",
                     "estimated_duration_mins",
+                    "revision_notes",
                 ),
             },
         ),
@@ -230,6 +240,12 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
                 "fields": ("notes",),
             },
         ),
+        (
+            _("Script Revision Request"),
+            {
+                "fields": ("change_request",),
+            },
+        ),
     )
 
     @display(
@@ -318,7 +334,7 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
     # ── Admin Actions ──────────────────────────────────────────────────
 
     @action(description="✅ Approve Script")
-    def approve_script(self, request, queryset) -> None:
+    def approve_script(self, request: HttpRequest, queryset: QuerySet[ScriptJob]) -> None:
         """Approve selected scripts and trigger asset pipeline."""
         count = 0
         for script in queryset.filter(approved=False):
@@ -330,6 +346,31 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
             # run_asset_job.delay(str(script.id))
             count += 1
         self.message_user(request, f"{count} scripts approved.")
+
+    @action(description="🔁 Rerun Script with Changes")
+    def rerun_script_with_changes(
+        self, request: HttpRequest, queryset: QuerySet[ScriptJob]
+    ) -> None:
+        """Re-run the ScriptAgent using script_job.change_request as guidance.
+        Operator must fill in the 'change_request' field and save before running.
+        """
+        from ***REMOVED***.pipeline.tasks import run_script_revision_job
+
+        count = 0
+        for script_job in queryset:
+            if not script_job.change_request.strip():
+                self.message_user(
+                    request,
+                    f"'{script_job}' has no change request — fill in the 'Script Revision Request' "
+                    "field and save first.",
+                    level="WARNING",
+                )
+                continue
+            script_job_id = str(script_job.id)
+            transaction.on_commit(lambda sjid=script_job_id: run_script_revision_job.delay(sjid))
+            count += 1
+        if count > 0:
+            self.message_user(request, f"{count} script revision job(s) dispatched.")
 
 
 @admin.register(ScriptRevision)

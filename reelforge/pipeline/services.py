@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING
 from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 
-from ***REMOVED***.pipeline.choices import PipelineStatus
-
 if TYPE_CHECKING:
     from ***REMOVED***.pipeline.models import PipelineRun
 
@@ -19,6 +17,12 @@ class PipelineService:
         self.channel = channel
 
     def trigger_daily_batch(self) -> None:
+        """Run daily batch for the channel.
+
+        Creates new PipelineRuns in INITIALIZING state for approved topics that
+        have no script yet. The operator starts each run manually from the admin.
+        Also replenishes the topic pool if running low.
+        """
         from ***REMOVED***.pipeline.models import PipelineRun
         from ***REMOVED***.pipeline.tasks import run_research_job_for_channel
         from ***REMOVED***.research.models import TopicIdea
@@ -35,32 +39,8 @@ class PipelineService:
         )[:1]
 
         for topic in ready_topics:
-            run = PipelineRun.objects.create(channel=self.channel, topic=topic)
-            run.begin_research()  # FSM: INITIALIZING → RESEARCHING
-            run.save()
-            # post_transition signal fires → run_research_job.delay() called automatically
-
-    @staticmethod
-    def retry_current_stage(run: PipelineRun) -> bool:
-        """Determine correct retry transition based on current state.
-        FSM conditions=[can_retry] prevent retry if max_retries exceeded.
-        """
-        retry_map = {
-            PipelineStatus.SCRIPTING: run.retry_scripting,
-            PipelineStatus.GENERATING_ASSETS: run.retry_assets,
-            PipelineStatus.RENDERING: run.retry_rendering,
-            PipelineStatus.UPLOADING: run.retry_upload,
-        }
-
-        if run.overall_status == PipelineStatus.FAILED:
-            # Determine which stage failed by checking stage objects
-            stage = _identify_failed_stage(run)
-            fn = retry_map.get(stage)
-            if fn and can_proceed(fn):
-                fn()
-                run.save()  # post_transition → Celery dispatch
-                return True
-        return False
+            PipelineRun.objects.create(channel=self.channel, topic=topic)
+            # Run remains in INITIALIZING — operator starts it manually from admin.
 
     @staticmethod
     def approve_script_and_advance(run: PipelineRun) -> None:
@@ -71,18 +51,3 @@ class PipelineService:
         else:
             msg = f"Cannot advance from {run.overall_status} to GENERATING_ASSETS"
             raise TransitionNotAllowed(msg)
-
-
-def _identify_failed_stage(run: PipelineRun) -> str:
-    """Determine which stage caused the pipeline failure by checking stage job statuses."""
-    from ***REMOVED***.core.models import PipelineStatusChoices
-
-    if run.distribution_job and run.distribution_job.status == PipelineStatusChoices.FAILED:
-        return PipelineStatus.UPLOADING
-    if run.production_job and run.production_job.status == PipelineStatusChoices.FAILED:
-        return PipelineStatus.RENDERING
-    if run.asset_job and run.asset_job.status == PipelineStatusChoices.FAILED:
-        return PipelineStatus.GENERATING_ASSETS
-    if run.script_job and run.script_job.status == PipelineStatusChoices.FAILED:
-        return PipelineStatus.SCRIPTING
-    return run.current_stage or "UNKNOWN"
