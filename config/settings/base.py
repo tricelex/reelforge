@@ -341,7 +341,6 @@ CELERY_TASK_QUEUES = (
     Queue("analytics"),
 )
 CELERY_TASK_ROUTES = {
-    "reelforge.pipeline.tasks.run_pipeline_orchestrator": {"queue": "orchestration"},
     "reelforge.pipeline.tasks.render_video": {"queue": "rendering"},
     "reelforge.pipeline.tasks.run_video_qa": {"queue": "rendering"},
     "reelforge.pipeline.tasks.upload_video": {"queue": "uploads"},

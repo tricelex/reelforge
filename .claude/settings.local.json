@@ -35,7 +35,8 @@
       "Bash(docker compose:*)",
       "Bash(uv:*)",
       "WebFetch(domain:serpapi.com)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.test uv run:*)"
     ]
   }
 }

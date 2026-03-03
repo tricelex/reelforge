@@ -29,23 +29,6 @@ _GPT4O_OUTPUT_COST_PER_M = Decimal("10.00")
 _SIX_PLACES = Decimal("0.000001")
 
 
-# ── Orchestrator ────────────────────────────────────────────────────────────
-
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=300, queue="orchestration")
-def run_pipeline_orchestrator(self, channel_id: str, pipeline_run_id: str) -> None:
-    """Master task: runs the OrchestratorAgent for a pipeline run."""
-    import asyncio
-
-    from reelforge.agents.orchestrator import run_orchestrator
-
-    try:
-        asyncio.run(run_orchestrator(channel_id, pipeline_run_id))
-    except Exception as exc:
-        logger.exception("Orchestrator failed")
-        self.retry(exc=exc)
-
-
 # ── Research ────────────────────────────────────────────────────────────────
 
 
@@ -181,6 +164,77 @@ def run_script_job(
 
     except Exception as exc:
         job.mark_failed(str(exc))
+        raise self.retry(exc=exc) from None
+
+
+# ── Script Revision ──────────────────────────────────────────────────────────
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=1200,
+    time_limit=1800,
+)
+@inject
+def run_script_revision_job(
+    self: Any,
+    script_job_id: str,
+    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
+    llm: LLMProvider = Provide[AgentContainer.llm_openai],
+) -> None:
+    """Re-run the ScriptAgent on an existing ScriptJob to incorporate a change request.
+    Reads script_job.change_request, passes existing script + request to agent,
+    updates ScriptJob fields, and creates a new ScriptRevision.
+    """
+    import asyncio
+
+    from agents import Runner
+    from reelforge.agents.script_agent import build_script_agent
+    from reelforge.scripts.models import ScriptJob
+
+    script_job = ScriptJob.objects.select_related("topic__channel").get(id=script_job_id)
+    channel = script_job.topic.channel
+    topic = script_job.topic
+    change_request = script_job.change_request
+
+    script_job.mark_running(task_id=self.request.id)
+
+    try:
+        # Compute next version number before saving (avoids unique-constraint clash)
+        last_revision = script_job.revisions.order_by("-version_number").first()
+        next_version = (last_revision.version_number + 1) if last_revision else 2
+
+        agent = build_script_agent(channel, topic, web_search, llm)
+        hook_text = script_job.selected_hook.get("text", "") if script_job.selected_hook else ""
+        revision_input = (
+            f"Revise the existing script for: {topic.title_idea}\n\n"
+            f"CHANGE REQUEST FROM OPERATOR:\n{change_request}\n\n"
+            f"EXISTING SCRIPT:\n{script_job.script_text}\n\n"
+            f"HOOK USED (score {script_job.hook_score:.1f}):\n"
+            f"{hook_text}\n\n"
+            f"AGENT SELF-REVIEW NOTES FROM PREVIOUS RUN:\n{script_job.revision_notes or '(none)'}\n\n"
+            "Incorporate the change request. Keep what works well. "
+            "Return the complete refined script via the standard output format."
+        )
+        result = asyncio.run(Runner.run(agent, input=revision_input, max_turns=12))
+
+        _save_script_results(
+            script_job,
+            result,
+            version_number=next_version,
+            change_summary=f"Revision: {change_request[:200]}",
+        )
+        script_job.mark_completed()
+
+        # Clear the change_request after successful processing
+        script_job.change_request = ""
+        script_job.save(update_fields=["change_request", "updated_at"])
+
+    except Exception as exc:
+        script_job.mark_failed(str(exc))
         raise self.retry(exc=exc) from None
 
 
@@ -625,12 +679,19 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     )
 
 
-def _save_script_results(job: Any, result: Any) -> None:
+def _save_script_results(
+    job: Any,
+    result: Any,
+    version_number: int = 1,
+    change_summary: str = "Agent v1 — auto-saved from pipeline",
+) -> None:
     """Parse the ScriptAgent RunResult and persist all output fields to ScriptJob.
 
     Args:
         job: ScriptJob instance
         result: RunResult from Runner.run()
+        version_number: ScriptRevision version number to create
+        change_summary: Human-readable description of what changed in this revision
     """
     from reelforge.agents.schemas import ScriptAgentOutput
 
@@ -760,15 +821,15 @@ def _save_script_results(job: Any, result: Any) -> None:
         ]
     )
 
-    # Auto-create version 1 revision — replaces save_script_draft tool call
+    # Auto-create revision — replaces save_script_draft tool call
     from reelforge.scripts.models import ScriptRevision
 
     ScriptRevision.objects.create(
         script_job=job,
-        version_number=1,
+        version_number=version_number,
         script_text=output.script_text,
         word_count=output.word_count,
-        change_summary="Agent v1 — auto-saved from pipeline",
+        change_summary=change_summary,
     )
 
     logger.info(

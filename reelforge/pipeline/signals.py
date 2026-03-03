@@ -1,26 +1,21 @@
 # apps/pipeline/signals.py
-"""Post-transition signals wire FSM state changes directly to Celery task dispatch.
-This is the single place where "stage changed" → "task triggered" lives.
-No more scattered .delay() calls across the codebase.
+"""Post-transition signals log FSM state changes to the PipelineEvent audit trail.
+Task dispatch is handled explicitly by admin actions — not by this signal.
 """
 
-from django.db import transaction
 from django.dispatch import receiver
 from django_fsm.signals import post_transition
 
 from reelforge.pipeline.choices import EventType
-from reelforge.pipeline.choices import PipelineStatus
 from reelforge.pipeline.models import PipelineRun
 
 
 @receiver(post_transition, sender=PipelineRun)
 def pipeline_run_post_transition(sender, instance, name, source, target, **kwargs) -> None:
     """Fires after every valid FSM transition on PipelineRun.
-    Maps target state → Celery task to dispatch.
-    Also logs every transition to PipelineEvent automatically.
+    Logs every transition to PipelineEvent automatically.
+    Task dispatch is handled explicitly by the admin action that triggered the transition.
     """
-
-    # 1. Always log the transition
     from reelforge.pipeline.models import PipelineEvent
 
     PipelineEvent.objects.create(
@@ -30,41 +25,3 @@ def pipeline_run_post_transition(sender, instance, name, source, target, **kwarg
         message=f"Transition: {source} → {target} (via {name})",
         metadata={"source": source, "target": target, "transition_name": name},
     )
-
-    # 2. Dispatch appropriate Celery task based on new state
-    _dispatch_task_for_state(instance, target)
-
-
-def _dispatch_task_for_state(run: PipelineRun, state: str) -> None:
-    """Dispatch the correct Celery task for each pipeline state."""
-    from reelforge.pipeline.tasks import render_video
-    from reelforge.pipeline.tasks import run_asset_job
-    from reelforge.pipeline.tasks import run_pipeline_orchestrator
-    from reelforge.pipeline.tasks import run_research_job
-    from reelforge.pipeline.tasks import run_script_job
-    from reelforge.pipeline.tasks import upload_video
-
-    dispatch_map = {
-        PipelineStatus.RESEARCHING: lambda: (
-            run_research_job.delay(str(run.channel.id), str(run.research_job.id))
-            if run.research_job
-            else run_pipeline_orchestrator.delay(str(run.channel.id), str(run.id))
-        ),
-        PipelineStatus.SCRIPTING: lambda: run_script_job.delay(str(run.topic.id), str(run.id)) if run.topic else None,
-        PipelineStatus.GENERATING_ASSETS: lambda: (
-            run_asset_job.delay(str(run.script_job.id), str(run.id)) if run.script_job else None
-        ),
-        PipelineStatus.RENDERING: lambda: (
-            render_video.delay(str(run.production_job.id)) if run.production_job else None
-        ),
-        PipelineStatus.UPLOADING: lambda: (
-            upload_video.delay(str(run.distribution_job.id)) if run.distribution_job else None
-        ),
-        # AWAITING_APPROVAL: no task — waits for human action or auto-approve timer
-        # QA: triggered directly by render_video task on completion
-        # PUBLISHED, FAILED, PAUSED: no automatic dispatch
-    }
-
-    task_fn = dispatch_map.get(state)
-    if task_fn:
-        transaction.on_commit(task_fn)
