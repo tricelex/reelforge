@@ -685,9 +685,22 @@ def _save_script_results(job: Any, result: Any) -> None:
     chapters = [{"timestamp": c.time, "title": c.label} for c in seo.chapters]
 
     # Store hook_used as a generated_hooks entry with score from quality_flags
+    # Normalize LLM-returned hook type to the Literal values expected by Hook schema.
+    _HOOK_TYPE_ALIASES: dict[str, str] = {
+        "question": "question",
+        "statement": "statement",
+        "bold claim": "statement",
+        "story": "story",
+        "story teaser": "story",
+        "stat": "stat",
+        "shocking stat": "stat",
+        "contrarian": "contrarian",
+        "contrarian take": "contrarian",
+    }
     generated_hooks: list[dict[str, Any]] = []
     if output.hook_used:
-        hook_type = output.quality_flags.hook_type or "statement"
+        hook_type_raw = (output.quality_flags.hook_type or "statement").lower().strip()
+        hook_type = _HOOK_TYPE_ALIASES.get(hook_type_raw, "statement")
         generated_hooks = [{"text": output.hook_used, "type": hook_type, "score": output.hook_score}]
 
     # Quality flags dict

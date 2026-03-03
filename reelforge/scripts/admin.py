@@ -24,7 +24,7 @@ class ScriptRevisionInline(TabularInline):
         "changed_by",
         "created_at",
     ]
-    readonly_fields = ["version_number", "word_count", "created_at"]
+    readonly_fields = ["version_number", "word_count", "change_summary", "changed_by", "created_at"]
     autocomplete_fields = ["changed_by"]
     ordering = ["-version_number"]
 
@@ -32,7 +32,6 @@ class ScriptRevisionInline(TabularInline):
 @admin.register(ScriptJob)
 class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
-        "id",
         "channel_name",
         "status_badge",
         "script_title",
@@ -336,7 +335,6 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
 @admin.register(ScriptRevision)
 class ScriptRevisionAdmin(ModelAdmin):
     list_display = [
-        "id",
         "script_job",
         "version_number",
         "word_count",

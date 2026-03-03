@@ -59,7 +59,6 @@ class PipelineEventInline(TabularInline):
 @admin.register(PipelineRun)
 class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
     list_display = [
-        "id",
         "channel",
         "stage_progress",
         "overall_status_badge",
@@ -627,7 +626,6 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
 @admin.register(PipelineEvent)
 class PipelineEventAdmin(ModelAdmin):
     list_display = [
-        "id",
         "pipeline_run",
         "event_type_badge",
         "event_name",
