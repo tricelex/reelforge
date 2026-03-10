@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from reelforge.services.base import BaseImageProvider
     from reelforge.services.base import BaseLLMProvider
     from reelforge.services.base import BaseTTSProvider
+    from reelforge.services.base import BaseVideoClipProvider
 
 logger = logging.getLogger("reelforge.providers")
 
@@ -50,4 +51,15 @@ def get_image_provider(channel: Channel | None = None) -> BaseImageProvider:
     if name == "mock":
         return _container().image_mock()
     msg = f"Unknown image provider: {name}"
+    raise ValueError(msg)
+
+
+def get_video_clip_provider(channel: Channel | None = None) -> BaseVideoClipProvider:
+    """Returns the configured video clip generation provider, optionally channel-specific."""
+    name = (
+        getattr(channel, "video_clip_provider", None) if channel else None
+    ) or getattr(settings, "DEFAULT_VIDEO_CLIP_PROVIDER", "mock")
+    if name == "mock":
+        return _container().video_clip_mock()
+    msg = f"Unknown video clip provider: {name}"
     raise ValueError(msg)

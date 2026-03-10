@@ -8,6 +8,7 @@ from reelforge.agents.providers.trends import SerpApiTrendsProvider
 from reelforge.agents.providers.web_search import TavilyProvider
 from reelforge.agents.providers.youtube import SerpApiYouTubeProvider
 from reelforge.services.providers.image.mock import MockImageProvider
+from reelforge.services.providers.video_clip.mock import MockVideoClipProvider
 from reelforge.services.providers.llm.claude import ClaudeProvider
 from reelforge.services.providers.llm.openai import OpenAIProvider
 from reelforge.services.providers.tts.elevenlabs import ElevenLabsProvider
@@ -84,5 +85,12 @@ class AgentContainer(containers.DeclarativeContainer):
 
     image_mock: providers.Singleton[MockImageProvider] = providers.Singleton(
         MockImageProvider,
+        name="mock",
+    )
+
+    # ── Video clip providers ───────────────────────────────────────────────────
+
+    video_clip_mock: providers.Singleton[MockVideoClipProvider] = providers.Singleton(
+        MockVideoClipProvider,
         name="mock",
     )

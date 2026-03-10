@@ -3,11 +3,138 @@ from __future__ import annotations
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from reelforge.core.models import BaseAbstractModel
 from reelforge.core.models import PipelineStageModel
 from reelforge.core.validators import pydantic_validator
 from reelforge.production.choices import RenderEngine
 from reelforge.production.schemas import QAResults
 from reelforge.production.schemas import RenderSpec
+from reelforge.production.schemas import SceneList
+
+
+class SceneBreakdownJob(PipelineStageModel):
+    """Scene breakdown of a script — converts script sections into timed scene dicts.
+    One per ScriptJob; generated before asset creation to drive image/clip prompts.
+    """
+
+    script_job = models.OneToOneField(
+        "scripts.ScriptJob",
+        on_delete=models.CASCADE,
+        related_name="scene_breakdown",
+        verbose_name=_("Script Job"),
+    )
+
+    scenes = models.JSONField(
+        _("Scenes"),
+        default=list,
+        blank=True,
+        help_text=_("List of scene dicts driving image/clip generation"),
+        validators=[pydantic_validator(SceneList)],
+    )
+    total_estimated_duration = models.FloatField(
+        _("Total Estimated Duration (seconds)"),
+        default=0.0,
+    )
+    scene_count = models.PositiveSmallIntegerField(
+        _("Scene Count"),
+        default=0,
+    )
+    breakdown_provider = models.CharField(
+        _("Breakdown Provider"),
+        max_length=50,
+        blank=True,
+        help_text=_("LLM provider used to generate the breakdown"),
+    )
+    breakdown_cost_usd = models.DecimalField(
+        _("Breakdown Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("Scene Breakdown Job")
+        verbose_name_plural = _("Scene Breakdown Jobs")
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["script_job"]),
+        ]
+
+    def __str__(self) -> str:
+        title = self.script_job.final_title or self.script_job.topic.title_idea
+        return f"SceneBreakdown: {title[:60]}"
+
+
+class AudioMixJob(PipelineStageModel):
+    """Audio mix job — combines voiceover with background music.
+    Multiple AudioMixJobs can exist per AssetJob (one per mix attempt).
+    The active mix is tracked via AudioMixJob.is_active.
+    """
+
+    asset_job = models.ForeignKey(
+        "assets.AssetJob",
+        on_delete=models.CASCADE,
+        related_name="audio_mix_jobs",
+        verbose_name=_("Asset Job"),
+    )
+    voiceover_run = models.ForeignKey(
+        "assets.VoiceoverRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audio_mix_jobs",
+        verbose_name=_("Source Voiceover Run"),
+    )
+
+    music_file = models.FileField(
+        _("Music File"),
+        upload_to="assets/music/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        help_text=_("Selected background music track"),
+    )
+    music_style = models.CharField(
+        _("Music Style"),
+        max_length=100,
+        blank=True,
+        help_text=_("Style of background music (e.g., inspiring_cinematic, calm_ambient)"),
+    )
+    music_volume_pct = models.FloatField(
+        _("Music Volume (%)"),
+        default=0.08,
+        help_text=_("Background music volume as percentage of voiceover volume"),
+    )
+    mixed_audio_file = models.FileField(
+        _("Mixed Audio File"),
+        upload_to="assets/audio/mixed/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        help_text=_("Final mixed audio (voiceover + music)"),
+    )
+    mixed_duration_sec = models.FloatField(
+        _("Mixed Duration (seconds)"),
+        default=0.0,
+    )
+    is_active = models.BooleanField(
+        _("Active"),
+        default=False,
+        db_index=True,
+        help_text=_("Whether this mix feeds into video rendering"),
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("Audio Mix Job")
+        verbose_name_plural = _("Audio Mix Jobs")
+        indexes = [
+            models.Index(fields=["asset_job", "is_active"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        active = " [ACTIVE]" if self.is_active else ""
+        return f"AudioMixJob{active}: {self.asset_job}"
 
 
 class ProductionJob(PipelineStageModel):
@@ -24,6 +151,44 @@ class ProductionJob(PipelineStageModel):
         "channels.Channel",
         on_delete=models.CASCADE,
         related_name="production_jobs",
+    )
+
+    # ── Sub-step references ─────────────────────────────────────────────────
+    scene_breakdown_job = models.ForeignKey(
+        "production.SceneBreakdownJob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Scene Breakdown Job"),
+        help_text=_("Scene breakdown that drove asset generation for this production"),
+    )
+    audio_mix_job = models.ForeignKey(
+        "production.AudioMixJob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Audio Mix Job"),
+        help_text=_("Audio mix (voiceover + music) used in this production"),
+    )
+    selected_image_run = models.ForeignKey(
+        "assets.ImageGenerationRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Image Run"),
+        help_text=_("Image run whose images were used in rendering"),
+    )
+    selected_video_clip_run = models.ForeignKey(
+        "assets.VideoClipGenerationRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Video Clip Run"),
+        help_text=_("Video clip run whose clips were used in rendering"),
     )
 
     # Render configuration

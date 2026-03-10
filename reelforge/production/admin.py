@@ -6,7 +6,9 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import display
 
 from reelforge.core.admin import FSMModelAdminMixin
+from reelforge.production.models import AudioMixJob
 from reelforge.production.models import ProductionJob
+from reelforge.production.models import SceneBreakdownJob
 
 
 @admin.register(ProductionJob)
@@ -216,5 +218,221 @@ class ProductionJobAdmin(FSMModelAdminMixin, ModelAdmin):
         if obj.render_duration_sec:
             minutes = int(obj.render_duration_sec // 60)
             seconds = int(obj.render_duration_sec % 60)
+            return f"{minutes}m {seconds}s"
+        return "-"
+
+
+# ── SceneBreakdownJob Admin ───────────────────────────────────────────────────
+
+
+@admin.register(SceneBreakdownJob)
+class SceneBreakdownJobAdmin(FSMModelAdminMixin, ModelAdmin):
+    list_display = [
+        "id",
+        "script_job",
+        "status_badge",
+        "scene_count",
+        "total_estimated_duration_display",
+        "breakdown_provider",
+        "breakdown_cost_usd",
+        "created_at",
+    ]
+    list_filter = ["status", "breakdown_provider", "created_at"]
+    search_fields = ["script_job__final_title", "script_job__topic__title_idea"]
+    readonly_fields = [
+        "id",
+        "created_at",
+        "updated_at",
+        "started_at",
+        "completed_at",
+        "duration_seconds",
+        "celery_task_id",
+        "scene_count",
+        "total_estimated_duration",
+    ]
+    ordering = ["-created_at"]
+
+    fieldsets = [
+        (
+            _("Basic Information"),
+            {
+                "fields": [
+                    "id",
+                    "script_job",
+                    "status",
+                ],
+            },
+        ),
+        (
+            _("Scene Breakdown"),
+            {
+                "fields": [
+                    "scene_count",
+                    "total_estimated_duration",
+                    "breakdown_provider",
+                    "breakdown_cost_usd",
+                    "scenes",
+                ],
+            },
+        ),
+        (
+            _("Execution"),
+            {
+                "classes": ["collapse"],
+                "fields": [
+                    "celery_task_id",
+                    "agent_run_id",
+                    "agent_tokens_used",
+                    "agent_cost_usd",
+                    "last_error",
+                ],
+            },
+        ),
+        (
+            _("Timeline"),
+            {
+                "classes": ["collapse"],
+                "fields": [
+                    "created_at",
+                    "updated_at",
+                    "started_at",
+                    "completed_at",
+                    "duration_seconds",
+                ],
+            },
+        ),
+    ]
+
+    @display(
+        description=_("Status"),
+        ordering="status",
+        label={
+            "PENDING": "default",
+            "QUEUED": "info",
+            "RUNNING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+            "RETRYING": "warning",
+            "PAUSED": "warning",
+        },
+    )
+    def status_badge(self, obj: SceneBreakdownJob) -> str:
+        return obj.status
+
+    @display(description=_("Est. Duration"))
+    def total_estimated_duration_display(self, obj: SceneBreakdownJob) -> str:
+        if obj.total_estimated_duration:
+            minutes = int(obj.total_estimated_duration // 60)
+            seconds = int(obj.total_estimated_duration % 60)
+            return f"{minutes}m {seconds}s"
+        return "-"
+
+
+# ── AudioMixJob Admin ─────────────────────────────────────────────────────────
+
+
+@admin.register(AudioMixJob)
+class AudioMixJobAdmin(FSMModelAdminMixin, ModelAdmin):
+    list_display = [
+        "id",
+        "asset_job",
+        "status_badge",
+        "is_active",
+        "music_style",
+        "mixed_duration_display",
+        "created_at",
+    ]
+    list_filter = ["status", "is_active", "music_style", "created_at"]
+    search_fields = ["asset_job__script_job__final_title", "asset_job__id"]
+    readonly_fields = [
+        "id",
+        "created_at",
+        "updated_at",
+        "started_at",
+        "completed_at",
+        "duration_seconds",
+        "celery_task_id",
+        "mixed_duration_sec",
+    ]
+    ordering = ["-created_at"]
+
+    fieldsets = [
+        (
+            _("Basic Information"),
+            {
+                "fields": [
+                    "id",
+                    "asset_job",
+                    "voiceover_run",
+                    "status",
+                    "is_active",
+                ],
+            },
+        ),
+        (
+            _("Music"),
+            {
+                "fields": [
+                    "music_style",
+                    "music_file",
+                    "music_volume_pct",
+                ],
+            },
+        ),
+        (
+            _("Mixed Output"),
+            {
+                "fields": [
+                    "mixed_audio_file",
+                    "mixed_duration_sec",
+                ],
+            },
+        ),
+        (
+            _("Execution"),
+            {
+                "classes": ["collapse"],
+                "fields": [
+                    "celery_task_id",
+                    "last_error",
+                ],
+            },
+        ),
+        (
+            _("Timeline"),
+            {
+                "classes": ["collapse"],
+                "fields": [
+                    "created_at",
+                    "updated_at",
+                    "started_at",
+                    "completed_at",
+                    "duration_seconds",
+                ],
+            },
+        ),
+    ]
+
+    @display(
+        description=_("Status"),
+        ordering="status",
+        label={
+            "PENDING": "default",
+            "QUEUED": "info",
+            "RUNNING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+            "RETRYING": "warning",
+            "PAUSED": "warning",
+        },
+    )
+    def status_badge(self, obj: AudioMixJob) -> str:
+        return obj.status
+
+    @display(description=_("Mixed Duration"))
+    def mixed_duration_display(self, obj: AudioMixJob) -> str:
+        if obj.mixed_duration_sec:
+            minutes = int(obj.mixed_duration_sec // 60)
+            seconds = int(obj.mixed_duration_sec % 60)
             return f"{minutes}m {seconds}s"
         return "-"

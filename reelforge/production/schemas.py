@@ -4,6 +4,23 @@ from pydantic import BaseModel
 from pydantic import RootModel
 
 
+class SceneItem(BaseModel):
+    """Single scene in a scene breakdown."""
+
+    scene_id: int
+    narration: str
+    duration_estimate: float
+    visual_keywords: list[str]
+    mood: str
+    caption_text: str
+
+
+class SceneList(RootModel[list[SceneItem]]):
+    """Validated list of scenes for a SceneBreakdownJob."""
+
+    root: list[SceneItem] = []
+
+
 class RenderSpec(BaseModel):
     """Full render configuration consumed by VideoRenderer."""
 

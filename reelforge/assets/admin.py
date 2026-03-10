@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import admin
+from django.db import transaction
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
@@ -9,11 +10,25 @@ from unfold.decorators import display
 
 from reelforge.assets.models import AssetJob
 from reelforge.assets.models import GeneratedImage
+from reelforge.assets.models import GeneratedVideoClip
+from reelforge.assets.models import ImageGenerationRun
 from reelforge.assets.models import ThumbnailOption
+from reelforge.assets.models import ThumbnailRun
+from reelforge.assets.models import VideoClipGenerationRun
+from reelforge.assets.models import VoiceoverRun
 from reelforge.assets.models import VoiceoverSegment
 from reelforge.core.admin import FSMModelAdminMixin
 
-# ── Inlines ──────────────────────────────────────────────────────────────────
+# ── Run status label map (reused across run admin classes) ────────────────────
+
+_RUN_STATUS_LABELS = {
+    "PENDING": "default",
+    "RUNNING": "info",
+    "COMPLETED": "success",
+    "FAILED": "danger",
+}
+
+# ── Child inlines (shown inside Run admin detail pages) ───────────────────────
 
 
 class VoiceoverSegmentInline(TabularInline):
@@ -48,7 +63,134 @@ class ThumbnailOptionInline(TabularInline):
     readonly_fields = ["option_number", "image_file", "ctr_score"]
 
 
-# ── Admin Classes ────────────────────────────────────────────────────────────
+class GeneratedVideoClipInline(TabularInline):
+    model = GeneratedVideoClip
+    extra = 0
+    ordering = ["position_idx"]
+    fields = ["position_idx", "prompt_preview", "duration_sec", "is_selected", "clip_file", "provider"]
+    readonly_fields = ["prompt_preview", "duration_sec", "clip_file", "provider"]
+
+    @admin.display(description=_("Prompt"))
+    def prompt_preview(self, obj: GeneratedVideoClip) -> str:
+        return obj.prompt_used[:80] + "..." if len(obj.prompt_used) > 80 else obj.prompt_used
+
+
+# ── Run inlines (shown inside AssetJobAdmin) ──────────────────────────────────
+
+
+class VoiceoverRunInline(TabularInline):
+    model = VoiceoverRun
+    extra = 0
+    ordering = ["run_number"]
+    fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "total_duration_sec",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    readonly_fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "total_duration_sec",
+        "total_cost_usd",
+        "completed_at",
+    ]
+
+    @admin.display(description=_("Status"))
+    def run_status_badge(self, obj: VoiceoverRun) -> str:
+        colors = {"PENDING": "#999", "RUNNING": "#0070f3", "COMPLETED": "#16a34a", "FAILED": "#dc2626"}
+        color = colors.get(obj.status, "#999")
+        return format_html('<span style="color:{};font-weight:bold">{}</span>', color, obj.status)
+
+
+class ImageGenerationRunInline(TabularInline):
+    model = ImageGenerationRun
+    extra = 0
+    ordering = ["run_number"]
+    fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "images_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    readonly_fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "images_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+
+    @admin.display(description=_("Status"))
+    def run_status_badge(self, obj: ImageGenerationRun) -> str:
+        colors = {"PENDING": "#999", "RUNNING": "#0070f3", "COMPLETED": "#16a34a", "FAILED": "#dc2626"}
+        color = colors.get(obj.status, "#999")
+        return format_html('<span style="color:{};font-weight:bold">{}</span>', color, obj.status)
+
+
+class VideoClipGenerationRunInline(TabularInline):
+    model = VideoClipGenerationRun
+    extra = 0
+    ordering = ["run_number"]
+    fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "clips_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    readonly_fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "clips_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+
+    @admin.display(description=_("Status"))
+    def run_status_badge(self, obj: VideoClipGenerationRun) -> str:
+        colors = {"PENDING": "#999", "RUNNING": "#0070f3", "COMPLETED": "#16a34a", "FAILED": "#dc2626"}
+        color = colors.get(obj.status, "#999")
+        return format_html('<span style="color:{};font-weight:bold">{}</span>', color, obj.status)
+
+
+class ThumbnailRunInline(TabularInline):
+    model = ThumbnailRun
+    extra = 0
+    ordering = ["run_number"]
+    fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "options_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    readonly_fields = [
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "options_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+
+    @admin.display(description=_("Status"))
+    def run_status_badge(self, obj: ThumbnailRun) -> str:
+        colors = {"PENDING": "#999", "RUNNING": "#0070f3", "COMPLETED": "#16a34a", "FAILED": "#dc2626"}
+        color = colors.get(obj.status, "#999")
+        return format_html('<span style="color:{};font-weight:bold">{}</span>', color, obj.status)
+
+
+# ── AssetJob Admin ────────────────────────────────────────────────────────────
 
 
 @admin.register(AssetJob)
@@ -58,8 +200,8 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "script_job_link",
         "channel_name",
         "status_badge",
-        "voiceover_duration_display",
-        "images_count_display",
+        "voiceover_runs_count",
+        "image_runs_count",
         "cost_display",
         "created_at",
     ]
@@ -86,7 +228,18 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
     ]
     ordering = ["-created_at"]
     date_hierarchy = "created_at"
-    inlines = [VoiceoverSegmentInline, GeneratedImageInline, ThumbnailOptionInline]
+    inlines = [
+        VoiceoverRunInline,
+        ImageGenerationRunInline,
+        VideoClipGenerationRunInline,
+        ThumbnailRunInline,
+    ]
+    actions = [
+        "start_new_voiceover_run",
+        "start_new_image_generation_run",
+        "start_new_video_clip_run",
+        "start_new_thumbnail_run",
+    ]
 
     fieldsets = [
         (
@@ -100,7 +253,18 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
             },
         ),
         (
-            _("Voiceover"),
+            _("Selected Runs"),
+            {
+                "fields": [
+                    "selected_voiceover_run",
+                    "selected_image_run",
+                    "selected_video_clip_run",
+                    "selected_thumbnail_run",
+                ],
+            },
+        ),
+        (
+            _("Voiceover (rollup)"),
             {
                 "fields": [
                     "voiceover_status",
@@ -123,7 +287,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
             },
         ),
         (
-            _("Images"),
+            _("Images (rollup)"),
             {
                 "fields": [
                     "images_status",
@@ -134,7 +298,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
             },
         ),
         (
-            _("Thumbnails"),
+            _("Thumbnails (rollup)"),
             {
                 "fields": [
                     "thumbnails_status",
@@ -222,23 +386,205 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
     def channel_name(self, obj: AssetJob) -> str:
         return obj.channel.name if obj.channel else "-"
 
-    @display(description=_("Voiceover Duration"), ordering="voiceover_duration_sec")
-    def voiceover_duration_display(self, obj: AssetJob) -> str:
-        if obj.voiceover_duration_sec > 0:
-            minutes = int(obj.voiceover_duration_sec // 60)
-            seconds = int(obj.voiceover_duration_sec % 60)
-            return f"{minutes}:{seconds:02d}"
-        return "-"
+    @display(description=_("Voiceover Runs"))
+    def voiceover_runs_count(self, obj: AssetJob) -> str:
+        count = obj.voiceover_runs.count()
+        return str(count) if count else "-"
 
-    @display(description=_("Images"), ordering="total_images_count")
-    def images_count_display(self, obj: AssetJob) -> str:
-        return str(obj.total_images_count) if obj.total_images_count > 0 else "-"
+    @display(description=_("Image Runs"))
+    def image_runs_count(self, obj: AssetJob) -> str:
+        count = obj.image_runs.count()
+        return str(count) if count else "-"
 
     @display(description=_("Cost"), ordering="agent_cost_usd")
     def cost_display(self, obj: AssetJob) -> str:
         if obj.agent_cost_usd > 0:
             return f"${obj.agent_cost_usd:.4f}"
         return "$0.0000"
+
+    # ── "Start New Run" admin actions ─────────────────────────────────────────
+
+    @admin.action(description=_("Start new voiceover run"))
+    def start_new_voiceover_run(self, request, queryset):
+        from django.db.models import Max
+
+        from reelforge.pipeline.tasks import run_voiceover_run
+
+        for job in queryset:
+            next_num = (job.voiceover_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+            run = VoiceoverRun.objects.create(asset_job=job, run_number=next_num)
+            transaction.on_commit(lambda run_id=str(run.id): run_voiceover_run.delay(run_id))
+        self.message_user(request, _("New voiceover run(s) dispatched."))
+
+    @admin.action(description=_("Start new image generation run"))
+    def start_new_image_generation_run(self, request, queryset):
+        from django.db.models import Max
+
+        from reelforge.pipeline.tasks import run_image_generation_run
+
+        for job in queryset:
+            next_num = (job.image_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+            run = ImageGenerationRun.objects.create(asset_job=job, run_number=next_num)
+            transaction.on_commit(lambda run_id=str(run.id): run_image_generation_run.delay(run_id))
+        self.message_user(request, _("New image generation run(s) dispatched."))
+
+    @admin.action(description=_("Start new video clip run (uses selected image run)"))
+    def start_new_video_clip_run(self, request, queryset):
+        from django.db.models import Max
+
+        from reelforge.pipeline.tasks import run_video_clip_generation_run
+
+        for job in queryset:
+            next_num = (job.video_clip_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+            run = VideoClipGenerationRun.objects.create(
+                asset_job=job,
+                run_number=next_num,
+                image_run=job.selected_image_run,
+            )
+            transaction.on_commit(lambda run_id=str(run.id): run_video_clip_generation_run.delay(run_id))
+        self.message_user(request, _("New video clip run(s) dispatched."))
+
+    @admin.action(description=_("Start new thumbnail run"))
+    def start_new_thumbnail_run(self, request, queryset):
+        from django.db.models import Max
+
+        from reelforge.pipeline.tasks import run_thumbnail_run
+
+        for job in queryset:
+            next_num = (job.thumbnail_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+            run = ThumbnailRun.objects.create(asset_job=job, run_number=next_num)
+            transaction.on_commit(lambda run_id=str(run.id): run_thumbnail_run.delay(run_id))
+        self.message_user(request, _("New thumbnail run(s) dispatched."))
+
+
+# ── Run Admin Classes ─────────────────────────────────────────────────────────
+
+
+@admin.register(VoiceoverRun)
+class VoiceoverRunAdmin(ModelAdmin):
+    list_display = [
+        "id",
+        "asset_job",
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "total_duration_sec",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    list_filter = ["status", "provider", "created_at"]
+    search_fields = ["asset_job__id", "asset_job__script_job__final_title"]
+    readonly_fields = ["id", "created_at", "updated_at", "celery_task_id"]
+    ordering = ["asset_job", "run_number"]
+    inlines = [VoiceoverSegmentInline]
+    actions = ["select_as_active_voiceover_run"]
+
+    @display(description=_("Status"), ordering="status", label=_RUN_STATUS_LABELS)
+    def run_status_badge(self, obj: VoiceoverRun) -> str:
+        return obj.status
+
+    @admin.action(description=_("Select as active voiceover run"))
+    def select_as_active_voiceover_run(self, request, queryset):
+        for run in queryset.select_related("asset_job"):
+            run.asset_job.selected_voiceover_run = run
+            run.asset_job.save(update_fields=["selected_voiceover_run", "updated_at"])
+        self.message_user(request, _("Selected run(s) set as active."))
+
+
+@admin.register(ImageGenerationRun)
+class ImageGenerationRunAdmin(ModelAdmin):
+    list_display = [
+        "id",
+        "asset_job",
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "images_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    list_filter = ["status", "provider", "created_at"]
+    search_fields = ["asset_job__id", "asset_job__script_job__final_title"]
+    readonly_fields = ["id", "created_at", "updated_at", "celery_task_id"]
+    ordering = ["asset_job", "run_number"]
+    inlines = [GeneratedImageInline]
+    actions = ["select_as_active_image_run"]
+
+    @display(description=_("Status"), ordering="status", label=_RUN_STATUS_LABELS)
+    def run_status_badge(self, obj: ImageGenerationRun) -> str:
+        return obj.status
+
+    @admin.action(description=_("Select as active image run"))
+    def select_as_active_image_run(self, request, queryset):
+        for run in queryset.select_related("asset_job"):
+            run.asset_job.selected_image_run = run
+            run.asset_job.save(update_fields=["selected_image_run", "updated_at"])
+        self.message_user(request, _("Selected run(s) set as active."))
+
+
+@admin.register(VideoClipGenerationRun)
+class VideoClipGenerationRunAdmin(ModelAdmin):
+    list_display = [
+        "id",
+        "asset_job",
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "clips_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    list_filter = ["status", "provider", "created_at"]
+    search_fields = ["asset_job__id", "asset_job__script_job__final_title"]
+    readonly_fields = ["id", "created_at", "updated_at", "celery_task_id"]
+    ordering = ["asset_job", "run_number"]
+    inlines = [GeneratedVideoClipInline]
+    actions = ["select_as_active_clip_run"]
+
+    @display(description=_("Status"), ordering="status", label=_RUN_STATUS_LABELS)
+    def run_status_badge(self, obj: VideoClipGenerationRun) -> str:
+        return obj.status
+
+    @admin.action(description=_("Select as active video clip run"))
+    def select_as_active_clip_run(self, request, queryset):
+        for run in queryset.select_related("asset_job"):
+            run.asset_job.selected_video_clip_run = run
+            run.asset_job.save(update_fields=["selected_video_clip_run", "updated_at"])
+        self.message_user(request, _("Selected run(s) set as active."))
+
+
+@admin.register(ThumbnailRun)
+class ThumbnailRunAdmin(ModelAdmin):
+    list_display = [
+        "id",
+        "asset_job",
+        "run_number",
+        "run_status_badge",
+        "provider",
+        "options_count",
+        "total_cost_usd",
+        "completed_at",
+    ]
+    list_filter = ["status", "provider", "created_at"]
+    search_fields = ["asset_job__id", "asset_job__script_job__final_title"]
+    readonly_fields = ["id", "created_at", "updated_at", "celery_task_id"]
+    ordering = ["asset_job", "run_number"]
+    inlines = [ThumbnailOptionInline]
+    actions = ["select_as_active_thumbnail_run"]
+
+    @display(description=_("Status"), ordering="status", label=_RUN_STATUS_LABELS)
+    def run_status_badge(self, obj: ThumbnailRun) -> str:
+        return obj.status
+
+    @admin.action(description=_("Select as active thumbnail run"))
+    def select_as_active_thumbnail_run(self, request, queryset):
+        for run in queryset.select_related("asset_job"):
+            run.asset_job.selected_thumbnail_run = run
+            run.asset_job.save(update_fields=["selected_thumbnail_run", "updated_at"])
+        self.message_user(request, _("Selected run(s) set as active."))
+
+
+# ── Legacy child-model Admin Classes (kept for direct access) ─────────────────
 
 
 @admin.register(VoiceoverSegment)
