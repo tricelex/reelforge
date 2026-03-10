@@ -63,6 +63,20 @@ class PipelineRun(BaseAbstractModel):
         blank=True,
         related_name="pipeline_runs",
     )
+    scene_breakdown_job = models.ForeignKey(
+        "production.SceneBreakdownJob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    audio_mix_job = models.ForeignKey(
+        "production.AudioMixJob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     production_job = models.ForeignKey(
         "production.ProductionJob",
         on_delete=models.SET_NULL,
@@ -184,17 +198,46 @@ class PipelineRun(BaseAbstractModel):
     @transition(
         field=overall_status,
         source=PipelineStatus.AWAITING_APPROVAL,
+        target=PipelineStatus.SCENE_BREAKDOWN,
+    )
+    def begin_scene_breakdown(self) -> None:
+        """Approval received, start scene breakdown."""
+        self.current_stage = PipelineStatus.SCENE_BREAKDOWN
+
+    @transition(
+        field=overall_status,
+        source=[PipelineStatus.SCENE_BREAKDOWN, PipelineStatus.AWAITING_APPROVAL],
         target=PipelineStatus.GENERATING_ASSETS,
     )
     def begin_assets(self) -> None:
-        """Approval received, start asset generation.
-        Can also come from SCRIPTING (auto-approve).
-        """
+        """Scene breakdown complete (or skipped), start asset generation."""
         self.current_stage = PipelineStatus.GENERATING_ASSETS
 
     @transition(
         field=overall_status,
         source=PipelineStatus.GENERATING_ASSETS,
+        target=PipelineStatus.AUDIO_MIX,
+    )
+    def begin_audio_mix(self) -> None:
+        """Voiceover complete, start audio mixing."""
+        self.current_stage = PipelineStatus.AUDIO_MIX
+
+    @transition(
+        field=overall_status,
+        source=PipelineStatus.GENERATING_ASSETS,
+        target=PipelineStatus.CLIP_GENERATION,
+    )
+    def begin_clip_generation(self) -> None:
+        """Images complete, start video clip generation."""
+        self.current_stage = PipelineStatus.CLIP_GENERATION
+
+    @transition(
+        field=overall_status,
+        source=[
+            PipelineStatus.GENERATING_ASSETS,
+            PipelineStatus.AUDIO_MIX,
+            PipelineStatus.CLIP_GENERATION,
+        ],
         target=PipelineStatus.RENDERING,
     )
     def begin_rendering(self) -> None:
@@ -395,7 +438,10 @@ class PipelineRun(BaseAbstractModel):
             PipelineStatus.RESEARCHING: self.begin_research,
             PipelineStatus.SCRIPTING: self.begin_scripting,
             PipelineStatus.AWAITING_APPROVAL: self.await_approval,
+            PipelineStatus.SCENE_BREAKDOWN: self.begin_scene_breakdown,
             PipelineStatus.GENERATING_ASSETS: self.begin_assets,
+            PipelineStatus.AUDIO_MIX: self.begin_audio_mix,
+            PipelineStatus.CLIP_GENERATION: self.begin_clip_generation,
             PipelineStatus.RENDERING: self.begin_rendering,
             PipelineStatus.QA: self.begin_qa,
             PipelineStatus.UPLOADING: self.begin_upload,

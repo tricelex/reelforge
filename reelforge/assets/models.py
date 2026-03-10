@@ -16,10 +16,20 @@ class AssetStatusChoices(models.TextChoices):
     FAILED = "FAILED", _("Failed")
 
 
+class RunStatus(models.TextChoices):
+    """Status for individual execution attempt records (not FSM — plain CharField)."""
+
+    PENDING = "PENDING", _("Pending")
+    RUNNING = "RUNNING", _("Running")
+    COMPLETED = "COMPLETED", _("Completed")
+    FAILED = "FAILED", _("Failed")
+
+
 class AssetJob(PipelineStageModel):
     """Asset generation job for a script.
     Manages voiceover generation, background images, thumbnails, and music selection.
     Uses FSM for overall job status, individual status fields for each asset type.
+    Individual sub-steps track their execution attempts via *Run sibling records.
     """
 
     script_job = models.OneToOneField(
@@ -140,6 +150,44 @@ class AssetJob(PipelineStageModel):
         help_text=_("The thumbnail selected for the video"),
     )
 
+    # ── Selected Runs (set automatically on first completion, or by operator) ──
+    selected_voiceover_run = models.ForeignKey(
+        "assets.VoiceoverRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Voiceover Run"),
+        help_text=_("The voiceover run whose merged audio feeds downstream rendering"),
+    )
+    selected_image_run = models.ForeignKey(
+        "assets.ImageGenerationRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Image Run"),
+        help_text=_("The image generation run whose images feed downstream rendering"),
+    )
+    selected_video_clip_run = models.ForeignKey(
+        "assets.VideoClipGenerationRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Video Clip Run"),
+        help_text=_("The video clip run whose clips feed downstream rendering"),
+    )
+    selected_thumbnail_run = models.ForeignKey(
+        "assets.ThumbnailRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Selected Thumbnail Run"),
+        help_text=_("The thumbnail run whose options feed the distribution step"),
+    )
+
     # ── Timeline ───────────────────────────────────────────────────────────
     visual_timeline = models.JSONField(
         default=list,
@@ -189,6 +237,15 @@ class VoiceoverSegment(BaseAbstractModel):
         on_delete=models.CASCADE,
         related_name="voiceover_segments",
         verbose_name=_("Asset Job"),
+    )
+    voiceover_run = models.ForeignKey(
+        "assets.VoiceoverRun",
+        on_delete=models.CASCADE,
+        related_name="segments",
+        verbose_name=_("Voiceover Run"),
+        null=True,
+        blank=True,
+        help_text=_("The specific voiceover run this segment belongs to"),
     )
 
     segment_id = models.PositiveSmallIntegerField(
@@ -288,6 +345,15 @@ class GeneratedImage(BaseAbstractModel):
         related_name="images",
         verbose_name=_("Asset Job"),
     )
+    image_run = models.ForeignKey(
+        "assets.ImageGenerationRun",
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Image Generation Run"),
+        null=True,
+        blank=True,
+        help_text=_("The specific image generation run this image belongs to"),
+    )
 
     position_idx = models.PositiveSmallIntegerField(
         _("Position Index"),
@@ -364,6 +430,15 @@ class ThumbnailOption(BaseAbstractModel):
         related_name="thumbnails",
         verbose_name=_("Asset Job"),
     )
+    thumbnail_run = models.ForeignKey(
+        "assets.ThumbnailRun",
+        on_delete=models.CASCADE,
+        related_name="options",
+        verbose_name=_("Thumbnail Run"),
+        null=True,
+        blank=True,
+        help_text=_("The specific thumbnail run this option belongs to"),
+    )
 
     option_number = models.PositiveSmallIntegerField(
         _("Option Number"),
@@ -421,3 +496,356 @@ class ThumbnailOption(BaseAbstractModel):
     def __str__(self) -> str:
         selected = " [SELECTED]" if self.is_selected else ""
         return f"Thumbnail {self.option_number}{selected}"
+
+
+# ── Run Models ─────────────────────────────────────────────────────────────────
+# Each Run model represents a single execution attempt of a sub-step.
+# Previous runs are never deleted — the AssetJob.selected_*_run FK tracks
+# which run feeds downstream processing.
+
+
+class VoiceoverRun(BaseAbstractModel):
+    """Single voiceover generation attempt for an AssetJob.
+    Multiple runs can exist; AssetJob.selected_voiceover_run tracks which is active.
+    """
+
+    asset_job = models.ForeignKey(
+        AssetJob,
+        on_delete=models.CASCADE,
+        related_name="voiceover_runs",
+        verbose_name=_("Asset Job"),
+    )
+    run_number = models.PositiveSmallIntegerField(
+        _("Run Number"),
+        help_text=_("Sequential attempt number (1, 2, 3…)"),
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=RunStatus,
+        default=RunStatus.PENDING,
+        db_index=True,
+    )
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+        help_text=_("TTS provider used (e.g., elevenlabs, openai_tts)"),
+    )
+    voice_id = models.CharField(
+        _("Voice ID"),
+        max_length=255,
+        blank=True,
+    )
+    merged_audio_file = models.FileField(
+        _("Merged Audio File"),
+        upload_to="assets/audio/full/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        help_text=_("Combined voiceover audio for this run"),
+    )
+    total_duration_sec = models.FloatField(
+        _("Total Duration (seconds)"),
+        default=0.0,
+    )
+    total_cost_usd = models.DecimalField(
+        _("Total Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+    celery_task_id = models.CharField(
+        _("Celery Task ID"),
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["asset_job", "run_number"]
+        verbose_name = _("Voiceover Run")
+        verbose_name_plural = _("Voiceover Runs")
+        unique_together = [["asset_job", "run_number"]]
+        indexes = [
+            models.Index(fields=["asset_job", "run_number"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"VoiceoverRun #{self.run_number} [{self.status}] — {self.asset_job}"
+
+
+class ImageGenerationRun(BaseAbstractModel):
+    """Single image generation attempt for an AssetJob.
+    Multiple runs can exist; AssetJob.selected_image_run tracks which is active.
+    """
+
+    asset_job = models.ForeignKey(
+        AssetJob,
+        on_delete=models.CASCADE,
+        related_name="image_runs",
+        verbose_name=_("Asset Job"),
+    )
+    run_number = models.PositiveSmallIntegerField(
+        _("Run Number"),
+        help_text=_("Sequential attempt number (1, 2, 3…)"),
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=RunStatus,
+        default=RunStatus.PENDING,
+        db_index=True,
+    )
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+    )
+    images_count = models.PositiveSmallIntegerField(
+        _("Images Count"),
+        default=0,
+    )
+    total_cost_usd = models.DecimalField(
+        _("Total Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+    generation_config = models.JSONField(
+        _("Generation Config"),
+        default=dict,
+        blank=True,
+        help_text=_("Prompts, size, style params used for this run"),
+    )
+    celery_task_id = models.CharField(
+        _("Celery Task ID"),
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["asset_job", "run_number"]
+        verbose_name = _("Image Generation Run")
+        verbose_name_plural = _("Image Generation Runs")
+        unique_together = [["asset_job", "run_number"]]
+        indexes = [
+            models.Index(fields=["asset_job", "run_number"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"ImageGenerationRun #{self.run_number} [{self.status}] — {self.asset_job}"
+
+
+class VideoClipGenerationRun(BaseAbstractModel):
+    """Single video clip animation attempt for an AssetJob.
+    Animates still images from a given ImageGenerationRun into short clips.
+    Multiple runs can exist; AssetJob.selected_video_clip_run tracks which is active.
+    """
+
+    asset_job = models.ForeignKey(
+        AssetJob,
+        on_delete=models.CASCADE,
+        related_name="video_clip_runs",
+        verbose_name=_("Asset Job"),
+    )
+    run_number = models.PositiveSmallIntegerField(
+        _("Run Number"),
+        help_text=_("Sequential attempt number (1, 2, 3…)"),
+    )
+    image_run = models.ForeignKey(
+        ImageGenerationRun,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="video_clip_runs",
+        verbose_name=_("Source Image Run"),
+        help_text=_("Which image run's images were animated"),
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=RunStatus,
+        default=RunStatus.PENDING,
+        db_index=True,
+    )
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+    )
+    clips_count = models.PositiveSmallIntegerField(
+        _("Clips Count"),
+        default=0,
+    )
+    total_cost_usd = models.DecimalField(
+        _("Total Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+    generation_config = models.JSONField(
+        _("Generation Config"),
+        default=dict,
+        blank=True,
+        help_text=_("Prompts, duration, provider params used for this run"),
+    )
+    celery_task_id = models.CharField(
+        _("Celery Task ID"),
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["asset_job", "run_number"]
+        verbose_name = _("Video Clip Generation Run")
+        verbose_name_plural = _("Video Clip Generation Runs")
+        unique_together = [["asset_job", "run_number"]]
+        indexes = [
+            models.Index(fields=["asset_job", "run_number"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"VideoClipGenerationRun #{self.run_number} [{self.status}] — {self.asset_job}"
+
+
+class ThumbnailRun(BaseAbstractModel):
+    """Single thumbnail generation attempt for an AssetJob.
+    Multiple runs can exist; AssetJob.selected_thumbnail_run tracks which is active.
+    """
+
+    asset_job = models.ForeignKey(
+        AssetJob,
+        on_delete=models.CASCADE,
+        related_name="thumbnail_runs",
+        verbose_name=_("Asset Job"),
+    )
+    run_number = models.PositiveSmallIntegerField(
+        _("Run Number"),
+        help_text=_("Sequential attempt number (1, 2, 3…)"),
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=RunStatus,
+        default=RunStatus.PENDING,
+        db_index=True,
+    )
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+    )
+    options_count = models.PositiveSmallIntegerField(
+        _("Options Count"),
+        default=0,
+    )
+    total_cost_usd = models.DecimalField(
+        _("Total Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+    celery_task_id = models.CharField(
+        _("Celery Task ID"),
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["asset_job", "run_number"]
+        verbose_name = _("Thumbnail Run")
+        verbose_name_plural = _("Thumbnail Runs")
+        unique_together = [["asset_job", "run_number"]]
+        indexes = [
+            models.Index(fields=["asset_job", "run_number"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"ThumbnailRun #{self.run_number} [{self.status}] — {self.asset_job}"
+
+
+class GeneratedVideoClip(BaseAbstractModel):
+    """Individual animated video clip produced by a VideoClipGenerationRun."""
+
+    video_clip_run = models.ForeignKey(
+        VideoClipGenerationRun,
+        on_delete=models.CASCADE,
+        related_name="clips",
+        verbose_name=_("Video Clip Run"),
+    )
+    position_idx = models.PositiveSmallIntegerField(
+        _("Position Index"),
+        help_text=_("Order of this clip in the video timeline"),
+    )
+    source_image = models.ForeignKey(
+        GeneratedImage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="video_clips",
+        verbose_name=_("Source Image"),
+        help_text=_("The still image that was animated into this clip"),
+    )
+    prompt_used = models.TextField(
+        _("Prompt Used"),
+        help_text=_("Animation prompt used to generate this clip"),
+    )
+    clip_file = models.FileField(
+        _("Clip File"),
+        upload_to="assets/clips/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        help_text=_("Generated video clip file (MP4)"),
+    )
+    duration_sec = models.FloatField(
+        _("Duration (seconds)"),
+        default=0.0,
+    )
+    provider = models.CharField(
+        _("Provider"),
+        max_length=50,
+        blank=True,
+    )
+    is_selected = models.BooleanField(
+        _("Selected"),
+        default=True,
+        help_text=_("Whether this clip is selected for rendering"),
+    )
+    generation_cost_usd = models.DecimalField(
+        _("Generation Cost (USD)"),
+        max_digits=8,
+        decimal_places=6,
+        default=0,
+    )
+
+    class Meta:
+        ordering = ["video_clip_run", "position_idx"]
+        verbose_name = _("Generated Video Clip")
+        verbose_name_plural = _("Generated Video Clips")
+        unique_together = [["video_clip_run", "position_idx"]]
+        indexes = [
+            models.Index(fields=["video_clip_run", "position_idx"]),
+            models.Index(fields=["is_selected"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Clip {self.position_idx}: {self.prompt_used[:50]}…"

@@ -250,35 +250,421 @@ def run_script_revision_job(
     time_limit=2400,
 )
 def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
-    """Build AssetAgent and run it for the given script job."""
-    import asyncio
+    """Coordinate asset generation — creates Run records and dispatches sub-tasks.
 
-    from agents import Runner
-    from ***REMOVED***.agents.asset_agent import build_asset_agent
+    Voiceover, image generation, and thumbnail generation run in parallel.
+    Each sub-task auto-selects itself as the active run if none is set yet.
+    """
+    from django.db import transaction
+    from django.db.models import Max
+
     from ***REMOVED***.assets.models import AssetJob
+    from ***REMOVED***.assets.models import ImageGenerationRun
+    from ***REMOVED***.assets.models import ThumbnailRun
+    from ***REMOVED***.assets.models import VoiceoverRun
     from ***REMOVED***.pipeline.models import PipelineRun
     from ***REMOVED***.scripts.models import ScriptJob
 
     script_job = ScriptJob.objects.select_related("topic__channel").get(id=script_job_id)
-    channel = script_job.topic.channel
 
     # Create AssetJob if not yet exists for this script job
     job, _ = AssetJob.objects.get_or_create(script_job=script_job)
     job.mark_running(task_id=self.request.id)
 
     try:
-        agent = build_asset_agent(channel, script_job)
-        asyncio.run(
-            Runner.run(
-                agent,
-                input=f"Generate all assets for: {script_job.final_title or script_job.topic.title_idea}",
-                max_turns=30,
-            )
-        )
-        job.mark_completed()
+        # Determine the next run number for each sub-type
+        next_vo_run = (job.voiceover_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+        next_img_run = (job.image_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+        next_thumb_run = (job.thumbnail_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
+
+        voiceover_run = VoiceoverRun.objects.create(asset_job=job, run_number=next_vo_run)
+        image_run = ImageGenerationRun.objects.create(asset_job=job, run_number=next_img_run)
+        thumbnail_run = ThumbnailRun.objects.create(asset_job=job, run_number=next_thumb_run)
+
+        # Dispatch sub-tasks in parallel after commit
+        def _dispatch() -> None:
+            run_voiceover_run.delay(str(voiceover_run.id))
+            run_image_generation_run.delay(str(image_run.id))
+            run_thumbnail_run.delay(str(thumbnail_run.id))
+
+        transaction.on_commit(_dispatch)
 
         # Update PipelineRun to link the asset job
         PipelineRun.objects.filter(id=pipeline_run_id).update(asset_job=job)
+
+    except Exception as exc:
+        job.mark_failed(str(exc))
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_scene_breakdown_job",
+    max_retries=3,
+    default_retry_delay=60,
+    queue="default",
+    soft_time_limit=240,
+    time_limit=300,
+)
+def run_scene_breakdown_job(self, scene_breakdown_job_id: str) -> None:
+    """Run scene breakdown for a script — splits script into timed scene dicts."""
+    from ***REMOVED***.production.models import SceneBreakdownJob
+
+    try:
+        job = SceneBreakdownJob.objects.select_related(
+            "script_job__topic__channel",
+        ).get(id=scene_breakdown_job_id)
+    except SceneBreakdownJob.DoesNotExist:
+        logger.error(
+            "SceneBreakdownJob %s not found — aborting",
+            scene_breakdown_job_id,
+            extra={"scene_breakdown_job_id": scene_breakdown_job_id},
+        )
+        return
+
+    job.mark_running(task_id=self.request.id)
+
+    try:
+        # Stub: real implementation will call an LLM to parse script sections into scenes
+        script_text = job.script_job.script_text or ""
+        sections = job.script_job.sections or []
+        stub_scenes = [
+            {
+                "scene_id": i + 1,
+                "narration": s.get("content", "")[:200],
+                "duration_estimate": s.get("estimated_duration_seconds", 8.0),
+                "visual_keywords": [],
+                "mood": "neutral",
+                "caption_text": s.get("content", "")[:80],
+            }
+            for i, s in enumerate(sections)
+        ]
+
+        if not stub_scenes and script_text:
+            stub_scenes = [
+                {
+                    "scene_id": 1,
+                    "narration": script_text[:200],
+                    "duration_estimate": 8.0,
+                    "visual_keywords": [],
+                    "mood": "neutral",
+                    "caption_text": script_text[:80],
+                }
+            ]
+
+        job.scenes = stub_scenes
+        job.scene_count = len(stub_scenes)
+        job.total_estimated_duration = sum(s["duration_estimate"] for s in stub_scenes)
+        job.save(update_fields=["scenes", "scene_count", "total_estimated_duration", "updated_at"])
+        job.mark_completed()
+
+        logger.info(
+            "Scene breakdown complete",
+            extra={
+                "scene_breakdown_job_id": str(job.id),
+                "scene_count": job.scene_count,
+                "total_duration": job.total_estimated_duration,
+            },
+        )
+
+    except Exception as exc:
+        job.mark_failed(str(exc))
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_voiceover_run",
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=1500,
+    time_limit=1800,
+)
+def run_voiceover_run(self, voiceover_run_id: str) -> None:
+    """Execute a single voiceover generation attempt.
+    On completion, auto-selects this run on the parent AssetJob if none is selected.
+    """
+    from django.utils import timezone
+
+    from ***REMOVED***.assets.models import VoiceoverRun
+
+    try:
+        run = VoiceoverRun.objects.select_related("asset_job__script_job__topic__channel").get(
+            id=voiceover_run_id
+        )
+    except VoiceoverRun.DoesNotExist:
+        logger.error(
+            "VoiceoverRun %s not found — aborting",
+            voiceover_run_id,
+            extra={"voiceover_run_id": voiceover_run_id},
+        )
+        return
+
+    run.status = "RUNNING"
+    run.celery_task_id = self.request.id
+    run.started_at = timezone.now()
+    run.save(update_fields=["status", "celery_task_id", "started_at"])
+
+    try:
+        # Stub: real implementation will call TTS provider per script segment
+        logger.info(
+            "VoiceoverRun starting (stub)",
+            extra={"voiceover_run_id": str(run.id), "run_number": run.run_number},
+        )
+
+        run.status = "COMPLETED"
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "completed_at", "updated_at"])
+
+        # Auto-select if no run is currently selected
+        asset_job = run.asset_job
+        if not asset_job.selected_voiceover_run_id:
+            asset_job.selected_voiceover_run = run
+            asset_job.save(update_fields=["selected_voiceover_run", "updated_at"])
+            logger.info(
+                "Auto-selected voiceover run",
+                extra={"asset_job_id": str(asset_job.id), "voiceover_run_id": str(run.id)},
+            )
+
+    except Exception as exc:
+        run.status = "FAILED"
+        run.notes = str(exc)
+        run.save(update_fields=["status", "notes", "updated_at"])
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_image_generation_run",
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=750,
+    time_limit=900,
+)
+def run_image_generation_run(self, image_generation_run_id: str) -> None:
+    """Execute a single image generation attempt.
+    On completion, auto-selects this run on the parent AssetJob if none is selected.
+    """
+    from django.utils import timezone
+
+    from ***REMOVED***.assets.models import ImageGenerationRun
+
+    try:
+        run = ImageGenerationRun.objects.select_related("asset_job__script_job__topic__channel").get(
+            id=image_generation_run_id
+        )
+    except ImageGenerationRun.DoesNotExist:
+        logger.error(
+            "ImageGenerationRun %s not found — aborting",
+            image_generation_run_id,
+            extra={"image_generation_run_id": image_generation_run_id},
+        )
+        return
+
+    run.status = "RUNNING"
+    run.celery_task_id = self.request.id
+    run.started_at = timezone.now()
+    run.save(update_fields=["status", "celery_task_id", "started_at"])
+
+    try:
+        # Stub: real implementation will call image provider per scene/prompt
+        logger.info(
+            "ImageGenerationRun starting (stub)",
+            extra={"image_generation_run_id": str(run.id), "run_number": run.run_number},
+        )
+
+        run.status = "COMPLETED"
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "completed_at", "updated_at"])
+
+        # Auto-select if no run is currently selected
+        asset_job = run.asset_job
+        if not asset_job.selected_image_run_id:
+            asset_job.selected_image_run = run
+            asset_job.save(update_fields=["selected_image_run", "updated_at"])
+            logger.info(
+                "Auto-selected image run",
+                extra={"asset_job_id": str(asset_job.id), "image_generation_run_id": str(run.id)},
+            )
+
+    except Exception as exc:
+        run.status = "FAILED"
+        run.notes = str(exc)
+        run.save(update_fields=["status", "notes", "updated_at"])
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_video_clip_generation_run",
+    max_retries=3,
+    default_retry_delay=600,
+    queue="rendering",
+    soft_time_limit=3300,
+    time_limit=3600,
+)
+def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
+    """Execute a single video clip generation attempt (animates still images).
+    On completion, auto-selects this run on the parent AssetJob if none is selected.
+    """
+    from django.utils import timezone
+
+    from ***REMOVED***.assets.models import VideoClipGenerationRun
+
+    try:
+        run = VideoClipGenerationRun.objects.select_related(
+            "asset_job__script_job__topic__channel",
+            "image_run",
+        ).get(id=video_clip_run_id)
+    except VideoClipGenerationRun.DoesNotExist:
+        logger.error(
+            "VideoClipGenerationRun %s not found — aborting",
+            video_clip_run_id,
+            extra={"video_clip_run_id": video_clip_run_id},
+        )
+        return
+
+    run.status = "RUNNING"
+    run.celery_task_id = self.request.id
+    run.started_at = timezone.now()
+    run.save(update_fields=["status", "celery_task_id", "started_at"])
+
+    try:
+        # Stub: real implementation will call video clip provider per image
+        logger.info(
+            "VideoClipGenerationRun starting (stub)",
+            extra={"video_clip_run_id": str(run.id), "run_number": run.run_number},
+        )
+
+        run.status = "COMPLETED"
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "completed_at", "updated_at"])
+
+        # Auto-select if no run is currently selected
+        asset_job = run.asset_job
+        if not asset_job.selected_video_clip_run_id:
+            asset_job.selected_video_clip_run = run
+            asset_job.save(update_fields=["selected_video_clip_run", "updated_at"])
+            logger.info(
+                "Auto-selected video clip run",
+                extra={"asset_job_id": str(asset_job.id), "video_clip_run_id": str(run.id)},
+            )
+
+    except Exception as exc:
+        run.status = "FAILED"
+        run.notes = str(exc)
+        run.save(update_fields=["status", "notes", "updated_at"])
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 600) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_thumbnail_run",
+    max_retries=3,
+    default_retry_delay=300,
+    queue="default",
+    soft_time_limit=480,
+    time_limit=600,
+)
+def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
+    """Execute a single thumbnail generation attempt.
+    On completion, auto-selects this run on the parent AssetJob if none is selected.
+    """
+    from django.utils import timezone
+
+    from ***REMOVED***.assets.models import ThumbnailRun
+
+    try:
+        run = ThumbnailRun.objects.select_related("asset_job__script_job__topic__channel").get(
+            id=thumbnail_run_id
+        )
+    except ThumbnailRun.DoesNotExist:
+        logger.error(
+            "ThumbnailRun %s not found — aborting",
+            thumbnail_run_id,
+            extra={"thumbnail_run_id": thumbnail_run_id},
+        )
+        return
+
+    run.status = "RUNNING"
+    run.celery_task_id = self.request.id
+    run.started_at = timezone.now()
+    run.save(update_fields=["status", "celery_task_id", "started_at"])
+
+    try:
+        # Stub: real implementation will call image provider for thumbnail variants
+        logger.info(
+            "ThumbnailRun starting (stub)",
+            extra={"thumbnail_run_id": str(run.id), "run_number": run.run_number},
+        )
+
+        run.status = "COMPLETED"
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "completed_at", "updated_at"])
+
+        # Auto-select if no run is currently selected
+        asset_job = run.asset_job
+        if not asset_job.selected_thumbnail_run_id:
+            asset_job.selected_thumbnail_run = run
+            asset_job.save(update_fields=["selected_thumbnail_run", "updated_at"])
+            logger.info(
+                "Auto-selected thumbnail run",
+                extra={"asset_job_id": str(asset_job.id), "thumbnail_run_id": str(run.id)},
+            )
+
+    except Exception as exc:
+        run.status = "FAILED"
+        run.notes = str(exc)
+        run.save(update_fields=["status", "notes", "updated_at"])
+        raise self.retry(exc=exc) from None
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.pipeline.run_audio_mix_job",
+    max_retries=3,
+    default_retry_delay=120,
+    queue="default",
+    soft_time_limit=480,
+    time_limit=600,
+)
+def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
+    """Combine voiceover with background music to produce a mixed audio file."""
+    from ***REMOVED***.production.models import AudioMixJob
+
+    try:
+        job = AudioMixJob.objects.select_related(
+            "asset_job__script_job__topic__channel",
+            "voiceover_run",
+        ).get(id=audio_mix_job_id)
+    except AudioMixJob.DoesNotExist:
+        logger.error(
+            "AudioMixJob %s not found — aborting",
+            audio_mix_job_id,
+            extra={"audio_mix_job_id": audio_mix_job_id},
+        )
+        return
+
+    job.mark_running(task_id=self.request.id)
+
+    try:
+        # Stub: real implementation will call pydub/ffmpeg to mix audio
+        logger.info(
+            "AudioMixJob starting (stub)",
+            extra={"audio_mix_job_id": str(job.id)},
+        )
+
+        # Mark active and complete
+        job.is_active = True
+        job.save(update_fields=["is_active", "updated_at"])
+        job.mark_completed()
+
+        logger.info(
+            "AudioMixJob complete",
+            extra={"audio_mix_job_id": str(job.id), "mixed_duration_sec": job.mixed_duration_sec},
+        )
 
     except Exception as exc:
         job.mark_failed(str(exc))

@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from abc import ABC
 from abc import abstractmethod
+from typing import Any
 
 from ***REMOVED***.services.dataclass import ImageResponse
 from ***REMOVED***.services.dataclass import LLMResponse
 from ***REMOVED***.services.dataclass import TTSResponse
+from ***REMOVED***.services.dataclass import VideoClipResponse
 
 
 class BaseLLMProvider(ABC):
@@ -30,3 +34,16 @@ class BaseImageProvider(ABC):
 
     @abstractmethod
     def generate(self, prompt: str, width: int, height: int, **kwargs) -> list[ImageResponse]: ...
+
+
+class BaseVideoClipProvider(ABC):
+    name: str
+
+    @abstractmethod
+    def generate_clip(
+        self,
+        image_path: str,
+        prompt: str,
+        duration_sec: float = 5.0,
+        **kwargs: Any,
+    ) -> VideoClipResponse: ...
