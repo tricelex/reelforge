@@ -10,9 +10,14 @@ class SceneItem(BaseModel):
     scene_id: int
     narration: str
     duration_estimate: float
-    visual_keywords: list[str]
-    mood: str
-    caption_text: str
+    visual_keywords: list[str] = []
+    mood: str = ""
+    caption_text: str = ""
+    section_tag: str = ""  # HOOK | INTRO_BRIDGE | SECTION_1 | etc.
+    animation_type: str = "body_concept"  # hook | intro | body_stat | body_concept | outro
+    image_prompt: str = ""  # Flux Pro prompt built from broll suggestion
+    image_style_preset: str = "cinematic_realism"  # style preset key
+    broll_indices: list[int] = []  # indices into script_job.broll_suggestions
 
 
 class SceneList(RootModel[list[SceneItem]]):

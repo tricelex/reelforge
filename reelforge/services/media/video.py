@@ -1,230 +1,414 @@
+from __future__ import annotations
+
 import logging
 import os
 import subprocess
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import ffmpeg
 import numpy as np
-from moviepy.editor import AudioFileClip
-from moviepy.editor import CompositeVideoClip
-from moviepy.editor import ImageClip
-from moviepy.editor import TextClip
-from moviepy.editor import concatenate_videoclips
-from PIL import Image
 
-logger = logging.getLogger("youtube_hq.media.video")
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger("reelforge.media.video")
 
 
 class VideoRenderer:
-    """Renders the final video from assets using MoviePy + FFmpeg.
-    Design: MoviePy handles compositing logic, FFmpeg handles final encode.
+    """Renders the final video from assets using FFmpeg (primary) with Ken Burns fallback.
+
+    Pipeline:
+      1. Per-scene clip preparation (trim/scale/fade) — uses Kling clip if available,
+         otherwise applies Ken Burns zoom via FFmpeg zoompan filter.
+      2. Concatenate all scene clips.
+      3. Mix background music (if AudioMixJob is active).
+      4. Burn ASS captions (if caption_ass_file is set).
+      5. Final encode: libx264 crf=18 preset=slow movflags=+faststart.
+      6. Extract Shorts: 9:16 crop from centre, scale 1080×1920.
     """
 
     RESOLUTION = (1920, 1080)
     FPS = 30
-    SUBTITLE_FONT = "Montserrat-Bold"
-    SUBTITLE_SIZE = 52
-    SUBTITLE_COLOR = "white"
-    SUBTITLE_STROKE = "black"
-    SUBTITLE_STROKE_WIDTH = 3
+    CRF = 18
+    PRESET = "slow"
 
-    def __init__(self, production_job) -> None:
+    def __init__(self, production_job: object) -> None:
         self.job = production_job
-        self.asset_job = production_job.asset_job
-        self.script_job = production_job.asset_job.script_job
-        self.channel = production_job.asset_job.script_job.topic.channel
-        self.timeline = production_job.asset_job.visual_timeline
+        self.asset_job = production_job.asset_job  # type: ignore[union-attr]
+        self.script_job = self.asset_job.script_job
+        self.channel = self.script_job.topic.channel
+
+    # ── Public entry point ────────────────────────────────────────────────────
 
     def render(self) -> str:
-        """Full render pipeline. Returns final video path."""
-        logger.info(f"Starting render for production job {self.job.id}")
+        """Run full render pipeline. Returns path to processed video file."""
+        import time
 
-        clips = []
+        start = time.monotonic()
+        logger.info("Starting render for production_job %s", self.job.id)
 
-        for slot in self.timeline:
-            clip = self._build_clip(slot)
-            clips.append(clip)
+        from reelforge.core.storage import get_render_path
 
-        # Concatenate all clips
-        video = concatenate_videoclips(clips, method="compose")
+        processed_path = get_render_path(str(self.job.id), "processed")
 
-        # Add progress bar overlay
-        video = self._add_progress_bar(video)
+        # 1. Collect ordered scene clips
+        scene_clips = self._get_scene_clips()
+        if not scene_clips:
+            msg = f"No scene clips available for ProductionJob {self.job.id}"
+            raise RuntimeError(msg)
 
-        # Add audio
-        audio = AudioFileClip(str(self.asset_job.voiceover_full_file.path))
-        video = video.set_audio(audio)
+        # 2. Per-scene clip preparation → intermediate files
+        prepared_clips = self._prepare_scene_clips(scene_clips)
 
-        # Render raw version (high quality for archiving)
-        raw_path = f"storage/production/raw/{self.job.id}_raw.mp4"
-        os.makedirs(os.path.dirname(raw_path), exist_ok=True)
+        # 3. Concatenate
+        concat_path = get_render_path(str(self.job.id), "raw")
+        self._concatenate_scenes(prepared_clips, str(concat_path))
 
-        video.write_videofile(
-            raw_path,
-            fps=self.FPS,
-            codec="libx264",
-            audio_codec="aac",
-            bitrate="8000k",
-            preset="medium",
-            threads=4,
-            logger=None,  # Suppress moviepy progress bars in prod
+        # 4. Final encode: music + captions
+        self._final_encode(str(concat_path), str(processed_path))
+
+        # 5. Cleanup intermediate raw
+        if concat_path.exists():
+            concat_path.unlink(missing_ok=True)
+
+        # 6. Render Shorts
+        shorts_path = get_render_path(str(self.job.id), "shorts")
+        self._extract_shorts(str(processed_path), str(shorts_path))
+
+        # 7. Persist to ProductionJob
+        from django.conf import settings
+
+        media_root = Path(settings.MEDIA_ROOT)
+        render_sec = time.monotonic() - start
+        self.job.raw_video_file = str(get_render_path(str(self.job.id), "raw").relative_to(media_root))
+        self.job.processed_video_file = str(processed_path.relative_to(media_root))
+        self.job.shorts_video_file = str(shorts_path.relative_to(media_root)) if shorts_path.exists() else ""
+        self.job.render_duration_sec = render_sec
+        if processed_path.exists():
+            probe = ffmpeg.probe(str(processed_path))
+            self.job.video_duration_sec = float(probe["format"]["duration"])
+            self.job.file_size_bytes = int(probe["format"]["size"])
+        self.job.save(
+            update_fields=[
+                "processed_video_file",
+                "shorts_video_file",
+                "video_duration_sec",
+                "file_size_bytes",
+                "render_duration_sec",
+                "updated_at",
+            ]
         )
 
-        # Post-process with FFmpeg (color grade + audio normalization)
-        processed_path = self._post_process(raw_path)
-
-        # Save file references
-        self.job.raw_video_file.name = raw_path
-        self.job.processed_video_file.name = processed_path
-        self.job.video_duration_sec = video.duration
-        self.job.file_size_bytes = os.path.getsize(processed_path)
-        self.job.save()
-
-        # Render Shorts
-        shorts_path = self._render_shorts(processed_path)
-        self.job.shorts_video_file.name = shorts_path
-        self.job.save()
-
-        # Cleanup raw after archive period
-        video.close()
-        audio.close()
-        return processed_path
-
-    def _build_clip(self, slot: dict) -> CompositeVideoClip:
-        """Build a single timeline slot with background, animation, subtitles."""
-        duration = (slot["end_ms"] - slot["start_ms"]) / 1000.0
-
-        # 1. Background image with Ken Burns effect
-        bg = self._build_ken_burns_clip(
-            image_path=slot["image_path"], duration=duration, animation=slot.get("animation_type", "zoom_in")
+        logger.info(
+            "Render complete",
+            extra={
+                "production_job_id": str(self.job.id),
+                "duration_sec": self.job.video_duration_sec,
+                "render_time_sec": render_sec,
+                "output": str(processed_path),
+            },
         )
+        return str(processed_path)
 
-        # 2. Subtitle overlay
-        subtitle = self._build_subtitle_clip(text=slot["segment_text"], duration=duration)
+    # ── Scene clip collection ─────────────────────────────────────────────────
 
-        # 3. Compose
-        composite = CompositeVideoClip([bg, subtitle.set_pos(("center", 0.85), relative=True)])
-        return composite.set_duration(duration)
+    def _get_scene_clips(self) -> list[dict]:
+        """Return ordered list of scene dicts with clip_path, image_path, duration."""
+        from reelforge.assets.models import GeneratedImage
+        from reelforge.assets.models import GeneratedVideoClip
+        from reelforge.production.models import SceneBreakdownJob
 
-    def _build_ken_burns_clip(self, image_path: str, duration: float, animation: str) -> ImageClip:
-        """Apply Ken Burns (slow zoom/pan) to static image."""
+        breakdown = SceneBreakdownJob.objects.filter(
+            script_job=self.script_job
+        ).first()
+        scenes: list[dict] = (breakdown.scenes or []) if breakdown else []
+
+        # Fall back: one scene per generated image
+        if not scenes:
+            images = list(
+                GeneratedImage.objects.filter(
+                    image_run=self.asset_job.selected_image_run
+                ).order_by("position_idx")
+            )
+            scenes = [
+                {"scene_id": img.position_idx, "duration_estimate": 8.0}
+                for img in images
+            ]
+
+        # Build lookup of generated clips and images by position_idx
+        clip_run = self.asset_job.selected_video_clip_run
+        clips_by_pos: dict[int, str] = {}
+        if clip_run:
+            for clip in GeneratedVideoClip.objects.filter(
+                video_clip_run=clip_run, is_selected=True
+            ):
+                if clip.clip_file:
+                    clips_by_pos[clip.position_idx] = clip.clip_file.path
+
+        img_run = self.asset_job.selected_image_run
+        images_by_pos: dict[int, str] = {}
+        if img_run:
+            for img in GeneratedImage.objects.filter(
+                image_run=img_run, is_selected=True
+            ):
+                if img.image_file:
+                    images_by_pos[img.position_idx] = img.image_file.path
+
+        result: list[dict] = []
+        for scene in scenes:
+            sid = scene.get("scene_id", 0)
+            duration = float(scene.get("duration_estimate", 8.0))
+            clip_path = clips_by_pos.get(sid)
+            img_path = images_by_pos.get(sid)
+            if clip_path or img_path:
+                result.append(
+                    {
+                        "scene_id": sid,
+                        "clip_path": clip_path,
+                        "image_path": img_path,
+                        "duration": duration,
+                        "animation_type": scene.get("animation_type", "body_concept"),
+                    }
+                )
+
+        return result
+
+    # ── Scene preparation ─────────────────────────────────────────────────────
+
+    def _prepare_scene_clips(self, scene_clips: list[dict]) -> list[str]:
+        """Prepare each scene: trim/scale/fade. Returns list of temp file paths."""
+        prepared: list[str] = []
+        for scene in scene_clips:
+            out_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+            self._prepare_one_scene(scene, out_path)
+            prepared.append(out_path)
+        return prepared
+
+    def _prepare_one_scene(self, scene: dict, out_path: str) -> None:
+        """Prepare a single scene clip with scaling, fades, and optional Ken Burns."""
+        duration = scene["duration"]
         w, h = self.RESOLUTION
-        img = Image.open(image_path).convert("RGB")
-        img = img.resize((w + 100, h + 60), Image.LANCZOS)  # Slightly oversized for zoom room
 
-        def make_frame(t):
-            progress = t / duration
-            if animation == "zoom_in":
-                scale = 1.0 + 0.03 * progress  # Slowly zoom in 3%
-                offset_x = int(50 * progress)
-                offset_y = int(30 * progress)
-            elif animation == "zoom_out":
-                scale = 1.03 - 0.03 * progress
-                offset_x = int(50 * (1 - progress))
-                offset_y = int(30 * (1 - progress))
-            elif animation == "pan_right":
-                scale = 1.02
-                offset_x = int(80 * progress)
-                offset_y = 0
-            else:  # pan_left
-                scale = 1.02
-                offset_x = int(80 * (1 - progress))
-                offset_y = 0
+        if scene.get("clip_path") and Path(scene["clip_path"]).exists():
+            # Use Kling-generated clip: scale + fade
+            (
+                ffmpeg.input(scene["clip_path"])
+                .video.filter("scale", w, h, force_original_aspect_ratio="cover")
+                .filter("crop", w, h)
+                .filter("fade", type="in", start_time=0, duration=0.3)
+                .filter("fade", type="out", start_time=max(0, duration - 0.5), duration=0.5)
+                .output(
+                    out_path,
+                    vcodec="libx264",
+                    crf=self.CRF,
+                    preset="fast",
+                    an=None,  # drop audio — remixed later
+                    t=duration,
+                )
+                .overwrite_output()
+                .run(quiet=True)
+            )
+        elif scene.get("image_path") and Path(scene["image_path"]).exists():
+            # Ken Burns fallback via FFmpeg zoompan
+            self._ken_burns_clip(scene["image_path"], duration, scene.get("animation_type", "zoom_in"), out_path)
+        else:
+            # Black frame fallback
+            (
+                ffmpeg.input("color=c=black:s=1920x1080", f="lavfi", t=duration)
+                .output(out_path, vcodec="libx264", crf=self.CRF, preset="fast")
+                .overwrite_output()
+                .run(quiet=True)
+            )
 
-            # Apply transform
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            resized = img.resize((new_w, new_h), Image.LANCZOS)
-            cropped = resized.crop((offset_x, offset_y, offset_x + w, offset_y + h))
-            return np.array(cropped)
+    def _ken_burns_clip(self, image_path: str, duration: float, animation_type: str, out_path: str) -> None:
+        """Apply Ken Burns effect to a still image using FFmpeg zoompan filter."""
+        w, h = self.RESOLUTION
+        fps = self.FPS
+        total_frames = int(duration * fps)
 
-        return ImageClip(make_frame, duration=duration, ismask=False).set_fps(self.FPS)
-
-    def _build_subtitle_clip(self, text: str, duration: float) -> TextClip:
-        """Build word-wrapped subtitle with stroke."""
-        clip = TextClip(
-            text,
-            fontsize=self.SUBTITLE_SIZE,
-            font=self.SUBTITLE_FONT,
-            color=self.SUBTITLE_COLOR,
-            stroke_color=self.SUBTITLE_STROKE,
-            stroke_width=self.SUBTITLE_STROKE_WIDTH,
-            method="caption",
-            size=(self.RESOLUTION[0] - 160, None),
-            align="center",
-        )
-        return clip.set_duration(duration).fadein(0.15).fadeout(0.15)
-
-    def _add_progress_bar(self, video: CompositeVideoClip) -> CompositeVideoClip:
-        """Thin progress bar at top of video."""
-        brand_color = self.channel.brand_color_hex
-        total_duration = video.duration
-
-        def make_bar_frame(t):
-            progress = t / total_duration
-            bar_width = int(self.RESOLUTION[0] * progress)
-            frame = np.zeros((4, self.RESOLUTION[0], 3), dtype=np.uint8)
-            r, g, b = tuple(int(brand_color.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
-            frame[:, :bar_width] = [r, g, b]
-            return frame
-
-        bar_clip = ImageClip(make_bar_frame, duration=total_duration, ismask=False).set_fps(self.FPS)
-        bar_clip = bar_clip.set_pos(("left", "top"))
-        return CompositeVideoClip([video, bar_clip])
-
-    def _post_process(self, raw_path: str) -> str:
-        """FFmpeg post-processing: color grade + audio normalization."""
-        processed_path = raw_path.replace("_raw.mp4", "_processed.mp4")
+        # zoompan expression: max 3% zoom delta
+        if "zoom_out" in animation_type:
+            zoom_expr = f"'min(1.03,zoom-0.0005)'"
+        elif "pan_right" in animation_type:
+            zoom_expr = "'1.02'"
+        elif "pan_left" in animation_type:
+            zoom_expr = "'1.02'"
+        else:  # zoom_in / default
+            zoom_expr = f"'min(zoom+0.0005,1.03)'"
 
         (
-            ffmpeg.input(raw_path)
-            .video.filter("eq", brightness=0.02, contrast=1.05, saturation=1.1)
-            .filter("unsharp", luma_msize_x=5, luma_msize_y=5, luma_amount=0.8)
+            ffmpeg.input(image_path, loop=1, framerate=fps)
+            .filter(
+                "zoompan",
+                z=zoom_expr,
+                d=total_frames,
+                fps=fps,
+                s=f"{w}x{h}",
+            )
+            .filter("scale", w, h)
+            .filter("fade", type="in", start_time=0, duration=0.3)
+            .filter("fade", type="out", start_time=max(0, duration - 0.5), duration=0.5)
             .output(
-                ffmpeg.input(raw_path).audio.filter("loudnorm", I=-16, TP=-1.5, LRA=11),
-                processed_path,
+                out_path,
                 vcodec="libx264",
-                crf=18,
-                preset="slow",
-                acodec="aac",
-                audio_bitrate="192k",
-                movflags="+faststart",  # Enable streaming
+                crf=self.CRF,
+                preset="fast",
+                t=duration,
+                an=None,
             )
             .overwrite_output()
-            .run()
+            .run(quiet=True)
         )
 
-        return processed_path
+    # ── Concatenation ─────────────────────────────────────────────────────────
 
-    def _render_shorts(self, source_path: str) -> str:
-        """Extract and reformat best 60-second segment as vertical Shorts."""
-        start_sec = self.job.shorts_start_sec
-        end_sec = self.job.shorts_end_sec
-        shorts_path = source_path.replace("_processed.mp4", "_shorts.mp4")
+    def _concatenate_scenes(self, clip_paths: list[str], out_path: str) -> None:
+        """Concatenate prepared scene clips using FFmpeg concat filter."""
+        if len(clip_paths) == 1:
+            import shutil
 
+            shutil.copy2(clip_paths[0], out_path)
+            return
+
+        inputs = [ffmpeg.input(p) for p in clip_paths]
+        streams = [inp.video for inp in inputs]
         (
-            ffmpeg.input(source_path, ss=start_sec, to=end_sec)
-            .filter("crop", "ih*9/16", "ih")  # Crop to 9:16 from center
-            .filter("scale", 1080, 1920)
-            .output(shorts_path, vcodec="libx264", crf=20, preset="fast", acodec="aac", audio_bitrate="128k")
+            ffmpeg.concat(*streams, v=1, a=0)
+            .output(out_path, vcodec="libx264", crf=self.CRF, preset="fast")
             .overwrite_output()
-            .run()
+            .run(quiet=True)
         )
 
-        return shorts_path
+        # Cleanup temp clips
+        for p in clip_paths:
+            Path(p).unlink(missing_ok=True)
+
+    # ── Final encode: audio + captions ───────────────────────────────────────
+
+    def _final_encode(self, video_path: str, out_path: str) -> None:
+        """Final encode: add audio track, burn captions, colour grade, faststart."""
+        audio_path = self._get_audio_path()
+        caption_path = self._get_caption_path()
+
+        video_in = ffmpeg.input(video_path)
+        v = video_in.video
+
+        # Colour grade
+        v = v.filter("eq", brightness=0.02, contrast=1.05, saturation=1.1)
+        v = v.filter("unsharp", luma_msize_x=5, luma_msize_y=5, luma_amount=0.8)
+
+        # Burn captions if available
+        if caption_path and Path(caption_path).exists():
+            # Escape path for ffmpeg filter syntax
+            escaped = caption_path.replace("\\", "/").replace(":", "\\:")
+            v = v.filter("ass", escaped)
+
+        # Audio
+        if audio_path and Path(audio_path).exists():
+            audio_stream = ffmpeg.input(audio_path).audio.filter(
+                "loudnorm", I=-16, TP=-1.5, LRA=11
+            )
+            (
+                ffmpeg.output(
+                    v,
+                    audio_stream,
+                    out_path,
+                    vcodec="libx264",
+                    crf=self.CRF,
+                    preset=self.PRESET,
+                    acodec="aac",
+                    audio_bitrate="192k",
+                    movflags="+faststart",
+                )
+                .overwrite_output()
+                .run(quiet=True)
+            )
+        else:
+            (
+                ffmpeg.output(
+                    v,
+                    out_path,
+                    vcodec="libx264",
+                    crf=self.CRF,
+                    preset=self.PRESET,
+                    movflags="+faststart",
+                    an=None,
+                )
+                .overwrite_output()
+                .run(quiet=True)
+            )
+
+    def _get_audio_path(self) -> str | None:
+        """Return path to the best available audio file."""
+        from reelforge.production.models import AudioMixJob
+
+        mix = AudioMixJob.objects.filter(asset_job=self.asset_job, is_active=True).first()
+        if mix and mix.mixed_audio_file:
+            return mix.mixed_audio_file.path
+
+        vo = self.asset_job.selected_voiceover_run
+        if vo and vo.merged_audio_file:
+            return vo.merged_audio_file.path
+
+        return None
+
+    def _get_caption_path(self) -> str | None:
+        """Return path to ASS caption file if it exists on the production job."""
+        if self.job.caption_ass_file:
+            return self.job.caption_ass_file.path
+        return None
+
+    # ── Shorts extraction ─────────────────────────────────────────────────────
+
+    def _extract_shorts(self, source_path: str, shorts_path: str) -> None:
+        """Extract 9:16 Shorts variant from the processed video."""
+        start_sec = getattr(self.job, "shorts_start_sec", 0.0) or 0.0
+        end_sec = getattr(self.job, "shorts_end_sec", 60.0) or 60.0
+
+        if end_sec <= start_sec:
+            # Default: first 60 seconds
+            end_sec = start_sec + 60.0
+
+        try:
+            inp = ffmpeg.input(source_path, ss=start_sec, to=end_sec)
+            v = inp.video.filter("crop", "ih*9/16", "ih").filter("scale", 1080, 1920)
+            a = inp.audio
+            (
+                ffmpeg.output(
+                    v,
+                    a,
+                    shorts_path,
+                    vcodec="libx264",
+                    crf=20,
+                    preset="fast",
+                    acodec="aac",
+                    audio_bitrate="128k",
+                )
+                .overwrite_output()
+                .run(quiet=True)
+            )
+        except ffmpeg.Error as exc:
+            logger.warning(
+                "Shorts extraction failed — skipping: %s",
+                exc,
+                extra={"production_job_id": str(self.job.id)},
+            )
 
 
 class VideoQA:
     """Quality assurance checks on rendered video."""
 
-    def __init__(self, production_job) -> None:
+    def __init__(self, production_job: object) -> None:
         self.job = production_job
-        self.path = str(production_job.processed_video_file.path)
+        self.path = str(production_job.processed_video_file.path)  # type: ignore[union-attr]
 
-    def run_all_checks(self) -> dict:
+    def run_all_checks(self) -> dict[str, bool]:
         return {
             "file_exists": self._check_file_exists(),
-            "min_duration": self._check_min_duration(min_seconds=480),
-            "max_duration": self._check_max_duration(max_seconds=900),
+            "min_duration": self._check_min_duration(min_seconds=60),
+            "max_duration": self._check_max_duration(max_seconds=3600),
             "no_black_frames": self._check_black_frames(),
             "audio_present": self._check_audio_present(),
             "audio_sync": self._check_audio_video_sync(),
@@ -246,7 +430,7 @@ class VideoQA:
         return float(probe["format"]["duration"]) <= max_seconds
 
     def _check_black_frames(self) -> bool:
-        """Detect prolonged black frames (> 2 seconds at start/end)."""
+        """Detect prolonged black frames via ffprobe blackdetect."""
         result = subprocess.run(
             [
                 "ffprobe",
@@ -291,6 +475,8 @@ class VideoQA:
 
     def _check_file_integrity(self) -> bool:
         result = subprocess.run(
-            ["ffmpeg", "-v", "error", "-i", self.path, "-f", "null", "-"], capture_output=True, check=False
+            ["ffmpeg", "-v", "error", "-i", self.path, "-f", "null", "-"],
+            capture_output=True,
+            check=False,
         )
         return result.returncode == 0

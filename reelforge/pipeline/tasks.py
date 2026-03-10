@@ -325,36 +325,78 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str) -> None:
     job.mark_running(task_id=self.request.id)
 
     try:
-        # Stub: real implementation will call an LLM to parse script sections into scenes
-        script_text = job.script_job.script_text or ""
-        sections = job.script_job.sections or []
-        stub_scenes = [
-            {
-                "scene_id": i + 1,
-                "narration": s.get("content", "")[:200],
-                "duration_estimate": s.get("estimated_duration_seconds", 8.0),
-                "visual_keywords": [],
-                "mood": "neutral",
-                "caption_text": s.get("content", "")[:80],
-            }
-            for i, s in enumerate(sections)
-        ]
+        from reelforge.services.media.image_prompt import build_image_prompt
 
-        if not stub_scenes and script_text:
-            stub_scenes = [
+        sections = job.script_job.sections or []
+        broll_suggestions = job.script_job.broll_suggestions or []
+
+        # Map script section tag → animation type
+        _TAG_TO_ANIMATION: dict[str, str] = {
+            "HOOK": "hook",
+            "INTRO_BRIDGE": "intro",
+            "SECTION_1": "body_concept",
+            "SECTION_2": "body_concept",
+            "SECTION_3": "body_concept",
+            "TAKEAWAY": "body_stat",
+            "OUTRO_CTA": "outro",
+        }
+
+        scenes = []
+        for i, section in enumerate(sections):
+            tag = section.get("tag", f"SECTION_{i + 1}")
+            broll_idx_list = section.get("broll_indices", [])
+
+            # Use first referenced broll for this section
+            broll: dict | None = None
+            if broll_idx_list:
+                idx = broll_idx_list[0]
+                if 0 <= idx < len(broll_suggestions):
+                    broll = broll_suggestions[idx]
+            # Fallback: use broll at same index as section
+            if broll is None and i < len(broll_suggestions):
+                broll = broll_suggestions[i]
+
+            image_prompt = build_image_prompt(broll) if broll else section.get("content", "")[:200]
+            style_preset = broll.get("style_preset", "cinematic_realism") if broll else "cinematic_realism"
+            mood = broll.get("mood", "neutral") if broll else "neutral"
+
+            scenes.append(
+                {
+                    "scene_id": i + 1,
+                    "section_tag": tag,
+                    "narration": section.get("content", ""),
+                    "duration_estimate": float(section.get("estimated_duration_seconds", 8)),
+                    "visual_keywords": broll.get("stock_search_keywords", []) if broll else [],
+                    "mood": mood,
+                    "caption_text": section.get("content", "")[:100],
+                    "animation_type": _TAG_TO_ANIMATION.get(tag, "body_concept"),
+                    "image_prompt": image_prompt,
+                    "image_style_preset": style_preset,
+                    "broll_indices": broll_idx_list,
+                }
+            )
+
+        # Fallback: at least one scene from script_text
+        if not scenes and job.script_job.script_text:
+            scenes = [
                 {
                     "scene_id": 1,
-                    "narration": script_text[:200],
+                    "section_tag": "SECTION_1",
+                    "narration": job.script_job.script_text[:200],
                     "duration_estimate": 8.0,
                     "visual_keywords": [],
                     "mood": "neutral",
-                    "caption_text": script_text[:80],
+                    "caption_text": job.script_job.script_text[:100],
+                    "animation_type": "body_concept",
+                    "image_prompt": "",
+                    "image_style_preset": "cinematic_realism",
+                    "broll_indices": [],
                 }
             ]
 
-        job.scenes = stub_scenes
-        job.scene_count = len(stub_scenes)
-        job.total_estimated_duration = sum(s["duration_estimate"] for s in stub_scenes)
+        job.scenes = scenes
+        job.scene_count = len(scenes)
+        job.total_estimated_duration = sum(s["duration_estimate"] for s in scenes)
         job.save(update_fields=["scenes", "scene_count", "total_estimated_duration", "updated_at"])
         job.mark_completed()
 
@@ -407,29 +449,154 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
     run.save(update_fields=["status", "celery_task_id", "started_at"])
 
     try:
-        # Stub: real implementation will call TTS provider per script segment
-        logger.info(
-            "VoiceoverRun starting (stub)",
-            extra={"voiceover_run_id": str(run.id), "run_number": run.run_number},
+        from decimal import Decimal
+
+        from pathlib import Path
+
+        from django.conf import settings
+
+        from reelforge.assets.models import VoiceoverSegment
+        from reelforge.core.storage import get_voiceover_full_path
+        from reelforge.core.storage import get_voiceover_segment_path
+        from reelforge.services.media.audio import AudioProcessor
+        from reelforge.services.providers.registry import get_tts_provider
+
+        media_root = Path(settings.MEDIA_ROOT)
+
+        asset_job = run.asset_job
+        script_job = asset_job.script_job
+        channel = script_job.topic.channel
+        segments = list(script_job.segments or [])
+
+        if not segments:
+            logger.warning(
+                "VoiceoverRun: no TTS segments on script_job — completing with empty voiceover",
+                extra={"voiceover_run_id": str(run.id), "script_job_id": str(script_job.id)},
+            )
+            run.status = "COMPLETED"
+            run.completed_at = timezone.now()
+            run.save(update_fields=["status", "completed_at", "updated_at"])
+            if not asset_job.selected_voiceover_run_id:
+                asset_job.selected_voiceover_run = run
+                asset_job.save(update_fields=["selected_voiceover_run", "updated_at"])
+            return
+
+        tts = get_tts_provider(channel)
+        total_cost = Decimal("0")
+        segment_files: list[dict] = []
+
+        for seg in segments:
+            seg_id = seg.get("segment_id", 0)
+            text = seg.get("text", "").strip()
+            if not text:
+                continue
+
+            tts_response = tts.synthesize(
+                text=text,
+                voice_id=channel.tts_voice_id or "default",
+                stability=channel.tts_stability,
+                similarity_boost=channel.tts_similarity,
+                style=channel.tts_style,
+            )
+
+            audio_path = get_voiceover_segment_path(str(asset_job.id), seg_id)
+            audio_path.write_bytes(tts_response.audio_bytes)
+
+            VoiceoverSegment.objects.update_or_create(
+                asset_job=asset_job,
+                segment_id=seg_id,
+                defaults={
+                    "voiceover_run": run,
+                    "text": text,
+                    "section": seg.get("section", ""),
+                    "audio_file": str(audio_path.relative_to(media_root)),
+                    "duration_sec": tts_response.duration_sec,
+                    "tts_provider_used": tts.name,
+                    "voice_id_used": channel.tts_voice_id or "default",
+                    "generation_cost_usd": Decimal(str(tts_response.cost_usd)),
+                    "status": "COMPLETED",
+                },
+            )
+            segment_files.append({"segment_id": seg_id, "path": str(audio_path)})
+            total_cost += Decimal(str(tts_response.cost_usd))
+
+        # Merge all segments into full voiceover
+        processor = AudioProcessor()
+        output_path = get_voiceover_full_path(str(asset_job.id))
+        merge_result = processor.merge_voiceover_segments(
+            segment_files=segment_files,
+            output_path=str(output_path),
         )
 
+        # Compute timing offsets and update start_ms/end_ms on each segment
+        timings = processor.get_segment_timings(segment_files)
+        timing_map = {t["segment_id"]: t for t in timings}
+        for seg_obj in VoiceoverSegment.objects.filter(asset_job=asset_job, voiceover_run=run):
+            timing = timing_map.get(seg_obj.segment_id)
+            if timing:
+                seg_obj.start_ms = timing["start_ms"]
+                seg_obj.end_ms = timing["end_ms"]
+                seg_obj.save(update_fields=["start_ms", "end_ms"])
+
+        # Update run record
+        run.merged_audio_file = str(output_path.relative_to(media_root))
+        run.total_duration_sec = merge_result["duration_sec"]
+        run.total_cost_usd = total_cost
+        run.provider = tts.name
+        run.voice_id = channel.tts_voice_id or "default"
         run.status = "COMPLETED"
         run.completed_at = timezone.now()
-        run.save(update_fields=["status", "completed_at", "updated_at"])
+        run.save(
+            update_fields=[
+                "merged_audio_file",
+                "total_duration_sec",
+                "total_cost_usd",
+                "provider",
+                "voice_id",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
 
         # Auto-select if no run is currently selected
-        asset_job = run.asset_job
         if not asset_job.selected_voiceover_run_id:
             asset_job.selected_voiceover_run = run
             asset_job.save(update_fields=["selected_voiceover_run", "updated_at"])
-            logger.info(
-                "Auto-selected voiceover run",
-                extra={"asset_job_id": str(asset_job.id), "voiceover_run_id": str(run.id)},
-            )
+
+        # Update scene breakdown durations based on actual TTS durations
+        from reelforge.production.models import SceneBreakdownJob
+
+        breakdown = SceneBreakdownJob.objects.filter(script_job=script_job).first()
+        if breakdown and breakdown.scenes:
+            timing_map = {t["segment_id"]: t for t in timings}
+            updated = False
+            for scene in breakdown.scenes:
+                seg_id = scene.get("scene_id", 0)
+                timing = timing_map.get(seg_id)
+                if timing:
+                    audio_dur = (timing["end_ms"] - timing["start_ms"]) / 1000.0
+                    scene["duration_estimate"] = max(round(audio_dur + 1.5, 2), 6.0)
+                    updated = True
+            if updated:
+                breakdown.total_estimated_duration = sum(
+                    s.get("duration_estimate", 8.0) for s in breakdown.scenes
+                )
+                breakdown.save(update_fields=["scenes", "total_estimated_duration", "updated_at"])
+
+        logger.info(
+            "VoiceoverRun complete",
+            extra={
+                "voiceover_run_id": str(run.id),
+                "segments": len(segment_files),
+                "duration_sec": merge_result["duration_sec"],
+                "total_cost_usd": str(total_cost),
+            },
+        )
 
     except Exception as exc:
         run.status = "FAILED"
-        run.notes = str(exc)
+        run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
         raise self.retry(exc=exc) from None
 
@@ -469,29 +636,121 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
     run.save(update_fields=["status", "celery_task_id", "started_at"])
 
     try:
-        # Stub: real implementation will call image provider per scene/prompt
-        logger.info(
-            "ImageGenerationRun starting (stub)",
-            extra={"image_generation_run_id": str(run.id), "run_number": run.run_number},
-        )
+        from decimal import Decimal
+        from pathlib import Path
 
+        from django.conf import settings
+
+        from reelforge.assets.models import GeneratedImage
+        from reelforge.core.storage import get_image_path
+        from reelforge.production.models import SceneBreakdownJob
+        from reelforge.services.media.image_prompt import build_image_prompt
+        from reelforge.services.providers.registry import get_image_provider
+
+        media_root = Path(settings.MEDIA_ROOT)
+        asset_job = run.asset_job
+        script_job = asset_job.script_job
+        channel = script_job.topic.channel
+
+        # Prefer SceneBreakdownJob.scenes, fall back to broll_suggestions
+        breakdown = SceneBreakdownJob.objects.filter(script_job=script_job).first()
+        scenes: list[dict] = (breakdown.scenes or []) if breakdown else []
+
+        if not scenes:
+            broll_list = script_job.broll_suggestions or []
+            scenes = [
+                {
+                    "scene_id": i + 1,
+                    "section_tag": b.get("section", "SECTION_1"),
+                    "image_prompt": build_image_prompt(b),
+                    "duration_estimate": float(b.get("duration_seconds", 8)),
+                    "mood": b.get("mood", "neutral"),
+                    "animation_type": "body_concept",
+                    "image_style_preset": b.get("style_preset", "cinematic_realism"),
+                }
+                for i, b in enumerate(broll_list)
+            ]
+
+        if not scenes:
+            logger.warning(
+                "ImageGenerationRun: no scenes or broll — completing with 0 images",
+                extra={"image_generation_run_id": str(run.id)},
+            )
+            run.status = "COMPLETED"
+            run.completed_at = timezone.now()
+            run.save(update_fields=["status", "completed_at", "updated_at"])
+            if not asset_job.selected_image_run_id:
+                asset_job.selected_image_run = run
+                asset_job.save(update_fields=["selected_image_run", "updated_at"])
+            return
+
+        img_provider = get_image_provider(channel)
+        total_cost = Decimal("0")
+        images_count = 0
+
+        for scene in scenes:
+            scene_id = scene.get("scene_id", images_count + 1)
+            prompt = scene.get("image_prompt", "") or scene.get("narration", "")[:300]
+            if not prompt:
+                continue
+
+            responses = img_provider.generate(prompt=prompt, width=1920, height=1080, num_images=1)
+            img_data = responses[0]
+
+            img_path = get_image_path(str(asset_job.id), scene_id)
+            img_path.write_bytes(img_data.image_bytes)
+
+            GeneratedImage.objects.update_or_create(
+                asset_job=asset_job,
+                position_idx=scene_id,
+                defaults={
+                    "image_run": run,
+                    "prompt_used": prompt,
+                    "image_file": str(img_path.relative_to(media_root)),
+                    "provider": img_provider.name,
+                    "section": scene.get("section_tag", ""),
+                    "timestamp_approx": "",
+                    "generation_cost_usd": Decimal(str(img_data.cost_usd)),
+                    "is_selected": True,
+                },
+            )
+            total_cost += Decimal(str(img_data.cost_usd))
+            images_count += 1
+
+        run.images_count = images_count
+        run.total_cost_usd = total_cost
+        run.provider = img_provider.name
         run.status = "COMPLETED"
         run.completed_at = timezone.now()
-        run.save(update_fields=["status", "completed_at", "updated_at"])
+        run.save(
+            update_fields=[
+                "images_count",
+                "total_cost_usd",
+                "provider",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
 
         # Auto-select if no run is currently selected
         asset_job = run.asset_job
         if not asset_job.selected_image_run_id:
             asset_job.selected_image_run = run
             asset_job.save(update_fields=["selected_image_run", "updated_at"])
-            logger.info(
-                "Auto-selected image run",
-                extra={"asset_job_id": str(asset_job.id), "image_generation_run_id": str(run.id)},
-            )
+
+        logger.info(
+            "ImageGenerationRun complete",
+            extra={
+                "image_generation_run_id": str(run.id),
+                "images_count": images_count,
+                "total_cost_usd": str(total_cost),
+            },
+        )
 
     except Exception as exc:
         run.status = "FAILED"
-        run.notes = str(exc)
+        run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
         raise self.retry(exc=exc) from None
 
@@ -532,29 +791,121 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
     run.save(update_fields=["status", "celery_task_id", "started_at"])
 
     try:
-        # Stub: real implementation will call video clip provider per image
-        logger.info(
-            "VideoClipGenerationRun starting (stub)",
-            extra={"video_clip_run_id": str(run.id), "run_number": run.run_number},
-        )
+        from decimal import Decimal
+        from pathlib import Path
 
+        from django.conf import settings
+
+        from reelforge.assets.models import GeneratedImage
+        from reelforge.assets.models import GeneratedVideoClip
+        from reelforge.core.storage import get_clip_path
+        from reelforge.production.models import SceneBreakdownJob
+        from reelforge.services.providers.registry import get_video_clip_provider
+        from reelforge.services.providers.video_clip.fal_ai import ANIMATION_PROMPTS
+
+        media_root = Path(settings.MEDIA_ROOT)
+        asset_job = run.asset_job
+        script_job = asset_job.script_job
+        channel = script_job.topic.channel
+        image_run = run.image_run
+
+        if not image_run or image_run.status != "COMPLETED":
+            msg = f"ImageGenerationRun must be COMPLETED before animating clips (status={getattr(image_run, 'status', None)})"
+            raise ValueError(msg)
+
+        images = list(GeneratedImage.objects.filter(image_run=image_run).order_by("position_idx"))
+        if not images:
+            logger.warning(
+                "VideoClipGenerationRun: image_run has no GeneratedImage records",
+                extra={"video_clip_run_id": str(run.id), "image_run_id": str(image_run.id)},
+            )
+            run.status = "COMPLETED"
+            run.completed_at = timezone.now()
+            run.save(update_fields=["status", "completed_at", "updated_at"])
+            return
+
+        # Load scene breakdown for animation types
+        breakdown = SceneBreakdownJob.objects.filter(script_job=script_job).first()
+        scenes_by_id: dict[int, dict] = {}
+        if breakdown and breakdown.scenes:
+            scenes_by_id = {s.get("scene_id", 0): s for s in breakdown.scenes}
+
+        clip_provider = get_video_clip_provider(channel)
+        total_cost = Decimal("0")
+        clips_count = 0
+
+        for img in images:
+            scene = scenes_by_id.get(img.position_idx, {})
+            animation_type = scene.get("animation_type", "body_concept")
+            anim_prompt = ANIMATION_PROMPTS.get(animation_type, ANIMATION_PROMPTS["body_concept"])
+            duration_estimate = float(scene.get("duration_estimate", 8.0))
+
+            img_path = img.image_file.path if img.image_file else ""
+            if not img_path:
+                logger.warning(
+                    "GeneratedImage has no file — skipping clip",
+                    extra={"image_id": str(img.id), "position_idx": img.position_idx},
+                )
+                continue
+
+            clip_response = clip_provider.generate_clip(
+                image_path=img_path,
+                prompt=anim_prompt,
+                duration_sec=duration_estimate,
+            )
+
+            clip_path = get_clip_path(str(asset_job.id), img.position_idx)
+            clip_path.write_bytes(clip_response.clip_bytes)
+
+            GeneratedVideoClip.objects.update_or_create(
+                video_clip_run=run,
+                position_idx=img.position_idx,
+                defaults={
+                    "source_image": img,
+                    "prompt_used": anim_prompt,
+                    "clip_file": str(clip_path.relative_to(media_root)),
+                    "duration_sec": clip_response.duration_sec,
+                    "provider": clip_provider.name,
+                    "is_selected": True,
+                    "generation_cost_usd": Decimal(str(clip_response.cost_usd)),
+                },
+            )
+            total_cost += Decimal(str(clip_response.cost_usd))
+            clips_count += 1
+
+        run.clips_count = clips_count
+        run.total_cost_usd = total_cost
+        run.provider = clip_provider.name
         run.status = "COMPLETED"
         run.completed_at = timezone.now()
-        run.save(update_fields=["status", "completed_at", "updated_at"])
+        run.save(
+            update_fields=[
+                "clips_count",
+                "total_cost_usd",
+                "provider",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
 
         # Auto-select if no run is currently selected
-        asset_job = run.asset_job
         if not asset_job.selected_video_clip_run_id:
             asset_job.selected_video_clip_run = run
             asset_job.save(update_fields=["selected_video_clip_run", "updated_at"])
-            logger.info(
-                "Auto-selected video clip run",
-                extra={"asset_job_id": str(asset_job.id), "video_clip_run_id": str(run.id)},
-            )
+
+        logger.info(
+            "VideoClipGenerationRun complete",
+            extra={
+                "video_clip_run_id": str(run.id),
+                "clips_count": clips_count,
+                "total_cost_usd": str(total_cost),
+            },
+        )
 
     except Exception as exc:
         run.status = "FAILED"
-        run.notes = str(exc)
+        run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 600) from None
 
@@ -594,29 +945,97 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
     run.save(update_fields=["status", "celery_task_id", "started_at"])
 
     try:
-        # Stub: real implementation will call image provider for thumbnail variants
-        logger.info(
-            "ThumbnailRun starting (stub)",
-            extra={"thumbnail_run_id": str(run.id), "run_number": run.run_number},
-        )
+        from decimal import Decimal
+        from pathlib import Path
 
+        from django.conf import settings
+
+        from reelforge.assets.models import ThumbnailOption
+        from reelforge.core.storage import get_thumbnail_path
+        from reelforge.services.providers.registry import get_image_provider
+
+        media_root = Path(settings.MEDIA_ROOT)
+        asset_job = run.asset_job
+        script_job = asset_job.script_job
+        channel = script_job.topic.channel
+
+        title = script_job.final_title or script_job.topic.title_idea
+        niche = ", ".join(channel.target_niches[:2]) if channel.target_niches else "general"
+        brand_color = channel.brand_color_hex or "#FF0000"
+
+        thumbnail_prompts = [
+            (
+                f"YouTube thumbnail for video titled '{title}'. Bold, eye-catching, professional. "
+                f"{niche} niche. {brand_color} accent colour. No text overlay, photorealistic."
+            ),
+            (
+                f"High-CTR YouTube thumbnail design. Topic: {title}. Dramatic lighting, emotional "
+                f"impact, {niche} theme. Cinematic, 16:9, no text."
+            ),
+            (
+                f"Minimalist YouTube thumbnail. '{title}'. Clean background, strong focal point, "
+                f"{brand_color} colour scheme. Professional, {niche} niche."
+            ),
+        ]
+
+        img_provider = get_image_provider(channel)
+        total_cost = Decimal("0")
+
+        for i, prompt in enumerate(thumbnail_prompts):
+            responses = img_provider.generate(prompt=prompt, width=1280, height=720, num_images=1)
+            img_data = responses[0]
+
+            thumb_path = get_thumbnail_path(str(asset_job.id), i)
+            thumb_path.write_bytes(img_data.image_bytes)
+
+            ThumbnailOption.objects.update_or_create(
+                asset_job=asset_job,
+                option_number=i,
+                defaults={
+                    "thumbnail_run": run,
+                    "image_file": str(thumb_path.relative_to(media_root)),
+                    "prompt_used": prompt,
+                    "provider": img_provider.name,
+                    "is_selected": i == 0,  # first option is default-selected
+                    "generation_cost_usd": Decimal(str(img_data.cost_usd)),
+                },
+            )
+            total_cost += Decimal(str(img_data.cost_usd))
+
+        run.options_count = len(thumbnail_prompts)
+        run.total_cost_usd = total_cost
+        run.provider = img_provider.name
         run.status = "COMPLETED"
         run.completed_at = timezone.now()
-        run.save(update_fields=["status", "completed_at", "updated_at"])
+        run.save(
+            update_fields=[
+                "options_count",
+                "total_cost_usd",
+                "provider",
+                "status",
+                "completed_at",
+                "updated_at",
+            ]
+        )
 
         # Auto-select if no run is currently selected
         asset_job = run.asset_job
         if not asset_job.selected_thumbnail_run_id:
             asset_job.selected_thumbnail_run = run
             asset_job.save(update_fields=["selected_thumbnail_run", "updated_at"])
-            logger.info(
-                "Auto-selected thumbnail run",
-                extra={"asset_job_id": str(asset_job.id), "thumbnail_run_id": str(run.id)},
-            )
+
+        logger.info(
+            "ThumbnailRun complete",
+            extra={
+                "thumbnail_run_id": str(run.id),
+                "options_count": len(thumbnail_prompts),
+                "total_cost_usd": str(total_cost),
+            },
+        )
 
     except Exception as exc:
         run.status = "FAILED"
-        run.notes = str(exc)
+        run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
         raise self.retry(exc=exc) from None
 
@@ -650,20 +1069,59 @@ def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
     job.mark_running(task_id=self.request.id)
 
     try:
-        # Stub: real implementation will call pydub/ffmpeg to mix audio
-        logger.info(
-            "AudioMixJob starting (stub)",
-            extra={"audio_mix_job_id": str(job.id)},
-        )
+        from pathlib import Path
 
-        # Mark active and complete
+        from django.conf import settings
+
+        from reelforge.core.storage import get_mixed_audio_path
+        from reelforge.services.media.audio import AudioProcessor
+
+        voiceover_run = job.voiceover_run
+        if not voiceover_run or not voiceover_run.merged_audio_file:
+            msg = "AudioMixJob requires a completed VoiceoverRun with merged_audio_file"
+            raise ValueError(msg)
+
+        media_root = Path(settings.MEDIA_ROOT)
+        voiceover_path = voiceover_run.merged_audio_file.path
+        output_path = get_mixed_audio_path(str(job.asset_job_id))
+        music_volume = float(job.music_volume_pct or 0.08)
+
+        processor = AudioProcessor()
+
+        if job.music_file:
+            music_path = job.music_file.path
+            result = processor.mix_with_background_music(
+                voiceover_path=voiceover_path,
+                music_path=music_path,
+                output_path=str(output_path),
+                music_volume_pct=music_volume,
+            )
+        else:
+            # No music: copy/normalize voiceover only
+            import shutil
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(voiceover_path, str(output_path))
+            result = {"path": str(output_path), "duration_sec": voiceover_run.total_duration_sec}
+
+        # Deactivate any previous active mixes
+        from reelforge.production.models import AudioMixJob as _AudioMixJob
+
+        _AudioMixJob.objects.filter(asset_job=job.asset_job, is_active=True).exclude(id=job.id).update(is_active=False)
+
+        job.mixed_audio_file = str(output_path.relative_to(media_root))
+        job.mixed_duration_sec = result["duration_sec"]
         job.is_active = True
-        job.save(update_fields=["is_active", "updated_at"])
+        job.save(update_fields=["mixed_audio_file", "mixed_duration_sec", "is_active", "updated_at"])
         job.mark_completed()
 
         logger.info(
             "AudioMixJob complete",
-            extra={"audio_mix_job_id": str(job.id), "mixed_duration_sec": job.mixed_duration_sec},
+            extra={
+                "audio_mix_job_id": str(job.id),
+                "mixed_duration_sec": job.mixed_duration_sec,
+                "has_music": bool(job.music_file),
+            },
         )
 
     except Exception as exc:
@@ -672,6 +1130,169 @@ def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
 
 
 # ── Video Rendering ─────────────────────────────────────────────────────────
+
+
+def _build_srt_from_whisper(words: list) -> str:
+    """Build an SRT file from Whisper word-level timestamps.
+
+    Groups words into 4-word blocks and formats as SRT subtitle entries.
+    """
+    if not words:
+        return ""
+
+    lines: list[str] = []
+    block_size = 4
+    block_idx = 1
+
+    for i in range(0, len(words), block_size):
+        block = words[i : i + block_size]
+        start_sec = block[0].start if hasattr(block[0], "start") else block[0].get("start", 0)
+        end_sec = block[-1].end if hasattr(block[-1], "end") else block[-1].get("end", start_sec + 2)
+        text = " ".join(
+            (w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block
+        ).upper()
+
+        def _fmt(secs: float) -> str:
+            h = int(secs // 3600)
+            m = int((secs % 3600) // 60)
+            s = int(secs % 60)
+            ms = int((secs % 1) * 1000)
+            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+        lines.append(f"{block_idx}\n{_fmt(start_sec)} --> {_fmt(end_sec)}\n{text}\n")
+        block_idx += 1
+
+    return "\n".join(lines)
+
+
+_ASS_HEADER = """\
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Montserrat ExtraBold,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,4,2,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
+def _build_ass_from_whisper(words: list) -> str:
+    """Build an ASS subtitle file from Whisper word-level timestamps.
+
+    Groups into 4-word blocks. Uses Montserrat ExtraBold 72pt per CLAUDE.md spec.
+    """
+    if not words:
+        return _ASS_HEADER
+
+    def _fmt(secs: float) -> str:
+        h = int(secs // 3600)
+        m = int((secs % 3600) // 60)
+        s = secs % 60
+        return f"{h}:{m:02d}:{s:05.2f}"
+
+    lines: list[str] = [_ASS_HEADER]
+    block_size = 4
+
+    for i in range(0, len(words), block_size):
+        block = words[i : i + block_size]
+        start_sec = block[0].start if hasattr(block[0], "start") else block[0].get("start", 0)
+        end_sec = block[-1].end if hasattr(block[-1], "end") else block[-1].get("end", start_sec + 2)
+        text = " ".join(
+            (w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block
+        ).upper()
+        lines.append(f"Dialogue: 0,{_fmt(start_sec)},{_fmt(end_sec)},Default,,0,0,0,,{text}")
+
+    return "\n".join(lines)
+
+
+@shared_task(
+    bind=True,
+    name="reelforge.pipeline.run_caption_generation",
+    max_retries=2,
+    default_retry_delay=60,
+    queue="default",
+    time_limit=600,
+    soft_time_limit=540,
+)
+def run_caption_generation(self, production_job_id: str) -> None:
+    """Generate word-level captions from the merged voiceover using OpenAI Whisper API."""
+    from reelforge.production.models import AudioMixJob
+    from reelforge.production.models import ProductionJob
+
+    try:
+        job = ProductionJob.objects.select_related("asset_job__selected_voiceover_run").get(
+            id=production_job_id
+        )
+    except ProductionJob.DoesNotExist:
+        logger.error("ProductionJob %s not found — aborting caption generation", production_job_id)
+        return
+
+    try:
+        from pathlib import Path
+
+        from django.conf import settings
+        from openai import OpenAI
+
+        from reelforge.core.storage import get_caption_path
+
+        media_root = Path(settings.MEDIA_ROOT)
+
+        # Prefer active AudioMixJob, fall back to selected VoiceoverRun
+        audio_mix = AudioMixJob.objects.filter(asset_job=job.asset_job, is_active=True).first()
+        if audio_mix and audio_mix.mixed_audio_file:
+            audio_path_str = audio_mix.mixed_audio_file.path
+        elif job.asset_job.selected_voiceover_run and job.asset_job.selected_voiceover_run.merged_audio_file:
+            audio_path_str = job.asset_job.selected_voiceover_run.merged_audio_file.path
+        else:
+            logger.warning(
+                "run_caption_generation: no audio file available — skipping",
+                extra={"production_job_id": production_job_id},
+            )
+            return
+
+        client = OpenAI()
+        with open(audio_path_str, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="verbose_json",
+                timestamp_granularities=["word"],
+            )
+
+        words = getattr(transcript, "words", []) or []
+        srt_content = _build_srt_from_whisper(words)
+        ass_content = _build_ass_from_whisper(words)
+
+        srt_path = get_caption_path(str(job.id), "srt")
+        ass_path = get_caption_path(str(job.id), "ass")
+        srt_path.write_text(srt_content, encoding="utf-8")
+        ass_path.write_text(ass_content, encoding="utf-8")
+
+        job.caption_srt_file = str(srt_path.relative_to(media_root))
+        job.caption_ass_file = str(ass_path.relative_to(media_root))
+        job.save(update_fields=["caption_srt_file", "caption_ass_file", "updated_at"])
+
+        logger.info(
+            "Caption generation complete",
+            extra={
+                "production_job_id": production_job_id,
+                "words": len(words),
+                "srt_path": str(srt_path),
+            },
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Caption generation failed: %s",
+            exc,
+            extra={"production_job_id": production_job_id},
+            exc_info=True,
+        )
+        raise self.retry(exc=exc) from None
 
 
 @shared_task(
@@ -687,10 +1308,27 @@ def render_video(self, production_job_id: str) -> None:
     from reelforge.production.models import ProductionJob
     from reelforge.services.media.video import VideoRenderer
 
-    job = ProductionJob.objects.select_related("asset_job__script_job__topic__channel").get(id=production_job_id)
+    job = ProductionJob.objects.select_related(
+        "asset_job__script_job__topic__channel",
+        "asset_job__selected_voiceover_run",
+        "asset_job__selected_image_run",
+        "asset_job__selected_video_clip_run",
+        "audio_mix_job",
+        "scene_breakdown_job",
+    ).get(id=production_job_id)
     job.mark_running(task_id=self.request.id)
 
     try:
+        # Generate captions synchronously before rendering (single task, saves overhead)
+        try:
+            run_caption_generation.apply(args=[production_job_id])
+        except Exception as caption_err:
+            logger.warning(
+                "Caption generation failed — rendering without captions: %s",
+                caption_err,
+                extra={"production_job_id": production_job_id},
+            )
+
         renderer = VideoRenderer(job)
         renderer.render()
         job.mark_completed()
@@ -1102,6 +1740,12 @@ def _save_script_results(
             "scene_index": b.scene_index,
             "section": b.section,
             "description": b.description,
+            "subject": b.subject,
+            "setting": b.setting,
+            "lighting": b.lighting,
+            "camera_angle": b.camera_angle,
+            "colour_palette": list(b.colour_palette),
+            "style_preset": b.style_preset,
             "stock_search_keywords": b.stock_search_keywords,
             "duration_seconds": b.duration_seconds,
             "visual_type": b.visual_type,
@@ -1162,6 +1806,23 @@ def _save_script_results(
         "research_confidence": qf.research_confidence,
     }
 
+    # Auto-generate TTS segments from script sections (1 segment per section)
+    cursor_sec = 0.0
+    segments: list[dict[str, Any]] = []
+    for i, section in enumerate(output.sections):
+        text = section.content.strip()
+        if not text:
+            continue
+        approx_duration = len(text.split()) / 130.0 * 60.0  # 130 WPM average
+        segments.append({
+            "segment_id": i + 1,
+            "text": text,
+            "section": section.tag,
+            "approx_start_sec": round(cursor_sec, 2),
+            "approx_end_sec": round(cursor_sec + approx_duration, 2),
+        })
+        cursor_sec += approx_duration + 0.2  # 200ms inter-segment pause
+
     job.script_text = output.script_text
     job.sections = sections
     job.word_count = output.word_count
@@ -1181,11 +1842,13 @@ def _save_script_results(
     job.thumbnail_text = seo.thumbnail_text
     job.thumbnail_emotion = seo.thumbnail_emotion
     job.search_hashtags = list(seo.search_hashtags)
+    job.segments = segments
 
     job.save(
         update_fields=[
             "script_text",
             "sections",
+            "segments",
             "word_count",
             "estimated_duration_mins",
             "broll_suggestions",

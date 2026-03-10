@@ -24,6 +24,7 @@ class AgentsConfig(AppConfig):
                 "anthropic_api_key": getattr(settings, "ANTHROPIC_API_KEY", ""),
                 "openai_api_key": getattr(settings, "OPENAI_API_KEY", ""),
                 "elevenlabs_api_key": getattr(settings, "ELEVENLABS_API_KEY", ""),
+                "fal_api_key": getattr(settings, "FAL_API_KEY", ""),
             }
         )
         container.wire(

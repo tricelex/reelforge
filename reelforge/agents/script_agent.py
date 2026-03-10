@@ -257,8 +257,16 @@ STEP 6: B-ROLL REQUIREMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Minimum 8 structured b-roll suggestions. Each must have:
   - scene_index: sequential 0-based integer
-  - section: the [SECTION_TAG] it belongs to
-  - description: specific visual description (not generic)
+  - section: the [SECTION_TAG] it belongs to (e.g. "HOOK", "SECTION_1")
+  - description: specific visual description (not generic) — the full shot concept
+  - subject: the main subject of the image (e.g. "neuroscientist examining brain scan")
+  - setting: where the scene takes place (e.g. "dimly lit research lab with glowing monitors")
+  - lighting: lighting style (e.g. "dramatic rim lighting from the right", "soft diffused window light")
+  - camera_angle: one of "eye-level" | "bird's eye" | "low angle" | "dutch angle"
+  - colour_palette: list of 2–4 descriptive colour names or hex codes (e.g. ["#0A0F1E", "electric blue", "cold white"])
+  - style_preset: one of "cinematic_realism" | "flat_illustration" | "dark_tech" | "corporate_clean"
+    (choose based on content tone — factual/explainer → cinematic_realism or dark_tech;
+     business/finance → corporate_clean; educational lists → flat_illustration)
   - stock_search_keywords: 3–5 keywords for stock footage sites
   - duration_seconds: how long this shot should hold (6–15 seconds)
   - visual_type: "aerial" | "close_up" | "wide_shot" | "text_overlay" | "animation" | "interview" | "product"
@@ -266,7 +274,14 @@ Minimum 8 structured b-roll suggestions. Each must have:
   - fallback_description: simpler alternative if primary isn't available
 
 WRONG b-roll: "person working at computer"
-RIGHT b-roll: "researcher in white lab coat examining brain MRI scans on multiple monitors, close-up on screen"
+RIGHT b-roll (with all fields):
+  description: "neuroscientist in white lab coat examining colourful brain MRI scans on multiple monitors"
+  subject: "neuroscientist in white lab coat"
+  setting: "high-tech neuroimaging lab with multiple glowing monitor screens"
+  lighting: "cool blue monitor glow on face, dark background, slight rim light from the right"
+  camera_angle: "low angle"
+  colour_palette: ["#0A1628", "#1E90FF", "#FFFFFF", "electric blue"]
+  style_preset: "dark_tech"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 7: SEO → SELF-REVIEW

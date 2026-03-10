@@ -7,7 +7,9 @@ from reelforge.agents.providers.community import SerpApiCommunityProvider
 from reelforge.agents.providers.trends import SerpApiTrendsProvider
 from reelforge.agents.providers.web_search import TavilyProvider
 from reelforge.agents.providers.youtube import SerpApiYouTubeProvider
+from reelforge.services.providers.image.fal_ai import FalAiImageProvider
 from reelforge.services.providers.image.mock import MockImageProvider
+from reelforge.services.providers.video_clip.fal_ai import FalAiVideoClipProvider
 from reelforge.services.providers.video_clip.mock import MockVideoClipProvider
 from reelforge.services.providers.llm.claude import ClaudeProvider
 from reelforge.services.providers.llm.openai import OpenAIProvider
@@ -88,9 +90,19 @@ class AgentContainer(containers.DeclarativeContainer):
         name="mock",
     )
 
+    image_fal: providers.Singleton[FalAiImageProvider] = providers.Singleton(
+        FalAiImageProvider,
+        api_key=config.fal_api_key,
+    )
+
     # ── Video clip providers ───────────────────────────────────────────────────
 
     video_clip_mock: providers.Singleton[MockVideoClipProvider] = providers.Singleton(
         MockVideoClipProvider,
         name="mock",
+    )
+
+    video_clip_fal: providers.Singleton[FalAiVideoClipProvider] = providers.Singleton(
+        FalAiVideoClipProvider,
+        api_key=config.fal_api_key,
     )

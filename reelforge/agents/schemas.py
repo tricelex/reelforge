@@ -115,6 +115,12 @@ class AgentBRollSuggestion(BaseModel):
     scene_index: int = 0
     section: ScriptSectionTag = ScriptSectionTag.SECTION_1
     description: str = ""
+    subject: str = ""  # main subject of the image
+    setting: str = ""  # where the scene takes place
+    lighting: str = ""  # lighting style (e.g. "soft natural light", "dramatic rim lighting")
+    camera_angle: str = "eye-level"  # eye-level | bird's eye | low angle | dutch angle
+    colour_palette: list[str] = []  # hex codes or descriptive colour names
+    style_preset: str = "cinematic_realism"  # cinematic_realism | flat_illustration | dark_tech | corporate_clean
     stock_search_keywords: list[str] = []
     duration_seconds: int = 8
     visual_type: str = ""

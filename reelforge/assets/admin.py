@@ -428,21 +428,32 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
             transaction.on_commit(lambda run_id=str(run.id): run_image_generation_run.delay(run_id))
         self.message_user(request, _("New image generation run(s) dispatched."))
 
-    @admin.action(description=_("Start new video clip run (uses selected image run)"))
+    @admin.action(description=_("Generate video clips (requires completed image run)"))
     def start_new_video_clip_run(self, request, queryset):
         from django.db.models import Max
 
         from reelforge.pipeline.tasks import run_video_clip_generation_run
 
+        dispatched = 0
         for job in queryset:
+            image_run = job.selected_image_run
+            if not image_run or image_run.status != "COMPLETED":
+                self.message_user(
+                    request,
+                    _(f"Asset job {job.id}: selected image run is not COMPLETED — skipping."),
+                    level="warning",
+                )
+                continue
             next_num = (job.video_clip_runs.aggregate(m=Max("run_number"))["m"] or 0) + 1
             run = VideoClipGenerationRun.objects.create(
                 asset_job=job,
                 run_number=next_num,
-                image_run=job.selected_image_run,
+                image_run=image_run,
             )
             transaction.on_commit(lambda run_id=str(run.id): run_video_clip_generation_run.delay(run_id))
-        self.message_user(request, _("New video clip run(s) dispatched."))
+            dispatched += 1
+        if dispatched:
+            self.message_user(request, _(f"Video clip generation dispatched for {dispatched} asset job(s)."))
 
     @admin.action(description=_("Start new thumbnail run"))
     def start_new_thumbnail_run(self, request, queryset):

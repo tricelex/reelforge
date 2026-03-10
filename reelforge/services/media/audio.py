@@ -6,7 +6,7 @@ from pydub import AudioSegment
 from pydub.effects import compress_dynamic_range
 from pydub.effects import normalize
 
-logger = logging.getLogger("youtube_hq.media.audio")
+logger = logging.getLogger("reelforge.media.audio")
 
 
 class AudioProcessor:
@@ -22,7 +22,6 @@ class AudioProcessor:
     ) -> dict:
         """Concatenate audio segments with natural pauses between them."""
         combined = AudioSegment.empty()
-        AudioSegment.silent(duration=200)  # 200ms natural breath
 
         for i, seg in enumerate(sorted(segment_files, key=lambda x: x["segment_id"])):
             audio = AudioSegment.from_mp3(seg["path"])
@@ -78,6 +77,26 @@ class AudioProcessor:
             os.unlink(tmp_out.name)
 
         return normalized
+
+    def normalize_only(self, input_path: str, output_path: str) -> dict:
+        """Normalize a voiceover file to YouTube loudness standard with no music mixing."""
+        import subprocess
+
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", input_path,
+                "-af", f"loudnorm=I={self.YOUTUBE_TARGET_LUFS}:TP={self.YOUTUBE_TRUE_PEAK}:LRA=11",
+                "-ar", "44100", "-b:a", "192k",
+                output_path,
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return {
+            "path": output_path,
+            "duration_sec": len(AudioSegment.from_file(output_path)) / 1000.0,
+        }
 
     def mix_with_background_music(
         self,

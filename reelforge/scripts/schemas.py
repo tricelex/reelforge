@@ -63,6 +63,12 @@ class BRollSuggestion(BaseModel):
     scene_index: int = 0
     section: str = ""
     description: str = ""
+    subject: str = ""
+    setting: str = ""
+    lighting: str = ""
+    camera_angle: str = "eye-level"
+    colour_palette: list[str] = []
+    style_preset: str = "cinematic_realism"
     stock_search_keywords: list[str] = []
     duration_seconds: int = 8
     visual_type: str = ""
