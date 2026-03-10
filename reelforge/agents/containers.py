@@ -7,7 +7,9 @@ from ***REMOVED***.agents.providers.community import SerpApiCommunityProvider
 from ***REMOVED***.agents.providers.trends import SerpApiTrendsProvider
 from ***REMOVED***.agents.providers.web_search import TavilyProvider
 from ***REMOVED***.agents.providers.youtube import SerpApiYouTubeProvider
+from ***REMOVED***.services.providers.image.fal_ai import FalAiImageProvider
 from ***REMOVED***.services.providers.image.mock import MockImageProvider
+from ***REMOVED***.services.providers.video_clip.fal_ai import FalAiVideoClipProvider
 from ***REMOVED***.services.providers.video_clip.mock import MockVideoClipProvider
 from ***REMOVED***.services.providers.llm.claude import ClaudeProvider
 from ***REMOVED***.services.providers.llm.openai import OpenAIProvider
@@ -88,9 +90,19 @@ class AgentContainer(containers.DeclarativeContainer):
         name="mock",
     )
 
+    image_fal: providers.Singleton[FalAiImageProvider] = providers.Singleton(
+        FalAiImageProvider,
+        api_key=config.fal_api_key,
+    )
+
     # ── Video clip providers ───────────────────────────────────────────────────
 
     video_clip_mock: providers.Singleton[MockVideoClipProvider] = providers.Singleton(
         MockVideoClipProvider,
         name="mock",
+    )
+
+    video_clip_fal: providers.Singleton[FalAiVideoClipProvider] = providers.Singleton(
+        FalAiVideoClipProvider,
+        api_key=config.fal_api_key,
     )

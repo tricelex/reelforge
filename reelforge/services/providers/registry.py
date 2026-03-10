@@ -50,6 +50,8 @@ def get_image_provider(channel: Channel | None = None) -> BaseImageProvider:
     name = channel.image_provider if channel and channel.image_provider else settings.DEFAULT_IMAGE_PROVIDER
     if name == "mock":
         return _container().image_mock()
+    if name == "fal_ai":
+        return _container().image_fal()
     msg = f"Unknown image provider: {name}"
     raise ValueError(msg)
 
@@ -61,5 +63,7 @@ def get_video_clip_provider(channel: Channel | None = None) -> BaseVideoClipProv
     ) or getattr(settings, "DEFAULT_VIDEO_CLIP_PROVIDER", "mock")
     if name == "mock":
         return _container().video_clip_mock()
+    if name in ("fal_ai_kling", "fal_ai"):
+        return _container().video_clip_fal()
     msg = f"Unknown video clip provider: {name}"
     raise ValueError(msg)
