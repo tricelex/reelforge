@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from reelforge.services.base import BaseImageProvider
 from reelforge.services.dataclass import ImageResponse
@@ -17,7 +18,7 @@ class MockImageProvider(BaseImageProvider):
         self.name = name
         logger.warning(f"MockImageProvider initialized for: {name}")
 
-    def generate(self, prompt: str, width: int, height: int, **kwargs) -> list[ImageResponse]:
+    def generate(self, prompt: str, width: int, height: int, **kwargs: Any) -> list[ImageResponse]:
         """Generate mock images.
 
         Args:
@@ -56,4 +57,20 @@ class MockImageProvider(BaseImageProvider):
                 )
             )
 
+        return results
+
+    async def generate_batch_async(
+        self, scene_prompts: list[dict[str, Any]]
+    ) -> list[ImageResponse | BaseException]:
+        results: list[ImageResponse | BaseException] = []
+        for sp in scene_prompts:
+            try:
+                responses = self.generate(
+                    prompt=sp["prompt"],
+                    width=sp.get("width", 1920),
+                    height=sp.get("height", 1080),
+                )
+                results.append(responses[0])
+            except Exception as exc:
+                results.append(exc)
         return results

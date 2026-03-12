@@ -7,6 +7,7 @@ from reelforge.agents.providers.community import SerpApiCommunityProvider
 from reelforge.agents.providers.trends import SerpApiTrendsProvider
 from reelforge.agents.providers.web_search import TavilyProvider
 from reelforge.agents.providers.youtube import SerpApiYouTubeProvider
+from reelforge.services.fal.client import FalAiClient
 from reelforge.services.providers.image.fal_ai import FalAiImageProvider
 from reelforge.services.providers.image.mock import MockImageProvider
 from reelforge.services.providers.video_clip.fal_ai import FalAiVideoClipProvider
@@ -32,6 +33,11 @@ class AgentContainer(containers.DeclarativeContainer):
     tavily_client: providers.Singleton[TavilyResearchClient] = providers.Singleton(
         TavilyResearchClient,
         api_key=config.tavily_api_key,
+    )
+
+    fal_client: providers.Singleton[FalAiClient] = providers.Singleton(
+        FalAiClient,
+        api_key=config.fal_api_key,
     )
 
     # ── Providers — what consumers depend on ─────────────────────────────────
@@ -92,7 +98,7 @@ class AgentContainer(containers.DeclarativeContainer):
 
     image_fal: providers.Singleton[FalAiImageProvider] = providers.Singleton(
         FalAiImageProvider,
-        api_key=config.fal_api_key,
+        client=fal_client,
     )
 
     # ── Video clip providers ───────────────────────────────────────────────────
@@ -104,5 +110,5 @@ class AgentContainer(containers.DeclarativeContainer):
 
     video_clip_fal: providers.Singleton[FalAiVideoClipProvider] = providers.Singleton(
         FalAiVideoClipProvider,
-        api_key=config.fal_api_key,
+        client=fal_client,
     )

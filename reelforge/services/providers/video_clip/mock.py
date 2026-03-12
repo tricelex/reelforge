@@ -60,3 +60,15 @@ class MockVideoClipProvider(BaseVideoClipProvider):
             cost_usd=0.0,
             raw=None,
         )
+
+    async def generate_clips_async(
+        self, clip_requests: list[dict[str, Any]]
+    ) -> list[VideoClipResponse | BaseException]:
+        return [
+            self.generate_clip(
+                image_path=req["image_path"],
+                prompt=req["prompt"],
+                duration_sec=req.get("duration_sec", 5.0),
+            )
+            for req in clip_requests
+        ]
