@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +9,7 @@ import httpx
 
 from ***REMOVED***.services.base import BaseVideoClipProvider
 from ***REMOVED***.services.dataclass import VideoClipResponse
+from ***REMOVED***.services.fal.client import FalAiClient
 
 logger = logging.getLogger("***REMOVED***.providers.video_clip.fal_ai")
 
@@ -67,16 +67,12 @@ class FalAiVideoClipProvider(BaseVideoClipProvider):
     COST_PER_5S = 0.20   # Kling Pro ~$0.20 per 5-second clip
     COST_PER_10S = 0.40  # ~$0.40 per 10-second clip
 
-    def __init__(self, api_key: str) -> None:
-        os.environ.setdefault("FAL_KEY", api_key)
-        if api_key:
-            os.environ["FAL_KEY"] = api_key
+    def __init__(self, client: FalAiClient) -> None:
+        self._client = client
 
     def _upload_image(self, image_path: str) -> str:
         """Upload a local image file to fal.ai CDN and return the CDN URL."""
-        import fal_client
-
-        url: str = asyncio.run(fal_client.upload_file_async(image_path))
+        url: str = asyncio.run(self._client.upload_file_async(Path(image_path)))
         return url
 
     def generate_clip(
@@ -97,8 +93,6 @@ class FalAiVideoClipProvider(BaseVideoClipProvider):
         Returns:
             VideoClipResponse with MP4 bytes.
         """
-        import fal_client
-
         clip_duration = 5 if duration_sec <= 7 else 10
 
         # Kling requires a URL; upload local files first
@@ -109,7 +103,7 @@ class FalAiVideoClipProvider(BaseVideoClipProvider):
             image_url = image_path  # assume already a URL
 
         result: dict[str, Any] = asyncio.run(
-            fal_client.run_async(
+            self._client.run_async(
                 self.MODEL,
                 arguments={
                     "image_url": image_url,
@@ -144,3 +138,63 @@ class FalAiVideoClipProvider(BaseVideoClipProvider):
             cost_usd=cost,
             raw=result,
         )
+
+    async def generate_clips_async(
+        self, clip_requests: list[dict[str, Any]]
+    ) -> list[VideoClipResponse | BaseException]:
+        """Generate all video clips in parallel using asyncio.gather.
+
+        Uploads all images to fal CDN in parallel first, then generates all clips in parallel.
+        """
+        # Upload all images in parallel
+        async def _upload(image_path: str) -> str:
+            if Path(image_path).exists():
+                return await self._client.upload_file_async(Path(image_path))
+            return image_path  # already a URL
+
+        upload_tasks = [_upload(req["image_path"]) for req in clip_requests]
+        image_urls_or_exc: list[str | BaseException] = list(
+            await asyncio.gather(*upload_tasks, return_exceptions=True)
+        )
+
+        async def _generate_one(
+            req: dict[str, Any], image_url: str | BaseException
+        ) -> VideoClipResponse:
+            if isinstance(image_url, BaseException):
+                raise image_url
+            duration_sec = req.get("duration_sec", 5.0)
+            clip_duration = 5 if duration_sec <= 7 else 10
+            result: dict[str, Any] = await self._client.run_async(
+                self.MODEL,
+                arguments={
+                    "image_url": image_url,
+                    "prompt": req["prompt"],
+                    "negative_prompt": _NEGATIVE_PROMPT,
+                    "duration": clip_duration,
+                    "aspect_ratio": "16:9",
+                    "cfg_scale": 0.5,
+                },
+            )
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.get(result["video"]["url"])
+                resp.raise_for_status()
+                clip_bytes = resp.content
+            cost = self.COST_PER_5S if clip_duration == 5 else self.COST_PER_10S
+            return VideoClipResponse(
+                clip_bytes=clip_bytes,
+                duration_sec=float(clip_duration),
+                width=1920,
+                height=1080,
+                provider=self.name,
+                cost_usd=cost,
+                raw=result,
+            )
+
+        clip_tasks = [_generate_one(req, url) for req, url in zip(clip_requests, image_urls_or_exc)]
+        results = await asyncio.gather(*clip_tasks, return_exceptions=True)
+        succeeded = sum(1 for r in results if not isinstance(r, BaseException))
+        logger.info(
+            "Fal.ai batch video clip generation complete",
+            extra={"model": self.MODEL, "total": len(results), "succeeded": succeeded},
+        )
+        return list(results)

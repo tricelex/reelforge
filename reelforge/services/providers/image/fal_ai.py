@@ -8,6 +8,7 @@ import httpx
 
 from ***REMOVED***.services.base import BaseImageProvider
 from ***REMOVED***.services.dataclass import ImageResponse
+from ***REMOVED***.services.fal.client import FalAiClient
 
 logger = logging.getLogger("***REMOVED***.providers.image.fal_ai")
 
@@ -37,13 +38,8 @@ class FalAiImageProvider(BaseImageProvider):
     MODEL = "fal-ai/flux-pro/v1.1"
     COST_PER_IMAGE = 0.05  # Flux Pro ~$0.05/image
 
-    def __init__(self, api_key: str) -> None:
-        import os
-
-        # fal_client reads FAL_KEY from environment
-        os.environ.setdefault("FAL_KEY", api_key)
-        if api_key:
-            os.environ["FAL_KEY"] = api_key
+    def __init__(self, client: FalAiClient) -> None:
+        self._client = client
 
     def generate(self, prompt: str, width: int, height: int, **kwargs: Any) -> list[ImageResponse]:
         """Generate images using Flux Pro.
@@ -57,8 +53,6 @@ class FalAiImageProvider(BaseImageProvider):
         Returns:
             List of ImageResponse objects.
         """
-        import fal_client
-
         num_images = int(kwargs.get("num_images", 1))
 
         # Map dimensions to fal.ai image_size presets
@@ -70,7 +64,7 @@ class FalAiImageProvider(BaseImageProvider):
             out_w, out_h = 1280, 720
 
         result: dict[str, Any] = asyncio.run(
-            fal_client.run_async(
+            self._client.run_async(
                 self.MODEL,
                 arguments={
                     "prompt": prompt,
@@ -104,3 +98,56 @@ class FalAiImageProvider(BaseImageProvider):
             extra={"model": self.MODEL, "num_images": len(responses), "prompt_length": len(prompt)},
         )
         return responses
+
+    async def generate_batch_async(
+        self, scene_prompts: list[dict[str, Any]]
+    ) -> list[ImageResponse | BaseException]:
+        """Generate all images in parallel using asyncio.gather."""
+
+        async def _generate_one(sp: dict[str, Any]) -> ImageResponse:
+            prompt = sp["prompt"]
+            height = sp.get("height", 1080)
+            if height >= 1080:
+                image_size = "landscape_16_9"
+                out_w, out_h = 1920, 1080
+            else:
+                image_size = "landscape_4_3"
+                out_w, out_h = 1280, 720
+
+            result: dict[str, Any] = await self._client.run_async(
+                self.MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "negative_prompt": _NEGATIVE_PROMPT,
+                    "image_size": image_size,
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5,
+                    "num_images": 1,
+                    "safety_tolerance": "2",
+                    "output_format": "jpeg",
+                    "enable_safety_checker": True,
+                },
+            )
+            images = result.get("images", [])
+            if not images:
+                raise ValueError("No images returned from fal.ai")
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(images[0]["url"])
+                resp.raise_for_status()
+                image_bytes = resp.content
+            return ImageResponse(
+                image_bytes=image_bytes,
+                width=out_w,
+                height=out_h,
+                provider=self.name,
+                cost_usd=self.COST_PER_IMAGE,
+            )
+
+        tasks = [_generate_one(sp) for sp in scene_prompts]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        succeeded = sum(1 for r in results if not isinstance(r, BaseException))
+        logger.info(
+            "Fal.ai batch image generation complete",
+            extra={"model": self.MODEL, "total": len(results), "succeeded": succeeded},
+        )
+        return list(results)

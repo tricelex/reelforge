@@ -1,5 +1,8 @@
+import json
 import logging
 import os
+import re
+import subprocess
 
 import numpy as np
 from pydub import AudioSegment
@@ -24,7 +27,7 @@ class AudioProcessor:
         combined = AudioSegment.empty()
 
         for i, seg in enumerate(sorted(segment_files, key=lambda x: x["segment_id"])):
-            audio = AudioSegment.from_mp3(seg["path"])
+            audio = AudioSegment.from_file(seg["path"])
             # Normalize individual segment volume
             audio = normalize(audio, headroom=1.0)
             combined += audio
@@ -49,14 +52,15 @@ class AudioProcessor:
         # Light dynamic compression
         audio = compress_dynamic_range(audio, threshold=-20.0, ratio=3.0, attack=5.0, release=50.0)
         # Loudness normalization to YouTube standard (-16 LUFS)
-        # Using ffmpeg-python for precise LUFS measurement
         return self._loudness_normalize(audio)
 
     def _loudness_normalize(self, audio: AudioSegment) -> AudioSegment:
-        """Normalize to -16 LUFS using integrated loudness measurement."""
-        import tempfile
+        """Normalize to -16 LUFS using two-pass integrated loudness measurement.
 
-        import ffmpeg
+        Pass 1 measures the actual loudness; pass 2 applies linear normalization
+        using the measured values for accurate, artefact-free results.
+        """
+        import tempfile
 
         with (
             tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_in,
@@ -64,12 +68,38 @@ class AudioProcessor:
         ):
             audio.export(tmp_in.name, format="wav")
 
-            (
-                ffmpeg.input(tmp_in.name)
-                .audio.filter("loudnorm", I=self.YOUTUBE_TARGET_LUFS, TP=self.YOUTUBE_TRUE_PEAK, LRA=11)
-                .output(tmp_out.name, ar=44100)
-                .overwrite_output()
-                .run(quiet=True)
+            # Pass 1: measure integrated loudness
+            proc1 = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", tmp_in.name,
+                    "-af",
+                    f"loudnorm=I={self.YOUTUBE_TARGET_LUFS}:TP={self.YOUTUBE_TRUE_PEAK}:LRA=11:print_format=json",
+                    "-f", "null", "-",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            # loudnorm print_format=json writes the stats block to stderr
+            match = re.search(r"\{[^{}]+\}", proc1.stderr, re.DOTALL)
+            if match:
+                stats: dict[str, str] = json.loads(match.group())
+            else:
+                logger.warning("loudnorm pass 1: could not parse stats JSON — falling back to defaults")
+                stats = {}
+
+            # Pass 2: apply linear normalization with measured values
+            af_pass2 = (
+                f"loudnorm=I={self.YOUTUBE_TARGET_LUFS}:TP={self.YOUTUBE_TRUE_PEAK}:LRA=11"
+                f":measured_I={stats.get('input_i', self.YOUTUBE_TARGET_LUFS)}"
+                f":measured_TP={stats.get('input_tp', self.YOUTUBE_TRUE_PEAK)}"
+                f":measured_LRA={stats.get('input_lra', 11)}"
+                f":measured_thresh={stats.get('input_thresh', -26)}"
+                f":linear=true:print_format=none"
+            )
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_in.name, "-af", af_pass2, "-ar", "44100", tmp_out.name],
+                check=True,
+                capture_output=True,
             )
 
             normalized = AudioSegment.from_wav(tmp_out.name)
@@ -142,7 +172,7 @@ class AudioProcessor:
         silence_ms = 200
 
         for seg in sorted(segment_files, key=lambda x: x["segment_id"]):
-            audio = AudioSegment.from_mp3(seg["path"])
+            audio = AudioSegment.from_file(seg["path"])
             duration_ms = len(audio)
             timings.append(
                 {"segment_id": seg["segment_id"], "start_ms": current_ms, "end_ms": current_ms + duration_ms}

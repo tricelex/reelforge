@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.contrib import admin
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
@@ -9,6 +12,9 @@ from ***REMOVED***.core.admin import FSMModelAdminMixin
 from ***REMOVED***.production.models import AudioMixJob
 from ***REMOVED***.production.models import ProductionJob
 from ***REMOVED***.production.models import SceneBreakdownJob
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 
 @admin.register(ProductionJob)
@@ -251,6 +257,29 @@ class SceneBreakdownJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "total_estimated_duration",
     ]
     ordering = ["-created_at"]
+    actions = ["run_scene_breakdown_action"]
+
+    def save_model(self, request: HttpRequest, obj: SceneBreakdownJob, form: object, change: bool) -> None:
+        """Auto-dispatch the scene breakdown task when a new job is created via admin."""
+        super().save_model(request, obj, form, change)
+        if not change:
+            from ***REMOVED***.pipeline.tasks import run_scene_breakdown_job
+
+            job_id = str(obj.id)
+            transaction.on_commit(lambda: run_scene_breakdown_job.delay(job_id))
+
+    @admin.action(description=_("▶ Run Scene Breakdown"))
+    def run_scene_breakdown_action(self, request: HttpRequest, queryset: object) -> None:
+        """Dispatch the scene breakdown task for selected jobs."""
+        from ***REMOVED***.pipeline.tasks import run_scene_breakdown_job
+
+        count = 0
+        for job in queryset:
+            job_id = str(job.id)
+            transaction.on_commit(lambda jid=job_id: run_scene_breakdown_job.delay(jid))
+            count += 1
+        if count:
+            self.message_user(request, _("Scene breakdown dispatched for %d job(s).") % count)
 
     fieldsets = [
         (
@@ -355,6 +384,29 @@ class AudioMixJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "mixed_duration_sec",
     ]
     ordering = ["-created_at"]
+    actions = ["run_audio_mix_action"]
+
+    def save_model(self, request: HttpRequest, obj: AudioMixJob, form: object, change: bool) -> None:
+        """Auto-dispatch the audio mix task when a new job is created via admin."""
+        super().save_model(request, obj, form, change)
+        if not change:
+            from ***REMOVED***.pipeline.tasks import run_audio_mix_job
+
+            job_id = str(obj.id)
+            transaction.on_commit(lambda: run_audio_mix_job.delay(job_id))
+
+    @admin.action(description=_("▶ Run Audio Mix"))
+    def run_audio_mix_action(self, request: HttpRequest, queryset: object) -> None:
+        """Dispatch the audio mix task for selected jobs."""
+        from ***REMOVED***.pipeline.tasks import run_audio_mix_job
+
+        count = 0
+        for job in queryset:
+            job_id = str(job.id)
+            transaction.on_commit(lambda jid=job_id: run_audio_mix_job.delay(jid))
+            count += 1
+        if count:
+            self.message_user(request, _("Audio mix dispatched for %d job(s).") % count)
 
     fieldsets = [
         (

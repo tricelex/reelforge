@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from decimal import ROUND_HALF_UP
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -450,7 +451,6 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
 
     try:
         from decimal import Decimal
-
         from pathlib import Path
 
         from django.conf import settings
@@ -482,7 +482,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
             return
 
         tts = get_tts_provider(channel)
-        total_cost = Decimal("0")
+        total_cost = Decimal(0)
         segment_files: list[dict] = []
 
         for seg in segments:
@@ -685,18 +685,30 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
             return
 
         img_provider = get_image_provider(channel)
-        total_cost = Decimal("0")
+        total_cost = Decimal(0)
         images_count = 0
 
-        for scene in scenes:
-            scene_id = scene.get("scene_id", images_count + 1)
+        # Build ordered list of (scene, scene_id, prompt), filtering out empty prompts
+        valid_scenes: list[tuple[dict, int, str]] = []
+        for i, scene in enumerate(scenes):
+            scene_id = scene.get("scene_id", i + 1)
             prompt = scene.get("image_prompt", "") or scene.get("narration", "")[:300]
-            if not prompt:
+            if prompt:
+                valid_scenes.append((scene, scene_id, prompt))
+
+        scene_prompts = [{"prompt": p, "width": 1920, "height": 1080} for _, _, p in valid_scenes]
+        results = asyncio.run(img_provider.generate_batch_async(scene_prompts))
+
+        for (scene, scene_id, prompt), result in zip(valid_scenes, results):
+            if isinstance(result, BaseException):
+                logger.warning(
+                    "Image generation failed for scene %d — skipping",
+                    scene_id,
+                    extra={"image_generation_run_id": str(run.id), "scene_id": scene_id, "error": str(result)},
+                )
                 continue
 
-            responses = img_provider.generate(prompt=prompt, width=1920, height=1080, num_images=1)
-            img_data = responses[0]
-
+            img_data = result
             img_path = get_image_path(str(asset_job.id), scene_id)
             img_path.write_bytes(img_data.image_bytes)
 
@@ -813,6 +825,12 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
             msg = f"ImageGenerationRun must be COMPLETED before animating clips (status={getattr(image_run, 'status', None)})"
             raise ValueError(msg)
 
+        # Voiceover must be complete so scene breakdown has accurate durations
+        voiceover_run = asset_job.selected_voiceover_run
+        if not voiceover_run or voiceover_run.status != "COMPLETED":
+            msg = "Selected VoiceoverRun must be COMPLETED before generating video clips"
+            raise ValueError(msg)
+
         images = list(GeneratedImage.objects.filter(image_run=image_run).order_by("position_idx"))
         if not images:
             logger.warning(
@@ -831,15 +849,12 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
             scenes_by_id = {s.get("scene_id", 0): s for s in breakdown.scenes}
 
         clip_provider = get_video_clip_provider(channel)
-        total_cost = Decimal("0")
+        total_cost = Decimal(0)
         clips_count = 0
 
+        # Build ordered list of (img, anim_prompt, duration), filtering images with no file
+        valid_clips: list[tuple[Any, str, float]] = []
         for img in images:
-            scene = scenes_by_id.get(img.position_idx, {})
-            animation_type = scene.get("animation_type", "body_concept")
-            anim_prompt = ANIMATION_PROMPTS.get(animation_type, ANIMATION_PROMPTS["body_concept"])
-            duration_estimate = float(scene.get("duration_estimate", 8.0))
-
             img_path = img.image_file.path if img.image_file else ""
             if not img_path:
                 logger.warning(
@@ -847,15 +862,29 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
                     extra={"image_id": str(img.id), "position_idx": img.position_idx},
                 )
                 continue
+            scene = scenes_by_id.get(img.position_idx, {})
+            animation_type = scene.get("animation_type", "body_concept")
+            anim_prompt = ANIMATION_PROMPTS.get(animation_type, ANIMATION_PROMPTS["body_concept"])
+            duration_estimate = float(scene.get("duration_estimate", 8.0))
+            valid_clips.append((img, anim_prompt, duration_estimate))
 
-            clip_response = clip_provider.generate_clip(
-                image_path=img_path,
-                prompt=anim_prompt,
-                duration_sec=duration_estimate,
-            )
+        clip_requests = [
+            {"image_path": img.image_file.path, "prompt": prompt, "duration_sec": dur}
+            for img, prompt, dur in valid_clips
+        ]
+        clip_results = asyncio.run(clip_provider.generate_clips_async(clip_requests))
+
+        for (img, anim_prompt, _), clip_result in zip(valid_clips, clip_results):
+            if isinstance(clip_result, BaseException):
+                logger.warning(
+                    "Video clip generation failed for image %d — skipping",
+                    img.position_idx,
+                    extra={"video_clip_run_id": str(run.id), "image_id": str(img.id), "error": str(clip_result)},
+                )
+                continue
 
             clip_path = get_clip_path(str(asset_job.id), img.position_idx)
-            clip_path.write_bytes(clip_response.clip_bytes)
+            clip_path.write_bytes(clip_result.clip_bytes)
 
             GeneratedVideoClip.objects.update_or_create(
                 video_clip_run=run,
@@ -864,13 +893,13 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
                     "source_image": img,
                     "prompt_used": anim_prompt,
                     "clip_file": str(clip_path.relative_to(media_root)),
-                    "duration_sec": clip_response.duration_sec,
+                    "duration_sec": clip_result.duration_sec,
                     "provider": clip_provider.name,
                     "is_selected": True,
-                    "generation_cost_usd": Decimal(str(clip_response.cost_usd)),
+                    "generation_cost_usd": Decimal(str(clip_result.cost_usd)),
                 },
             )
-            total_cost += Decimal(str(clip_response.cost_usd))
+            total_cost += Decimal(str(clip_result.cost_usd))
             clips_count += 1
 
         run.clips_count = clips_count
@@ -979,7 +1008,7 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
         ]
 
         img_provider = get_image_provider(channel)
-        total_cost = Decimal("0")
+        total_cost = Decimal(0)
 
         for i, prompt in enumerate(thumbnail_prompts):
             responses = img_provider.generate(prompt=prompt, width=1280, height=720, num_images=1)
@@ -1220,7 +1249,6 @@ def _build_ass_from_whisper(words: list) -> str:
 )
 def run_caption_generation(self, production_job_id: str) -> None:
     """Generate word-level captions from the merged voiceover using OpenAI Whisper API."""
-    from ***REMOVED***.production.models import AudioMixJob
     from ***REMOVED***.production.models import ProductionJob
 
     try:
@@ -1241,18 +1269,16 @@ def run_caption_generation(self, production_job_id: str) -> None:
 
         media_root = Path(settings.MEDIA_ROOT)
 
-        # Prefer active AudioMixJob, fall back to selected VoiceoverRun
-        audio_mix = AudioMixJob.objects.filter(asset_job=job.asset_job, is_active=True).first()
-        if audio_mix and audio_mix.mixed_audio_file:
-            audio_path_str = audio_mix.mixed_audio_file.path
-        elif job.asset_job.selected_voiceover_run and job.asset_job.selected_voiceover_run.merged_audio_file:
-            audio_path_str = job.asset_job.selected_voiceover_run.merged_audio_file.path
-        else:
+        # Always use clean voiceover for accurate Whisper transcription.
+        # Music is added by FFmpeg during render — not needed for captions.
+        vo_run = job.asset_job.selected_voiceover_run
+        if not vo_run or not vo_run.merged_audio_file:
             logger.warning(
-                "run_caption_generation: no audio file available — skipping",
+                "run_caption_generation: no clean voiceover — skipping",
                 extra={"production_job_id": production_job_id},
             )
             return
+        audio_path_str = vo_run.merged_audio_file.path
 
         client = OpenAI()
         with open(audio_path_str, "rb") as f:

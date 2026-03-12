@@ -330,4 +330,5 @@ dump.rdb
 .env
 .envs/*
 .envs/.local/
+.envs/.local/.django
 .idea/
