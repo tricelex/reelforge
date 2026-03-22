@@ -86,26 +86,6 @@ class DistributionJob(PipelineStageModel):
         default=UploadStatus.PENDING,
     )
 
-    # Cross-posting (other platforms)
-    tiktok_post_id = models.CharField(max_length=100, blank=True)
-    tiktok_status = models.CharField(
-        max_length=20,
-        choices=UploadStatus.choices,
-        default=UploadStatus.PENDING,
-    )
-    instagram_post_id = models.CharField(max_length=100, blank=True)
-    instagram_status = models.CharField(
-        max_length=20,
-        choices=UploadStatus.choices,
-        default=UploadStatus.PENDING,
-    )
-    twitter_post_id = models.CharField(max_length=100, blank=True)
-    twitter_status = models.CharField(
-        max_length=20,
-        choices=UploadStatus.choices,
-        default=UploadStatus.PENDING,
-    )
-
     # Engagement setup
     cards_set = models.BooleanField(
         default=False,

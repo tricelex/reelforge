@@ -1383,6 +1383,26 @@ def render_video(self, production_job_id: str) -> None:
     ).get(id=production_job_id)
     job.mark_running(task_id=self.request.id)
 
+    # Populate sub-job FKs from the asset chain if not already set
+    _sub_job_fields: list[str] = []
+    if not job.scene_breakdown_job_id:
+        try:
+            job.scene_breakdown_job = job.asset_job.script_job.scene_breakdown
+            _sub_job_fields.append("scene_breakdown_job")
+        except Exception as _exc:
+            logger.warning(
+                "render_video: could not resolve scene_breakdown_job — %s",
+                _exc,
+                extra={"production_job_id": production_job_id},
+            )
+    if not job.audio_mix_job_id:
+        active_mix = job.asset_job.audio_mix_jobs.filter(is_active=True).first()
+        if active_mix:
+            job.audio_mix_job = active_mix
+            _sub_job_fields.append("audio_mix_job")
+    if _sub_job_fields:
+        job.save(update_fields=(*_sub_job_fields, "updated_at"))
+
     try:
         # Generate captions synchronously before rendering (single task, saves overhead)
         try:

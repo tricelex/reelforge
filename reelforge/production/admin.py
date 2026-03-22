@@ -59,7 +59,6 @@ class ProductionJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "video_duration_sec",
         "file_size_bytes",
         "file_size_mb",
-        "bitrate_kbps",
         "qa_checks_run",
         "qa_checks_passed",
         "qa_pass_rate",
@@ -111,7 +110,6 @@ class ProductionJobAdmin(FSMModelAdminMixin, ModelAdmin):
                     "video_duration_sec",
                     "file_size_bytes",
                     "file_size_mb",
-                    "bitrate_kbps",
                 ),
             },
         ),
@@ -145,10 +143,7 @@ class ProductionJobAdmin(FSMModelAdminMixin, ModelAdmin):
             _("Render Performance"),
             {
                 "classes": ("collapse",),
-                "fields": (
-                    "render_duration_sec",
-                    "render_worker_id",
-                ),
+                "fields": ("render_duration_sec",),
             },
         ),
         (

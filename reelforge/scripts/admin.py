@@ -46,7 +46,6 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "auto_approved",
         "word_count",
         "hook_score_display",
-        "readability_score_display",
         "created_at",
         "duration_display",
         "cost_display",
@@ -84,7 +83,6 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "selected_hook",
         "total_segments",
         "broll_count",
-        "readability_score",
         "revision_notes",
         "script_preview",
         "hook_preview",
@@ -132,8 +130,6 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
             {
                 "fields": (
                     "script_text",
-                    "script_version",
-                    "script_file",
                     "word_count",
                     "estimated_duration_mins",
                     "revision_notes",
@@ -152,7 +148,7 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
             {
                 "classes": ("collapse",),
                 "fields": (
-                    "readability_score",
+                    "quality_flags",
                     "qa_issues_found",
                     "qa_issues_fixed",
                 ),
@@ -168,6 +164,9 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
                     "category",
                     "chapters",
                     "pinned_comment",
+                    "thumbnail_text",
+                    "thumbnail_emotion",
+                    "search_hashtags",
                 ),
             },
         ),
@@ -270,12 +269,6 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
     def hook_score_display(self, obj: ScriptJob) -> str:
         return f"{obj.hook_score:.1f}/10"
 
-    @display(description=_("Readability"), ordering="readability_score")
-    def readability_score_display(self, obj: ScriptJob) -> str:
-        if obj.readability_score > 0:
-            return f"{obj.readability_score:.1f}/10"
-        return "-"
-
     @display(description=_("Duration"))
     def duration_display(self, obj: ScriptJob) -> str:
         if obj.duration_seconds:
@@ -348,9 +341,7 @@ class ScriptJobAdmin(FSMModelAdminMixin, ModelAdmin):
         self.message_user(request, f"{count} scripts approved.")
 
     @action(description="🔁 Rerun Script with Changes")
-    def rerun_script_with_changes(
-        self, request: HttpRequest, queryset: QuerySet[ScriptJob]
-    ) -> None:
+    def rerun_script_with_changes(self, request: HttpRequest, queryset: QuerySet[ScriptJob]) -> None:
         """Re-run the ScriptAgent using script_job.change_request as guidance.
         Operator must fill in the 'change_request' field and save before running.
         """
