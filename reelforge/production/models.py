@@ -3,7 +3,6 @@ from __future__ import annotations
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from reelforge.core.models import BaseAbstractModel
 from reelforge.core.models import PipelineStageModel
 from reelforge.core.validators import pydantic_validator
 from reelforge.production.choices import RenderEngine
@@ -243,8 +242,6 @@ class ProductionJob(PipelineStageModel):
         default=0,
         help_text=_("Final video file size in bytes"),
     )
-    bitrate_kbps = models.PositiveIntegerField(default=0)
-
     # QA results
     qa_passed = models.BooleanField(default=False)
     qa_checks_run = models.PositiveSmallIntegerField(default=0)
@@ -290,7 +287,6 @@ class ProductionJob(PipelineStageModel):
         default=0.0,
         help_text=_("How long the render took in seconds"),
     )
-    render_worker_id = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -106,6 +106,8 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
         "topic",
         "script_job",
         "asset_job",
+        "scene_breakdown_job",
+        "audio_mix_job",
         "production_job",
         "distribution_job",
     ]
@@ -152,6 +154,8 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                     "topic",
                     "script_job",
                     "asset_job",
+                    "scene_breakdown_job",
+                    "audio_mix_job",
                     "production_job",
                     "distribution_job",
                 ),

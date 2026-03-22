@@ -68,16 +68,6 @@ class ScriptJob(PipelineStageModel):
 
     # Script content (current version)
     script_text = models.TextField(blank=True)
-    script_version = models.PositiveSmallIntegerField(
-        default=1,
-        help_text=_("Current version number (increments on major changes)"),
-    )
-    script_file = models.FileField(
-        upload_to="scripts/",
-        null=True,
-        blank=True,
-        help_text=_("Exported script file for download/archive"),
-    )
     word_count = models.PositiveIntegerField(default=0)
     estimated_duration_mins = models.FloatField(
         default=0.0,
@@ -120,10 +110,6 @@ class ScriptJob(PipelineStageModel):
     )
 
     # QA tracking
-    readability_score = models.FloatField(
-        default=0.0,
-        help_text=_("0-10 readability score (Flesch-Kincaid equivalent)"),
-    )
     qa_issues_found = models.JSONField(
         default=list,
         blank=True,

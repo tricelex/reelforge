@@ -18,11 +18,17 @@ class AnalyticsSnapshotInline(TabularInline):
     fields = [
         "snapshot_days_after",
         "views",
+        "likes",
+        "comments",
+        "shares",
+        "subscribers_gained",
         "watch_time_hrs",
+        "impressions",
         "ctr_percent",
         "avg_view_percentage",
-        "performance_class",
+        "rpm_usd",
         "revenue_est_usd",
+        "performance_class",
         "created_at",
     ]
     readonly_fields = fields
@@ -49,9 +55,6 @@ class DistributionJobAdmin(FSMModelAdminMixin, ModelAdmin):
         "privacy_status",
         "shorts_uploaded",
         "shorts_upload_status",
-        "tiktok_status",
-        "instagram_status",
-        "twitter_status",
         "published_at",
         "channel",
     ]
@@ -138,20 +141,6 @@ class DistributionJobAdmin(FSMModelAdminMixin, ModelAdmin):
                     "shorts_youtube_id",
                     "shorts_youtube_url",
                     "shorts_upload_status",
-                ),
-            },
-        ),
-        (
-            _("Cross-Posting (Other Platforms)"),
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "tiktok_post_id",
-                    "tiktok_status",
-                    "instagram_post_id",
-                    "instagram_status",
-                    "twitter_post_id",
-                    "twitter_status",
                 ),
             },
         ),
