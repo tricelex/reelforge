@@ -35,6 +35,16 @@ class FalAiClient:
         self._api_key = api_key
         os.environ["FAL_KEY"] = api_key
 
+    def run(self, model: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run a fal.ai model synchronously and return the result dict."""
+        import fal_client
+
+        try:
+            result: dict[str, Any] = fal_client.run(model, arguments=arguments)
+        except Exception as exc:
+            raise _classify_error(exc) from exc
+        return result
+
     async def run_async(self, model: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Run a fal.ai model asynchronously and return the result dict."""
         import fal_client

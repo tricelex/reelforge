@@ -420,6 +420,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
             from django.db import transaction as db_transaction
             from django_fsm import can_proceed
 
+            from ***REMOVED***.pipeline.choices import PipelineStatus
             from ***REMOVED***.pipeline.models import PipelineRun
 
             pipeline_run = PipelineRun.objects.select_related("script_job").get(id=pipeline_run_id)
@@ -431,6 +432,19 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
                 db_transaction.on_commit(lambda sjid=script_job_id, rid=rid: run_asset_job.delay(sjid, rid))
                 logger.info(
                     "Scene breakdown complete — advancing to asset generation",
+                    extra={
+                        "pipeline_run_id": pipeline_run_id,
+                        "scene_breakdown_job_id": scene_breakdown_job_id,
+                    },
+                )
+            elif pipeline_run.overall_status == PipelineStatus.GENERATING_ASSETS:
+                # Re-dispatch case: run already in GENERATING_ASSETS (e.g. operator re-ran scene breakdown)
+                # Skip FSM transition and fire asset job directly
+                script_job_id = str(pipeline_run.script_job_id)
+                rid = pipeline_run_id
+                db_transaction.on_commit(lambda sjid=script_job_id, rid=rid: run_asset_job.delay(sjid, rid))
+                logger.info(
+                    "Scene breakdown complete — run already in GENERATING_ASSETS, re-dispatching asset job",
                     extra={
                         "pipeline_run_id": pipeline_run_id,
                         "scene_breakdown_job_id": scene_breakdown_job_id,
@@ -454,6 +468,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
     bind=True,
     name="***REMOVED***.pipeline.run_voiceover_run",
     queue="default",
+    max_retries=3,
     soft_time_limit=1500,
     time_limit=1800,
 )
@@ -624,6 +639,19 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
         )
 
     except Exception as exc:
+        import httpx
+
+        if isinstance(exc, (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout)):
+            logger.warning(
+                "Transient network error in VoiceoverRun — retrying",
+                extra={
+                    "voiceover_run_id": voiceover_run_id,
+                    "attempt": self.request.retries + 1,
+                    "error": str(exc),
+                },
+            )
+            raise self.retry(exc=exc, countdown=2**self.request.retries * 30)
+
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
@@ -1033,6 +1061,8 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
 
         for i, prompt in enumerate(thumbnail_prompts):
             responses = img_provider.generate(prompt=prompt, width=1280, height=720, num_images=1)
+            if not responses:
+                raise ValueError(f"Image provider returned no images for thumbnail option {i}")
             img_data = responses[0]
 
             thumb_path = get_thumbnail_path(str(asset_job.id), i)

@@ -112,15 +112,11 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
     actions = [
         "start_pipeline",
         "advance_to_scripting",
-        "skip_to_scripting_action",
-        "skip_to_assets_action",
-        "skip_scripting_to_assets_action",
         "approve_to_assets",
         "begin_rendering_action",
         "begin_upload_action",
         "retry_scripting_action",
         "retry_assets_action",
-        "force_reset_assets_action",
         "retry_rendering_action",
         "retry_upload_action",
         "resume_to_assets_action",
@@ -353,96 +349,6 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
         if count > 0:
             self.message_user(request, f"{count} run(s) advanced to scripting.")
 
-    @action(description="⏭ Skip to Scripting (use existing topic)")
-    def skip_to_scripting_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
-        """Skip research entirely (INITIALIZING → SCRIPTING). Operator must have set topic FK."""
-        from ***REMOVED***.pipeline.tasks import run_script_job
-
-        count = 0
-        for run in queryset:
-            if can_proceed(run.skip_to_scripting):
-                if not run.topic:
-                    self.message_user(
-                        request,
-                        f"'{run}' has no topic set — set the topic FK first or scripting will stall.",
-                        level="WARNING",
-                    )
-                run.skip_to_scripting()
-                run.save()
-                if run.topic:
-                    topic_id = str(run.topic.id)
-                    run_id = str(run.id)
-                    transaction.on_commit(lambda tid=topic_id, rid=run_id: run_script_job.delay(tid, rid))
-                count += 1
-            else:
-                self.message_user(
-                    request,
-                    f"Cannot skip to scripting for '{run}' — current state: {run.overall_status}",
-                    level="ERROR",
-                )
-        if count > 0:
-            self.message_user(request, f"{count} run(s) skipped to scripting.")
-
-    @action(description="⏭ Skip to Assets (use existing script)")
-    def skip_to_assets_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
-        """Skip research + scripting (INITIALIZING → GENERATING_ASSETS). Operator must have set script_job FK."""
-        from ***REMOVED***.pipeline.tasks import run_asset_job
-
-        count = 0
-        for run in queryset:
-            if can_proceed(run.skip_to_assets):
-                if not run.script_job:
-                    self.message_user(
-                        request,
-                        f"'{run}' has no script_job set — set the script_job FK first or assets will stall.",
-                        level="WARNING",
-                    )
-                run.skip_to_assets()
-                run.save()
-                if run.script_job:
-                    script_job_id = str(run.script_job.id)
-                    run_id = str(run.id)
-                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
-                count += 1
-            else:
-                self.message_user(
-                    request,
-                    f"Cannot skip to assets for '{run}' — current state: {run.overall_status}",
-                    level="ERROR",
-                )
-        if count > 0:
-            self.message_user(request, f"{count} run(s) skipped to asset generation.")
-
-    @action(description="⏭ Skip Scripting → Assets (use existing script)")
-    def skip_scripting_to_assets_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
-        """Skip scripting stage (RESEARCHING → GENERATING_ASSETS). Operator must have set script_job FK."""
-        from ***REMOVED***.pipeline.tasks import run_asset_job
-
-        count = 0
-        for run in queryset:
-            if can_proceed(run.skip_scripting_to_assets):
-                if not run.script_job:
-                    self.message_user(
-                        request,
-                        f"'{run}' has no script_job set — set the script_job FK first or assets will stall.",
-                        level="WARNING",
-                    )
-                run.skip_scripting_to_assets()
-                run.save()
-                if run.script_job:
-                    script_job_id = str(run.script_job.id)
-                    run_id = str(run.id)
-                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
-                count += 1
-            else:
-                self.message_user(
-                    request,
-                    f"Cannot skip scripting for '{run}' — current state: {run.overall_status}",
-                    level="ERROR",
-                )
-        if count > 0:
-            self.message_user(request, f"{count} run(s) advanced to asset generation.")
-
     @action(description="▶ Approve & Continue to Assets")
     def approve_to_assets(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
         """Transition AWAITING_APPROVAL → SCENE_BREAKDOWN → GENERATING_ASSETS via scene breakdown task.
@@ -596,43 +502,6 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 )
         if count > 0:
             self.message_user(request, f"{count} run(s) set to retry asset generation.")
-
-    @action(description="💥 Force Reset → Retry Assets")
-    def force_reset_assets_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
-        """Force any stuck run to FAILED then immediately retry asset generation.
-
-        Use when GENERATING_ASSETS is stuck and retry_assets_action won't fire
-        because the run never transitioned to FAILED on its own.
-        """
-        from ***REMOVED***.pipeline.tasks import run_asset_job
-
-        count = 0
-        for run in queryset:
-            if not can_proceed(run.mark_failed):
-                self.message_user(
-                    request,
-                    f"Cannot force-reset '{run}' — mark_failed transition blocked.",
-                    level="ERROR",
-                )
-                continue
-            run.mark_failed(reason="Force-reset by operator")
-            if not can_proceed(run.retry_assets):
-                self.message_user(
-                    request,
-                    f"'{run}' moved to FAILED but retry_assets blocked — left in FAILED for manual recovery.",
-                    level="WARNING",
-                )
-                run.save()
-                continue
-            run.retry_assets()
-            run.save()
-            if run.script_job:
-                script_job_id = str(run.script_job.id)
-                run_id = str(run.id)
-                transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
-            count += 1
-        if count > 0:
-            self.message_user(request, f"{count} run(s) force-reset and asset task re-dispatched.")
 
     @action(description="🔄 Retry Rendering")
     def retry_rendering_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
