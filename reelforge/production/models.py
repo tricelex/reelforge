@@ -251,6 +251,7 @@ class ProductionJob(PipelineStageModel):
     qa_checks_passed = models.PositiveSmallIntegerField(default=0)
     qa_results = models.JSONField(
         default=dict,
+        blank=True,
         help_text=_("QA check results: check_name → pass/fail."),
         validators=[pydantic_validator(QAResults)],
     )

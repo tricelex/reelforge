@@ -58,9 +58,9 @@ def get_image_provider(channel: Channel | None = None) -> BaseImageProvider:
 
 def get_video_clip_provider(channel: Channel | None = None) -> BaseVideoClipProvider:
     """Returns the configured video clip generation provider, optionally channel-specific."""
-    name = (
-        getattr(channel, "video_clip_provider", None) if channel else None
-    ) or getattr(settings, "DEFAULT_VIDEO_CLIP_PROVIDER", "mock")
+    name = (getattr(channel, "video_clip_provider", None) if channel else None) or getattr(
+        settings, "DEFAULT_VIDEO_CLIP_PROVIDER", "fal_ai_kling"
+    )
     if name == "mock":
         return _container().video_clip_mock()
     if name in ("fal_ai_kling", "fal_ai"):
