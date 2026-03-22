@@ -316,7 +316,7 @@ class VoiceoverSegment(BaseAbstractModel):
 
     generation_cost_usd = models.DecimalField(
         _("Generation Cost (USD)"),
-        max_digits=8,
+        max_digits=10,
         decimal_places=6,
         default=0,
         help_text=_("Cost to generate this segment"),
@@ -402,7 +402,7 @@ class GeneratedImage(BaseAbstractModel):
 
     generation_cost_usd = models.DecimalField(
         _("Generation Cost (USD)"),
-        max_digits=8,
+        max_digits=10,
         decimal_places=6,
         default=0,
         help_text=_("Cost to generate this image"),
@@ -478,7 +478,7 @@ class ThumbnailOption(BaseAbstractModel):
 
     generation_cost_usd = models.DecimalField(
         _("Generation Cost (USD)"),
-        max_digits=8,
+        max_digits=10,
         decimal_places=6,
         default=0,
         help_text=_("Cost to generate this thumbnail"),

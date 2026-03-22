@@ -13,7 +13,7 @@ services:
     depends_on:
       - postgres
       - redis
-      - mailpit
+#      - mailpit
     volumes:
       - /app/.venv
       - .:/app:z
@@ -38,11 +38,11 @@ services:
     ports:
       - "5435:5432"
 
-  mailpit:
-    image: docker.io/axllent/mailpit:latest
-    container_name: reelforge_local_mailpit
-    ports:
-      - "8025:8025"
+#  mailpit:
+#    image: docker.io/axllent/mailpit:latest
+#    container_name: reelforge_local_mailpit
+#    ports:
+#      - "8025:8025"
 
   redis:
     image: docker.io/redis:7.2
@@ -57,20 +57,20 @@ services:
     depends_on:
       - redis
       - postgres
-      - mailpit
+#      - mailpit
     ports: []
     command: /start-celeryworker
 
-  celerybeat:
-    <<: *django
-    image: reelforge_local_celerybeat
-    container_name: reelforge_local_celerybeat
-    depends_on:
-      - redis
-      - postgres
-      - mailpit
-    ports: []
-    command: /start-celerybeat
+#  celerybeat:
+#    <<: *django
+#    image: reelforge_local_celerybeat
+#    container_name: reelforge_local_celerybeat
+#    depends_on:
+#      - redis
+#      - postgres
+#      - mailpit
+#    ports: []
+#    command: /start-celerybeat
 
   flower:
     <<: *django
