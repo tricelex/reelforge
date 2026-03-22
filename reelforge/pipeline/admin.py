@@ -125,6 +125,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
         "trigger_research_action",
         "trigger_scripting_action",
         "trigger_assets_action",
+        "trigger_rendering_action",
         "pause_action",
         "reject_run",
         "rerun_script_with_changes_action",
@@ -678,6 +679,48 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
             count += 1
         if count > 0:
             self.message_user(request, f"{count} scripting task(s) re-dispatched.")
+
+    @action(description="🔁 Trigger Rendering (re-dispatch)")
+    def trigger_rendering_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
+        """Re-dispatch the render task for stuck RENDERING runs.
+        Creates a ProductionJob if one doesn't exist yet. Does not change FSM state.
+        """
+        from reelforge.pipeline.tasks import render_video
+        from reelforge.production.models import ProductionJob
+
+        count = 0
+        for run in queryset:
+            if run.overall_status != PipelineStatus.RENDERING:
+                self.message_user(
+                    request,
+                    f"'{run}' is not in RENDERING state (current: {run.overall_status}) — skipping.",
+                    level="WARNING",
+                )
+                continue
+            if not run.asset_job:
+                self.message_user(
+                    request,
+                    f"'{run}' has no asset_job linked — cannot create ProductionJob.",
+                    level="ERROR",
+                )
+                continue
+
+            production_job, created = ProductionJob.objects.get_or_create(
+                asset_job=run.asset_job,
+                defaults={"channel": run.channel},
+            )
+            if not run.production_job_id or run.production_job_id != production_job.id:
+                run.production_job = production_job
+                run.save(update_fields=["production_job", "updated_at"])
+
+            if created:
+                self.message_user(request, f"Created ProductionJob for '{run}'.")
+
+            production_job_id = str(production_job.id)
+            transaction.on_commit(lambda pjid=production_job_id: render_video.delay(pjid))
+            count += 1
+        if count > 0:
+            self.message_user(request, f"{count} render task(s) re-dispatched.")
 
     @action(description="🔁 Trigger Assets (re-dispatch)")
     def trigger_assets_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:

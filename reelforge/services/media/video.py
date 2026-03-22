@@ -186,6 +186,20 @@ class VideoRenderer:
             prepared.append(out_path)
         return prepared
 
+    def _run_ffmpeg(self, stream: ffmpeg.nodes.OutputStream, label: str) -> None:
+        """Run an ffmpeg stream, capturing stderr and re-raising as a plain RuntimeError."""
+        try:
+            stream.run(quiet=True, capture_stderr=True)
+        except ffmpeg.Error as exc:
+            stderr = exc.stderr.decode(errors="replace") if exc.stderr else "(no stderr)"
+            logger.error(
+                "FFmpeg error in %s:\n%s",
+                label,
+                stderr,
+                extra={"label": label, "stderr": stderr},
+            )
+            raise RuntimeError(f"FFmpeg error in {label}: {stderr}") from None
+
     def _prepare_one_scene(self, scene: dict, out_path: str) -> None:
         """Prepare a single scene clip with scaling, fades, and optional Ken Burns."""
         duration = scene["duration"]
@@ -193,9 +207,9 @@ class VideoRenderer:
 
         if scene.get("clip_path") and Path(scene["clip_path"]).exists():
             # Use Kling-generated clip: scale + fade
-            (
+            self._run_ffmpeg(
                 ffmpeg.input(scene["clip_path"])
-                .video.filter("scale", w, h, force_original_aspect_ratio="cover")
+                .video.filter("scale", w, h, force_original_aspect_ratio="increase")
                 .filter("crop", w, h)
                 .filter("fade", type="in", start_time=0, duration=0.3)
                 .filter("fade", type="out", start_time=max(0, duration - 0.5), duration=0.5)
@@ -207,19 +221,19 @@ class VideoRenderer:
                     an=None,  # drop audio — remixed later
                     t=duration,
                 )
-                .overwrite_output()
-                .run(quiet=True)
+                .overwrite_output(),
+                label=f"prepare_clip scene={scene.get('scene_id')}",
             )
         elif scene.get("image_path") and Path(scene["image_path"]).exists():
             # Ken Burns fallback via FFmpeg zoompan
             self._ken_burns_clip(scene["image_path"], duration, scene.get("animation_type", "zoom_in"), out_path)
         else:
             # Black frame fallback
-            (
+            self._run_ffmpeg(
                 ffmpeg.input("color=c=black:s=1920x1080", f="lavfi", t=duration)
                 .output(out_path, vcodec="libx264", crf=self.CRF, preset="fast")
-                .overwrite_output()
-                .run(quiet=True)
+                .overwrite_output(),
+                label=f"black_frame scene={scene.get('scene_id')}",
             )
 
     def _ken_burns_clip(self, image_path: str, duration: float, animation_type: str, out_path: str) -> None:
@@ -238,7 +252,7 @@ class VideoRenderer:
         else:  # zoom_in / default
             zoom_expr = f"'min(zoom+0.0005,1.03)'"
 
-        (
+        self._run_ffmpeg(
             ffmpeg.input(image_path, loop=1, framerate=fps)
             .filter(
                 "zoompan",
@@ -258,8 +272,8 @@ class VideoRenderer:
                 t=duration,
                 an=None,
             )
-            .overwrite_output()
-            .run(quiet=True)
+            .overwrite_output(),
+            label=f"ken_burns image={Path(image_path).name}",
         )
 
     # ── Concatenation ─────────────────────────────────────────────────────────
@@ -274,11 +288,11 @@ class VideoRenderer:
 
         inputs = [ffmpeg.input(p) for p in clip_paths]
         streams = [inp.video for inp in inputs]
-        (
+        self._run_ffmpeg(
             ffmpeg.concat(*streams, v=1, a=0)
             .output(out_path, vcodec="libx264", crf=self.CRF, preset="fast")
-            .overwrite_output()
-            .run(quiet=True)
+            .overwrite_output(),
+            label="concatenate_scenes",
         )
 
         # Cleanup temp clips
@@ -310,7 +324,7 @@ class VideoRenderer:
             audio_stream = ffmpeg.input(audio_path).audio.filter(
                 "loudnorm", I=-16, TP=-1.5, LRA=11
             )
-            (
+            self._run_ffmpeg(
                 ffmpeg.output(
                     v,
                     audio_stream,
@@ -322,11 +336,11 @@ class VideoRenderer:
                     audio_bitrate="192k",
                     movflags="+faststart",
                 )
-                .overwrite_output()
-                .run(quiet=True)
+                .overwrite_output(),
+                label="final_encode_with_audio",
             )
         else:
-            (
+            self._run_ffmpeg(
                 ffmpeg.output(
                     v,
                     out_path,
@@ -336,8 +350,8 @@ class VideoRenderer:
                     movflags="+faststart",
                     an=None,
                 )
-                .overwrite_output()
-                .run(quiet=True)
+                .overwrite_output(),
+                label="final_encode_no_audio",
             )
 
     def _get_audio_path(self) -> str | None:
@@ -375,7 +389,7 @@ class VideoRenderer:
             inp = ffmpeg.input(source_path, ss=start_sec, to=end_sec)
             v = inp.video.filter("crop", "ih*9/16", "ih").filter("scale", 1080, 1920)
             a = inp.audio
-            (
+            self._run_ffmpeg(
                 ffmpeg.output(
                     v,
                     a,
@@ -386,10 +400,10 @@ class VideoRenderer:
                     acodec="aac",
                     audio_bitrate="128k",
                 )
-                .overwrite_output()
-                .run(quiet=True)
+                .overwrite_output(),
+                label="extract_shorts",
             )
-        except ffmpeg.Error as exc:
+        except RuntimeError as exc:
             logger.warning(
                 "Shorts extraction failed — skipping: %s",
                 exc,
