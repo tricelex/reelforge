@@ -49,7 +49,8 @@
       "Bash(DATABASE_URL=postgres://postgres:postgres@localhost:5432/reelforge CREDENTIAL_ENCRYPTION_KEY=SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es= uv run mypy reelforge/services/base.py reelforge/services/providers/image/fal_ai.py reelforge/services/providers/image/mock.py reelforge/services/providers/video_clip/fal_ai.py reelforge/services/providers/video_clip/mock.py reelforge/services/media/audio.py reelforge/pipeline/tasks.py 2>&1 | grep \"^reelforge\" | grep -v \"tasks.py\" | head -20)",
       "Bash(DATABASE_URL=postgres://postgres:postgres@localhost:5432/reelforge CREDENTIAL_ENCRYPTION_KEY=SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es= uv run pytest reelforge/services/ reelforge/pipeline/ -x -q 2>&1 | tail -30)",
       "Bash(DATABASE_URL=postgres://postgres:postgres@localhost:5432/reelforge CREDENTIAL_ENCRYPTION_KEY=SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es= uv run pytest -x -q 2>&1 | tail -20)",
-      "Bash(DJANGO_SETTINGS_MODULE=config.settings.local uv run python -c \"import django; django.setup\\(\\); from reelforge.core.models import PipelineStageModel; from reelforge.pipeline.models import PipelineRun; from reelforge.pipeline.admin import PipelineRunAdmin; print\\('All imports OK'\\)\" 2>&1)"
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.local uv run python -c \"import django; django.setup\\(\\); from reelforge.core.models import PipelineStageModel; from reelforge.pipeline.models import PipelineRun; from reelforge.pipeline.admin import PipelineRunAdmin; print\\('All imports OK'\\)\" 2>&1)",
+      "Bash(python:*)"
     ]
   }
 }

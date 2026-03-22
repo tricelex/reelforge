@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 from elevenlabs import ElevenLabs
@@ -12,7 +13,7 @@ from reelforge.services.dataclass import TTSResponse
 logger = logging.getLogger("reelforge.providers.tts")
 
 # ElevenLabs Creator tier pricing (~$0.24 per 1,000 chars)
-_COST_PER_CHAR = 0.00024
+_COST_PER_CHAR = Decimal("0.00024")
 
 # Default model — multilingual v2 for quality; swap to eleven_turbo_v2_5 for speed
 _DEFAULT_MODEL = "eleven_multilingual_v2"
