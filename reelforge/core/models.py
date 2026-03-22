@@ -183,7 +183,7 @@ class PipelineStageModel(BaseAbstractModel):
         return self.retry_count < self.max_retries
 
     def mark_running(self, task_id: str = "") -> None:
-        """Convenience wrapper — handles PENDING, QUEUED, FAILED/PAUSED (Celery retry), and COMPLETED (revision) source states."""
+        """Convenience wrapper — handles PENDING, QUEUED, FAILED/PAUSED (Celery retry), COMPLETED (revision), and RUNNING/RETRYING (re-dispatch) source states."""
         if self.status == PipelineStatusChoices.QUEUED:
             self.start_from_queue(task_id=task_id)
         elif self.status in (PipelineStatusChoices.FAILED, PipelineStatusChoices.PAUSED):
@@ -194,6 +194,12 @@ class PipelineStageModel(BaseAbstractModel):
         elif self.status == PipelineStatusChoices.COMPLETED:
             # Revision/re-run path: COMPLETED → RUNNING via begin_revision().
             self.begin_revision(task_id=task_id)
+        elif self.status in (PipelineStatusChoices.RUNNING, PipelineStatusChoices.RETRYING):
+            # Already in an active state — re-stamp the task ID only (idempotent re-dispatch).
+            # Do NOT call start() here: it requires source=PENDING and would raise TransitionNotAllowed.
+            self.celery_task_id = task_id
+            self.save(update_fields=["celery_task_id"])
+            return
         else:
             self.start(task_id=task_id)
         self.save(update_fields=["status", "started_at", "celery_task_id", "retry_count", "last_error"])
@@ -217,9 +223,9 @@ class PipelineStageModel(BaseAbstractModel):
     @property
     def available_transitions(self) -> list[str]:
         """Returns transition names valid from current state. Used by Unfold admin."""
-        from django_fsm import get_available_user_transitions
+        from django_fsm import get_available_FIELD_transitions
 
-        return [t.name for t in get_available_user_transitions(self)]
+        return [t.name for t in get_available_FIELD_transitions(self, self._meta.get_field("status"))]
 
     @property
     def duration_seconds(self) -> int | None:

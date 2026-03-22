@@ -35,8 +35,6 @@ _SIX_PLACES = Decimal("0.000001")
 
 @shared_task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=300,
     queue="research",
     soft_time_limit=1800,
     time_limit=2400,
@@ -86,10 +84,10 @@ def run_research_job(
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="research")
+@shared_task(bind=True, queue="research")
 def run_research_job_for_channel(self, channel_id: str) -> None:
     """Create a ResearchJob for the channel and dispatch run_research_job."""
     from ***REMOVED***.channels.models import Channel
@@ -105,9 +103,9 @@ def run_research_job_for_channel(self, channel_id: str) -> None:
         )
         run_research_job.delay(str(channel.id), str(job.id))
         logger.info("Research job created for channel %s: job_id=%s", channel.slug, job.id)
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to create research job for channel %s", channel_id)
-        raise self.retry(exc=exc) from None
+        raise
 
 
 # ── Script Generation ────────────────────────────────────────────────────────
@@ -115,8 +113,6 @@ def run_research_job_for_channel(self, channel_id: str) -> None:
 
 @shared_task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=1200,
     time_limit=1800,
@@ -165,7 +161,7 @@ def run_script_job(
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 # ── Script Revision ──────────────────────────────────────────────────────────
@@ -173,8 +169,6 @@ def run_script_job(
 
 @shared_task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=1200,
     time_limit=1800,
@@ -201,7 +195,18 @@ def run_script_revision_job(
     topic = script_job.topic
     change_request = script_job.change_request
 
-    script_job.mark_running(task_id=self.request.id)
+    # Operator-triggered revision: use begin_revision so the retry budget is not
+    # consulted. Guard against the already-RUNNING case (Celery retry race: a previous
+    # attempt transitioned to RUNNING before failing, so the retry finds it there).
+    from django_fsm import can_proceed
+
+    if can_proceed(script_job.begin_revision):
+        script_job.begin_revision(task_id=self.request.id)
+        script_job.save(update_fields=["status", "started_at", "celery_task_id"])
+    else:
+        # Already RUNNING from a prior attempt — just re-stamp the task ID.
+        script_job.celery_task_id = self.request.id
+        script_job.save(update_fields=["celery_task_id"])
 
     try:
         # Compute next version number before saving (avoids unique-constraint clash)
@@ -209,7 +214,7 @@ def run_script_revision_job(
         next_version = (last_revision.version_number + 1) if last_revision else 2
 
         agent = build_script_agent(channel, topic, web_search, llm)
-        hook_text = script_job.selected_hook.get("text", "") if script_job.selected_hook else ""
+        hook_text = script_job.selected_hook.text if script_job.selected_hook else ""
         revision_input = (
             f"Revise the existing script for: {topic.title_idea}\n\n"
             f"CHANGE REQUEST FROM OPERATOR:\n{change_request}\n\n"
@@ -236,7 +241,7 @@ def run_script_revision_job(
 
     except Exception as exc:
         script_job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 # ── Asset Generation ─────────────────────────────────────────────────────────
@@ -244,8 +249,6 @@ def run_script_revision_job(
 
 @shared_task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=1800,
     time_limit=2400,
@@ -295,20 +298,22 @@ def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_scene_breakdown_job",
-    max_retries=3,
-    default_retry_delay=60,
     queue="default",
     soft_time_limit=240,
     time_limit=300,
 )
-def run_scene_breakdown_job(self, scene_breakdown_job_id: str) -> None:
-    """Run scene breakdown for a script — splits script into timed scene dicts."""
+def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: str | None = None) -> None:
+    """Run scene breakdown for a script — splits script into timed scene dicts.
+
+    When called from the pipeline (pipeline_run_id provided), automatically transitions
+    the PipelineRun to GENERATING_ASSETS and dispatches run_asset_job upon completion.
+    """
     from ***REMOVED***.production.models import SceneBreakdownJob
 
     try:
@@ -410,16 +415,44 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str) -> None:
             },
         )
 
+        # If called from the pipeline, chain to asset generation
+        if pipeline_run_id:
+            from django.db import transaction as db_transaction
+            from django_fsm import can_proceed
+
+            from ***REMOVED***.pipeline.models import PipelineRun
+
+            pipeline_run = PipelineRun.objects.select_related("script_job").get(id=pipeline_run_id)
+            if can_proceed(pipeline_run.begin_assets):
+                pipeline_run.begin_assets()
+                pipeline_run.save()
+                script_job_id = str(pipeline_run.script_job_id)
+                rid = pipeline_run_id
+                db_transaction.on_commit(lambda sjid=script_job_id, rid=rid: run_asset_job.delay(sjid, rid))
+                logger.info(
+                    "Scene breakdown complete — advancing to asset generation",
+                    extra={
+                        "pipeline_run_id": pipeline_run_id,
+                        "scene_breakdown_job_id": scene_breakdown_job_id,
+                    },
+                )
+            else:
+                logger.warning(
+                    "Scene breakdown complete but cannot advance pipeline run to assets",
+                    extra={
+                        "pipeline_run_id": pipeline_run_id,
+                        "status": pipeline_run.overall_status,
+                    },
+                )
+
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_voiceover_run",
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=1500,
     time_limit=1800,
@@ -433,9 +466,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
     from ***REMOVED***.assets.models import VoiceoverRun
 
     try:
-        run = VoiceoverRun.objects.select_related("asset_job__script_job__topic__channel").get(
-            id=voiceover_run_id
-        )
+        run = VoiceoverRun.objects.select_related("asset_job__script_job__topic__channel").get(id=voiceover_run_id)
     except VoiceoverRun.DoesNotExist:
         logger.error(
             "VoiceoverRun %s not found — aborting",
@@ -579,9 +610,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
                     scene["duration_estimate"] = max(round(audio_dur + 1.5, 2), 6.0)
                     updated = True
             if updated:
-                breakdown.total_estimated_duration = sum(
-                    s.get("duration_estimate", 8.0) for s in breakdown.scenes
-                )
+                breakdown.total_estimated_duration = sum(s.get("duration_estimate", 8.0) for s in breakdown.scenes)
                 breakdown.save(update_fields=["scenes", "total_estimated_duration", "updated_at"])
 
         logger.info(
@@ -598,14 +627,12 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_image_generation_run",
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=750,
     time_limit=900,
@@ -699,7 +726,7 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
         scene_prompts = [{"prompt": p, "width": 1920, "height": 1080} for _, _, p in valid_scenes]
         results = asyncio.run(img_provider.generate_batch_async(scene_prompts))
 
-        for (scene, scene_id, prompt), result in zip(valid_scenes, results):
+        for (scene, scene_id, prompt), result in zip(valid_scenes, results, strict=False):
             if isinstance(result, BaseException):
                 logger.warning(
                     "Image generation failed for scene %d — skipping",
@@ -764,14 +791,12 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_video_clip_generation_run",
-    max_retries=3,
-    default_retry_delay=600,
     queue="rendering",
     soft_time_limit=3300,
     time_limit=3600,
@@ -874,7 +899,7 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
         ]
         clip_results = asyncio.run(clip_provider.generate_clips_async(clip_requests))
 
-        for (img, anim_prompt, _), clip_result in zip(valid_clips, clip_results):
+        for (img, anim_prompt, _), clip_result in zip(valid_clips, clip_results, strict=False):
             if isinstance(clip_result, BaseException):
                 logger.warning(
                     "Video clip generation failed for image %d — skipping",
@@ -936,14 +961,12 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 600) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_thumbnail_run",
-    max_retries=3,
-    default_retry_delay=300,
     queue="default",
     soft_time_limit=480,
     time_limit=600,
@@ -957,9 +980,7 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
     from ***REMOVED***.assets.models import ThumbnailRun
 
     try:
-        run = ThumbnailRun.objects.select_related("asset_job__script_job__topic__channel").get(
-            id=thumbnail_run_id
-        )
+        run = ThumbnailRun.objects.select_related("asset_job__script_job__topic__channel").get(id=thumbnail_run_id)
     except ThumbnailRun.DoesNotExist:
         logger.error(
             "ThumbnailRun %s not found — aborting",
@@ -1066,14 +1087,12 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
         run.save(update_fields=["status", "notes", "updated_at"])
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_audio_mix_job",
-    max_retries=3,
-    default_retry_delay=120,
     queue="default",
     soft_time_limit=480,
     time_limit=600,
@@ -1155,7 +1174,7 @@ def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 # ── Video Rendering ─────────────────────────────────────────────────────────
@@ -1177,9 +1196,7 @@ def _build_srt_from_whisper(words: list) -> str:
         block = words[i : i + block_size]
         start_sec = block[0].start if hasattr(block[0], "start") else block[0].get("start", 0)
         end_sec = block[-1].end if hasattr(block[-1], "end") else block[-1].get("end", start_sec + 2)
-        text = " ".join(
-            (w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block
-        ).upper()
+        text = " ".join((w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block).upper()
 
         def _fmt(secs: float) -> str:
             h = int(secs // 3600)
@@ -1230,9 +1247,7 @@ def _build_ass_from_whisper(words: list) -> str:
         block = words[i : i + block_size]
         start_sec = block[0].start if hasattr(block[0], "start") else block[0].get("start", 0)
         end_sec = block[-1].end if hasattr(block[-1], "end") else block[-1].get("end", start_sec + 2)
-        text = " ".join(
-            (w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block
-        ).upper()
+        text = " ".join((w.word if hasattr(w, "word") else w.get("word", "")).strip() for w in block).upper()
         lines.append(f"Dialogue: 0,{_fmt(start_sec)},{_fmt(end_sec)},Default,,0,0,0,,{text}")
 
     return "\n".join(lines)
@@ -1241,8 +1256,6 @@ def _build_ass_from_whisper(words: list) -> str:
 @shared_task(
     bind=True,
     name="***REMOVED***.pipeline.run_caption_generation",
-    max_retries=2,
-    default_retry_delay=60,
     queue="default",
     time_limit=600,
     soft_time_limit=540,
@@ -1252,9 +1265,7 @@ def run_caption_generation(self, production_job_id: str) -> None:
     from ***REMOVED***.production.models import ProductionJob
 
     try:
-        job = ProductionJob.objects.select_related("asset_job__selected_voiceover_run").get(
-            id=production_job_id
-        )
+        job = ProductionJob.objects.select_related("asset_job__selected_voiceover_run").get(id=production_job_id)
     except ProductionJob.DoesNotExist:
         logger.error("ProductionJob %s not found — aborting caption generation", production_job_id)
         return
@@ -1318,13 +1329,11 @@ def run_caption_generation(self, production_job_id: str) -> None:
             extra={"production_job_id": production_job_id},
             exc_info=True,
         )
-        raise self.retry(exc=exc) from None
+        raise
 
 
 @shared_task(
     bind=True,
-    max_retries=2,
-    default_retry_delay=600,
     queue="rendering",
     time_limit=7200,  # 2 hour hard limit
     soft_time_limit=6600,
@@ -1359,17 +1368,22 @@ def render_video(self, production_job_id: str) -> None:
         renderer.render()
         job.mark_completed()
 
-        # Chain to QA immediately
+        # Advance PipelineRun: RENDERING → QA, then dispatch QA task
+        from django_fsm import can_proceed
+
+        from ***REMOVED***.pipeline.models import PipelineRun
+
+        pipeline_run = PipelineRun.objects.get(production_job=job)
+        if can_proceed(pipeline_run.begin_qa):
+            pipeline_run.advance_to("QA")
         run_video_qa.delay(production_job_id)
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        if job.can_retry():
-            job.increment_retry()
-            raise self.retry(exc=exc, countdown=600)
+        raise
 
 
-@shared_task(bind=True, max_retries=2, queue="rendering")
+@shared_task(bind=True, queue="rendering")
 def run_video_qa(self, production_job_id: str) -> None:
     from ***REMOVED***.production.models import ProductionJob
     from ***REMOVED***.services.media.video import VideoQA
@@ -1381,20 +1395,29 @@ def run_video_qa(self, production_job_id: str) -> None:
     job.qa_passed = all(results.values())
     job.save(update_fields=["qa_results", "qa_passed", "updated_at"])
 
-    if job.qa_passed:
-        from ***REMOVED***.pipeline.models import PipelineRun
+    from ***REMOVED***.pipeline.models import PipelineRun
 
-        run = PipelineRun.objects.get(production_job=job)
+    run = PipelineRun.objects.get(production_job=job)
+
+    if job.qa_passed:
         run.advance_to("UPLOADING")
-        upload_video.delay(str(run.distribution_job.id))
+        if run.distribution_job_id:
+            upload_video.delay(str(run.distribution_job_id))
+        else:
+            logger.error(
+                "run_video_qa: QA passed but PipelineRun has no distribution_job — upload not dispatched",
+                extra={"production_job_id": production_job_id, "pipeline_run_id": str(run.id)},
+            )
     else:
         job.mark_paused(f"QA failed: {results}")
+        run.mark_failed(reason=f"QA failed: {list(results.keys())}")
+        run.save(update_fields=["overall_status", "current_stage", "failed_at", "last_agent_decision", "updated_at"])
 
 
 # ── Upload ───────────────────────────────────────────────────────────────────
 
 
-@shared_task(bind=True, max_retries=5, default_retry_delay=120, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def upload_video(self, distribution_job_id: str) -> None:
     from ***REMOVED***.distribution.models import DistributionJob
     from ***REMOVED***.services.youtube.client import YouTubeClient
@@ -1438,41 +1461,41 @@ def upload_video(self, distribution_job_id: str) -> None:
 
     except Exception as exc:
         job.mark_failed(str(exc))
-        raise self.retry(exc=exc) from None
+        raise
 
 
 # ── Post-Upload Stubs ────────────────────────────────────────────────────────
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def set_video_thumbnail(self, distribution_job_id: str) -> None:
     """Upload selected thumbnail to YouTube. Stub — real implementation in Phase 8."""
     logger.info("set_video_thumbnail called for distribution_job_id=%s (stub)", distribution_job_id)
     # TODO: Implement YouTube thumbnail upload via YouTube Data API
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def post_pinned_comment(self, distribution_job_id: str) -> None:
     """Post pinned comment on the uploaded video. Stub — real implementation in Phase 8."""
     logger.info("post_pinned_comment called for distribution_job_id=%s (stub)", distribution_job_id)
     # TODO: Implement YouTube comment posting and pinning via YouTube Data API
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def add_to_playlist(self, distribution_job_id: str) -> None:
     """Add video to configured playlists. Stub — real implementation in Phase 8."""
     logger.info("add_to_playlist called for distribution_job_id=%s (stub)", distribution_job_id)
     # TODO: Implement YouTube playlist assignment via YouTube Data API
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def upload_youtube_short(self, distribution_job_id: str) -> None:
     """Upload the Shorts variant of the video. Stub — real implementation in Phase 8."""
     logger.info("upload_youtube_short called for distribution_job_id=%s (stub)", distribution_job_id)
     # TODO: Upload 9:16 cropped Shorts variant via YouTube Data API
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="uploads")
+@shared_task(bind=True, queue="uploads")
 def cross_post_social(self, distribution_job_id: str) -> None:
     """Cross-post video clip to TikTok/Instagram/Twitter. Stub — real implementation in Phase 8."""
     logger.info("cross_post_social called for distribution_job_id=%s (stub)", distribution_job_id)
@@ -1840,13 +1863,15 @@ def _save_script_results(
         if not text:
             continue
         approx_duration = len(text.split()) / 130.0 * 60.0  # 130 WPM average
-        segments.append({
-            "segment_id": i + 1,
-            "text": text,
-            "section": section.tag,
-            "approx_start_sec": round(cursor_sec, 2),
-            "approx_end_sec": round(cursor_sec + approx_duration, 2),
-        })
+        segments.append(
+            {
+                "segment_id": i + 1,
+                "text": text,
+                "section": section.tag,
+                "approx_start_sec": round(cursor_sec, 2),
+                "approx_end_sec": round(cursor_sec + approx_duration, 2),
+            }
+        )
         cursor_sec += approx_duration + 0.2  # 200ms inter-segment pause
 
     job.script_text = output.script_text

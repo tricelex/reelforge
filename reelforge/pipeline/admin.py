@@ -13,6 +13,7 @@ from unfold.decorators import action
 from unfold.decorators import display
 
 from ***REMOVED***.core.admin import FSMModelAdminMixin
+from ***REMOVED***.pipeline.choices import PipelineStatus
 from ***REMOVED***.pipeline.models import PipelineEvent
 from ***REMOVED***.pipeline.models import PipelineRun
 
@@ -119,6 +120,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
         "begin_upload_action",
         "retry_scripting_action",
         "retry_assets_action",
+        "force_reset_assets_action",
         "retry_rendering_action",
         "retry_upload_action",
         "resume_to_assets_action",
@@ -212,7 +214,10 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
             "RESEARCHING": "info",
             "SCRIPTING": "info",
             "AWAITING_APPROVAL": "warning",
+            "SCENE_BREAKDOWN": "info",
             "GENERATING_ASSETS": "info",
+            "AUDIO_MIX": "info",
+            "CLIP_GENERATION": "info",
             "RENDERING": "info",
             "QA": "info",
             "UPLOADING": "info",
@@ -307,9 +312,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 run.save()
                 channel_id = str(run.channel.id)
                 research_job_id = str(run.research_job.id)
-                transaction.on_commit(
-                    lambda cid=channel_id, rjid=research_job_id: run_research_job.delay(cid, rjid)
-                )
+                transaction.on_commit(lambda cid=channel_id, rjid=research_job_id: run_research_job.delay(cid, rjid))
                 count += 1
             else:
                 self.message_user(
@@ -399,9 +402,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 if run.script_job:
                     script_job_id = str(run.script_job.id)
                     run_id = str(run.id)
-                    transaction.on_commit(
-                        lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-                    )
+                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
                 count += 1
             else:
                 self.message_user(
@@ -431,9 +432,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 if run.script_job:
                     script_job_id = str(run.script_job.id)
                     run_id = str(run.id)
-                    transaction.on_commit(
-                        lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-                    )
+                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
                 count += 1
             else:
                 self.message_user(
@@ -446,35 +445,51 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
 
     @action(description="▶ Approve & Continue to Assets")
     def approve_to_assets(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
-        """Only valid when run is in AWAITING_APPROVAL state."""
-        from ***REMOVED***.pipeline.tasks import run_asset_job
+        """Transition AWAITING_APPROVAL → SCENE_BREAKDOWN → GENERATING_ASSETS via scene breakdown task.
+
+        Also handles runs already in GENERATING_ASSETS that are missing a SceneBreakdownJob —
+        skips the FSM transition and dispatches the breakdown task directly.
+        """
+        from ***REMOVED***.pipeline.tasks import run_scene_breakdown_job
+        from ***REMOVED***.production.models import SceneBreakdownJob
 
         count = 0
         for run in queryset:
-            if can_proceed(run.begin_assets):
-                if not run.script_job:
-                    self.message_user(
-                        request,
-                        f"'{run}' has no script_job set — asset task will not be dispatched.",
-                        level="WARNING",
-                    )
-                run.begin_assets()
-                run.save()
-                if run.script_job:
-                    script_job_id = str(run.script_job.id)
-                    run_id = str(run.id)
-                    transaction.on_commit(
-                        lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-                    )
-                count += 1
-            else:
+            allowed_states = {PipelineStatus.AWAITING_APPROVAL, PipelineStatus.GENERATING_ASSETS}
+            if run.overall_status not in allowed_states:
                 self.message_user(
                     request,
                     f"Cannot approve '{run}' — current state: {run.overall_status}",
                     level="ERROR",
                 )
+                continue
+            if not run.script_job:
+                self.message_user(
+                    request,
+                    f"'{run}' has no script_job set — cannot start scene breakdown.",
+                    level="WARNING",
+                )
+                continue
+
+            if can_proceed(run.begin_scene_breakdown):
+                run.begin_scene_breakdown()
+                run.save(update_fields=["overall_status", "current_stage", "updated_at"])
+
+            breakdown_job, _ = SceneBreakdownJob.objects.get_or_create(script_job=run.script_job)
+            if run.scene_breakdown_job_id != breakdown_job.id:
+                run.scene_breakdown_job = breakdown_job
+                run.save(update_fields=["scene_breakdown_job", "updated_at"])
+
+            job_id = str(breakdown_job.id)
+            run_id = str(run.id)
+            transaction.on_commit(lambda jid=job_id, rid=run_id: run_scene_breakdown_job.delay(jid, rid))
+            count += 1
+
         if count > 0:
-            self.message_user(request, f"{count} runs approved and advancing to asset generation.")
+            self.message_user(
+                request,
+                f"{count} run(s) dispatched to scene breakdown → asset generation.",
+            )
 
     @action(description="🎬 Begin Rendering")
     def begin_rendering_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
@@ -571,9 +586,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 if run.script_job:
                     script_job_id = str(run.script_job.id)
                     run_id = str(run.id)
-                    transaction.on_commit(
-                        lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-                    )
+                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
                 count += 1
             else:
                 self.message_user(
@@ -583,6 +596,43 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 )
         if count > 0:
             self.message_user(request, f"{count} run(s) set to retry asset generation.")
+
+    @action(description="💥 Force Reset → Retry Assets")
+    def force_reset_assets_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
+        """Force any stuck run to FAILED then immediately retry asset generation.
+
+        Use when GENERATING_ASSETS is stuck and retry_assets_action won't fire
+        because the run never transitioned to FAILED on its own.
+        """
+        from ***REMOVED***.pipeline.tasks import run_asset_job
+
+        count = 0
+        for run in queryset:
+            if not can_proceed(run.mark_failed):
+                self.message_user(
+                    request,
+                    f"Cannot force-reset '{run}' — mark_failed transition blocked.",
+                    level="ERROR",
+                )
+                continue
+            run.mark_failed(reason="Force-reset by operator")
+            if not can_proceed(run.retry_assets):
+                self.message_user(
+                    request,
+                    f"'{run}' moved to FAILED but retry_assets blocked — left in FAILED for manual recovery.",
+                    level="WARNING",
+                )
+                run.save()
+                continue
+            run.retry_assets()
+            run.save()
+            if run.script_job:
+                script_job_id = str(run.script_job.id)
+                run_id = str(run.id)
+                transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
+            count += 1
+        if count > 0:
+            self.message_user(request, f"{count} run(s) force-reset and asset task re-dispatched.")
 
     @action(description="🔄 Retry Rendering")
     def retry_rendering_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
@@ -643,9 +693,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 if run.script_job:
                     script_job_id = str(run.script_job.id)
                     run_id = str(run.id)
-                    transaction.on_commit(
-                        lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-                    )
+                    transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
                 count += 1
             else:
                 self.message_user(
@@ -728,9 +776,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 continue
             channel_id = str(run.channel.id)
             research_job_id = str(run.research_job.id)
-            transaction.on_commit(
-                lambda cid=channel_id, rjid=research_job_id: run_research_job.delay(cid, rjid)
-            )
+            transaction.on_commit(lambda cid=channel_id, rjid=research_job_id: run_research_job.delay(cid, rjid))
             count += 1
         if count > 0:
             self.message_user(request, f"{count} research task(s) re-dispatched.")
@@ -788,9 +834,7 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
                 continue
             script_job_id = str(run.script_job.id)
             run_id = str(run.id)
-            transaction.on_commit(
-                lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid)
-            )
+            transaction.on_commit(lambda sjid=script_job_id, rid=run_id: run_asset_job.delay(sjid, rid))
             count += 1
         if count > 0:
             self.message_user(request, f"{count} asset task(s) re-dispatched.")
@@ -831,11 +875,8 @@ class PipelineRunAdmin(FSMModelAdminMixin, ModelAdmin):
         if count > 0:
             self.message_user(request, f"{count} runs rejected.")
 
-
     @action(description="🔁 Rerun Script with Changes")
-    def rerun_script_with_changes_action(
-        self, request: HttpRequest, queryset: QuerySet[PipelineRun]
-    ) -> None:
+    def rerun_script_with_changes_action(self, request: HttpRequest, queryset: QuerySet[PipelineRun]) -> None:
         """Re-run the ScriptAgent on the linked ScriptJob using its change_request field.
         Operator must open the ScriptJob, fill 'change_request', save, then return here.
         Does NOT change the PipelineRun FSM state.

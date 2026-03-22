@@ -580,9 +580,24 @@ UNFOLD = {
                         "link": reverse_lazy("admin:scripts_scriptjob_changelist"),
                     },
                     {
+                        "title": _("Script Revisions"),
+                        "icon": "history",
+                        "link": reverse_lazy("admin:scripts_scriptrevision_changelist"),
+                    },
+                    {
                         "title": _("Asset Jobs"),
                         "icon": "perm_media",
                         "link": reverse_lazy("admin:assets_assetjob_changelist"),
+                    },
+                    {
+                        "title": _("Scene Breakdown Jobs"),
+                        "icon": "view_list",
+                        "link": reverse_lazy("admin:production_scenebreakdownjob_changelist"),
+                    },
+                    {
+                        "title": _("Audio Mix Jobs"),
+                        "icon": "queue_music",
+                        "link": reverse_lazy("admin:production_audiomixjob_changelist"),
                     },
                     {
                         "title": _("Production Jobs"),
@@ -593,6 +608,53 @@ UNFOLD = {
                         "title": _("Distribution Jobs"),
                         "icon": "upload",
                         "link": reverse_lazy("admin:distribution_distributionjob_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Asset Details"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Voiceover Segments"),
+                        "icon": "record_voice_over",
+                        "link": reverse_lazy("admin:assets_voiceoversegment_changelist"),
+                    },
+                    {
+                        "title": _("Generated Images"),
+                        "icon": "image",
+                        "link": reverse_lazy("admin:assets_generatedimage_changelist"),
+                    },
+                    {
+                        "title": _("Thumbnail Options"),
+                        "icon": "photo_library",
+                        "link": reverse_lazy("admin:assets_thumbnailoption_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Generation Runs"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Voiceover Runs"),
+                        "icon": "mic",
+                        "link": reverse_lazy("admin:assets_voiceoverrun_changelist"),
+                    },
+                    {
+                        "title": _("Image Generation Runs"),
+                        "icon": "auto_awesome",
+                        "link": reverse_lazy("admin:assets_imagegenerationrun_changelist"),
+                    },
+                    {
+                        "title": _("Video Clip Generation Runs"),
+                        "icon": "slow_motion_video",
+                        "link": reverse_lazy("admin:assets_videoclipgenerationrun_changelist"),
+                    },
+                    {
+                        "title": _("Thumbnail Runs"),
+                        "icon": "crop_original",
+                        "link": reverse_lazy("admin:assets_thumbnailrun_changelist"),
                     },
                 ],
             },
@@ -640,7 +702,7 @@ DEFAULT_IMAGE_PROVIDER = env("DEFAULT_IMAGE_PROVIDER", default="fal_ai")  # fal_
 ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", default="")
 
 # Image Generation Providers
-FAL_API_KEY = env("FAL_API_KEY", default="")
+FAL_API_KEY = env("FAL_KEY", default="")
 REPLICATE_API_KEY = env("REPLICATE_API_KEY", default="")
 
 # SerpAPI (YouTube search, Google Trends, Google Search)

@@ -206,7 +206,7 @@ class PipelineRun(BaseAbstractModel):
 
     @transition(
         field=overall_status,
-        source=[PipelineStatus.SCENE_BREAKDOWN, PipelineStatus.AWAITING_APPROVAL],
+        source=[PipelineStatus.SCENE_BREAKDOWN, PipelineStatus.AWAITING_APPROVAL, PipelineStatus.SCRIPTING],
         target=PipelineStatus.GENERATING_ASSETS,
     )
     def begin_assets(self) -> None:
@@ -322,11 +322,11 @@ class PipelineRun(BaseAbstractModel):
 
     @transition(
         field=overall_status,
-        source=PipelineStatus.RESEARCHING,
+        source=[PipelineStatus.RESEARCHING, PipelineStatus.SCRIPTING],
         target=PipelineStatus.GENERATING_ASSETS,
     )
     def skip_scripting_to_assets(self) -> None:
-        """Research complete, skip scripting; operator has an existing ScriptJob."""
+        """Skip scripting (from RESEARCHING or SCRIPTING); operator has an existing ScriptJob."""
         self.current_stage = PipelineStatus.GENERATING_ASSETS
 
     # Resume transitions (from PAUSED back to correct stage)
@@ -405,7 +405,7 @@ class PipelineRun(BaseAbstractModel):
         """Returns valid FSM transitions from current state."""
         from django_fsm import get_available_FIELD_transitions
 
-        return [t.name for t in get_available_FIELD_transitions(self, self.overall_status)]
+        return [t.name for t in get_available_FIELD_transitions(self, self._meta.get_field("overall_status"))]
 
     @property
     def duration_hours(self) -> float:
