@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from django.contrib.***REMOVED***.fields import ArrayField
 from django.db import models
 
@@ -31,13 +33,13 @@ class Channel(BaseAbstractModel):
     # Niche configuration
     niche_category = models.CharField(max_length=30, choices=NicheCategory.choices)
     custom_niche = models.CharField(max_length=100, blank=True)
-    target_niches = ArrayField(models.CharField(max_length=100), default=list)
+    target_niches = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     # e.g. ["personal finance", "investing for beginners", "side hustles"]
 
     # Target audience
     target_audience_description = models.TextField(blank=True)
     target_age_range = models.CharField(max_length=20, blank=True)  # "25-45"
-    target_location = ArrayField(models.CharField(max_length=50), default=list)  # ["US", "UK", "NG"]
+    target_location = ArrayField(models.CharField(max_length=50), default=list, blank=True)  # ["US", "UK", "NG"]
 
     # Content configuration
     content_tone = models.CharField(max_length=50, default="conversational_authoritative")
@@ -49,6 +51,7 @@ class Channel(BaseAbstractModel):
     # Upload schedule (day + time per slot)
     upload_schedule = models.JSONField(
         default=list,
+        blank=True,
         help_text="Ordered list of weekly upload time slots.",
         validators=[pydantic_validator(UploadSchedule)],
     )
@@ -75,8 +78,8 @@ class Channel(BaseAbstractModel):
     music_volume_pct = models.FloatField(default=0.08)
 
     # SEO & Monetization
-    default_tags = ArrayField(models.CharField(max_length=100), default=list)
-    channel_keywords = ArrayField(models.CharField(max_length=100), default=list)
+    default_tags = ArrayField(models.CharField(max_length=100), default=list, blank=True)
+    channel_keywords = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     monetization_enabled = models.BooleanField(default=False)
     estimated_rpm_usd = models.DecimalField(max_digits=6, decimal_places=2, default=3.00)
 
@@ -113,6 +116,53 @@ class Channel(BaseAbstractModel):
     @property
     def active_niche(self) -> str:
         return self.custom_niche if self.niche_category == NicheCategory.CUSTOM else self.get_niche_category_display()
+
+    def get_youtube_account(self) -> SocialAccount | None:
+        return self.social_accounts.filter(
+            platform=SocialAccount.Platform.YOUTUBE,
+            is_active=True,
+        ).first()
+
+
+class SocialAccount(BaseAbstractModel):
+    class Platform(models.TextChoices):
+        YOUTUBE = "YOUTUBE", "YouTube"
+        TIKTOK = "TIKTOK", "TikTok"
+        INSTAGRAM = "INSTAGRAM", "Instagram"
+
+    channel: models.ForeignKey = models.ForeignKey(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name="social_accounts",
+    )
+    platform: models.CharField = models.CharField(
+        max_length=20,
+        choices=Platform.choices,
+    )
+    account_id: models.CharField = models.CharField(max_length=255, blank=True)
+    handle: models.CharField = models.CharField(max_length=255, blank=True)
+    display_name: models.CharField = models.CharField(max_length=255, blank=True)
+    analytics_property: models.CharField = models.CharField(max_length=255, blank=True)
+    oauth_credentials: models.JSONField = models.JSONField(default=dict, blank=True)
+    is_active: models.BooleanField = models.BooleanField(default=True)
+
+    # Clipping config
+    auto_approve_clips: models.BooleanField = models.BooleanField(default=False)
+    clip_caption_template: models.TextField = models.TextField(blank=True)
+    max_clips_per_day: models.PositiveIntegerField = models.PositiveIntegerField(default=3)
+
+    # Stats
+    follower_count: models.PositiveIntegerField = models.PositiveIntegerField(default=0)
+    last_sync_at: models.DateTimeField = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["channel", "platform"]
+        unique_together = [("channel", "platform", "account_id")]
+        verbose_name = "Social Account"
+        verbose_name_plural = "Social Accounts"
+
+    def __str__(self) -> str:
+        return f"{self.get_platform_display()} — {self.handle or self.account_id}"
 
 
 class ChannelCompetitor(BaseAbstractModel):
