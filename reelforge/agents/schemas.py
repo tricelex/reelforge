@@ -6,6 +6,8 @@ from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel
+from pydantic import Field
+from pydantic import model_validator
 
 # ── Provider output dataclasses (transient — never stored directly) ───────────
 
@@ -191,3 +193,65 @@ class ScriptAgentOutput(BaseModel):
     quality_flags: ScriptQualityFlags = ScriptQualityFlags()
     ready_for_production: bool = False
     revision_notes: str = ""
+
+
+# ── Visual Planner Agent Output ───────────────────────────────────────────────
+
+
+class VisualSegment(BaseModel):
+    """A single timed image segment in the visual timeline."""
+
+    scene_id: int = Field(..., description="Sequential 1-based integer")
+    section_tag: str = Field(..., description="The script [SECTION_TAG] this segment belongs to")
+    start_seconds: float = Field(..., ge=0)
+    end_seconds: float = Field(..., gt=0)
+    duration: float = Field(..., gt=0, le=10)
+    narration_excerpt: str
+    image_prompt: str = Field(..., description="Minimum 40 words")
+    style_preset: Literal["cinematic_realism", "flat_illustration", "dark_tech", "corporate_clean"]
+    colour_palette: list[str] = Field(default_factory=list)
+    animation_type: Literal[
+        "hook", "intro", "body_concept", "body_stat", "body_story",
+        "transition", "takeaway", "outro"
+    ]
+    video_prompt: str
+    mood: Literal["calm", "tense", "inspiring", "curious", "urgent", "warm"]
+    visual_keywords: list[str] = Field(default_factory=list)
+    is_transition: bool = False
+
+    @model_validator(mode="after")
+    def check_duration_matches(self) -> VisualSegment:
+        computed = round(self.end_seconds - self.start_seconds, 3)
+        if abs(computed - self.duration) > 0.1:
+            raise ValueError(
+                f"duration {self.duration} does not match end_seconds - start_seconds = {computed}"
+            )
+        return self
+
+
+class VisualPlannerOutput(BaseModel):
+    """Full output of the VisualPlannerAgent."""
+
+    segments: list[VisualSegment] = Field(..., min_length=10)
+    total_duration_seconds: float
+    segment_count: int
+    coverage_confirmed: bool
+    revision_notes: str = ""
+
+    @model_validator(mode="after")
+    def check_coverage(self) -> VisualPlannerOutput:
+        if not self.segments:
+            return self
+        segs = sorted(self.segments, key=lambda s: s.start_seconds)
+        for i in range(1, len(segs)):
+            gap = segs[i].start_seconds - segs[i - 1].end_seconds
+            if abs(gap) > 0.1:
+                raise ValueError(
+                    f"Gap of {gap:.2f}s between segment {i} and {i+1}"
+                )
+        if abs(segs[-1].end_seconds - self.total_duration_seconds) > 0.5:
+            raise ValueError(
+                f"Timeline ends at {segs[-1].end_seconds:.2f}s "
+                f"but total_duration is {self.total_duration_seconds:.2f}s"
+            )
+        return self
