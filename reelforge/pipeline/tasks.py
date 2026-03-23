@@ -307,6 +307,8 @@ def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:  # no
     queue="default",
     soft_time_limit=360,
     time_limit=420,
+    max_retries=2,
+    default_retry_delay=120,
 )
 def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: str | None = None) -> None:  # noqa: ANN001, PLR0915
     """Run scene breakdown for a script — splits script into timed scene dicts.
