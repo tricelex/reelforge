@@ -8,10 +8,12 @@ from django.conf import settings
 
 if TYPE_CHECKING:
     from ***REMOVED***.channels.models import Channel
+    from ***REMOVED***.channels.models import SocialAccount
     from ***REMOVED***.services.base import BaseImageProvider
     from ***REMOVED***.services.base import BaseLLMProvider
     from ***REMOVED***.services.base import BaseTTSProvider
     from ***REMOVED***.services.base import BaseVideoClipProvider
+    from ***REMOVED***.services.providers.distribution.base import BaseClipDistributionProvider
 
 logger = logging.getLogger("***REMOVED***.providers")
 
@@ -67,3 +69,24 @@ def get_video_clip_provider(channel: Channel | None = None) -> BaseVideoClipProv
         return _container().video_clip_fal()
     msg = f"Unknown video clip provider: {name}"
     raise ValueError(msg)
+
+
+def get_distribution_provider(
+    social_account: SocialAccount,
+) -> BaseClipDistributionProvider:
+    """Returns the appropriate distribution provider for the given social account platform."""
+    from ***REMOVED***.channels.models import SocialAccount as _SocialAccount
+    from ***REMOVED***.services.providers.distribution.base import BaseClipDistributionProvider  # noqa: F401
+    from ***REMOVED***.services.providers.distribution.instagram import InstagramClipProvider
+    from ***REMOVED***.services.providers.distribution.tiktok import TikTokClipProvider
+    from ***REMOVED***.services.providers.distribution.youtube import YouTubeClipProvider
+
+    platform = social_account.platform
+    if platform == _SocialAccount.Platform.YOUTUBE:
+        return YouTubeClipProvider(social_account)
+    if platform == _SocialAccount.Platform.TIKTOK:
+        return TikTokClipProvider(social_account)
+    if platform == _SocialAccount.Platform.INSTAGRAM:
+        return InstagramClipProvider(social_account)
+    msg = f"Distribution provider not implemented for platform: {platform}"
+    raise NotImplementedError(msg)
