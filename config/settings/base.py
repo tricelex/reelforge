@@ -113,6 +113,7 @@ LOCAL_APPS = [
     "***REMOVED***.production",
     "***REMOVED***.distribution",
     "***REMOVED***.agents",
+    "***REMOVED***.clipping",
     # Note: ***REMOVED***.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
@@ -339,12 +340,14 @@ CELERY_TASK_QUEUES = (
     Queue("rendering"),
     Queue("uploads"),
     Queue("analytics"),
+    Queue("clipping"),
 )
 CELERY_TASK_ROUTES = {
     "***REMOVED***.pipeline.tasks.render_video": {"queue": "rendering"},
     "***REMOVED***.pipeline.tasks.run_video_qa": {"queue": "rendering"},
     "***REMOVED***.pipeline.tasks.upload_video": {"queue": "uploads"},
     "***REMOVED***.pipeline.tasks.sync_channel_analytics": {"queue": "analytics"},
+    "***REMOVED***.clipping.tasks.*": {"queue": "clipping"},
     "*": {"queue": "default"},
 }
 # django-allauth
