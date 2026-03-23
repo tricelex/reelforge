@@ -103,6 +103,8 @@ def build_visual_planner_agent(
             f"  Lighting anchor: {t['style_lighting']}"
         )
     section_context = "\n\n".join(section_context_lines)
+    # Escape any literal braces in user-generated content that would confuse .format()
+    section_context = section_context.replace("{", "{{").replace("}", "}}")
 
     return Agent(
         name="VisualPlannerAgent",
