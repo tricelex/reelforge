@@ -7,3 +7,6 @@ class ClippingConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "reelforge.clipping"
     verbose_name = "Clipping"
+
+    def ready(self) -> None:
+        import reelforge.clipping.signals  # noqa: F401
