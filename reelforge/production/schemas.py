@@ -3,27 +3,13 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic import RootModel
 
-
-class SceneItem(BaseModel):
-    """Single scene in a scene breakdown."""
-
-    scene_id: int
-    narration: str
-    duration_estimate: float
-    visual_keywords: list[str] = []
-    mood: str = ""
-    caption_text: str = ""
-    section_tag: str = ""  # HOOK | INTRO_BRIDGE | SECTION_1 | etc.
-    animation_type: str = "body_concept"  # hook | intro | body_stat | body_concept | outro
-    image_prompt: str = ""  # Flux Pro prompt built from broll suggestion
-    image_style_preset: str = "cinematic_realism"  # style preset key
-    broll_indices: list[int] = []  # indices into script_job.broll_suggestions
+from reelforge.agents.schemas import VisualSegment
 
 
-class SceneList(RootModel[list[SceneItem]]):
-    """Validated list of scenes for a SceneBreakdownJob."""
+class SceneList(RootModel[list[VisualSegment]]):
+    """Validated list of VisualSegment scenes for a SceneBreakdownJob."""
 
-    root: list[SceneItem] = []
+    root: list[VisualSegment] = []
 
 
 class RenderSpec(BaseModel):
