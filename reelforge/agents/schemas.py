@@ -115,7 +115,7 @@ class AgentBRollSuggestion(BaseModel):
     """Structured B-roll cue as returned by the ScriptAgent."""
 
     scene_index: int = 0
-    section: ScriptSectionTag = ScriptSectionTag.SECTION_1
+    section: str = "SECTION_1"
     description: str = ""
     subject: str = ""  # main subject of the image
     setting: str = ""  # where the scene takes place
@@ -133,7 +133,7 @@ class AgentBRollSuggestion(BaseModel):
 class ScriptSection(BaseModel):
     """A single script section with narration and b-roll metadata."""
 
-    tag: ScriptSectionTag
+    tag: str
     content: str = ""
     word_count: int = 0
     estimated_duration_seconds: int = 0
@@ -178,6 +178,8 @@ class ScriptQualityFlags(BaseModel):
     jargon_flags: list[str] = []
     faceless_compliance: bool = False
     research_confidence: str = "LOW"
+    narrative_mode_selected: str = ""
+    open_loops_resolved: bool = False
 
 
 class ScriptAgentOutput(BaseModel):
@@ -193,6 +195,12 @@ class ScriptAgentOutput(BaseModel):
     quality_flags: ScriptQualityFlags = ScriptQualityFlags()
     ready_for_production: bool = False
     revision_notes: str = ""
+    narrative_mode: str = Field(
+        default="",
+        description="The narrative mode selected: REVEAL | CHRONICLE | TRANSFORMATION | VERDICT | STORY | EXPOSE | COUNTDOWN",
+    )
+    open_loops_planted: int = Field(default=0, description="Number of open loops planted and resolved in the script")
+    aha_moments_count: int = Field(default=0, description="Number of genuine aha/revelation moments delivered")
 
 
 # ── Visual Planner Agent Output ───────────────────────────────────────────────
