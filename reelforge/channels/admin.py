@@ -8,6 +8,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
+from unfold.admin import StackedInline
 from unfold.admin import TabularInline
 from unfold.decorators import action
 from unfold.decorators import display
@@ -15,6 +16,7 @@ from unfold.decorators import display
 from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import ChannelCompetitor
 from ***REMOVED***.channels.models import ChannelPlaylist
+from ***REMOVED***.channels.models import SocialAccount
 from ***REMOVED***.channels.services import ChannelSetupService
 
 if TYPE_CHECKING:
@@ -45,6 +47,13 @@ class ChannelPlaylistInline(TabularInline):
         "video_count",
     ]
     readonly_fields = ["video_count"]
+
+
+class SocialAccountInline(StackedInline):
+    model = SocialAccount
+    extra = 0
+    fields = ("platform", "account_id", "handle", "display_name", "is_active", "auto_approve_clips")
+    readonly_fields = ("created_at", "last_sync_at", "follower_count")
 
 
 @admin.register(Channel)
@@ -86,7 +95,7 @@ class ChannelAdmin(ModelAdmin):
         "oauth_credentials_display",
     ]
     prepopulated_fields = {"slug": ("name",)}
-    inlines = [ChannelCompetitorInline, ChannelPlaylistInline]
+    inlines = [ChannelCompetitorInline, ChannelPlaylistInline, SocialAccountInline]
     actions_row = ["validate_voice", "setup_youtube_oauth"]
     actions = ["sync_analytics", "trigger_research"]
 
