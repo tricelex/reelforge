@@ -178,7 +178,6 @@ class ScriptQualityFlags(BaseModel):
     jargon_flags: list[str] = []
     faceless_compliance: bool = False
     research_confidence: str = "LOW"
-    narrative_mode_selected: str = ""
     open_loops_resolved: bool = False
 
 
