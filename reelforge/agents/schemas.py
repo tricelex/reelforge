@@ -240,8 +240,11 @@ class VisualPlannerOutput(BaseModel):
 
     @model_validator(mode="after")
     def check_coverage(self) -> VisualPlannerOutput:
-        if not self.segments:
-            return self
+        if self.segment_count != len(self.segments):
+            raise ValueError(
+                f"segment_count={self.segment_count} does not match len(segments)={len(self.segments)}"
+            )
+        # segments is guaranteed non-empty by Field(min_length=10) — guard kept for safety
         segs = sorted(self.segments, key=lambda s: s.start_seconds)
         for i in range(1, len(segs)):
             gap = segs[i].start_seconds - segs[i - 1].end_seconds
