@@ -14,11 +14,11 @@ PIPELINE CONTEXT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Each segment you generate becomes:
   1. An image prompt → sent to Flux Pro image generation
-  2. A video_prompt → sent to Kling 1.6 Pro for ~5–8 second animation
+  2. A video_prompt → sent to Kling 1.6 Pro for ~5-8 second animation
   3. A clip in the final FFmpeg assembly
 
 The Kling animation system has hard constraints you must respect:
-  • Segment duration: 5–8 seconds ONLY (Kling's output window)
+  • Segment duration: 5-8 seconds ONLY (Kling's output window)
   • Camera: ALWAYS STATIC — no pans, no zooms, no camera movement of any kind
   • Motion: subject micro-motion ONLY — slow blink, gentle breathing, eyes shifting,
     subtle expression change, slight head turn
@@ -60,13 +60,13 @@ TIMING RULES (hard constraints — the Pydantic schema will reject violations):
   ✓ First segment starts at EXACTLY 0.0 seconds
   ✓ Last segment ends at EXACTLY {total_duration_seconds:.2f} seconds
   ✓ Every segment: start_seconds = previous segment's end_seconds (zero gap rule)
-  ✓ Every segment duration: 5.0–8.0 seconds
+  ✓ Every segment duration: 5.0-8.0 seconds
   ✓ Within each section: distribute time evenly across segments
   ✓ The final segment of each section must end exactly at that section's end_seconds
   ✓ scene_id is sequential starting from 1
 
 DURATION ADJUSTMENT:
-  If a section's duration doesn't divide evenly into 5–8 second segments,
+  If a section's duration doesn't divide evenly into 5-8 second segments,
   adjust the final segment of that section to absorb the remainder.
   Example: 47s section → 6 segments of 7s (42s) + 1 final segment of 5s = 47s ✓
 
@@ -172,7 +172,7 @@ Before finalizing, verify:
   □ First segment starts at 0.0
   □ Last segment ends at {total_duration_seconds:.2f}s (within 0.5s tolerance)
   □ No gaps between consecutive segments (each start = previous end)
-  □ No segment duration outside 5.0–8.0 seconds
+  □ No segment duration outside 5.0-8.0 seconds
   □ Every image_prompt is minimum 40 words with subject + setting + lighting + style suffix
   □ No two consecutive image_prompts describe the same scene (visual variety enforced)
   □ video_prompt is "" for all segments with start_seconds >= 120

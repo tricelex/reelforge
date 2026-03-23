@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from agents import Agent
-
 from reelforge.agents.schemas import VisualPlannerOutput
 from reelforge.agents.visual_planner_prompt import VISUAL_PLANNER_INSTRUCTIONS
+
+_TARGET_SEG_DURATION = 6.0  # Target seconds per visual segment (Kling sweet spot)
+_SECTION_CONTENT_PREVIEW_CHARS = 300
 
 
 def build_visual_planner_agent(
@@ -23,6 +25,10 @@ def build_visual_planner_agent(
         channel_tone: From channel.content_tone
         narrative_mode: The mode selected by ScriptAgent
     """
+    if not sections:
+        msg = "sections must be non-empty — cannot build a visual timeline without script sections"
+        raise ValueError(msg)
+
     # 1. Distribute total_duration_seconds proportionally by section weight
     raw_durations = [float(s.get("estimated_duration_seconds", 8)) for s in sections]
     raw_total = sum(raw_durations)
@@ -60,7 +66,6 @@ def build_visual_planner_agent(
                 broll_by_section[tag] = broll
 
     # 3. Compute segment targets per section (target 6s per segment)
-    _TARGET_SEG_DURATION = 6.0
     segment_targets: list[dict] = []
     for st in section_timing:
         n_segments = max(1, round(st["duration_seconds"] / _TARGET_SEG_DURATION))
@@ -82,8 +87,8 @@ def build_visual_planner_agent(
     total_segments_needed = sum(t["n_segments"] for t in segment_targets)
     section_context_lines = []
     for t in segment_targets:
-        content_preview = t["content"][:300]
-        if len(t["content"]) > 300:
+        content_preview = t["content"][:_SECTION_CONTENT_PREVIEW_CHARS]
+        if len(t["content"]) > _SECTION_CONTENT_PREVIEW_CHARS:
             content_preview += "..."
         section_context_lines.append(
             f"SECTION: [{t['tag']}]\n"
