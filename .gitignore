@@ -332,3 +332,4 @@ reelforge/media/
 .envs/.local/
 .envs/.local/.django
 .idea/
+.worktrees/
