@@ -332,3 +332,4 @@ dump.rdb
 .envs/.local/
 .envs/.local/.django
 .idea/
+.worktrees/
