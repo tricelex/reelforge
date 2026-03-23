@@ -88,7 +88,7 @@ def run_research_job(
 
 
 @shared_task(bind=True, queue="research")
-def run_research_job_for_channel(self, channel_id: str) -> None:
+def run_research_job_for_channel(self, channel_id: str) -> None:  # noqa: ANN001, ARG001
     """Create a ResearchJob for the channel and dispatch run_research_job."""
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.research.choices import ResearchTrigger
@@ -253,7 +253,7 @@ def run_script_revision_job(
     soft_time_limit=1800,
     time_limit=2400,
 )
-def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
+def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:  # noqa: ANN001
     """Coordinate asset generation — creates Run records and dispatches sub-tasks.
 
     Voiceover, image generation, and thumbnail generation run in parallel.
@@ -308,7 +308,7 @@ def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:
     soft_time_limit=240,
     time_limit=300,
 )
-def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: str | None = None) -> None:
+def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: str | None = None) -> None:  # noqa: ANN001, PLR0915
     """Run scene breakdown for a script — splits script into timed scene dicts.
 
     When called from the pipeline (pipeline_run_id provided), automatically transitions
@@ -321,7 +321,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
             "script_job__topic__channel",
         ).get(id=scene_breakdown_job_id)
     except SceneBreakdownJob.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "SceneBreakdownJob %s not found — aborting",
             scene_breakdown_job_id,
             extra={"scene_breakdown_job_id": scene_breakdown_job_id},
@@ -337,7 +337,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
         broll_suggestions = job.script_job.broll_suggestions or []
 
         # Map script section tag → animation type
-        _TAG_TO_ANIMATION: dict[str, str] = {
+        _TAG_TO_ANIMATION: dict[str, str] = {  # noqa: N806
             "HOOK": "hook",
             "INTRO_BRIDGE": "intro",
             "SECTION_1": "body_concept",
@@ -472,7 +472,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
     soft_time_limit=1500,
     time_limit=1800,
 )
-def run_voiceover_run(self, voiceover_run_id: str) -> None:
+def run_voiceover_run(self, voiceover_run_id: str) -> None:  # noqa: ANN001, PLR0915
     """Execute a single voiceover generation attempt.
     On completion, auto-selects this run on the parent AssetJob if none is selected.
     """
@@ -483,7 +483,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
     try:
         run = VoiceoverRun.objects.select_related("asset_job__script_job__topic__channel").get(id=voiceover_run_id)
     except VoiceoverRun.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "VoiceoverRun %s not found — aborting",
             voiceover_run_id,
             extra={"voiceover_run_id": voiceover_run_id},
@@ -650,7 +650,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
                     "error": str(exc),
                 },
             )
-            raise self.retry(exc=exc, countdown=2**self.request.retries * 30)
+            raise self.retry(exc=exc, countdown=2**self.request.retries * 30)  # noqa: B904
 
         run.status = "FAILED"
         run.notes = str(exc)[:2000]
@@ -665,7 +665,7 @@ def run_voiceover_run(self, voiceover_run_id: str) -> None:
     soft_time_limit=750,
     time_limit=900,
 )
-def run_image_generation_run(self, image_generation_run_id: str) -> None:
+def run_image_generation_run(self, image_generation_run_id: str) -> None:  # noqa: ANN001, PLR0915
     """Execute a single image generation attempt.
     On completion, auto-selects this run on the parent AssetJob if none is selected.
     """
@@ -678,7 +678,7 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
             id=image_generation_run_id
         )
     except ImageGenerationRun.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "ImageGenerationRun %s not found — aborting",
             image_generation_run_id,
             extra={"image_generation_run_id": image_generation_run_id},
@@ -829,7 +829,7 @@ def run_image_generation_run(self, image_generation_run_id: str) -> None:
     soft_time_limit=3300,
     time_limit=3600,
 )
-def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
+def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:  # noqa: ANN001, PLR0915
     """Execute a single video clip generation attempt (animates still images).
     On completion, auto-selects this run on the parent AssetJob if none is selected.
     """
@@ -843,7 +843,7 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
             "image_run",
         ).get(id=video_clip_run_id)
     except VideoClipGenerationRun.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "VideoClipGenerationRun %s not found — aborting",
             video_clip_run_id,
             extra={"video_clip_run_id": video_clip_run_id},
@@ -876,13 +876,13 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
 
         if not image_run or image_run.status != "COMPLETED":
             msg = f"ImageGenerationRun must be COMPLETED before animating clips (status={getattr(image_run, 'status', None)})"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY301
 
         # Voiceover must be complete so scene breakdown has accurate durations
         voiceover_run = asset_job.selected_voiceover_run
         if not voiceover_run or voiceover_run.status != "COMPLETED":
             msg = "Selected VoiceoverRun must be COMPLETED before generating video clips"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY301
 
         images = list(GeneratedImage.objects.filter(image_run=image_run).order_by("position_idx"))
         if not images:
@@ -999,7 +999,7 @@ def run_video_clip_generation_run(self, video_clip_run_id: str) -> None:
     soft_time_limit=480,
     time_limit=600,
 )
-def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
+def run_thumbnail_run(self, thumbnail_run_id: str) -> None:  # noqa: ANN001, PLR0915
     """Execute a single thumbnail generation attempt.
     On completion, auto-selects this run on the parent AssetJob if none is selected.
     """
@@ -1010,7 +1010,7 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
     try:
         run = ThumbnailRun.objects.select_related("asset_job__script_job__topic__channel").get(id=thumbnail_run_id)
     except ThumbnailRun.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "ThumbnailRun %s not found — aborting",
             thumbnail_run_id,
             extra={"thumbnail_run_id": thumbnail_run_id},
@@ -1062,7 +1062,7 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
         for i, prompt in enumerate(thumbnail_prompts):
             responses = img_provider.generate(prompt=prompt, width=1280, height=720, num_images=1)
             if not responses:
-                raise ValueError(f"Image provider returned no images for thumbnail option {i}")
+                raise ValueError(f"Image provider returned no images for thumbnail option {i}")  # noqa: EM102, TRY003, TRY301
             img_data = responses[0]
 
             thumb_path = get_thumbnail_path(str(asset_job.id), i)
@@ -1127,7 +1127,7 @@ def run_thumbnail_run(self, thumbnail_run_id: str) -> None:
     soft_time_limit=480,
     time_limit=600,
 )
-def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
+def run_audio_mix_job(self, audio_mix_job_id: str) -> None:  # noqa: ANN001
     """Combine voiceover with background music to produce a mixed audio file."""
     from ***REMOVED***.production.models import AudioMixJob
 
@@ -1137,7 +1137,7 @@ def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
             "voiceover_run",
         ).get(id=audio_mix_job_id)
     except AudioMixJob.DoesNotExist:
-        logger.error(
+        logger.error(  # noqa: TRY400
             "AudioMixJob %s not found — aborting",
             audio_mix_job_id,
             extra={"audio_mix_job_id": audio_mix_job_id},
@@ -1157,7 +1157,7 @@ def run_audio_mix_job(self, audio_mix_job_id: str) -> None:
         voiceover_run = job.voiceover_run
         if not voiceover_run or not voiceover_run.merged_audio_file:
             msg = "AudioMixJob requires a completed VoiceoverRun with merged_audio_file"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY301
 
         media_root = Path(settings.MEDIA_ROOT)
         voiceover_path = voiceover_run.merged_audio_file.path
@@ -1290,14 +1290,14 @@ def _build_ass_from_whisper(words: list) -> str:
     time_limit=600,
     soft_time_limit=540,
 )
-def run_caption_generation(self, production_job_id: str) -> None:
+def run_caption_generation(self, production_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Generate word-level captions from the merged voiceover using OpenAI Whisper API."""
     from ***REMOVED***.production.models import ProductionJob
 
     try:
         job = ProductionJob.objects.select_related("asset_job__selected_voiceover_run").get(id=production_job_id)
     except ProductionJob.DoesNotExist:
-        logger.error("ProductionJob %s not found — aborting caption generation", production_job_id)
+        logger.error("ProductionJob %s not found — aborting caption generation", production_job_id)  # noqa: TRY400
         return
 
     try:
@@ -1322,7 +1322,7 @@ def run_caption_generation(self, production_job_id: str) -> None:
         audio_path_str = vo_run.merged_audio_file.path
 
         client = OpenAI()
-        with open(audio_path_str, "rb") as f:
+        with open(audio_path_str, "rb") as f:  # noqa: PTH123
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=f,
@@ -1353,7 +1353,7 @@ def run_caption_generation(self, production_job_id: str) -> None:
         )
 
     except Exception as exc:
-        logger.error(
+        logger.error(  # noqa: G201
             "Caption generation failed: %s",
             exc,
             extra={"production_job_id": production_job_id},
@@ -1368,7 +1368,7 @@ def run_caption_generation(self, production_job_id: str) -> None:
     time_limit=7200,  # 2 hour hard limit
     soft_time_limit=6600,
 )
-def render_video(self, production_job_id: str) -> None:
+def render_video(self, production_job_id: str) -> None:  # noqa: ANN001
     """CPU-intensive video render task — runs on dedicated rendering queue."""
     from ***REMOVED***.production.models import ProductionJob
     from ***REMOVED***.services.media.video import VideoRenderer
@@ -1389,7 +1389,7 @@ def render_video(self, production_job_id: str) -> None:
         try:
             job.scene_breakdown_job = job.asset_job.script_job.scene_breakdown
             _sub_job_fields.append("scene_breakdown_job")
-        except Exception as _exc:
+        except Exception as _exc:  # noqa: BLE001
             logger.warning(
                 "render_video: could not resolve scene_breakdown_job — %s",
                 _exc,
@@ -1407,7 +1407,7 @@ def render_video(self, production_job_id: str) -> None:
         # Generate captions synchronously before rendering (single task, saves overhead)
         try:
             run_caption_generation.apply(args=[production_job_id])
-        except Exception as caption_err:
+        except Exception as caption_err:  # noqa: BLE001
             logger.warning(
                 "Caption generation failed — rendering without captions: %s",
                 caption_err,
@@ -1434,7 +1434,7 @@ def render_video(self, production_job_id: str) -> None:
 
 
 @shared_task(bind=True, queue="rendering")
-def run_video_qa(self, production_job_id: str) -> None:
+def run_video_qa(self, production_job_id: str) -> None:  # noqa: ANN001, ARG001
     from ***REMOVED***.production.models import ProductionJob
     from ***REMOVED***.services.media.video import VideoQA
 
@@ -1468,15 +1468,21 @@ def run_video_qa(self, production_job_id: str) -> None:
 
 
 @shared_task(bind=True, queue="uploads")
-def upload_video(self, distribution_job_id: str) -> None:
+def upload_video(self, distribution_job_id: str) -> None:  # noqa: ANN001
     from ***REMOVED***.distribution.models import DistributionJob
     from ***REMOVED***.services.youtube.client import YouTubeClient
+    from ***REMOVED***.services.youtube.exceptions import YouTubeAuthError
 
     job = DistributionJob.objects.select_related("channel", "production_job").get(id=distribution_job_id)
     job.mark_running(task_id=self.request.id)
 
+    youtube_account = job.channel.get_youtube_account()
+    if youtube_account is None:
+        msg = f"Channel {job.channel.slug} has no active YouTube SocialAccount"
+        raise YouTubeAuthError(msg)
+
     try:
-        client = YouTubeClient.from_channel(job.channel)
+        client = YouTubeClient.from_social_account(youtube_account)
         script_job = job.production_job.asset_job.script_job
         youtube_id = client.upload_video(
             video_path=str(job.production_job.final_video_path),
@@ -1518,38 +1524,38 @@ def upload_video(self, distribution_job_id: str) -> None:
 
 
 @shared_task(bind=True, queue="uploads")
-def set_video_thumbnail(self, distribution_job_id: str) -> None:
+def set_video_thumbnail(self, distribution_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Upload selected thumbnail to YouTube. Stub — real implementation in Phase 8."""
     logger.info("set_video_thumbnail called for distribution_job_id=%s (stub)", distribution_job_id)
-    # TODO: Implement YouTube thumbnail upload via YouTube Data API
+    # TODO: Implement YouTube thumbnail upload via YouTube Data API  # noqa: FIX002
 
 
 @shared_task(bind=True, queue="uploads")
-def post_pinned_comment(self, distribution_job_id: str) -> None:
+def post_pinned_comment(self, distribution_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Post pinned comment on the uploaded video. Stub — real implementation in Phase 8."""
     logger.info("post_pinned_comment called for distribution_job_id=%s (stub)", distribution_job_id)
-    # TODO: Implement YouTube comment posting and pinning via YouTube Data API
+    # TODO: Implement YouTube comment posting and pinning via YouTube Data API  # noqa: FIX002
 
 
 @shared_task(bind=True, queue="uploads")
-def add_to_playlist(self, distribution_job_id: str) -> None:
+def add_to_playlist(self, distribution_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Add video to configured playlists. Stub — real implementation in Phase 8."""
     logger.info("add_to_playlist called for distribution_job_id=%s (stub)", distribution_job_id)
-    # TODO: Implement YouTube playlist assignment via YouTube Data API
+    # TODO: Implement YouTube playlist assignment via YouTube Data API  # noqa: FIX002
 
 
 @shared_task(bind=True, queue="uploads")
-def upload_youtube_short(self, distribution_job_id: str) -> None:
+def upload_youtube_short(self, distribution_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Upload the Shorts variant of the video. Stub — real implementation in Phase 8."""
     logger.info("upload_youtube_short called for distribution_job_id=%s (stub)", distribution_job_id)
-    # TODO: Upload 9:16 cropped Shorts variant via YouTube Data API
+    # TODO: Upload 9:16 cropped Shorts variant via YouTube Data API  # noqa: FIX002
 
 
 @shared_task(bind=True, queue="uploads")
-def cross_post_social(self, distribution_job_id: str) -> None:
+def cross_post_social(self, distribution_job_id: str) -> None:  # noqa: ANN001, ARG001
     """Cross-post video clip to TikTok/Instagram/Twitter. Stub — real implementation in Phase 8."""
     logger.info("cross_post_social called for distribution_job_id=%s (stub)", distribution_job_id)
-    # TODO: Implement cross-platform posting (TikTok, Instagram Reels, Twitter/X)
+    # TODO: Implement cross-platform posting (TikTok, Instagram Reels, Twitter/X)  # noqa: FIX002
 
 
 # ── Analytics ────────────────────────────────────────────────────────────────
@@ -1561,9 +1567,14 @@ def sync_channel_analytics(channel_id: str) -> None:
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.distribution.models import DistributionJob
     from ***REMOVED***.services.youtube.client import YouTubeClient
+    from ***REMOVED***.services.youtube.exceptions import YouTubeAuthError
 
     channel = Channel.objects.get(id=channel_id)
-    client = YouTubeClient.from_channel(channel)
+    youtube_account = channel.get_youtube_account()
+    if youtube_account is None:
+        msg = f"Channel {channel.slug} has no active YouTube SocialAccount"
+        raise YouTubeAuthError(msg)
+    client = YouTubeClient.from_social_account(youtube_account)
 
     published_jobs = DistributionJob.objects.filter(
         channel=channel,
@@ -1802,7 +1813,7 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     )
 
 
-def _save_script_results(
+def _save_script_results(  # noqa: PLR0915
     job: Any,
     result: Any,
     version_number: int = 1,
@@ -1876,7 +1887,7 @@ def _save_script_results(
 
     # Store hook_used as a generated_hooks entry with score from quality_flags
     # Normalize LLM-returned hook type to the Literal values expected by Hook schema.
-    _HOOK_TYPE_ALIASES: dict[str, str] = {
+    _HOOK_TYPE_ALIASES: dict[str, str] = {  # noqa: N806
         "question": "question",
         "statement": "statement",
         "bold claim": "statement",
@@ -1996,7 +2007,7 @@ def _save_script_results(
     )
 
 
-def _create_or_update_snapshot(client: YouTubeClient, job: Any, snapshot_day: int) -> None:
+def _create_or_update_snapshot(client: YouTubeClient, job: Any, snapshot_day: int) -> None:  # noqa: ARG001
     """Create or update analytics snapshot for a distribution job.
 
     Args:

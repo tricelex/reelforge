@@ -16,6 +16,7 @@ from ***REMOVED***.services.youtube.exceptions import YouTubeQuotaError
 
 if TYPE_CHECKING:
     from ***REMOVED***.channels.models import Channel
+    from ***REMOVED***.channels.models import SocialAccount
 
 logger = logging.getLogger("***REMOVED***.youtube.client")
 
@@ -23,7 +24,7 @@ logger = logging.getLogger("***REMOVED***.youtube.client")
 class YouTubeClient:
     """YouTube Data API v3 client — OAuth-only operations (upload, analytics).
 
-    Use `from_channel()` or `from_credential()` to instantiate with OAuth.
+    Use `from_social_account()` or `from_credential()` to instantiate with OAuth.
     Direct instantiation is provided for completeness but all current methods
     require OAuth via `_require_auth()`.
     """
@@ -59,18 +60,36 @@ class YouTubeClient:
         return instance
 
     @classmethod
-    def from_channel(cls, channel: Channel) -> YouTubeClient:
-        """Create an authenticated client from a channel's stored OAuth credentials."""
-        creds = channel.oauth_credentials
+    def from_social_account(cls, social_account: SocialAccount) -> YouTubeClient:
+        """Create an authenticated client from a SocialAccount (must be YOUTUBE platform)."""
+        from ***REMOVED***.channels.models import SocialAccount as SocialAccountModel
+
+        if social_account.platform != SocialAccountModel.Platform.YOUTUBE:
+            msg = f"SocialAccount must be YOUTUBE platform, got {social_account.platform}"
+            raise ValueError(msg)
+        creds = social_account.oauth_credentials
         if not creds or not creds.get("token"):
-            msg = f"Channel {channel.slug} has no OAuth credentials stored"
+            msg = f"SocialAccount {social_account.id} has no OAuth credentials stored"
             raise YouTubeAuthError(msg)
         return cls.from_credential(creds)
+
+    @classmethod
+    def from_channel(cls, channel: Channel) -> YouTubeClient:
+        """Create an authenticated client from a channel's active YouTube SocialAccount.
+
+        Deprecated: prefer `from_social_account()` with an explicit SocialAccount.
+        Falls back to looking up the active YouTube account on the channel.
+        """
+        account = channel.get_youtube_account()
+        if account is None:
+            msg = f"Channel {channel.slug} has no active YouTube SocialAccount"
+            raise YouTubeAuthError(msg)
+        return cls.from_social_account(account)
 
     def _require_auth(self) -> None:
         """Raise YouTubeAuthError if the client is not authenticated via OAuth."""
         if not self._is_authenticated:
-            msg = "This operation requires OAuth authentication. Use YouTubeClient.from_channel()."
+            msg = "This operation requires OAuth authentication. Use YouTubeClient.from_social_account()."
             raise YouTubeAuthError(msg)
 
     def _handle_http_error(self, exc: HttpError) -> NoReturn:
