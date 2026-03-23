@@ -205,6 +205,9 @@ class ScriptAgentOutput(BaseModel):
 
 # ── Visual Planner Agent Output ───────────────────────────────────────────────
 
+_DURATION_GAP_TOLERANCE = 0.1  # seconds: acceptable deviation in segment duration check
+_COVERAGE_TOLERANCE = 0.5  # seconds: acceptable deviation in total timeline coverage
+
 
 class VisualSegment(BaseModel):
     """A single timed image segment in the visual timeline."""
@@ -230,10 +233,9 @@ class VisualSegment(BaseModel):
     @model_validator(mode="after")
     def check_duration_matches(self) -> VisualSegment:
         computed = round(self.end_seconds - self.start_seconds, 3)
-        if abs(computed - self.duration) > 0.1:
-            raise ValueError(
-                f"duration {self.duration} does not match end_seconds - start_seconds = {computed}"
-            )
+        if abs(computed - self.duration) > _DURATION_GAP_TOLERANCE:
+            msg = f"duration {self.duration} does not match end_seconds - start_seconds = {computed}"
+            raise ValueError(msg)
         return self
 
 
@@ -249,20 +251,19 @@ class VisualPlannerOutput(BaseModel):
     @model_validator(mode="after")
     def check_coverage(self) -> VisualPlannerOutput:
         if self.segment_count != len(self.segments):
-            raise ValueError(
-                f"segment_count={self.segment_count} does not match len(segments)={len(self.segments)}"
-            )
+            msg = f"segment_count={self.segment_count} does not match len(segments)={len(self.segments)}"
+            raise ValueError(msg)
         # segments is guaranteed non-empty by Field(min_length=10) — guard kept for safety
         segs = sorted(self.segments, key=lambda s: s.start_seconds)
         for i in range(1, len(segs)):
             gap = segs[i].start_seconds - segs[i - 1].end_seconds
-            if abs(gap) > 0.1:
-                raise ValueError(
-                    f"Gap of {gap:.2f}s between segment {i} and {i+1}"
-                )
-        if abs(segs[-1].end_seconds - self.total_duration_seconds) > 0.5:
-            raise ValueError(
+            if abs(gap) > _DURATION_GAP_TOLERANCE:
+                msg = f"Gap of {gap:.2f}s between segment {i} and {i+1}"
+                raise ValueError(msg)
+        if abs(segs[-1].end_seconds - self.total_duration_seconds) > _COVERAGE_TOLERANCE:
+            msg = (
                 f"Timeline ends at {segs[-1].end_seconds:.2f}s "
                 f"but total_duration is {self.total_duration_seconds:.2f}s"
             )
+            raise ValueError(msg)
         return self
