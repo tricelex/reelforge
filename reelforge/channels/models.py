@@ -5,7 +5,6 @@ from django.db import models
 
 from reelforge.channels.choices import ChannelStatus
 from reelforge.channels.choices import NicheCategory
-from reelforge.channels.schemas import OAuthCredentials
 from reelforge.channels.schemas import UploadSchedule
 from reelforge.core.models import BaseAbstractModel
 from reelforge.core.validators import pydantic_validator
@@ -21,14 +20,6 @@ class Channel(BaseAbstractModel):
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=ChannelStatus.choices, default=ChannelStatus.SETUP)
-
-    # YouTube credentials & IDs
-    youtube_channel_id = models.CharField(max_length=100, blank=True, db_index=True)
-    youtube_handle = models.CharField(max_length=100, blank=True)  # @handle
-    oauth_credentials = models.JSONField(
-        default=dict, blank=True, validators=[pydantic_validator(OAuthCredentials)]
-    )  # Encrypted in prod
-    analytics_property = models.CharField(max_length=100, blank=True)
 
     # Niche configuration
     niche_category = models.CharField(max_length=30, choices=NicheCategory.choices)
@@ -111,7 +102,7 @@ class Channel(BaseAbstractModel):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.name} (@{self.youtube_handle or self.slug})"
+        return f"{self.name} ({self.slug})"
 
     @property
     def active_niche(self) -> str:

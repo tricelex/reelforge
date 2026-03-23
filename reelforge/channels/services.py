@@ -7,8 +7,11 @@ from typing import Any
 
 from django.conf import settings
 
+from reelforge.services.youtube.exceptions import YouTubeAuthError
+
 if TYPE_CHECKING:
     from reelforge.channels.models import Channel
+    from reelforge.channels.models import SocialAccount
 
 
 class ChannelSetupService:
@@ -44,8 +47,10 @@ class ChannelSetupService:
         return auth_url, state
 
     def exchange_oauth_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
-        """Exchange an authorization code for OAuth2 tokens and store."""
+        """Exchange an authorization code for OAuth2 tokens and store on SocialAccount."""
         from google_auth_oauthlib.flow import Flow
+
+        from reelforge.channels.models import SocialAccount
 
         flow = Flow.from_client_config(
             client_config=settings.YOUTUBE_OAUTH_CLIENT_CONFIG,
@@ -55,27 +60,42 @@ class ChannelSetupService:
         flow.fetch_token(code=code)
         credentials = flow.credentials
 
-        self.channel.oauth_credentials = {
+        oauth_creds = {
             "token": credentials.token or "",
             "refresh_token": credentials.refresh_token or "",
             "token_uri": credentials.token_uri or "",
             "client_id": credentials.client_id or "",
             "client_secret": credentials.client_secret or "",
         }
-        self.channel.save(update_fields=["oauth_credentials"])
+
+        # Persist credentials to the channel's YouTube SocialAccount (create if absent)
+        account, _ = SocialAccount.objects.get_or_create(
+            channel=self.channel,
+            platform=SocialAccount.Platform.YOUTUBE,
+            defaults={"is_active": True},
+        )
+        account.oauth_credentials = oauth_creds
+        account.save(update_fields=["oauth_credentials", "updated_at"])
 
         # Fetch channel ID from API
-        self._sync_channel_info()
+        self._sync_channel_info(account)
         return {"success": True}
 
-    def _sync_channel_info(self) -> None:
+    def _sync_channel_info(self, account: SocialAccount | None = None) -> None:
         from reelforge.services.youtube.client import YouTubeClient
 
-        client = YouTubeClient.from_channel(self.channel)
+        if account is None:
+            account = self.channel.get_youtube_account()
+        if account is None:
+            msg = f"Channel {self.channel.slug} has no active YouTube SocialAccount"
+            raise YouTubeAuthError(msg)
+
+        client = YouTubeClient.from_social_account(account)
         info = client.get_my_channel()
-        self.channel.youtube_channel_id = info["id"]
-        self.channel.youtube_handle = info.get("snippet", {}).get("customUrl", "")
-        self.channel.save(update_fields=["youtube_channel_id", "youtube_handle", "updated_at"])
+        account.account_id = info.get("id", "")
+        account.handle = info.get("snippet", {}).get("customUrl", "")
+        account.display_name = info.get("snippet", {}).get("title", "")
+        account.save(update_fields=["account_id", "handle", "display_name", "updated_at"])
 
     def validate_voice(self, voice_id: str, test_text: str = "Hello, this is a test.") -> dict:
         """Test TTS voice before committing."""
@@ -86,6 +106,6 @@ class ChannelSetupService:
         temp_dir = Path(settings.MEDIA_ROOT) / "temp"
         temp_dir.mkdir(parents=True, exist_ok=True)
         path = temp_dir / f"voice_test_{self.channel.slug}.mp3"
-        with open(path, "wb") as f:
+        with path.open("wb") as f:
             f.write(response.audio_bytes)
         return {"success": True, "preview_path": str(path), "duration": response.duration_sec}
