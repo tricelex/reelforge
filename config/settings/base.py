@@ -113,6 +113,7 @@ LOCAL_APPS = [
     "reelforge.production",
     "reelforge.distribution",
     "reelforge.agents",
+    "reelforge.clipping",
     # Note: reelforge.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
@@ -339,12 +340,14 @@ CELERY_TASK_QUEUES = (
     Queue("rendering"),
     Queue("uploads"),
     Queue("analytics"),
+    Queue("clipping"),
 )
 CELERY_TASK_ROUTES = {
     "reelforge.pipeline.tasks.render_video": {"queue": "rendering"},
     "reelforge.pipeline.tasks.run_video_qa": {"queue": "rendering"},
     "reelforge.pipeline.tasks.upload_video": {"queue": "uploads"},
     "reelforge.pipeline.tasks.sync_channel_analytics": {"queue": "analytics"},
+    "reelforge.clipping.tasks.*": {"queue": "clipping"},
     "*": {"queue": "default"},
 }
 # django-allauth
