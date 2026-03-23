@@ -5,7 +5,7 @@ from pydantic import ConfigDict
 from pydantic import RootModel
 
 
-class OAuthCredentials(BaseModel):
+class YouTubeOAuthCredentials(BaseModel):
     """OAuth2 credentials for YouTube API access."""
 
     token: str = ""
@@ -13,6 +13,28 @@ class OAuthCredentials(BaseModel):
     token_uri: str = ""
     client_id: str = ""
     client_secret: str = ""
+
+
+# Backward-compat alias — existing imports of OAuthCredentials continue to work
+OAuthCredentials = YouTubeOAuthCredentials
+
+
+class TikTokOAuthCredentials(BaseModel):
+    """OAuth2 credentials for TikTok API access."""
+
+    access_token: str
+    refresh_token: str
+    open_id: str
+    expires_in: int
+    refresh_expires_in: int
+
+
+class InstagramOAuthCredentials(BaseModel):
+    """OAuth2 credentials for Instagram API access."""
+
+    access_token: str
+    user_id: str
+    token_type: str
 
 
 class UploadSlot(BaseModel):
