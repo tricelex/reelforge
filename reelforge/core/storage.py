@@ -68,3 +68,21 @@ def get_caption_path(production_job_id: str, fmt: str) -> Path:
 def get_render_path(production_job_id: str, variant: str = "processed") -> Path:
     """Return path for a rendered video file. variant: raw | processed | shorts."""
     return _media(f"renders/{variant}/{production_job_id}_{variant}.mp4")
+
+
+# ── Clipping ──────────────────────────────────────────────────────────────────
+
+
+def get_clip_source_path(clipping_job_id: str) -> Path:
+    """Return path for the original source video uploaded for a clipping job."""
+    return _media(f"clipping/source/{clipping_job_id}/original.mp4")
+
+
+def get_clip_downloaded_path(clipping_job_id: str) -> Path:
+    """Return path for the downloaded source video for a clipping job."""
+    return _media(f"clipping/downloaded/{clipping_job_id}/source.mp4")
+
+
+def get_clip_render_path(clip_candidate_id: str, fmt: str) -> Path:
+    """Return path for a rendered clip candidate. fmt: landscape | portrait | square."""
+    return _media(f"clipping/renders/{clip_candidate_id}/{fmt}.mp4")
