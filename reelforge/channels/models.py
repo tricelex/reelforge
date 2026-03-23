@@ -130,30 +130,30 @@ class SocialAccount(BaseAbstractModel):
         TIKTOK = "TIKTOK", "TikTok"
         INSTAGRAM = "INSTAGRAM", "Instagram"
 
-    channel: models.ForeignKey = models.ForeignKey(
+    channel = models.ForeignKey(
         Channel,
         on_delete=models.CASCADE,
         related_name="social_accounts",
     )
-    platform: models.CharField = models.CharField(
+    platform = models.CharField(
         max_length=20,
         choices=Platform.choices,
     )
-    account_id: models.CharField = models.CharField(max_length=255, blank=True)
-    handle: models.CharField = models.CharField(max_length=255, blank=True)
-    display_name: models.CharField = models.CharField(max_length=255, blank=True)
-    analytics_property: models.CharField = models.CharField(max_length=255, blank=True)
-    oauth_credentials: models.JSONField = models.JSONField(default=dict, blank=True)
-    is_active: models.BooleanField = models.BooleanField(default=True)
+    account_id = models.CharField(max_length=255, blank=True)
+    handle = models.CharField(max_length=255, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    analytics_property = models.CharField(max_length=255, blank=True)
+    oauth_credentials = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
 
     # Clipping config
-    auto_approve_clips: models.BooleanField = models.BooleanField(default=False)
-    clip_caption_template: models.TextField = models.TextField(blank=True)
-    max_clips_per_day: models.PositiveIntegerField = models.PositiveIntegerField(default=3)
+    auto_approve_clips = models.BooleanField(default=False)
+    clip_caption_template = models.TextField(blank=True)
+    max_clips_per_day = models.PositiveIntegerField(default=3)
 
     # Stats
-    follower_count: models.PositiveIntegerField = models.PositiveIntegerField(default=0)
-    last_sync_at: models.DateTimeField = models.DateTimeField(null=True, blank=True)
+    follower_count = models.PositiveIntegerField(default=0)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["channel", "platform"]
