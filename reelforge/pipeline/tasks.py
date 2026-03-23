@@ -305,8 +305,10 @@ def run_asset_job(self, script_job_id: str, pipeline_run_id: str) -> None:  # no
     bind=True,
     name="reelforge.pipeline.run_scene_breakdown_job",
     queue="default",
-    soft_time_limit=240,
-    time_limit=300,
+    soft_time_limit=360,
+    time_limit=420,
+    max_retries=2,
+    default_retry_delay=120,
 )
 def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: str | None = None) -> None:  # noqa: ANN001, PLR0915
     """Run scene breakdown for a script — splits script into timed scene dicts.
@@ -331,87 +333,94 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
     job.mark_running(task_id=self.request.id)
 
     try:
-        from reelforge.services.media.image_prompt import build_image_prompt
+        from agents import Runner
+        from reelforge.agents.schemas import VisualPlannerOutput  # noqa: TC001
+        from reelforge.agents.visual_planner import build_visual_planner_agent
 
         sections = job.script_job.sections or []
         broll_suggestions = job.script_job.broll_suggestions or []
 
-        # Map script section tag → animation type
-        _TAG_TO_ANIMATION: dict[str, str] = {  # noqa: N806
-            "HOOK": "hook",
-            "INTRO_BRIDGE": "intro",
-            "SECTION_1": "body_concept",
-            "SECTION_2": "body_concept",
-            "SECTION_3": "body_concept",
-            "TAKEAWAY": "body_stat",
-            "OUTRO_CTA": "outro",
-        }
-
-        scenes = []
-        for i, section in enumerate(sections):
-            tag = section.get("tag", f"SECTION_{i + 1}")
-            broll_idx_list = section.get("broll_indices", [])
-
-            # Use first referenced broll for this section
-            broll: dict | None = None
-            if broll_idx_list:
-                idx = broll_idx_list[0]
-                if 0 <= idx < len(broll_suggestions):
-                    broll = broll_suggestions[idx]
-            # Fallback: use broll at same index as section
-            if broll is None and i < len(broll_suggestions):
-                broll = broll_suggestions[i]
-
-            image_prompt = build_image_prompt(broll) if broll else section.get("content", "")[:200]
-            style_preset = broll.get("style_preset", "cinematic_realism") if broll else "cinematic_realism"
-            mood = broll.get("mood", "neutral") if broll else "neutral"
-
-            scenes.append(
-                {
-                    "scene_id": i + 1,
-                    "section_tag": tag,
-                    "narration": section.get("content", ""),
-                    "duration_estimate": float(section.get("estimated_duration_seconds", 8)),
-                    "visual_keywords": broll.get("stock_search_keywords", []) if broll else [],
-                    "mood": mood,
-                    "caption_text": section.get("content", "")[:100],
-                    "animation_type": _TAG_TO_ANIMATION.get(tag, "body_concept"),
-                    "image_prompt": image_prompt,
-                    "image_style_preset": style_preset,
-                    "broll_indices": broll_idx_list,
-                }
+        # Authoritative duration: estimated_duration_mins → word count fallback
+        total_duration_seconds: float = float(job.script_job.estimated_duration_mins or 0) * 60.0
+        if not total_duration_seconds:
+            word_count = job.script_job.word_count or len(
+                (job.script_job.script_text or "").split()
             )
+            total_duration_seconds = (word_count / 130.0) * 60.0
+        _MIN_DURATION_SECONDS = 30  # noqa: N806
+        if total_duration_seconds < _MIN_DURATION_SECONDS:
+            msg = (
+                f"total_duration_seconds={total_duration_seconds:.1f} is suspiciously short. "
+                "Check estimated_duration_mins or script word count."
+            )
+            raise ValueError(msg)  # noqa: TRY301
 
-        # Fallback: at least one scene from script_text
-        if not scenes and job.script_job.script_text:
-            scenes = [
-                {
-                    "scene_id": 1,
-                    "section_tag": "SECTION_1",
-                    "narration": job.script_job.script_text[:200],
-                    "duration_estimate": 8.0,
-                    "visual_keywords": [],
-                    "mood": "neutral",
-                    "caption_text": job.script_job.script_text[:100],
-                    "animation_type": "body_concept",
-                    "image_prompt": "",
-                    "image_style_preset": "cinematic_realism",
-                    "broll_indices": [],
-                }
-            ]
+        channel = job.script_job.topic.channel
+        narrative_mode: str = getattr(job.script_job, "narrative_mode", "") or "REVEAL"
+
+        logger.info(
+            "VisualPlannerAgent: planning timeline",
+            extra={
+                "scene_breakdown_job_id": scene_breakdown_job_id,
+                "total_duration_seconds": total_duration_seconds,
+                "sections": len(sections),
+                "broll_suggestions": len(broll_suggestions),
+            },
+        )
+
+        agent = build_visual_planner_agent(
+            sections=sections,
+            broll_suggestions=broll_suggestions,
+            total_duration_seconds=total_duration_seconds,
+            channel_tone=channel.content_tone or "informative",
+            narrative_mode=narrative_mode,
+        )
+
+        result = Runner.run_sync(agent, input="Generate the complete visual timeline.", max_turns=1)
+        planner_output: VisualPlannerOutput = result.final_output
+
+        scenes = [
+            {
+                # Legacy fields (downstream asset job compatibility)
+                "scene_id": seg.scene_id,
+                "section_tag": seg.section_tag,
+                "narration": seg.narration_excerpt,
+                "duration_estimate": seg.duration,
+                "visual_keywords": seg.visual_keywords,
+                "mood": seg.mood,
+                "caption_text": seg.narration_excerpt[:100],
+                "animation_type": seg.animation_type,
+                "image_prompt": seg.image_prompt,
+                "image_style_preset": seg.style_preset,
+                "broll_indices": [],
+                # New timing and animation fields
+                "start_seconds": seg.start_seconds,
+                "end_seconds": seg.end_seconds,
+                "colour_palette": seg.colour_palette,
+                "video_prompt": seg.video_prompt,
+                "is_transition": seg.is_transition,
+            }
+            for seg in planner_output.segments
+        ]
 
         job.scenes = scenes
         job.scene_count = len(scenes)
-        job.total_estimated_duration = sum(s["duration_estimate"] for s in scenes)
-        job.save(update_fields=["scenes", "scene_count", "total_estimated_duration", "updated_at"])
+        job.total_estimated_duration = planner_output.total_duration_seconds
+        job.breakdown_provider = "gpt-5.2"
+        job.save(update_fields=[
+            "scenes", "scene_count", "total_estimated_duration",
+            "breakdown_provider", "updated_at",
+        ])
         job.mark_completed()
 
         logger.info(
-            "Scene breakdown complete",
+            "VisualPlannerAgent complete",
             extra={
                 "scene_breakdown_job_id": str(job.id),
                 "scene_count": job.scene_count,
                 "total_duration": job.total_estimated_duration,
+                "coverage_confirmed": planner_output.coverage_confirmed,
+                "revision_notes": planner_output.revision_notes,
             },
         )
 
@@ -1946,6 +1955,7 @@ def _save_script_results(  # noqa: PLR0915
     job.quality_flags = quality_flags
     job.ready_for_production = output.ready_for_production
     job.revision_notes = output.revision_notes
+    job.narrative_mode = output.narrative_mode or ""
     job.final_title = seo.final_title
     job.final_description = seo.description
     job.seo_tags = seo.tags
@@ -1970,6 +1980,7 @@ def _save_script_results(  # noqa: PLR0915
             "quality_flags",
             "ready_for_production",
             "revision_notes",
+            "narrative_mode",
             "final_title",
             "final_description",
             "seo_tags",

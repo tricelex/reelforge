@@ -97,6 +97,12 @@ class ScriptJob(PipelineStageModel):
         blank=True,
         help_text=_("Agent explanation if ready_for_production is False."),
     )
+    narrative_mode = models.CharField(
+        _("Narrative Mode"),
+        max_length=30,
+        blank=True,
+        help_text=_("Narrative mode selected by ScriptAgent (REVEAL, CHRONICLE, TRANSFORMATION, etc.)"),
+    )
     change_request = models.TextField(
         blank=True,
         default="",
