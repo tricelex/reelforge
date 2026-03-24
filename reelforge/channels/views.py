@@ -47,15 +47,17 @@ def youtube_oauth_callback(request: HttpRequest) -> HttpResponse:
     svc = ChannelSetupService(channel)
     try:
         svc.exchange_oauth_code(code=code, redirect_uri=redirect_uri)
+        yt_account = channel.get_youtube_account()
+        yt_channel_id = yt_account.account_id if yt_account else "unknown"
         messages.success(
             request,
-            f"YouTube OAuth configured for '{channel.name}' (channel ID: {channel.youtube_channel_id}).",
+            f"YouTube OAuth configured for '{channel.name}' (channel ID: {yt_channel_id}).",
         )
         logger.info(
             "YouTube OAuth configured successfully",
             extra={
                 "channel_id": str(channel.id),
-                "youtube_channel_id": channel.youtube_channel_id,
+                "youtube_channel_id": yt_channel_id,
             },
         )
     except Exception as exc:

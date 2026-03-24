@@ -78,8 +78,6 @@ class ChannelAdmin(ModelAdmin):
     search_fields = [
         "name",
         "slug",
-        "youtube_handle",
-        "youtube_channel_id",
         "description",
     ]
     readonly_fields = [
@@ -116,10 +114,7 @@ class ChannelAdmin(ModelAdmin):
             _("YouTube"),
             {
                 "fields": (
-                    "youtube_channel_id",
-                    "youtube_handle",
                     "oauth_credentials_display",
-                    "analytics_property",
                 ),
             },
         ),
@@ -276,7 +271,10 @@ class ChannelAdmin(ModelAdmin):
         },
     )
     def oauth_credentials_display(self, obj: Channel) -> tuple[str, str]:
-        creds = obj.oauth_credentials
+        yt_account = obj.get_youtube_account()
+        if yt_account is None:
+            return "No YouTube account", "not_configured"
+        creds = yt_account.oauth_credentials
         if creds and creds.get("refresh_token"):
             preview = creds["refresh_token"][:12]
             return f"Connected ({preview}...)", "connected"

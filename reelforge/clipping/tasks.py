@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
 
+import ffmpeg
 from celery import shared_task
 from django.conf import settings
 from django_fsm import can_proceed
 
 from ***REMOVED***.clipping.models import ClipCandidate
+from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
-from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.core.storage import get_clip_downloaded_path
 from ***REMOVED***.core.storage import get_clip_render_path
 
@@ -19,9 +21,7 @@ logger = logging.getLogger("***REMOVED***.clipping")
 
 @shared_task(
     bind=True,
-    name="***REMOVED***.clipping.download_source_video",
     max_retries=3,
-    default_retry_delay=60,
     queue="clipping",
 )
 def download_source_video(self, clipping_job_id: str) -> None:
@@ -34,24 +34,38 @@ def download_source_video(self, clipping_job_id: str) -> None:
     job.celery_task_id = self.request.id
     job.save(update_fields=["celery_task_id", "updated_at"])
 
+    if job.source_type == ClippingJob.SourceType.UPLOAD and not job.source_video_file:
+        msg = "UPLOAD job has no source_video_file set"
+        job.mark_failed(error=msg)
+        job.save(update_fields=["status", "last_error", "failed_at", "updated_at"])
+        logger.error(msg, extra={"clipping_job_id": clipping_job_id})
+        return
+
     try:
-        import yt_dlp
+        if job.source_type == ClippingJob.SourceType.UPLOAD:
+            # File already uploaded — just point downloaded_file at it.
+            job.downloaded_file = job.source_video_file
+            job.save(update_fields=["downloaded_file", "updated_at"])
 
-        output_path = get_clip_downloaded_path(str(job.id))
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            # YOUTUBE_URL and DIRECT_URL both go through yt_dlp.
+            import yt_dlp
 
-        ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": str(output_path),
-            "quiet": True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(job.source_url, download=True)
-            job.source_title = info.get("title", "")
-            job.source_duration_sec = int(info.get("duration", 0))
+            output_path = get_clip_downloaded_path(str(job.id))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        job.downloaded_file = str(output_path.relative_to(settings.MEDIA_ROOT))
-        job.save(update_fields=["downloaded_file", "source_title", "source_duration_sec", "updated_at"])
+            ydl_opts = {
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "outtmpl": str(output_path),
+                "quiet": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(job.source_url, download=True)
+                job.source_title = info.get("title", "")
+                job.source_duration_sec = int(info.get("duration", 0))
+
+            job.downloaded_file = str(output_path.relative_to(settings.MEDIA_ROOT))
+            job.save(update_fields=["downloaded_file", "source_title", "source_duration_sec", "updated_at"])
 
         if can_proceed(job.begin_transcription):
             job.begin_transcription()
@@ -64,7 +78,7 @@ def download_source_video(self, clipping_job_id: str) -> None:
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
             exc_info=True,
         )
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 60)
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
 
 
 @shared_task(
@@ -81,21 +95,39 @@ def transcribe_video(self, clipping_job_id: str) -> None:
         logger.error("ClippingJob not found for transcription", extra={"id": clipping_job_id})
         return
 
+    audio_path: Path | None = None
     try:
         from ***REMOVED***.services.transcription.whisper import WhisperTranscriptionService
 
         video_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
+
+        # Extract audio-only at 16kHz mono to stay under the Whisper 25MB file limit.
+        # A full MP4 download can be 100s of MB; 16kHz mono MP3 is typically <5MB per hour.
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            audio_path = Path(tmp.name)
+        (
+            ffmpeg.input(str(video_path))
+            .output(str(audio_path), ac=1, ar=16000, audio_bitrate="32k", format="mp3")
+            .overwrite_output()
+            .run(quiet=True)
+        )
+
         service = WhisperTranscriptionService(api_key=settings.OPENAI_API_KEY)
-        result = service.transcribe(video_path)
+        result = service.transcribe(audio_path)
 
         job.transcript_text = result.transcript_text
         job.transcript_json = result.transcript_json
         job.transcription_cost_usd = result.cost_usd
         job.transcription_provider = result.provider
-        job.save(update_fields=[
-            "transcript_text", "transcript_json",
-            "transcription_cost_usd", "transcription_provider", "updated_at",
-        ])
+        job.save(
+            update_fields=[
+                "transcript_text",
+                "transcript_json",
+                "transcription_cost_usd",
+                "transcription_provider",
+                "updated_at",
+            ]
+        )
 
         if can_proceed(job.begin_analysis):
             job.begin_analysis()
@@ -106,8 +138,17 @@ def transcribe_video(self, clipping_job_id: str) -> None:
         logger.error(
             "Transcription failed",
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
+            exc_info=True,
         )
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 120)
+        if self.request.retries >= self.max_retries:
+            if can_proceed(job.mark_failed):
+                job.mark_failed(error=str(exc))
+                job.save(update_fields=["status", "last_error", "failed_at", "updated_at"])
+            return
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 120)
+    finally:
+        if audio_path is not None:
+            audio_path.unlink(missing_ok=True)
 
 
 @shared_task(
@@ -145,17 +186,16 @@ def analyze_clips(self, clipping_job_id: str) -> None:
                 job.save(update_fields=["status", "updated_at"])
                 for candidate in candidates:
                     render_clip.delay(str(candidate.id))
-        else:
-            if can_proceed(job.await_clip_approval):
-                job.await_clip_approval()
-                job.save(update_fields=["status", "updated_at"])
+        elif can_proceed(job.await_clip_approval):
+            job.await_clip_approval()
+            job.save(update_fields=["status", "updated_at"])
 
     except Exception as exc:
         logger.error(
             "Clip analysis failed",
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
         )
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 60)
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
 
 
 @shared_task(
@@ -169,9 +209,7 @@ def analyze_clips(self, clipping_job_id: str) -> None:
 )
 def render_clip(self, clip_candidate_id: str) -> None:
     try:
-        candidate = ClipCandidate.objects.select_related(
-            "clipping_job__channel"
-        ).get(id=clip_candidate_id)
+        candidate = ClipCandidate.objects.select_related("clipping_job__channel").get(id=clip_candidate_id)
     except ClipCandidate.DoesNotExist:
         logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
         return
@@ -215,7 +253,7 @@ def render_clip(self, clip_candidate_id: str) -> None:
         candidate.status = ClipCandidate.CandidateStatus.RENDERED
         candidate.save(update_fields=["status", "updated_at"])
 
-        for account in job.target_accounts.filter(is_active=True):
+        for account in job.target_accounts.filter(is_active=True, should_post=True):
             post = ClipPost.objects.create(render=render, social_account=account)
             post_clip.delay(str(post.id))
 
@@ -223,7 +261,7 @@ def render_clip(self, clip_candidate_id: str) -> None:
         render.status = ClipRender.RenderStatus.FAILED
         render.last_error = str(exc)
         render.save(update_fields=["status", "last_error", "updated_at"])
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 300)
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 300)
 
 
 @shared_task(
@@ -260,9 +298,15 @@ def post_clip(self, clip_post_id: str) -> None:
             clip_post.platform_url = result.platform_url
             clip_post.status = ClipPost.PostStatus.POSTED
             clip_post.posted_at = timezone.now()
-            clip_post.save(update_fields=[
-                "platform_post_id", "platform_url", "status", "posted_at", "updated_at",
-            ])
+            clip_post.save(
+                update_fields=[
+                    "platform_post_id",
+                    "platform_url",
+                    "status",
+                    "posted_at",
+                    "updated_at",
+                ]
+            )
         else:
             clip_post.status = ClipPost.PostStatus.FAILED
             clip_post.last_error = result.error_message
@@ -271,7 +315,7 @@ def post_clip(self, clip_post_id: str) -> None:
     except Exception as exc:
         clip_post.last_error = str(exc)
         clip_post.save(update_fields=["last_error", "updated_at"])
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 120)
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 120)
 
 
 @shared_task(
@@ -301,10 +345,17 @@ def sync_clip_analytics(self, clip_post_id: str) -> None:
         clip_post.shares = result.shares
         clip_post.revenue_est_usd = result.revenue_est_usd
         clip_post.last_analytics_sync = timezone.now()
-        clip_post.save(update_fields=[
-            "views", "likes", "comments", "shares",
-            "revenue_est_usd", "last_analytics_sync", "updated_at",
-        ])
+        clip_post.save(
+            update_fields=[
+                "views",
+                "likes",
+                "comments",
+                "shares",
+                "revenue_est_usd",
+                "last_analytics_sync",
+                "updated_at",
+            ]
+        )
 
     except Exception as exc:
         logger.warning(
