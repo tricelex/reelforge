@@ -139,6 +139,10 @@ class SocialAccount(BaseAbstractModel):
 
     # Clipping config
     auto_approve_clips = models.BooleanField(default=False)
+    should_post = models.BooleanField(
+        default=True,
+        help_text="When enabled, completed clip renders are automatically posted to this account.",
+    )
     clip_caption_template = models.TextField(blank=True)
     max_clips_per_day = models.PositiveIntegerField(default=3)
 

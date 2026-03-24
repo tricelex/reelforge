@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+from decimal import ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 
 from reelforge.clipping.models import ClipCandidate
@@ -9,6 +11,7 @@ from reelforge.clipping.models import ClippingJob
 from reelforge.services.providers.registry import get_llm_provider
 
 logger = logging.getLogger("reelforge.clipping")
+_SIX_PLACES = Decimal("0.000001")
 
 
 class ClipAnalysisService:
@@ -55,7 +58,10 @@ class ClipAnalysisService:
                 )
 
         # Update cost
-        self.job.analysis_cost_usd = getattr(response, "cost_usd", 0) or 0
+        cost_usd = getattr(response, "cost_usd", 0)
+        self.job.analysis_cost_usd = (
+            Decimal(cost_usd).quantize(_SIX_PLACES, rounding=ROUND_HALF_UP) if cost_usd else Decimal(0)
+        )
         self.job.analysis_provider = llm.__class__.__name__
         self.job.save(update_fields=["analysis_cost_usd", "analysis_provider", "updated_at"])
 
@@ -109,6 +115,5 @@ class ClipAnalysisService:
         # Strip markdown fences if present
         if text.startswith("```"):
             text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
+            text = text.removeprefix("json")
         return json.loads(text)

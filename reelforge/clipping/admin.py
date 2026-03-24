@@ -5,6 +5,8 @@ import logging
 from django.contrib import admin
 from django.contrib import messages
 from django.http import HttpRequest
+from django.utils.html import format_html
+from django.utils.html import format_html_join
 from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 from unfold.admin import ModelAdmin
@@ -12,11 +14,45 @@ from unfold.admin import TabularInline
 from unfold.decorators import display
 
 from reelforge.clipping.models import ClipCandidate
+from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
-from reelforge.clipping.models import ClippingJob
 
 logger = logging.getLogger("reelforge.clipping")
+
+
+class ClipRenderInline(TabularInline):
+    model = ClipRender
+    extra = 0
+    can_delete = False
+    readonly_fields = (
+        "format",
+        "status",
+        "video_preview",
+        "file_size_bytes",
+        "render_duration_sec",
+        "last_error",
+    )
+    fields = (
+        "format",
+        "status",
+        "video_preview",
+        "file_size_bytes",
+        "render_duration_sec",
+        "last_error",
+    )
+
+    @display(description="Video")
+    def video_preview(self, obj: ClipRender) -> str:
+        if not obj.video_file:
+            return "—"
+        url = obj.video_file.url
+        return format_html(
+            '<video src="{}" controls style="max-width:320px;max-height:180px;"></video>'
+            '<br><a href="{}" download>Download</a>',
+            url,
+            url,
+        )
 
 
 class ClipCandidateInline(TabularInline):
@@ -31,6 +67,7 @@ class ClipCandidateInline(TabularInline):
         "reason",
         "status",
         "approved",
+        "renders_preview",
     )
     fields = (
         "title",
@@ -39,9 +76,21 @@ class ClipCandidateInline(TabularInline):
         "relevance_score",
         "status",
         "approved",
+        "renders_preview",
     )
     ordering = ["-relevance_score"]
     can_delete = False
+
+    @display(description="Renders")
+    def renders_preview(self, obj: ClipCandidate) -> str:
+        renders = obj.renders.filter(status=ClipRender.RenderStatus.COMPLETED, video_file__isnull=False)
+        if not renders.exists():
+            return "—"
+        return format_html_join(
+            " | ",
+            '<a href="{}" download>{}</a>',
+            ((r.video_file.url, r.get_format_display()) for r in renders),
+        )
 
 
 @admin.register(ClippingJob)
@@ -58,6 +107,7 @@ class ClippingJobAdmin(ModelAdmin):
     search_fields = ("source_title", "source_url", "channel__name")
     readonly_fields = (
         "id",
+        "status",
         "created_at",
         "updated_at",
         "started_at",
@@ -95,6 +145,68 @@ class ClippingJobAdmin(ModelAdmin):
     def total_cost_display(self, obj: ClippingJob) -> str:
         return f"${obj.total_cost_usd:.4f}"
 
+    @admin.action(description="Start clipping job (begin download)")
+    def start_clipping_job(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import download_source_video
+
+        started = 0
+        skipped = 0
+        for job in queryset:
+            if can_proceed(job.begin_download):
+                try:
+                    job.begin_download()
+                    job.save(update_fields=["status", "started_at", "updated_at"])
+                    download_source_video.delay(str(job.id))
+                    started += 1
+                except TransitionNotAllowed as exc:
+                    logger.warning(
+                        "Cannot begin download",
+                        extra={"job_id": str(job.id), "error": str(exc)},
+                    )
+                    skipped += 1
+            else:
+                skipped += 1
+        if started:
+            self.message_user(request, f"Started {started} clipping job(s).", messages.SUCCESS)
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} job(s) — not in INITIALIZING state.",
+                messages.WARNING,
+            )
+
+    @admin.action(description="Retry transcription for stuck/failed jobs")
+    def retry_transcription(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import transcribe_video
+
+        retried = 0
+        skipped = 0
+        for job in queryset:
+            if job.status in (ClippingJob.Status.TRANSCRIBING, ClippingJob.Status.FAILED):
+                if job.status == ClippingJob.Status.FAILED:
+                    try:
+                        job.retry_transcription()
+                        job.save(update_fields=["status", "last_error", "updated_at"])
+                    except TransitionNotAllowed as exc:
+                        logger.warning(
+                            "Cannot reset job to transcribing",
+                            extra={"job_id": str(job.id), "error": str(exc)},
+                        )
+                        skipped += 1
+                        continue
+                transcribe_video.delay(str(job.id))
+                retried += 1
+            else:
+                skipped += 1
+        if retried:
+            self.message_user(request, f"Queued transcription for {retried} job(s).", messages.SUCCESS)
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} job(s) — must be in TRANSCRIBING or FAILED state.",
+                messages.WARNING,
+            )
+
     @admin.action(description="Approve selected candidates")
     def approve_selected_candidates(self, request: HttpRequest, queryset) -> None:
         from django.utils import timezone
@@ -106,9 +218,7 @@ class ClippingJobAdmin(ModelAdmin):
                 candidate.status = ClipCandidate.CandidateStatus.APPROVED
                 candidate.approved_by = request.user
                 candidate.approved_at = timezone.now()
-                candidate.save(
-                    update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"]
-                )
+                candidate.save(update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"])
                 approved += 1
         self.message_user(request, f"Approved {approved} candidate(s).", messages.SUCCESS)
 
@@ -134,11 +244,9 @@ class ClippingJobAdmin(ModelAdmin):
                         extra={"job_id": str(job.id), "error": str(exc)},
                     )
 
-        self.message_user(
-            request, f"Triggered rendering for {triggered} candidate(s).", messages.SUCCESS
-        )
+        self.message_user(request, f"Triggered rendering for {triggered} candidate(s).", messages.SUCCESS)
 
-    actions = ["approve_selected_candidates", "trigger_render"]
+    actions = ["start_clipping_job", "retry_transcription", "approve_selected_candidates", "trigger_render"]
 
 
 @admin.register(ClipPost)
@@ -192,10 +300,41 @@ class ClipPostAdmin(ModelAdmin):
         return obj.status
 
 
-# ClipRender is intentionally not registered — managed via inline or read-only
+@admin.register(ClipCandidate)
+class ClipCandidateAdmin(ModelAdmin):
+    list_display = (
+        "__str__",
+        "clipping_job",
+        "relevance_score",
+        "status",
+        "approved",
+    )
+    list_filter = ("status", "approved")
+    search_fields = ("title", "clipping_job__source_title")
+    readonly_fields = (
+        "id",
+        "clipping_job",
+        "start_sec",
+        "end_sec",
+        "title",
+        "hook_text",
+        "relevance_score",
+        "reason",
+        "transcript_excerpt",
+        "status",
+        "approved",
+        "approved_at",
+        "approved_by",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [ClipRenderInline]
+
+
 __all__ = [
+    "ClipCandidateAdmin",
     "ClipCandidateInline",
-    "ClippingJobAdmin",
     "ClipPostAdmin",
-    "ClipRender",
+    "ClipRenderInline",
+    "ClippingJobAdmin",
 ]

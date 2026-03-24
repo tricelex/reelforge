@@ -204,6 +204,14 @@ class ClippingJob(BaseAbstractModel):
     def resume_to_rendering(self) -> None:
         pass
 
+    @transition(
+        field=status,
+        source=[Status.FAILED, Status.TRANSCRIBING],
+        target=Status.TRANSCRIBING,
+    )
+    def retry_transcription(self) -> None:
+        self.last_error = ""
+
 
 class ClipCandidate(BaseAbstractModel):
     class CandidateStatus(models.TextChoices):

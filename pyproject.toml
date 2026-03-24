@@ -297,6 +297,7 @@ dependencies = [
     "google-auth-oauthlib>=1.2.4",
     "elevenlabs>=2.36.1",
     "tavily-python>=0.5.0",
+    "yt-dlp>=2024.1.1",
     "fal-client>=0.10.0",
     "celery-types>=0.26.0",
 ]

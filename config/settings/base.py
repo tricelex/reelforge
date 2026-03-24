@@ -320,10 +320,7 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_serializer
 CELERY_RESULT_SERIALIZER = "json"
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
-CELERY_TASK_TIME_LIMIT = 5 * 60
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
-CELERY_TASK_SOFT_TIME_LIMIT = 60
+# No global time limits — set per-task where needed (e.g. render_clip has time_limit=1800)
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
@@ -669,6 +666,27 @@ UNFOLD = {
                         "title": _("Analytics Snapshots"),
                         "icon": "analytics",
                         "link": reverse_lazy("admin:distribution_analyticssnapshot_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Clipping"),
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("Clipping Jobs"),
+                        "icon": "content_cut",
+                        "link": reverse_lazy("admin:clipping_clippingjob_changelist"),
+                    },
+                    {
+                        "title": _("Clip Candidates"),
+                        "icon": "movie",
+                        "link": reverse_lazy("admin:clipping_clipcandidate_changelist"),
+                    },
+                    {
+                        "title": _("Clip Posts"),
+                        "icon": "share",
+                        "link": reverse_lazy("admin:clipping_clippost_changelist"),
                     },
                 ],
             },
