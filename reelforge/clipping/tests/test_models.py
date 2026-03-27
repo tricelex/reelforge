@@ -120,7 +120,8 @@ def test_clip_candidate_duration_property() -> None:
 @pytest.mark.django_db
 def test_clip_layout_config_default_render_mode() -> None:
     candidate = ClipCandidateFactory()
-    config = ClipLayoutConfig.objects.create(candidate=candidate)
+    # Signal auto-creates the config on candidate save — just fetch it
+    config = ClipLayoutConfig.objects.get(candidate=candidate)
     assert config.render_mode == "SMART_CROP"
 
 
@@ -174,5 +175,5 @@ def test_has_spatial_regions_false_when_region_b_missing() -> None:
 @pytest.mark.django_db
 def test_clip_layout_config_str() -> None:
     candidate = ClipCandidateFactory()
-    config = ClipLayoutConfig.objects.create(candidate=candidate)
+    config = ClipLayoutConfig.objects.get(candidate=candidate)
     assert "Smart Crop" in str(config)

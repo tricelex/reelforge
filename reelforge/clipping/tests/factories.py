@@ -6,6 +6,7 @@ from factory.django import DjangoModelFactory
 from ***REMOVED***.channels.tests.factories import ChannelFactory
 from ***REMOVED***.channels.tests.factories import SocialAccountFactory
 from ***REMOVED***.clipping.models import ClipCandidate
+from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
 from ***REMOVED***.clipping.models import ClippingJob
@@ -56,3 +57,28 @@ class ClipPostFactory(DjangoModelFactory[ClipPost]):
 
     class Meta:
         model = ClipPost
+
+
+class ClipLayoutConfigFactory(DjangoModelFactory[ClipLayoutConfig]):
+    """Factory for ClipLayoutConfig.
+
+    Uses update_or_create so it works even when the auto-creation signal
+    has already created a ClipLayoutConfig for the candidate.
+    """
+
+    candidate = factory.SubFactory(ClipCandidateFactory)
+    render_mode = ClipLayoutConfig.RenderMode.SMART_CROP
+
+    class Meta:
+        model = ClipLayoutConfig
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        candidate = kwargs.get("candidate")
+        if candidate is not None:
+            obj, _ = model_class.objects.update_or_create(
+                candidate=candidate,
+                defaults={k: v for k, v in kwargs.items() if k != "candidate"},
+            )
+            return obj
+        return super()._create(model_class, *args, **kwargs)
