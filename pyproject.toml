@@ -285,6 +285,8 @@ dependencies = [
     "hiredis==3.3.0",
     "moviepy>=1.0.3",
     "openai-agents>=0.9.1",
+    "mediapipe>=0.10.0",
+    "opencv-python-headless>=4.9.0",
     "pillow==12.1.1",
     "psycopg[c]==3.3.2",
     "pydub>=0.25.1",
