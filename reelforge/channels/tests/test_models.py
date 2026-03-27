@@ -43,3 +43,15 @@ def test_get_youtube_account_returns_active_account() -> None:
 def test_get_youtube_account_returns_none_when_not_connected() -> None:
     channel = ChannelFactory()
     assert channel.get_youtube_account() is None
+
+
+@pytest.mark.django_db
+def test_channel_default_render_mode_is_smart_crop() -> None:
+    channel = ChannelFactory()
+    assert channel.default_render_mode == "SMART_CROP"
+
+
+@pytest.mark.django_db
+def test_channel_default_layout_config_is_empty_dict() -> None:
+    channel = ChannelFactory()
+    assert channel.default_layout_config == {}
