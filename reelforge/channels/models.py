@@ -6,6 +6,7 @@ from django.db import models
 from ***REMOVED***.channels.choices import ChannelStatus
 from ***REMOVED***.channels.choices import NicheCategory
 from ***REMOVED***.channels.schemas import UploadSchedule
+from ***REMOVED***.clipping.constants import RenderMode as ClipRenderMode
 from ***REMOVED***.core.models import BaseAbstractModel
 from ***REMOVED***.core.validators import pydantic_validator
 
@@ -55,6 +56,23 @@ class Channel(BaseAbstractModel):
     channel_intro_file = models.FileField(upload_to="channels/intros/", null=True, blank=True)
     channel_outro_file = models.FileField(upload_to="channels/outros/", null=True, blank=True)
     default_thumbnail_template = models.FileField(upload_to="channels/thumb_templates/", null=True, blank=True)
+
+    # Default clip layout
+    default_render_mode = models.CharField(
+        max_length=20,
+        choices=ClipRenderMode.choices,
+        default=ClipRenderMode.SMART_CROP,
+        help_text="Default render mode applied to new ClipCandidates from this channel.",
+    )
+    default_layout_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Default region coordinates for SPATIAL_STACK mode. "
+            "Keys: region_a_label, region_a_x, region_a_y, region_a_w, region_a_h, "
+            "region_b_label, region_b_x, region_b_y, region_b_w, region_b_h, stack_ratio."
+        ),
+    )
 
     # Voice configuration
     tts_provider = models.CharField(max_length=50, default="elevenlabs")
