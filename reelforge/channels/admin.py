@@ -52,7 +52,7 @@ class ChannelPlaylistInline(TabularInline):
 class SocialAccountInline(StackedInline):
     model = SocialAccount
     extra = 0
-    fields = ("platform", "account_id", "handle", "display_name", "is_active", "auto_approve_clips")
+    fields = ("platform", "account_id", "handle", "display_name", "is_active", "auto_approve_clips", "should_post")
     readonly_fields = ("created_at", "last_sync_at", "follower_count")
 
 
@@ -113,9 +113,7 @@ class ChannelAdmin(ModelAdmin):
         (
             _("YouTube"),
             {
-                "fields": (
-                    "oauth_credentials_display",
-                ),
+                "fields": ("oauth_credentials_display",),
             },
         ),
         (
