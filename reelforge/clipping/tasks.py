@@ -10,11 +10,14 @@ from django.conf import settings
 from django_fsm import can_proceed
 
 from ***REMOVED***.clipping.models import ClipCandidate
+from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
 from ***REMOVED***.core.storage import get_clip_downloaded_path
 from ***REMOVED***.core.storage import get_clip_render_path
+from ***REMOVED***.services.media.clip_renderer import ClipRenderConfig
+from ***REMOVED***.services.media.clip_renderer import ClipRenderer
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
@@ -222,12 +225,10 @@ def render_clip(self, clip_candidate_id: str) -> None:
     )
 
     try:
-        from ***REMOVED***.services.media.clip_renderer import ClipRenderConfig
-        from ***REMOVED***.services.media.clip_renderer import ClipRenderer
-
         job = candidate.clipping_job
         channel = job.channel
 
+        layout_config = ClipLayoutConfig.objects.filter(candidate=candidate).first()
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
 
@@ -240,10 +241,17 @@ def render_clip(self, clip_candidate_id: str) -> None:
             transcript_json=job.transcript_json if render.include_captions else {},
             intro_path=Path(channel.channel_intro_file.path) if channel.channel_intro_file else None,
             outro_path=Path(channel.channel_outro_file.path) if channel.channel_outro_file else None,
+            layout_config=layout_config,
         )
 
         renderer = ClipRenderer(config)
         renderer.render()
+
+        # Write back speaker detection results when SMART_CROP auto-detected
+        if layout_config is not None and renderer.last_speaker_crop_result is not None:
+            layout_config.face_detected = renderer.last_speaker_crop_result.face_detected
+            layout_config.detection_confidence = renderer.last_speaker_crop_result.confidence
+            layout_config.save(update_fields=["face_detected", "detection_confidence", "updated_at"])
 
         render.video_file = str(output_path.relative_to(settings.MEDIA_ROOT))
         render.file_size_bytes = output_path.stat().st_size
@@ -316,6 +324,129 @@ def post_clip(self, clip_post_id: str) -> None:
         clip_post.last_error = str(exc)
         clip_post.save(update_fields=["last_error", "updated_at"])
         raise self.retry(exc=exc, countdown=2**self.request.retries * 120)
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.clipping.preview_clip_layout",
+    max_retries=1,
+    queue="clipping",
+    time_limit=120,
+    soft_time_limit=100,
+)
+def preview_clip_layout(self, layout_config_id: str) -> None:
+    """Generate a JPEG preview image showing crop region(s) overlaid on a source frame.
+
+    For SMART_CROP: draws the detected (or manual) 9:16 crop window in green.
+    For SPATIAL_STACK: draws region A (green) and region B (blue).
+    For CENTER_CROP: draws the center 9:16 crop window in green.
+    Saves the result to ClipLayoutConfig.preview_image.
+    """
+    import io
+    import tempfile
+
+    import cv2
+    import numpy as np
+    from django.core.files.base import ContentFile
+
+    try:
+        lc = ClipLayoutConfig.objects.select_related(
+            "candidate__clipping_job"
+        ).get(id=layout_config_id)
+    except ClipLayoutConfig.DoesNotExist:
+        logger.error("ClipLayoutConfig not found", extra={"id": layout_config_id})
+        return
+
+    candidate = lc.candidate
+    job = candidate.clipping_job
+
+    if not job.downloaded_file:
+        logger.warning(
+            "Cannot generate preview — source video not downloaded",
+            extra={"layout_config_id": layout_config_id},
+        )
+        return
+
+    source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
+    mid_sec = (candidate.start_sec + candidate.end_sec) / 2
+
+    cap = cv2.VideoCapture(str(source_path))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(mid_sec * fps))
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret or frame is None:
+        logger.warning(
+            "Could not extract frame for preview",
+            extra={"layout_config_id": layout_config_id, "mid_sec": mid_sec},
+        )
+        return
+
+    GREEN = (0, 220, 0)
+    BLUE = (220, 100, 0)
+    thickness = max(3, src_h // 200)
+
+    if lc.render_mode == ClipLayoutConfig.RenderMode.SPATIAL_STACK and lc.has_spatial_regions:
+        cv2.rectangle(
+            frame,
+            (lc.region_a_x, lc.region_a_y),
+            (lc.region_a_x + lc.region_a_w, lc.region_a_y + lc.region_a_h),
+            GREEN,
+            thickness,
+        )
+        cv2.putText(
+            frame, lc.region_a_label, (lc.region_a_x + 10, lc.region_a_y + 40),
+            cv2.FONT_HERSHEY_SIMPLEX, 1.2, GREEN, 2,
+        )
+        cv2.rectangle(
+            frame,
+            (lc.region_b_x, lc.region_b_y),
+            (lc.region_b_x + lc.region_b_w, lc.region_b_y + lc.region_b_h),
+            BLUE,
+            thickness,
+        )
+        cv2.putText(
+            frame, lc.region_b_label, (lc.region_b_x + 10, lc.region_b_y + 40),
+            cv2.FONT_HERSHEY_SIMPLEX, 1.2, BLUE, 2,
+        )
+    else:
+        # SMART_CROP or CENTER_CROP — draw the 9:16 crop window
+        crop_w = int(9 / 16 * src_h)
+        if lc.render_mode == ClipLayoutConfig.RenderMode.SMART_CROP and lc.has_manual_smart_crop:
+            crop_x = lc.manual_crop_x
+            crop_w = lc.manual_crop_w
+            crop_h = lc.manual_crop_h
+        else:
+            crop_x = max(0, (src_w - crop_w) // 2)
+            crop_h = src_h
+        cv2.rectangle(
+            frame,
+            (crop_x, 0),
+            (crop_x + crop_w, crop_h),
+            GREEN,
+            thickness,
+        )
+
+    # Scale preview to a reasonable width for fast loading
+    preview_w = min(src_w, 960)
+    scale = preview_w / src_w
+    preview_h = int(src_h * scale)
+    preview_frame = cv2.resize(frame, (preview_w, preview_h))
+
+    ok, buf = cv2.imencode(".jpg", preview_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ok:
+        logger.error("Failed to encode preview JPEG", extra={"layout_config_id": layout_config_id})
+        return
+
+    filename = f"preview_{layout_config_id}.jpg"
+    lc.preview_image.save(filename, ContentFile(buf.tobytes()), save=True)
+    logger.info(
+        "Preview image generated",
+        extra={"layout_config_id": layout_config_id, "filename": filename},
+    )
 
 
 @shared_task(

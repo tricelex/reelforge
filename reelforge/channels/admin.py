@@ -207,6 +207,16 @@ class ChannelAdmin(ModelAdmin):
             },
         ),
         (
+            _("Clip Layout Defaults"),
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "default_render_mode",
+                    "default_layout_config",
+                ),
+            },
+        ),
+        (
             _("Boilerplate"),
             {
                 "classes": ("collapse",),
