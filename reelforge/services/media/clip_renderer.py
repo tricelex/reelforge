@@ -6,9 +6,16 @@ import time
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 import ffmpeg
+
+from reelforge.services.media.speaker_detection import SpeakerCropResult
+from reelforge.services.media.speaker_detection import SpeakerDetectionService
+
+if TYPE_CHECKING:
+    from reelforge.clipping.models import ClipLayoutConfig
 
 logger = logging.getLogger("reelforge.media.clip_renderer")
 
@@ -32,11 +39,13 @@ class ClipRenderConfig:
     transcript_json: dict[str, Any] = field(default_factory=dict)
     intro_path: Path | None = None
     outro_path: Path | None = None
+    layout_config: ClipLayoutConfig | None = None
 
 
 class ClipRenderer:
     def __init__(self, config: ClipRenderConfig) -> None:
         self.config = config
+        self.last_speaker_crop_result: SpeakerCropResult | None = None
 
     def render(self) -> Path:
         logger.info(
@@ -74,27 +83,119 @@ class ClipRenderer:
         return self.config.output_path
 
     def _build_ffmpeg_command(self) -> list[str]:
+        from reelforge.clipping.models import ClipLayoutConfig
+
+        lc = self.config.layout_config
+        render_mode = lc.render_mode if lc else ClipLayoutConfig.RenderMode.CENTER_CROP
+
+        if render_mode == ClipLayoutConfig.RenderMode.SPATIAL_STACK:
+            return self._build_spatial_stack_command()
+        if render_mode == ClipLayoutConfig.RenderMode.SMART_CROP:
+            return self._build_smart_crop_command()
+        return self._build_center_crop_command()
+
+    def _build_center_crop_command(self) -> list[str]:
         c = self.config
-        cmd = [
+        return [
             "ffmpeg",
             "-y",
             "-ss", str(c.start_sec),
             "-to", str(c.end_sec),
             "-i", str(c.source_path),
-            # Crop to 9:16 center
             "-vf", f"crop=ih*9/16:ih,scale={c.width}:{c.height},fps={c.fps}",
-            # Video codec
             "-c:v", "libx264",
             "-crf", str(c.crf),
             "-preset", c.preset,
-            # Audio
             "-c:a", "aac",
             "-b:a", c.audio_bitrate,
-            # Streaming optimized
             "-movflags", "faststart",
             str(c.output_path),
         ]
-        return cmd
+
+    def _build_smart_crop_command(self) -> list[str]:
+        c = self.config
+        lc = c.layout_config
+
+        # Determine crop_x: manual override takes priority over auto-detection
+        if lc is not None and lc.has_manual_smart_crop:
+            crop_x = lc.manual_crop_x
+            crop_w = lc.manual_crop_w
+            crop_h = lc.manual_crop_h
+        else:
+            service = SpeakerDetectionService()
+            result = service.detect(c.source_path, c.start_sec, c.end_sec)
+            self.last_speaker_crop_result = result
+            crop_x = result.crop_x
+            crop_w = result.crop_w
+            crop_h = result.crop_h
+
+        vf = f"crop={crop_w}:{crop_h}:{crop_x}:0,scale={c.width}:{c.height},fps={c.fps}"
+        return [
+            "ffmpeg",
+            "-y",
+            "-ss", str(c.start_sec),
+            "-to", str(c.end_sec),
+            "-i", str(c.source_path),
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-crf", str(c.crf),
+            "-preset", c.preset,
+            "-c:a", "aac",
+            "-b:a", c.audio_bitrate,
+            "-movflags", "faststart",
+            str(c.output_path),
+        ]
+
+    def _build_spatial_stack_command(self) -> list[str]:
+        """Build an FFmpeg filter_complex command that stacks two spatial regions vertically.
+
+        Region A (top) and Region B (bottom) are cropped from the same source frame
+        and stacked into a 9:16 output. The stack_ratio controls how much of the output
+        height goes to region A.
+        """
+        c = self.config
+        lc = c.layout_config
+
+        if lc is None or not lc.has_spatial_regions:
+            # Fall back to center crop if regions are not configured
+            logger.warning(
+                "SPATIAL_STACK requested but regions not configured — falling back to center crop",
+                extra={"layout_config_id": str(lc.id) if lc else None},
+            )
+            return self._build_center_crop_command()
+
+        out_w = c.width   # 1080
+        out_h = c.height  # 1920
+        a_out_h = int(out_h * lc.stack_ratio)
+        b_out_h = out_h - a_out_h
+
+        filter_complex = (
+            f"[0:v]trim=start={c.start_sec}:end={c.end_sec},setpts=PTS-STARTPTS,"
+            f"crop={lc.region_a_w}:{lc.region_a_h}:{lc.region_a_x}:{lc.region_a_y},"
+            f"scale={out_w}:{a_out_h}[top];"
+            f"[0:v]trim=start={c.start_sec}:end={c.end_sec},setpts=PTS-STARTPTS,"
+            f"crop={lc.region_b_w}:{lc.region_b_h}:{lc.region_b_x}:{lc.region_b_y},"
+            f"scale={out_w}:{b_out_h}[bottom];"
+            f"[top][bottom]vstack=inputs=2[out]"
+        )
+
+        return [
+            "ffmpeg",
+            "-y",
+            "-i", str(c.source_path),
+            "-filter_complex", filter_complex,
+            "-map", "[out]",
+            "-map", "0:a",
+            "-ss", str(c.start_sec),
+            "-to", str(c.end_sec),
+            "-c:v", "libx264",
+            "-crf", str(c.crf),
+            "-preset", c.preset,
+            "-c:a", "aac",
+            "-b:a", c.audio_bitrate,
+            "-movflags", "faststart",
+            str(c.output_path),
+        ]
 
     def get_output_duration(self) -> float:
         if not self.config.output_path.exists():

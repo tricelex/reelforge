@@ -14,11 +14,59 @@ from unfold.admin import TabularInline
 from unfold.decorators import display
 
 from reelforge.clipping.models import ClipCandidate
+from reelforge.clipping.models import ClipLayoutConfig
 from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
 
 logger = logging.getLogger("reelforge.clipping")
+
+
+class ClipLayoutConfigInline(TabularInline):
+    model = ClipLayoutConfig
+    extra = 0
+    can_delete = False
+    max_num = 1
+    verbose_name = "Layout Config"
+    verbose_name_plural = "Layout Config"
+    fields = (
+        "render_mode",
+        "manual_crop_x",
+        "manual_crop_y",
+        "manual_crop_w",
+        "manual_crop_h",
+        "region_a_label",
+        "region_a_x",
+        "region_a_y",
+        "region_a_w",
+        "region_a_h",
+        "region_b_label",
+        "region_b_x",
+        "region_b_y",
+        "region_b_w",
+        "region_b_h",
+        "stack_ratio",
+        "preview_thumbnail",
+        "detection_summary",
+    )
+    readonly_fields = ("preview_thumbnail", "detection_summary")
+
+    @display(description="Preview")
+    def preview_thumbnail(self, obj: ClipLayoutConfig) -> str:
+        if not obj.preview_image:
+            return "—"
+        return format_html(
+            '<img src="{}" style="max-width:320px;max-height:180px;border-radius:4px;" />',
+            obj.preview_image.url,
+        )
+
+    @display(description="Detection")
+    def detection_summary(self, obj: ClipLayoutConfig) -> str:
+        if obj.face_detected is None:
+            return "—"
+        status = "Face detected" if obj.face_detected else "No face (center crop used)"
+        conf = f" ({obj.detection_confidence:.0%})" if obj.detection_confidence is not None else ""
+        return f"{status}{conf}"
 
 
 class ClipRenderInline(TabularInline):
@@ -306,10 +354,11 @@ class ClipCandidateAdmin(ModelAdmin):
         "__str__",
         "clipping_job",
         "relevance_score",
+        "render_mode_badge",
         "status",
         "approved",
     )
-    list_filter = ("status", "approved")
+    list_filter = ("status", "approved", "layout_config__render_mode")
     search_fields = ("title", "clipping_job__source_title")
     readonly_fields = (
         "id",
@@ -328,12 +377,52 @@ class ClipCandidateAdmin(ModelAdmin):
         "created_at",
         "updated_at",
     )
-    inlines = [ClipRenderInline]
+    inlines = [ClipLayoutConfigInline, ClipRenderInline]
+
+    @display(
+        description="Layout",
+        label={
+            "SMART_CROP": "info",
+            "SPATIAL_STACK": "warning",
+            "CENTER_CROP": "default",
+        },
+    )
+    def render_mode_badge(self, obj: ClipCandidate) -> str:
+        try:
+            return obj.layout_config.render_mode
+        except ClipLayoutConfig.DoesNotExist:
+            return "CENTER_CROP"
+
+    @admin.action(description="Generate layout preview image")
+    def generate_preview(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import preview_clip_layout
+
+        queued = 0
+        skipped = 0
+        for candidate in queryset:
+            try:
+                lc = candidate.layout_config
+                preview_clip_layout.delay(str(lc.id))
+                queued += 1
+            except ClipLayoutConfig.DoesNotExist:
+                skipped += 1
+
+        if queued:
+            self.message_user(request, f"Queued preview generation for {queued} candidate(s).", messages.SUCCESS)
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} candidate(s) — no layout config found.",
+                messages.WARNING,
+            )
+
+    actions = ["generate_preview"]
 
 
 __all__ = [
     "ClipCandidateAdmin",
     "ClipCandidateInline",
+    "ClipLayoutConfigInline",
     "ClipPostAdmin",
     "ClipRenderInline",
     "ClippingJobAdmin",
