@@ -12,6 +12,7 @@ from django_fsm import transition
 
 from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import SocialAccount
+from ***REMOVED***.clipping.constants import RenderMode as ClipRenderMode
 from ***REMOVED***.core.models import BaseAbstractModel
 
 if TYPE_CHECKING:
@@ -400,3 +401,95 @@ class ClipPost(BaseAbstractModel):
 
     def __str__(self) -> str:
         return f"{self.social_account.get_platform_display()} post \u2014 {self.render}"
+
+
+class ClipLayoutConfig(BaseAbstractModel):
+    """Stores render mode and layout parameters for a ClipCandidate.
+
+    Auto-created by a post_save signal on ClipCandidate, pre-populated from
+    the channel's default_render_mode and default_layout_config.
+    """
+
+    # Expose RenderMode as a class attribute for external access (tasks, admin, etc.)
+    RenderMode = ClipRenderMode
+
+    candidate = models.OneToOneField(
+        ClipCandidate,
+        on_delete=models.CASCADE,
+        related_name="layout_config",
+    )
+    render_mode = models.CharField(
+        max_length=20,
+        choices=ClipRenderMode.choices,
+        default=ClipRenderMode.SMART_CROP,
+    )
+
+    # Smart Crop manual override — all null means auto-detect via face detection
+    manual_crop_x = models.PositiveIntegerField(null=True, blank=True)
+    manual_crop_y = models.PositiveIntegerField(null=True, blank=True)
+    manual_crop_w = models.PositiveIntegerField(null=True, blank=True)
+    manual_crop_h = models.PositiveIntegerField(null=True, blank=True)
+
+    # Spatial Stack — Region A (top slot)
+    region_a_label = models.CharField(max_length=100, blank=True, default="Region A")
+    region_a_x = models.PositiveIntegerField(null=True, blank=True)
+    region_a_y = models.PositiveIntegerField(null=True, blank=True)
+    region_a_w = models.PositiveIntegerField(null=True, blank=True)
+    region_a_h = models.PositiveIntegerField(null=True, blank=True)
+
+    # Spatial Stack — Region B (bottom slot)
+    region_b_label = models.CharField(max_length=100, blank=True, default="Region B")
+    region_b_x = models.PositiveIntegerField(null=True, blank=True)
+    region_b_y = models.PositiveIntegerField(null=True, blank=True)
+    region_b_w = models.PositiveIntegerField(null=True, blank=True)
+    region_b_h = models.PositiveIntegerField(null=True, blank=True)
+    # Fraction of output height given to region A (top). Region B gets 1 - stack_ratio.
+    stack_ratio = models.FloatField(default=0.6)
+
+    # Detection quality — written back by render_clip task after SMART_CROP render
+    face_detected = models.BooleanField(null=True, blank=True)
+    detection_confidence = models.FloatField(null=True, blank=True)
+
+    # Preview image — written by preview_clip_layout task
+    preview_image = models.ImageField(
+        upload_to="clipping/previews/",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Clip Layout Config"
+        verbose_name_plural = "Clip Layout Configs"
+
+    def __str__(self) -> str:
+        return f"{self.get_render_mode_display()} — {self.candidate}"
+
+    @property
+    def has_manual_smart_crop(self) -> bool:
+        """True only when all four manual crop fields are set."""
+        return all(
+            v is not None
+            for v in [
+                self.manual_crop_x,
+                self.manual_crop_y,
+                self.manual_crop_w,
+                self.manual_crop_h,
+            ]
+        )
+
+    @property
+    def has_spatial_regions(self) -> bool:
+        """True only when all eight region A + B coordinate fields are set."""
+        return all(
+            v is not None
+            for v in [
+                self.region_a_x,
+                self.region_a_y,
+                self.region_a_w,
+                self.region_a_h,
+                self.region_b_x,
+                self.region_b_y,
+                self.region_b_w,
+                self.region_b_h,
+            ]
+        )
