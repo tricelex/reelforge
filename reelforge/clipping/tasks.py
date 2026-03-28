@@ -217,9 +217,14 @@ def render_clip(self, clip_candidate_id: str) -> None:
         logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
         return
 
+    layout_config = ClipLayoutConfig.objects.filter(candidate=candidate).first()
+    render_format = (
+        layout_config.render_format if layout_config is not None else ClipRender.Format.VERTICAL_9_16
+    )
+
     render = ClipRender.objects.create(
         candidate=candidate,
-        format=ClipRender.Format.VERTICAL_9_16,
+        format=render_format,
         celery_task_id=self.request.id,
         status=ClipRender.RenderStatus.RUNNING,
     )
@@ -227,8 +232,6 @@ def render_clip(self, clip_candidate_id: str) -> None:
     try:
         job = candidate.clipping_job
         channel = job.channel
-
-        layout_config = ClipLayoutConfig.objects.filter(candidate=candidate).first()
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
 

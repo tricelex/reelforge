@@ -10,6 +10,7 @@ from django.utils.html import format_html_join
 from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 from unfold.admin import ModelAdmin
+from unfold.admin import StackedInline
 from unfold.admin import TabularInline
 from unfold.decorators import display
 
@@ -22,34 +23,56 @@ from reelforge.clipping.models import ClipRender
 logger = logging.getLogger("reelforge.clipping")
 
 
-class ClipLayoutConfigInline(TabularInline):
+class ClipLayoutConfigInline(StackedInline):
     model = ClipLayoutConfig
     extra = 0
     can_delete = False
     max_num = 1
+    collapsible = True
     verbose_name = "Layout Config"
     verbose_name_plural = "Layout Config"
-    fields = (
-        "render_mode",
-        "manual_crop_x",
-        "manual_crop_y",
-        "manual_crop_w",
-        "manual_crop_h",
-        "region_a_label",
-        "region_a_x",
-        "region_a_y",
-        "region_a_w",
-        "region_a_h",
-        "region_b_label",
-        "region_b_x",
-        "region_b_y",
-        "region_b_w",
-        "region_b_h",
-        "stack_ratio",
-        "preview_thumbnail",
-        "detection_summary",
-    )
     readonly_fields = ("preview_thumbnail", "detection_summary")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("render_mode", "render_format"),
+                    ("preview_thumbnail", "detection_summary"),
+                ),
+            },
+        ),
+        (
+            "Smart Crop — Manual Override",
+            {
+                "fields": (
+                    ("manual_crop_x", "manual_crop_y"),
+                    ("manual_crop_w", "manual_crop_h"),
+                ),
+            },
+        ),
+        (
+            "Spatial Stack — Region A",
+            {
+                "fields": (
+                    "region_a_label",
+                    ("region_a_x", "region_a_y"),
+                    ("region_a_w", "region_a_h"),
+                ),
+            },
+        ),
+        (
+            "Spatial Stack — Region B",
+            {
+                "fields": (
+                    "region_b_label",
+                    ("region_b_x", "region_b_y"),
+                    ("region_b_w", "region_b_h"),
+                    "stack_ratio",
+                ),
+            },
+        ),
+    )
 
     @display(description="Preview")
     def preview_thumbnail(self, obj: ClipLayoutConfig) -> str:
@@ -357,8 +380,9 @@ class ClipCandidateAdmin(ModelAdmin):
         "render_mode_badge",
         "status",
         "approved",
+        "updated_at",
     )
-    list_filter = ("status", "approved", "layout_config__render_mode")
+    list_filter = ("status", "approved", "layout_config__render_mode", "updated_at")
     search_fields = ("title", "clipping_job__source_title")
     readonly_fields = (
         "id",

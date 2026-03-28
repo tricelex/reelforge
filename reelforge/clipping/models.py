@@ -57,11 +57,13 @@ class ClippingJob(BaseAbstractModel):
         upload_to="clipping/source/",
         blank=True,
         null=True,
+        max_length=500,
     )
     downloaded_file = models.FileField(
         upload_to="clipping/downloaded/",
         blank=True,
         null=True,
+        max_length=500,
     )
     source_title = models.CharField(max_length=500, blank=True)
     source_duration_sec = models.PositiveIntegerField(null=True, blank=True)
@@ -319,6 +321,7 @@ class ClipRender(BaseAbstractModel):
         upload_to="clipping/renders/",
         blank=True,
         null=True,
+        max_length=500,
     )
     file_size_bytes = models.PositiveIntegerField(null=True, blank=True)
     include_captions = models.BooleanField(default=True)
@@ -423,6 +426,11 @@ class ClipLayoutConfig(BaseAbstractModel):
         choices=ClipRenderMode.choices,
         default=ClipRenderMode.SMART_CROP,
     )
+    render_format = models.CharField(
+        max_length=20,
+        choices=ClipRender.Format.choices,
+        default=ClipRender.Format.VERTICAL_9_16,
+    )
 
     # Smart Crop manual override — all null means auto-detect via face detection
     manual_crop_x = models.PositiveIntegerField(null=True, blank=True)
@@ -455,6 +463,7 @@ class ClipLayoutConfig(BaseAbstractModel):
         upload_to="clipping/previews/",
         null=True,
         blank=True,
+        max_length=500,
     )
 
     class Meta:
