@@ -2,15 +2,21 @@
 
 **Date:** 2026-03-28
 **Status:** Approved
-**Scope:** Captions, hook overlays, intro/outro library, watermarks, timed overlays, progress bar
+**Scope:** Captions, hook overlays, intro/outro library, watermarks, timed overlays, progress bar,
+per-stage tracking + retry, custom transitions, multi-language caption translation, background music
 
 ---
 
 ## Overview
 
-Enhance the clipping pipeline to support CapCut-level per-clip personalisation: styled captions, hook text overlays, channel intro/outro library, persistent watermarks, time-ranged overlays, and a progress bar. All features support **channel-level defaults** with **per-clip overrides**.
+Enhance the clipping pipeline to support CapCut-level per-clip personalisation: styled captions,
+hook text overlays, channel intro/outro library, persistent watermarks, time-ranged overlays,
+progress bar, background music, and custom transitions. All features support **channel-level
+defaults** with **per-clip overrides**.
 
-The renderer is refactored from a single FFmpeg command builder into a **multi-stage pipeline** where each concern is an isolated, independently testable `RenderStage`.
+The renderer is refactored from a single FFmpeg command builder into a **multi-stage pipeline**
+where each stage writes a persistent output file. The operator can inspect the result of every
+stage in the admin and retry from any failed or unwanted stage forward.
 
 ---
 
@@ -18,7 +24,7 @@ The renderer is refactored from a single FFmpeg command builder into a **multi-s
 
 ### 1.1 `ClipRenderTemplate` (channel level defaults)
 
-`OneToOne` with `Channel`. Auto-created when a `Channel` is saved (via `post_save` signal, same pattern as `ClipLayoutConfig`).
+`OneToOne` with `Channel`. Auto-created when a `Channel` is saved (via `post_save` signal).
 
 **Caption fields:**
 - `caption_enabled: BooleanField(default=True)`
@@ -31,6 +37,11 @@ The renderer is refactored from a single FFmpeg command builder into a **multi-s
 - `caption_bg_color: CharField(max_length=9, blank=True)` — empty = no background box
 - `caption_position: CharField(choices=[TOP, CENTER, BOTTOM], default=BOTTOM)`
 - `caption_animation: CharField(choices=[POP, FADE, NONE], default=POP)`
+- `caption_language: CharField(max_length=10, default="en")` — BCP-47 language code of source audio
+- `caption_translate_to: CharField(max_length=10, blank=True)` — if set, translate captions to this language before rendering (e.g. "es", "fr", "pt"). Empty = no translation.
+
+**Emoji accent fields:**
+- `emoji_keyword_map: JSONField(default=dict, blank=True)` — maps keywords to emoji strings, e.g. `{"crazy": "🤯", "money": "💰", "fire": "🔥"}`. Applied during `EMOJI_ACCENT` caption generation.
 
 **Hook fields:**
 - `hook_enabled: BooleanField(default=True)`
@@ -41,6 +52,11 @@ The renderer is refactored from a single FFmpeg command builder into a **multi-s
 - `hook_color: CharField(max_length=9, default="#FFFFFF")`
 - `hook_bg_color: CharField(max_length=9, default="#CC000000")` — semi-transparent black
 - `hook_animation: CharField(choices=[POP, FADE, NONE], default=FADE)`
+
+**Transition fields:**
+- `intro_transition: CharField(choices=[NONE, CROSSFADE, FADE_BLACK, WIPE_LEFT, WIPE_RIGHT], default=NONE)`
+- `outro_transition: CharField(choices=[NONE, CROSSFADE, FADE_BLACK, WIPE_LEFT, WIPE_RIGHT], default=NONE)`
+- `transition_duration_sec: FloatField(default=0.5)` — applies to both intro and outro transitions
 
 **Watermark fields:**
 - `watermark_enabled: BooleanField(default=False)`
@@ -57,8 +73,11 @@ The renderer is refactored from a single FFmpeg command builder into a **multi-s
 - `progress_bar_color: CharField(max_length=9, default="#FFFFFF")`
 - `progress_bar_height: PositiveIntegerField(default=6)` — px
 
-**Emoji accent fields:**
-- `emoji_keyword_map: JSONField(default=dict, blank=True)` — maps keywords to emoji strings, e.g. `{"crazy": "🤯", "money": "💰", "fire": "🔥"}`. Applied during `EMOJI_ACCENT` caption generation. Channel provides defaults; `ClipStyleConfig` can override.
+**Background music fields:**
+- `music_enabled: BooleanField(default=False)`
+- `music_volume_db: FloatField(default=-20.0)` — dB relative to original audio (negative = quieter)
+- `music_fade_in_sec: FloatField(default=1.0)`
+- `music_fade_out_sec: FloatField(default=1.0)`
 
 ---
 
@@ -69,34 +88,55 @@ The renderer is refactored from a single FFmpeg command builder into a **multi-s
 - `channel: ForeignKey(Channel, related_name="media_assets")`
 - `asset_type: CharField(choices=[INTRO, OUTRO])`
 - `name: CharField(max_length=200)`
-- `file: FileField(upload_to="clipping/media_assets/")`
+- `file: FileField(upload_to="clipping/media_assets/", max_length=500)`
 - `duration_sec: FloatField(null=True, blank=True)` — read-only, auto-detected
 - `is_active: BooleanField(default=True)`
 
 ---
 
-### 1.3 `ClipStyleConfig` (per-clip overrides)
+### 1.3 `ClipMusicAsset` (background music library)
 
-`OneToOne` with `ClipCandidate`. Auto-created on `ClipCandidate.post_save` signal, pre-populated from the channel's `ClipRenderTemplate`.
+`ForeignKey` to `Channel`. Music files (MP3/WAV) available for mixing under clips.
 
-Contains the same fields as `ClipRenderTemplate` (all caption, hook, watermark, progress bar fields) so any can be overridden per-clip. Additionally:
-
-- `intro_asset: ForeignKey(ClipMediaAsset, null=True, blank=True, limit_choices_to={"asset_type": "INTRO"})`
-- `outro_asset: ForeignKey(ClipMediaAsset, null=True, blank=True, limit_choices_to={"asset_type": "OUTRO"})`
-- `preview_image: ImageField(upload_to="clipping/style_previews/", null=True, blank=True)`
-
-**Population logic:** When created from the channel template, all fields are copied from `ClipRenderTemplate`. Fields left at their template value are not specially marked — the config is a standalone snapshot. Operator edits apply directly to `ClipStyleConfig`.
+- `channel: ForeignKey(Channel, related_name="music_assets")`
+- `name: CharField(max_length=200)`
+- `file: FileField(upload_to="clipping/music_assets/", max_length=500)`
+- `duration_sec: FloatField(null=True, blank=True)` — auto-detected via ffprobe on save
+- `bpm: FloatField(null=True, blank=True)` — optional, informational
+- `genre: CharField(max_length=100, blank=True)`
+- `is_active: BooleanField(default=True)`
 
 ---
 
-### 1.4 `ClipTimedOverlay` (multiple per clip)
+### 1.4 `ClipStyleConfig` (per-clip overrides)
 
-`ForeignKey` to `ClipCandidate`. Operator adds rows in the admin. Start/end are in **rendered output time**: t=0 is the very first frame of the final file. If an intro is prepended (e.g. 3s) and a `TITLE_CARD` hook is added (e.g. 2s), then t=5 is the first frame of the main content. The operator sets these times by watching the completed render.
+`OneToOne` with `ClipCandidate`. Auto-created on `ClipCandidate.post_save` signal, pre-populated from the channel's `ClipRenderTemplate`.
+
+Contains the same fields as `ClipRenderTemplate` (all caption, hook, transition, watermark,
+progress bar, and music fields) so any can be overridden per-clip. Additionally:
+
+- `intro_asset: ForeignKey(ClipMediaAsset, null=True, blank=True, limit_choices_to={"asset_type": "INTRO"})`
+- `outro_asset: ForeignKey(ClipMediaAsset, null=True, blank=True, limit_choices_to={"asset_type": "OUTRO"})`
+- `music_asset: ForeignKey(ClipMusicAsset, null=True, blank=True)`
+- `translated_transcript_json: JSONField(default=dict, blank=True)` — cached output of `CaptionTranslationStage`; avoids re-translating on caption-only retries
+- `preview_image: ImageField(upload_to="clipping/style_previews/", null=True, blank=True)`
+
+**Population logic:** When created, all fields are copied from the channel's `ClipRenderTemplate`.
+Operator edits apply directly to `ClipStyleConfig` without affecting the template.
+
+---
+
+### 1.5 `ClipTimedOverlay` (multiple per clip)
+
+`ForeignKey` to `ClipCandidate`. Start/end are in **rendered output time**: t=0 is the very first
+frame of the final file. If an intro is prepended (e.g. 3s) and a `TITLE_CARD` hook is added
+(e.g. 2s), then t=5 is the first frame of the main content. The operator sets these times by
+watching the completed render.
 
 - `candidate: ForeignKey(ClipCandidate, related_name="timed_overlays")`
 - `overlay_type: CharField(choices=[TEXT, IMAGE])`
 - `text: CharField(max_length=300, blank=True)`
-- `image: ImageField(upload_to="clipping/timed_overlays/", null=True, blank=True)`
+- `image: ImageField(upload_to="clipping/timed_overlays/", null=True, blank=True, max_length=500)`
 - `start_sec: FloatField()`
 - `end_sec: FloatField()`
 - `position_x: PositiveIntegerField(default=540)` — px from left in output frame
@@ -109,31 +149,59 @@ Contains the same fields as `ClipRenderTemplate` (all caption, hook, watermark, 
 
 ---
 
+### 1.6 `ClipRenderStageResult` (per-stage tracking)
+
+`ForeignKey` to `ClipRender`. One record per stage per render. Created by the pipeline before
+each stage runs, updated on completion or failure. Enables per-stage inspection and retry.
+
+- `render: ForeignKey(ClipRender, related_name="stage_results")`
+- `stage_name: CharField(max_length=100)` — e.g. `"trim_and_crop"`, `"captions"`, `"watermark"`
+- `stage_order: PositiveIntegerField()` — position in pipeline (1-based)
+- `status: CharField(choices=[PENDING, RUNNING, COMPLETED, FAILED, SKIPPED])`
+- `output_file: FileField(upload_to="clipping/stage_outputs/", null=True, blank=True, max_length=500)` — the video file produced by this stage
+- `started_at: DateTimeField(null=True, blank=True)`
+- `completed_at: DateTimeField(null=True, blank=True)`
+- `duration_sec: FloatField(null=True, blank=True)`
+- `last_error: TextField(blank=True)`
+
+Stage output files are stored at `clipping/stage_outputs/{render_id}/{stage_order:02d}_{stage_name}.mp4`.
+They persist until the operator deletes the `ClipRender` or explicitly clears them.
+
+---
+
 ## 2. Renderer Architecture
 
 ### 2.1 `RenderStage` base class
 
 ```python
 # ***REMOVED***/services/media/render_stages/base.py
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 class RenderStage(ABC):
-    @abstractmethod
-    def run(self, input_path: Path) -> Path:
-        """Process input_path and return output path (may be same path if no-op)."""
-        ...
-
     @property
     @abstractmethod
     def name(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def order(self) -> int: ...
+
+    def should_run(self) -> bool:
+        """Return False to mark this stage as SKIPPED."""
+        return True
+
+    @abstractmethod
+    def run(self, input_path: Path) -> Path:
+        """Process input_path, write output to a new file, return its path."""
+        ...
 ```
 
-Each stage either writes a new temp file and returns its path, or returns `input_path` unchanged (no-op). Temp files are tracked by the pipeline and cleaned up on completion or failure.
+Each stage writes its output to a persistent named file (not a temp file). If `should_run()`
+returns False, the stage is marked SKIPPED and `input_path` is passed through to the next stage.
 
 ### 2.2 `ClipRenderPipeline`
-
-Replaces `ClipRenderer` as the main rendering entry point.
 
 ```python
 # ***REMOVED***/services/media/clip_render_pipeline.py
@@ -143,11 +211,12 @@ class PipelineRenderConfig:
     output_path: Path
     start_sec: float
     end_sec: float
-    hook_text: str  # from ClipCandidate.hook_text
-    transcript_json: dict[str, Any]  # from ClippingJob.transcript_json
+    hook_text: str                        # from ClipCandidate.hook_text
+    transcript_json: dict[str, Any]       # from ClippingJob.transcript_json
     layout_config: ClipLayoutConfig | None
     style_config: ClipStyleConfig | None
     timed_overlays: list[ClipTimedOverlay]
+    render_id: str                        # ClipRender.id — for stage output paths
     # render quality params
     width: int = 1080
     height: int = 1920
@@ -157,127 +226,218 @@ class PipelineRenderConfig:
     audio_bitrate: str = "192k"
 ```
 
-The pipeline builds stages in order, runs them sequentially, moves the final output to `config.output_path`, then cleans all temp files.
+The pipeline:
+1. Builds all stages in order
+2. For each stage: creates/updates `ClipRenderStageResult`, calls `stage.run(current_path)`,
+   updates the result with output path and status
+3. On any stage failure: marks that stage FAILED, stops the pipeline, raises
+4. On success: moves the final stage output to `config.output_path`
+
+**Retry from stage N**: The `render_clip` task accepts an optional `start_from_stage: int = 1`
+parameter. When retrying, it deletes `ClipRenderStageResult` records for stages ≥ N, then uses
+the output of stage N-1 as the starting `input_path`. Stage 1 always starts from the source video.
 
 ### 2.3 Stage Order and Responsibilities
 
 | # | Stage | File | Skipped when |
 |---|-------|------|--------------|
-| 1 | `TrimAndCropStage` | `trim_crop.py` | Never (always runs) |
+| 1 | `TrimAndCropStage` | `trim_crop.py` | Never |
 | 2 | `IntroConcatStage` | `intro_outro.py` | `style_config.intro_asset` is None |
-| 3 | `HookStage` | `hook.py` | `style_config.hook_enabled` is False or `hook_text` is empty |
-| 4 | `CaptionStage` | `captions.py` | `style_config.caption_enabled` is False or no transcript |
-| 5 | `WatermarkStage` | `watermark.py` | `style_config.watermark_enabled` is False |
-| 6 | `TimedOverlayStage` | `timed_overlays.py` | `timed_overlays` list is empty |
-| 7 | `ProgressBarStage` | `progress_bar.py` | `style_config.progress_bar_enabled` is False |
-| 8 | `OutroConcatStage` | `intro_outro.py` | `style_config.outro_asset` is None |
+| 3 | `HookStage` | `hook.py` | `hook_enabled` is False or `hook_text` is empty |
+| 4 | `CaptionTranslationStage` | `captions.py` | `caption_translate_to` is blank |
+| 5 | `CaptionStage` | `captions.py` | `caption_enabled` is False or no transcript |
+| 6 | `WatermarkStage` | `watermark.py` | `watermark_enabled` is False |
+| 7 | `TimedOverlayStage` | `timed_overlays.py` | `timed_overlays` list is empty |
+| 8 | `ProgressBarStage` | `progress_bar.py` | `progress_bar_enabled` is False |
+| 9 | `OutroConcatStage` | `intro_outro.py` | `style_config.outro_asset` is None |
+| 10 | `MusicMixStage` | `music_mix.py` | `music_enabled` is False or `music_asset` is None |
 
 All stage files live in `***REMOVED***/services/media/render_stages/`.
 
 ### 2.4 Stage Details
 
 **`TrimAndCropStage`**
-Absorbs the existing `ClipRenderer._build_center_crop_command`, `_build_smart_crop_command`, and `_build_spatial_stack_command` logic. Output: trimmed + cropped 9:16 MP4.
+Absorbs the existing `ClipRenderer._build_center_crop_command`, `_build_smart_crop_command`, and
+`_build_spatial_stack_command` logic. Output: trimmed + cropped 9:16 MP4.
 
 **`IntroConcatStage` / `OutroConcatStage`**
-Uses `ffmpeg concat demuxer` (file list approach) to join intro/outro with the main clip. Handles audio/video stream matching. Duration of the output increases by `intro.duration_sec` + `outro.duration_sec`.
+When `transition == NONE`: uses `ffmpeg concat demuxer` (file list approach) for a hard cut join.
+When `transition != NONE`: uses `ffmpeg xfade` filter:
+- `CROSSFADE` → `xfade=transition=fade`
+- `FADE_BLACK` → `xfade=transition=fadeblack`
+- `WIPE_LEFT` → `xfade=transition=wipeleft`
+- `WIPE_RIGHT` → `xfade=transition=wiperight`
+`transition_duration_sec` is passed as the `duration` parameter. Both intro and outro use the
+same `transition_duration_sec` from `ClipStyleConfig`. The xfade offset is calculated as
+`intro_duration - transition_duration_sec`.
 
 **`HookStage`**
-- `TITLE_CARD`: generates a black title card video (same dimensions as clip) using `ffmpeg lavfi color=black` + `drawtext`, then prepends it via concat. Duration increases by `hook_duration_sec`.
-- `OVERLAY_TOP` / `OVERLAY_CENTER`: uses `drawtext` filter with `enable='lt(t,{hook_duration_sec})'` and a fade-out (`alpha` expression) to burn text over the first N seconds of the clip. No duration change.
+- `TITLE_CARD`: generates a black title card video (same dimensions) via `ffmpeg lavfi color=black`
+  + `drawtext`, then prepends via concat. Duration increases by `hook_duration_sec`.
+- `OVERLAY_TOP` / `OVERLAY_CENTER`: uses `drawtext` with `enable='lt(t,{hook_duration_sec})'`
+  and a fade-out alpha expression. No duration change.
+
+**`CaptionTranslationStage`**
+If `caption_translate_to` is set, translates the `transcript_json` word/segment text using
+`get_llm_provider(channel)`. Produces a new `transcript_json`-shaped dict with translated text
+but original timestamps preserved. This translated transcript is passed to `CaptionStage`.
+Translation is cached on `ClipStyleConfig.translated_transcript_json: JSONField` so retrying
+`CaptionStage` alone doesn't re-translate.
 
 **`CaptionStage`**
-Generates an ASS subtitle file from `transcript_json`, then burns it with `-vf subtitles=file.ass:fontsdir=...`. The ASS generator is a separate `ASSGenerator` class in `captions.py` with a method per style:
-- `WORD_BY_WORD`: one ASS event per word using `{\k}` karaoke tag; active word styled differently (color change).
-- `CHUNKED`: groups words into 3–4 word chunks by natural pause boundaries; one event per chunk.
-- `LOWER_THIRD`: one event per Whisper segment (full sentence); positioned at bottom with `\an2`.
-- `EMOJI_ACCENT`: same as CHUNKED but post-processes text to insert emoji before high-energy words (uses a small keyword→emoji mapping configurable on the template).
-
-Requires word-level timestamps in `transcript_json` (Whisper `word_timestamps=True`). Falls back to segment-level timing if word timestamps are absent.
+Generates an ASS subtitle file from the (possibly translated) `transcript_json`, then burns it
+with `-vf subtitles=file.ass:fontsdir=...`. The `ASSGenerator` class handles all 4 styles:
+- `WORD_BY_WORD`: one ASS event per word using `{\k}` karaoke tag; active word highlighted.
+- `CHUNKED`: groups words into 3–4 word chunks; one event per chunk.
+- `LOWER_THIRD`: one event per Whisper segment, positioned at bottom with `\an2`.
+- `EMOJI_ACCENT`: same as CHUNKED but post-processes text against `emoji_keyword_map`.
+Falls back to segment-level timing when word timestamps are absent.
 
 **`WatermarkStage`**
-- `TEXT` type: `drawtext` filter with opacity expression.
-- `IMAGE` type: `overlay` filter with `format=auto` and alpha channel support. Image is scaled to `watermark_size` px width before overlaying.
+- `TEXT` type: `drawtext` filter with opacity.
+- `IMAGE` type: `overlay` filter with `format=auto` for alpha channel support. Image scaled to
+  `watermark_size` px width.
 
 **`TimedOverlayStage`**
-Chains multiple filters in a single pass. For each `ClipTimedOverlay`:
+All overlays composited in a single ffmpeg pass using `filter_complex`:
 - TEXT: `drawtext=text=...:enable='between(t,start,end)'`
 - IMAGE: `[prev][img]overlay=x:y:enable='between(t,start,end)'`
 
-All overlays are composited in a single ffmpeg invocation using `filter_complex`.
-
 **`ProgressBarStage`**
-Uses `drawbox` with width expression `w=W*t/duration` to draw a growing bar. Single `drawtext` pass.
+`drawbox` with a time-driven width expression: `w=W*t/duration`. Single ffmpeg pass.
+
+**`MusicMixStage`**
+Runs last so it applies to the full assembled output (intro + content + outro). Uses ffmpeg
+`amix` filter to blend the music track with the existing audio:
+1. If `music_asset.duration_sec < clip_duration`: loop the music using `-stream_loop -1`
+2. Apply `music_volume_db` using a `volume` audio filter
+3. Apply fade-in/fade-out using `afade` filter at start and end
+4. Mix with original audio using `amix=inputs=2:duration=first:dropout_transition=0`
+Target loudness: the music track is mixed to be `music_volume_db` dB below the original
+audio's measured dBFS (measured via ffmpeg `volumedetect` before mixing).
 
 ---
 
 ## 3. Caption Implementation Detail
 
-ASS subtitle format is used (not SRT) because it supports per-character styling, positioning, and karaoke tags needed for word-by-word style.
+ASS subtitle format is used (not SRT) because it supports per-character styling, positioning,
+and karaoke tags needed for word-by-word style.
 
-Font files must be available to ffmpeg. The project will maintain a `***REMOVED***/static/fonts/` directory with the fonts referenced in caption configs. The `subtitles` filter `fontsdir` parameter points there.
+Font files live in `***REMOVED***/static/fonts/`. The `subtitles` filter `fontsdir` parameter points
+there. `Montserrat-Bold.ttf` must be present at minimum.
 
-Word timestamp extraction from `transcript_json` (Whisper format):
-```python
-# Each segment has a "words" list: [{"word": "...", "start": 1.2, "end": 1.8}, ...]
-```
-If `words` is absent (segment-only mode), `CaptionStage` falls back to displaying full segment text.
+**Translation:** `CaptionTranslationStage` calls `get_llm_provider(channel)` with a structured
+prompt requesting JSON output that preserves the original `transcript_json` shape but replaces
+all `text`/`word` fields with the translated equivalents. Timestamps are not translated.
+Result is stored in `ClipStyleConfig.translated_transcript_json` to avoid re-translating on
+stage retries.
 
 ---
 
 ## 4. Admin Interface
 
 ### `ClipRenderTemplateInline` on `ChannelAdmin`
-Stacked inline, collapsible. Fieldsets grouped by: Caption, Hook, Watermark, Progress Bar. All fields editable.
+Stacked inline, collapsible. Fieldsets: Caption, Emoji Accent, Hook, Transitions, Watermark,
+Progress Bar, Background Music. All fields editable.
 
 ### `ClipMediaAssetAdmin`
-Standalone registered admin. List display: name, channel, asset_type, duration_sec, is_active. Filter by channel + asset_type. `duration_sec` is read-only (auto-detected). File field shows a `<video>` preview tag.
+Standalone registered admin. List: name, channel, asset_type, duration_sec, is_active.
+Filter by channel + asset_type. `duration_sec` read-only. File field shows `<video>` preview.
+
+### `ClipMusicAssetAdmin`
+Standalone registered admin. List: name, channel, genre, duration_sec, bpm, is_active.
+Filter by channel + genre. File field shows `<audio>` preview tag.
 
 ### `ClipStyleConfigInline` on `ClipCandidateAdmin`
-Stacked inline, collapsible. Same fieldsets as `ClipRenderTemplateInline` plus `intro_asset` and `outro_asset` dropdowns (filtered to the candidate's channel). `preview_image` shown as read-only thumbnail.
+Stacked inline, collapsible. Same fieldsets as `ClipRenderTemplateInline` plus `intro_asset`,
+`outro_asset`, `music_asset` dropdowns (FK dropdowns filtered to the candidate's channel via
+`get_queryset` override). `preview_image` shown as read-only thumbnail.
 
 ### `ClipTimedOverlayInline` on `ClipCandidateAdmin`
-Tabular inline with `extra=0`. Fields: overlay_type, text/image, start_sec, end_sec, position_x, position_y, opacity. Operator adds/removes rows freely.
+Tabular inline, `extra=0`. Fields: overlay_type, text/image, start_sec, end_sec, position_x,
+position_y, opacity. Operator adds/removes rows freely.
+
+### `ClipRenderStageResultInline` on `ClipRenderAdmin` (new)
+Read-only tabular inline showing all stage results for a render:
+- Columns: stage_order, stage_name, status badge (colour-coded), duration_sec, video_preview,
+  last_error
+- `video_preview`: renders a `<video>` tag with the stage output file when status=COMPLETED
+- Cannot add or delete rows (pipeline manages lifecycle)
+
+### `ClipRenderAdmin` (new or extend existing)
+Registers `ClipRender` with `ClipRenderStageResultInline`. Admin actions:
+
+**`"Retry from selected stage"`**
+Available as a per-stage action on `ClipRenderStageResultInline` rows (via a custom change view
+button, since Django inline actions are limited). Alternatively exposed as an admin action on
+`ClipRenderAdmin` that prompts for stage number. Calls `render_clip.delay(candidate_id,
+start_from_stage=N)`.
+
+**`"Retry full render"`**
+Existing-style action on `ClipCandidateAdmin`. Deletes all `ClipRenderStageResult` records for
+the latest render and re-queues from stage 1.
+
+**`"Clear stage outputs"`**
+Deletes all stage output files and `ClipRenderStageResult` records for selected renders (to
+free storage after the final output has been approved).
 
 ### New admin action: `"Generate style preview"`
 On `ClipCandidateAdmin`. Queues `preview_clip_style` Celery task. The task:
-1. Extracts a frame from mid-clip
-2. Runs a lightweight version of `WatermarkStage`, `HookStage` (overlay styles only), and draws a caption text sample using PIL (not full ffmpeg render)
+1. Extracts a frame from mid-clip via OpenCV
+2. Applies a lightweight PIL-based render of watermark text/image, hook overlay text, and a
+   sample caption line (no full ffmpeg render)
 3. Saves result to `ClipStyleConfig.preview_image`
 
 ---
 
 ## 5. Task Changes
 
-`render_clip` task in `tasks.py` is updated to:
-1. Fetch `ClipStyleConfig` and `ClipTimedOverlay` queryset for the candidate
-2. Build `PipelineRenderConfig` instead of `ClipRenderConfig`
-3. Instantiate and run `ClipRenderPipeline` instead of `ClipRenderer`
-4. Write back `last_speaker_crop_result` to `ClipLayoutConfig` (unchanged)
+### `render_clip` task
 
-`ClipRenderConfig` and `ClipRenderer` are kept but deprecated — they remain functional for any existing callers until all callsites are migrated.
+Updated signature: `render_clip(self, clip_candidate_id: str, start_from_stage: int = 1) -> None`
 
-New task: `preview_clip_style(style_config_id: str)` — lightweight preview generation (see §4).
+Steps:
+1. Fetch `ClipStyleConfig`, `ClipTimedOverlay` queryset, `ClippingJob` for the candidate
+2. When `start_from_stage > 1`: load input path from the output of stage `start_from_stage - 1`'s
+   `ClipRenderStageResult`; delete stage results for stages ≥ `start_from_stage`
+3. Build `PipelineRenderConfig`
+4. Instantiate and run `ClipRenderPipeline`
+5. Write back `last_speaker_crop_result` to `ClipLayoutConfig` (unchanged)
+
+### New task: `preview_clip_style`
+
+`preview_clip_style(style_config_id: str) -> None`
+Lightweight single-frame preview. Uses PIL/OpenCV (no ffmpeg), completes in under 5 seconds.
+Queue: `clipping`. Time limit: 60s.
+
+### `ClipRenderConfig` / `ClipRenderer` deprecation
+
+Kept functional for existing callsites. A deprecation warning is logged when `ClipRenderer` is
+instantiated. Will be removed after all callsites are migrated to `ClipRenderPipeline`.
 
 ---
 
 ## 6. Migration Strategy
 
-1. Add `ClipRenderTemplate`, `ClipMediaAsset`, `ClipStyleConfig`, `ClipTimedOverlay` models with migrations.
-2. Write data migration to create `ClipRenderTemplate` for all existing `Channel` records.
-3. Write data migration to create `ClipStyleConfig` for all existing `ClipCandidate` records (populated from channel template).
-4. Update `post_save` signals for `Channel` (create `ClipRenderTemplate`) and `ClipCandidate` (create `ClipStyleConfig`).
+1. Add `ClipRenderTemplate`, `ClipMediaAsset`, `ClipMusicAsset`, `ClipStyleConfig`,
+   `ClipTimedOverlay`, `ClipRenderStageResult` models with auto-generated migrations.
+2. Data migration: create `ClipRenderTemplate` for all existing `Channel` records (defaults only).
+3. Data migration: create `ClipStyleConfig` for all existing `ClipCandidate` records (copied
+   from channel template).
+4. Update `post_save` signals:
+   - `Channel` → create `ClipRenderTemplate` if not exists
+   - `ClipCandidate` → create `ClipStyleConfig` if not exists
 5. Implement render stages in `***REMOVED***/services/media/render_stages/`.
-6. Implement `ClipRenderPipeline`.
-7. Update `render_clip` task to use the pipeline.
-8. Register admin classes.
+6. Implement `ClipRenderPipeline` in `***REMOVED***/services/media/clip_render_pipeline.py`.
+7. Update `render_clip` task signature and implementation.
+8. Register new and updated admin classes.
+9. Add `Montserrat-Bold.ttf` to `***REMOVED***/static/fonts/` (required for captions).
 
 ---
 
 ## 7. Out of Scope
 
-- Background music mixing (separate feature)
 - Animated stickers / GIF overlays
-- Multi-language caption translation
-- Custom transitions between intro/clip/outro (hard cut only for now)
 - Real-time preview in admin (static frame preview only)
+- Per-word emoji auto-detection via NLP (keyword map is manually configured)
+- YouTube chapter markers from transcript (separate distribution feature)
