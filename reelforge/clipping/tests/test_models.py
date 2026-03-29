@@ -214,7 +214,7 @@ def test_has_spatial_regions_false_when_region_b_missing() -> None:
 @pytest.mark.django_db
 def test_clip_render_template_auto_fields_have_correct_defaults() -> None:
     channel = ChannelFactory()
-    template = ClipRenderTemplate.objects.create(channel=channel)
+    template = ClipRenderTemplate.objects.get(channel=channel)
     assert template.caption_enabled is True
     assert template.caption_style == "CHUNKED"
     assert template.caption_font == "Montserrat-Bold"
@@ -258,7 +258,10 @@ def test_clip_render_template_auto_fields_have_correct_defaults() -> None:
 @pytest.mark.django_db
 def test_clip_render_template_to_style_defaults_returns_all_style_fields() -> None:
     channel = ChannelFactory()
-    template = ClipRenderTemplate.objects.create(channel=channel, caption_size=72, music_enabled=True)
+    template = ClipRenderTemplate.objects.get(channel=channel)
+    template.caption_size = 72
+    template.music_enabled = True
+    template.save(update_fields=["caption_size", "music_enabled", "updated_at"])
     defaults = template.to_style_defaults()
     assert defaults["caption_size"] == 72
     assert defaults["music_enabled"] is True
