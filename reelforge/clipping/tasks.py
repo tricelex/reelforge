@@ -271,6 +271,7 @@ def render_clip(
         channel = job.channel
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         pipeline_config = PipelineRenderConfig(
             source_path=source_path,

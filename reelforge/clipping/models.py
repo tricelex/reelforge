@@ -85,7 +85,7 @@ class ClippingJob(BaseAbstractModel):
     transcription_cost_usd = models.DecimalField(
         max_digits=10,
         decimal_places=6,
-        default=Decimal("0"),
+        default=Decimal(0),
     )
 
     # Analysis
@@ -94,7 +94,7 @@ class ClippingJob(BaseAbstractModel):
     analysis_cost_usd = models.DecimalField(
         max_digits=10,
         decimal_places=6,
-        default=Decimal("0"),
+        default=Decimal(0),
     )
 
     # Agent
@@ -102,7 +102,7 @@ class ClippingJob(BaseAbstractModel):
     agent_cost_usd = models.DecimalField(
         max_digits=10,
         decimal_places=6,
-        default=Decimal("0"),
+        default=Decimal(0),
     )
 
     # Task tracking
@@ -403,7 +403,7 @@ class ClipPost(BaseAbstractModel):
     revenue_est_usd = models.DecimalField(
         max_digits=10,
         decimal_places=4,
-        default=Decimal("0"),
+        default=Decimal(0),
     )
     last_analytics_sync = models.DateTimeField(null=True, blank=True)
 
@@ -841,9 +841,6 @@ class ClipRenderStageResult(BaseAbstractModel):
         verbose_name = "Render Stage Result"
         verbose_name_plural = "Render Stage Results"
         unique_together = [("render", "stage_order")]
-        indexes = [
-            models.Index(fields=["render", "stage_order"]),
-        ]
 
     def __str__(self) -> str:
         return f"Stage {self.stage_order} ({self.stage_name}) \u2014 {self.render_id}"

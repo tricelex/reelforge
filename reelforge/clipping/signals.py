@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+from typing import Any
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -9,15 +11,25 @@ from django_fsm.signals import post_transition
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
 from reelforge.clipping.models import ClipMediaAsset
-from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipRenderTemplate
 from reelforge.clipping.models import ClipStyleConfig
+
+if TYPE_CHECKING:
+    from reelforge.channels.models import Channel
 
 logger = logging.getLogger("reelforge.clipping")
 
 
-def on_clipping_job_transition(sender, instance, name, source, target, **kwargs):
+def on_clipping_job_transition(
+    sender: type,
+    instance: ClippingJob,
+    name: str,
+    source: str,
+    target: str,
+    **kwargs: Any,
+) -> None:
     """Log ClippingJob FSM failures."""
     if target == ClippingJob.Status.FAILED:
         logger.error(
@@ -31,10 +43,10 @@ post_transition.connect(on_clipping_job_transition, sender=ClippingJob)
 
 @receiver(post_save, sender=ClipCandidate)
 def create_layout_config_for_candidate(
-    sender,
+    sender: type,
     instance: ClipCandidate,
     created: bool,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Auto-create a ClipLayoutConfig when a ClipCandidate is first saved.
 
@@ -56,10 +68,10 @@ def create_layout_config_for_candidate(
 
 @receiver(post_save, sender=ClipCandidate)
 def create_style_config_for_candidate(
-    sender,
+    sender: type,
     instance: ClipCandidate,
     created: bool,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Auto-create a ClipStyleConfig when a ClipCandidate is first saved.
 
@@ -79,17 +91,17 @@ def create_style_config_for_candidate(
 
 @receiver(post_save, sender=ClipMediaAsset)
 def detect_media_asset_duration(
-    sender,
+    sender: type,
     instance: ClipMediaAsset,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Auto-detect duration_sec via ffprobe when a ClipMediaAsset is saved with a file."""
     if not instance.file or instance.duration_sec is not None:
         return
     try:
-        import ffmpeg
         from pathlib import Path
 
+        import ffmpeg
         from django.conf import settings
 
         file_path = Path(settings.MEDIA_ROOT) / instance.file.name
@@ -112,17 +124,17 @@ def detect_media_asset_duration(
 
 @receiver(post_save, sender=ClipMusicAsset)
 def detect_music_asset_duration(
-    sender,
+    sender: type,
     instance: ClipMusicAsset,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Auto-detect duration_sec via ffprobe when a ClipMusicAsset is saved with a file."""
     if not instance.file or instance.duration_sec is not None:
         return
     try:
-        import ffmpeg
         from pathlib import Path
 
+        import ffmpeg
         from django.conf import settings
 
         file_path = Path(settings.MEDIA_ROOT) / instance.file.name
@@ -143,10 +155,10 @@ def detect_music_asset_duration(
 
 
 def create_clip_render_template_for_channel(
-    sender,
-    instance,
+    sender: type,
+    instance: Channel,
     created: bool,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Auto-create a ClipRenderTemplate when a Channel is first saved.
 

@@ -212,7 +212,7 @@ class CaptionTranslationStage(RenderStage):
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"LLM returned invalid JSON for translation: {exc}") from exc
 
-        sc.__class__.objects.filter(pk=sc.pk).update(translated_transcript_json=translated)
+        type(sc).objects.filter(pk=sc.pk).update(translated_transcript_json=translated)
         sc.translated_transcript_json = translated
 
         logger.info(
