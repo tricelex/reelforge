@@ -721,6 +721,122 @@ def test_music_mix_stage_command_uses_amix(tmp_path: Path) -> None:
     assert "volume" in cmd or "-18" in cmd
 
 
+def test_caption_stage_uses_configurable_crf_preset(tmp_path: Path) -> None:
+    """CaptionStage forwards crf/preset fields to ffmpeg instead of hardcoding 18/slow."""
+    sc = MagicMock()
+    sc.caption_enabled = True
+    sc.caption_style = "CHUNKED"
+    sc.caption_font = "Montserrat-Bold"
+    sc.caption_size = 52
+    sc.caption_color = "#FFFFFF"
+    sc.caption_stroke_color = "#000000"
+    sc.caption_stroke_width = 3
+    sc.caption_bg_color = ""
+    sc.caption_position = "BOTTOM"
+    sc.caption_animation = "POP"
+    sc.emoji_keyword_map = {}
+    sc.translated_transcript_json = None
+
+    stage = CaptionStage(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        output_path=tmp_path / "out.mp4",
+        ass_path=tmp_path / "sub.ass",
+        style_config=sc,
+        fonts_dir=tmp_path / "fonts",
+        video_width=1080,
+        video_height=1920,
+        crf=28,
+        preset="ultrafast",
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.captions.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = mock_run.call_args[0][0]
+    assert "28" in cmd
+    assert "ultrafast" in cmd
+    assert "18" not in cmd
+    assert "slow" not in cmd
+
+
+def test_watermark_stage_uses_configurable_crf_preset(tmp_path: Path) -> None:
+    """WatermarkStage forwards crf/preset fields to ffmpeg instead of hardcoding 18/slow."""
+    sc = _make_watermark_config(wtype="TEXT")
+    stage = WatermarkStage(output_path=tmp_path / "out.mp4", style_config=sc, crf=23, preset="medium")
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.watermark.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = mock_run.call_args[0][0]
+    assert "23" in cmd
+    assert "medium" in cmd
+    assert "18" not in cmd
+    assert "slow" not in cmd
+
+
+def test_timed_overlay_stage_uses_configurable_crf_preset(tmp_path: Path) -> None:
+    """TimedOverlayStage forwards crf/preset fields to ffmpeg instead of hardcoding 18/slow."""
+    overlay = MagicMock()
+    overlay.overlay_type = "TEXT"
+    overlay.text = "hello"
+    overlay.start_sec = 1.0
+    overlay.end_sec = 3.0
+    overlay.position = "TOP_LEFT"
+    overlay.font_size = 24
+    overlay.font_color = "#FFFFFF"
+    overlay.bg_color = ""
+    stage = TimedOverlayStage(
+        output_path=tmp_path / "out.mp4",
+        timed_overlays=[overlay],
+        crf=23,
+        preset="medium",
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.timed_overlays.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = mock_run.call_args[0][0]
+    assert "23" in cmd
+    assert "medium" in cmd
+    assert "18" not in cmd
+    assert "slow" not in cmd
+
+
+def test_progress_bar_stage_uses_configurable_crf_preset(tmp_path: Path) -> None:
+    """ProgressBarStage forwards crf/preset fields to ffmpeg instead of hardcoding 18/slow."""
+    sc = MagicMock()
+    sc.progress_bar_enabled = True
+    sc.progress_bar_position = "TOP"
+    sc.progress_bar_color = "#FFFFFF"
+    sc.progress_bar_height = 6
+    stage = ProgressBarStage(
+        output_path=tmp_path / "out.mp4",
+        style_config=sc,
+        video_duration_sec=60.0,
+        crf=23,
+        preset="medium",
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.progress_bar.ffmpeg.probe") as mock_probe, \
+         patch("reelforge.services.media.render_stages.progress_bar.subprocess.run") as mock_run:
+        mock_probe.return_value = {"format": {"duration": "60.0"}}
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = mock_run.call_args[0][0]
+    assert "23" in cmd
+    assert "medium" in cmd
+    assert "18" not in cmd
+    assert "slow" not in cmd
+
+
 def test_progress_bar_stage_uses_probed_duration(tmp_path: Path) -> None:
     """ProgressBarStage probes actual input duration, not the constructor arg."""
     sc = MagicMock()

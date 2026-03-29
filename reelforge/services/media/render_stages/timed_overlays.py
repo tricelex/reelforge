@@ -18,6 +18,8 @@ class TimedOverlayStage(RenderStage):
 
     output_path: Path
     timed_overlays: list[Any] = field(default_factory=list)  # list[ClipTimedOverlay]
+    crf: int = 18
+    preset: str = "slow"
 
     @property
     def name(self) -> str:
@@ -71,9 +73,9 @@ class TimedOverlayStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",
@@ -132,9 +134,9 @@ class TimedOverlayStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",

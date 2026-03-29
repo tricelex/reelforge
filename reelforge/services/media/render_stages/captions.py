@@ -233,6 +233,8 @@ class CaptionStage(RenderStage):
     fonts_dir: Path
     video_width: int = 1080
     video_height: int = 1920
+    crf: int = 18
+    preset: str = "slow"
 
     @property
     def name(self) -> str:
@@ -283,9 +285,9 @@ class CaptionStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",
