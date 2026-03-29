@@ -14,10 +14,12 @@ from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
+from ***REMOVED***.clipping.models import ClipStyleConfig
+from ***REMOVED***.clipping.models import ClipTimedOverlay
 from ***REMOVED***.core.storage import get_clip_downloaded_path
 from ***REMOVED***.core.storage import get_clip_render_path
-from ***REMOVED***.services.media.clip_renderer import ClipRenderConfig
-from ***REMOVED***.services.media.clip_renderer import ClipRenderer
+from ***REMOVED***.services.media.clip_render_pipeline import ClipRenderPipeline
+from ***REMOVED***.services.media.clip_render_pipeline import PipelineRenderConfig
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
@@ -198,6 +200,11 @@ def analyze_clips(self, clipping_job_id: str) -> None:
             "Clip analysis failed",
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
         )
+        if self.request.retries >= self.max_retries:
+            if can_proceed(job.mark_failed):
+                job.mark_failed(error=str(exc))
+                job.save(update_fields=["status", "last_error", "failed_at", "updated_at"])
+            return
         raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
 
 
@@ -207,53 +214,92 @@ def analyze_clips(self, clipping_job_id: str) -> None:
     max_retries=2,
     default_retry_delay=300,
     queue="rendering",
-    time_limit=1800,
-    soft_time_limit=1700,
+    time_limit=3600,
+    soft_time_limit=3500,
 )
-def render_clip(self, clip_candidate_id: str) -> None:
+def render_clip(
+    self,
+    clip_candidate_id: str,
+    start_from_stage: int = 1,
+    clip_render_id: str | None = None,
+) -> None:
+    """Render a ClipCandidate through the multi-stage pipeline.
+
+    When clip_render_id is provided, resumes an existing render from
+    start_from_stage. Otherwise creates a new ClipRender record.
+    """
     try:
-        candidate = ClipCandidate.objects.select_related("clipping_job__channel").get(id=clip_candidate_id)
+        candidate = ClipCandidate.objects.select_related(
+            "clipping_job__channel"
+        ).get(id=clip_candidate_id)
     except ClipCandidate.DoesNotExist:
         logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
         return
 
     layout_config = ClipLayoutConfig.objects.filter(candidate=candidate).first()
+    style_config = ClipStyleConfig.objects.filter(candidate=candidate).first()
+    timed_overlays = list(
+        ClipTimedOverlay.objects.filter(candidate=candidate).order_by("start_sec")
+    )
+
     render_format = (
         layout_config.render_format if layout_config is not None else ClipRender.Format.VERTICAL_9_16
     )
 
-    render = ClipRender.objects.create(
-        candidate=candidate,
-        format=render_format,
-        celery_task_id=self.request.id,
-        status=ClipRender.RenderStatus.RUNNING,
-    )
+    if clip_render_id is not None:
+        try:
+            render = ClipRender.objects.get(id=clip_render_id, candidate=candidate)
+        except ClipRender.DoesNotExist:
+            logger.error(
+                "ClipRender not found for retry",
+                extra={"clip_render_id": clip_render_id, "candidate_id": clip_candidate_id},
+            )
+            return
+        render.celery_task_id = self.request.id
+        render.status = ClipRender.RenderStatus.RUNNING
+        render.save(update_fields=["celery_task_id", "status", "updated_at"])
+    else:
+        render = ClipRender.objects.create(
+            candidate=candidate,
+            format=render_format,
+            celery_task_id=self.request.id,
+            status=ClipRender.RenderStatus.RUNNING,
+        )
 
     try:
         job = candidate.clipping_job
         channel = job.channel
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        config = ClipRenderConfig(
+        pipeline_config = PipelineRenderConfig(
             source_path=source_path,
             output_path=output_path,
             start_sec=candidate.start_sec,
             end_sec=candidate.end_sec,
-            hook_text=candidate.hook_text if render.include_title_card else "",
-            transcript_json=job.transcript_json if render.include_captions else {},
-            intro_path=Path(channel.channel_intro_file.path) if channel.channel_intro_file else None,
-            outro_path=Path(channel.channel_outro_file.path) if channel.channel_outro_file else None,
+            hook_text=candidate.hook_text,
+            transcript_json=job.transcript_json,
             layout_config=layout_config,
+            style_config=style_config,
+            timed_overlays=timed_overlays,
+            render_id=str(render.id),
+            channel=channel,
         )
 
-        renderer = ClipRenderer(config)
-        renderer.render()
+        pipeline = ClipRenderPipeline(pipeline_config)
+        pipeline.run(start_from_stage=start_from_stage)
 
-        # Write back speaker detection results when SMART_CROP auto-detected
-        if layout_config is not None and renderer.last_speaker_crop_result is not None:
-            layout_config.face_detected = renderer.last_speaker_crop_result.face_detected
-            layout_config.detection_confidence = renderer.last_speaker_crop_result.confidence
+        # Write back speaker detection results from TrimAndCropStage if available
+        trim_stage = next((s for s in pipeline._stages if s.name == "trim_and_crop"), None)
+        if (
+            layout_config is not None
+            and trim_stage is not None
+            and hasattr(trim_stage, "last_speaker_crop_result")
+            and trim_stage.last_speaker_crop_result is not None
+        ):
+            layout_config.face_detected = trim_stage.last_speaker_crop_result.face_detected
+            layout_config.detection_confidence = trim_stage.last_speaker_crop_result.confidence
             layout_config.save(update_fields=["face_detected", "detection_confidence", "updated_at"])
 
         render.video_file = str(output_path.relative_to(settings.MEDIA_ROOT))
@@ -273,6 +319,127 @@ def render_clip(self, clip_candidate_id: str) -> None:
         render.last_error = str(exc)
         render.save(update_fields=["status", "last_error", "updated_at"])
         raise self.retry(exc=exc, countdown=2**self.request.retries * 300)
+
+
+def _get_preview_font(size: int) -> object:
+    """Return the best available PIL font for style previews."""
+    from PIL import ImageFont
+
+    static_root = getattr(settings, "STATIC_ROOT", None)
+    if static_root:
+        fonts_dir = Path(static_root) / "fonts"
+    else:
+        fonts_dir = Path(settings.BASE_DIR) / "***REMOVED***" / "static" / "fonts"
+
+    candidates = [
+        fonts_dir / "Montserrat-Bold.ttf",
+        fonts_dir / "DejaVuSans-Bold.ttf",
+    ]
+    for font_path in candidates:
+        if font_path.exists():
+            try:
+                return ImageFont.truetype(str(font_path), size=size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+@shared_task(
+    bind=True,
+    name="***REMOVED***.clipping.preview_clip_style",
+    max_retries=1,
+    queue="clipping",
+    time_limit=60,
+    soft_time_limit=55,
+)
+def preview_clip_style(self, style_config_id: str) -> None:
+    """Generate a static frame preview of the style config (PIL-based, no ffmpeg).
+
+    Extracts mid-clip frame, overlays watermark text + sample caption, saves
+    to ClipStyleConfig.preview_image.
+    """
+    import io
+
+    import cv2
+    from django.core.files.base import ContentFile
+    from PIL import Image
+    from PIL import ImageDraw
+
+    try:
+        style_config = ClipStyleConfig.objects.select_related(
+            "candidate__clipping_job"
+        ).get(id=style_config_id)
+    except ClipStyleConfig.DoesNotExist:
+        logger.error("ClipStyleConfig not found", extra={"id": style_config_id})
+        return
+
+    candidate = style_config.candidate
+    job = candidate.clipping_job
+
+    if not job.downloaded_file:
+        logger.warning(
+            "Cannot generate style preview — source video not downloaded",
+            extra={"style_config_id": style_config_id},
+        )
+        return
+
+    source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
+    mid_sec = (candidate.start_sec + candidate.end_sec) / 2
+
+    cap = cv2.VideoCapture(str(source_path))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(mid_sec * fps))
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret or frame is None:
+        logger.warning(
+            "Could not extract frame for style preview",
+            extra={"style_config_id": style_config_id},
+        )
+        return
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    img = Image.fromarray(frame_rgb)
+    draw = ImageDraw.Draw(img)
+
+    if (
+        style_config.watermark_enabled
+        and style_config.watermark_type == "TEXT"
+        and style_config.watermark_text
+    ):
+        font = _get_preview_font(size=style_config.watermark_size)
+        wm_positions = {
+            "BOTTOM_RIGHT": (img.width - 150, img.height - 60),
+            "TOP_LEFT": (10, 10),
+            "TOP_RIGHT": (img.width - 150, 10),
+            "BOTTOM_LEFT": (10, img.height - 60),
+        }
+        pos = wm_positions.get(style_config.watermark_position, (img.width - 150, img.height - 60))
+        draw.text(
+            pos,
+            style_config.watermark_text,
+            fill=(255, 255, 255, int(255 * style_config.watermark_opacity)),
+            font=font,
+        )
+
+    if style_config.caption_enabled:
+        font = _get_preview_font(size=style_config.caption_size // 2)
+        draw.text(
+            (img.width // 2 - 200, img.height - 200),
+            "Sample caption text",
+            fill=(255, 255, 255),
+            font=font,
+        )
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    filename = f"style_preview_{style_config_id}.jpg"
+    style_config.preview_image.save(filename, ContentFile(buf.getvalue()), save=True)
+    logger.info(
+        "Style preview generated",
+        extra={"style_config_id": style_config_id, "filename": filename},
+    )
 
 
 @shared_task(
@@ -345,11 +512,8 @@ def preview_clip_layout(self, layout_config_id: str) -> None:
     For CENTER_CROP: draws the center 9:16 crop window in green.
     Saves the result to ClipLayoutConfig.preview_image.
     """
-    import io
-    import tempfile
 
     import cv2
-    import numpy as np
     from django.core.files.base import ContentFile
 
     try:

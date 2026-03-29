@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+from typing import Any
 
 from django.contrib import admin
 from django.contrib import messages
-from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django_fsm import TransitionNotAllowed
@@ -14,11 +15,20 @@ from unfold.admin import StackedInline
 from unfold.admin import TabularInline
 from unfold.decorators import display
 
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from django.http import HttpRequest
+
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
+from ***REMOVED***.clipping.models import ClipMediaAsset
+from ***REMOVED***.clipping.models import ClipMusicAsset
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
+from ***REMOVED***.clipping.models import ClipRenderStageResult
+from ***REMOVED***.clipping.models import ClipStyleConfig
+from ***REMOVED***.clipping.models import ClipTimedOverlay
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
@@ -126,6 +136,298 @@ class ClipRenderInline(TabularInline):
         )
 
 
+class ClipStyleConfigInline(StackedInline):
+    model = ClipStyleConfig
+    extra = 0
+    can_delete = False
+    max_num = 1
+    collapsible = True
+    verbose_name = "Style Config"
+    verbose_name_plural = "Style Config"
+    readonly_fields = ("preview_thumbnail",)
+    fieldsets = (
+        (
+            "Asset Selection",
+            {
+                "fields": ("intro_asset", "outro_asset", "music_asset"),
+            },
+        ),
+        (
+            "Captions",
+            {
+                "fields": (
+                    ("caption_enabled", "caption_style", "caption_position"),
+                    ("caption_font", "caption_size"),
+                    ("caption_color", "caption_stroke_color", "caption_stroke_width"),
+                    "caption_bg_color",
+                    ("caption_animation", "caption_language", "caption_translate_to"),
+                    "emoji_keyword_map",
+                ),
+            },
+        ),
+        (
+            "Hook",
+            {
+                "fields": (
+                    ("hook_enabled", "hook_style", "hook_duration_sec"),
+                    ("hook_font", "hook_size"),
+                    ("hook_color", "hook_bg_color", "hook_animation"),
+                ),
+            },
+        ),
+        (
+            "Transitions",
+            {
+                "fields": (
+                    ("intro_transition", "outro_transition", "transition_duration_sec"),
+                ),
+            },
+        ),
+        (
+            "Watermark",
+            {
+                "fields": (
+                    ("watermark_enabled", "watermark_type"),
+                    ("watermark_text", "watermark_image"),
+                    ("watermark_position", "watermark_opacity", "watermark_size"),
+                ),
+            },
+        ),
+        (
+            "Progress Bar",
+            {
+                "fields": (
+                    ("progress_bar_enabled", "progress_bar_position"),
+                    ("progress_bar_color", "progress_bar_height"),
+                ),
+            },
+        ),
+        (
+            "Background Music",
+            {
+                "fields": (
+                    ("music_enabled", "music_volume_db"),
+                    ("music_fade_in_sec", "music_fade_out_sec"),
+                ),
+            },
+        ),
+        (
+            "Preview",
+            {
+                "fields": ("preview_thumbnail",),
+            },
+        ),
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[ClipStyleConfig]:
+        return super().get_queryset(request).select_related("intro_asset", "outro_asset", "music_asset")
+
+    def formfield_for_foreignkey(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
+        """Filter asset FK dropdowns to the candidate's channel."""
+        if db_field.name in ("intro_asset", "outro_asset", "music_asset"):
+            candidate_id = request.resolver_match.kwargs.get("object_id")
+            if candidate_id:
+                try:
+                    candidate = ClipCandidate.objects.select_related("clipping_job__channel").get(pk=candidate_id)
+                    channel = candidate.clipping_job.channel
+                    if db_field.name == "intro_asset":
+                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="INTRO", is_active=True)
+                    elif db_field.name == "outro_asset":
+                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="OUTRO", is_active=True)
+                    elif db_field.name == "music_asset":
+                        kwargs["queryset"] = ClipMusicAsset.objects.filter(channel=channel, is_active=True)
+                except ClipCandidate.DoesNotExist:
+                    pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @display(description="Style Preview")
+    def preview_thumbnail(self, obj: ClipStyleConfig) -> str:
+        if not obj.preview_image:
+            return "\u2014"
+        return format_html(
+            '<img src="{}" style="max-width:200px;max-height:360px;border-radius:4px;" />',
+            obj.preview_image.url,
+        )
+
+
+class ClipTimedOverlayInline(TabularInline):
+    model = ClipTimedOverlay
+    extra = 0
+    fields = (
+        "overlay_type",
+        "text",
+        "image",
+        "start_sec",
+        "end_sec",
+        "position_x",
+        "position_y",
+        "opacity",
+        "font_size",
+        "font_color",
+    )
+    ordering = ["start_sec"]
+
+
+class ClipRenderStageResultInline(TabularInline):
+    model = ClipRenderStageResult
+    extra = 0
+    can_delete = False
+    ordering = ["stage_order"]
+    readonly_fields = (
+        "stage_order",
+        "stage_name",
+        "status_badge",
+        "duration_display",
+        "started_at",
+        "completed_at",
+        "last_error",
+        "stage_output_preview",
+    )
+    fields = (
+        "stage_order",
+        "stage_name",
+        "status_badge",
+        "duration_display",
+        "started_at",
+        "completed_at",
+        "last_error",
+        "stage_output_preview",
+    )
+
+    @display(
+        description="Status",
+        label={
+            "PENDING": "default",
+            "RUNNING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+            "SKIPPED": "warning",
+        },
+    )
+    def status_badge(self, obj: ClipRenderStageResult) -> str:
+        return obj.status
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipRenderStageResult) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.2f}s"
+
+    @display(description="Output")
+    def stage_output_preview(self, obj: ClipRenderStageResult) -> str:
+        if not obj.output_file:
+            return "\u2014"
+        url = obj.output_file.url
+        return format_html('<a href="{}" download>Download</a>', url)
+
+
+@admin.register(ClipRender)
+class ClipRenderAdmin(ModelAdmin):
+    list_display = (
+        "__str__",
+        "candidate",
+        "format",
+        "status_badge",
+        "render_duration_sec",
+        "file_size_bytes",
+        "created_at",
+    )
+    list_filter = ("status", "format")
+    search_fields = ("candidate__title", "candidate__clipping_job__source_title")
+    readonly_fields = (
+        "id",
+        "candidate",
+        "format",
+        "status",
+        "video_preview",
+        "file_size_bytes",
+        "render_duration_sec",
+        "last_error",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [ClipRenderStageResultInline]
+
+    @display(
+        description="Status",
+        ordering="status",
+        label={
+            "PENDING": "default",
+            "RENDERING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+        },
+    )
+    def status_badge(self, obj: ClipRender) -> str:
+        return obj.status
+
+    @display(description="Video")
+    def video_preview(self, obj: ClipRender) -> str:
+        if not obj.video_file:
+            return "\u2014"
+        url = obj.video_file.url
+        return format_html(
+            '<video src="{}" controls style="max-width:320px;max-height:568px;"></video>'
+            '<br><a href="{}" download>Download</a>',
+            url,
+            url,
+        )
+
+    @admin.action(description="Retry full render (from stage 1)")
+    def retry_full_render(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
+        from ***REMOVED***.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=1)
+            triggered += 1
+        self.message_user(request, f"Queued full re-render for {triggered} render(s).", messages.SUCCESS)
+
+    @admin.action(description="Retry from stage 2 (skip trim/crop)")
+    def retry_from_stage_2(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
+        from ***REMOVED***.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=2)
+            triggered += 1
+        self.message_user(request, f"Queued re-render from stage 2 for {triggered} render(s).", messages.SUCCESS)
+
+    @admin.action(description="Retry from captions (stage 4)")
+    def retry_from_captions(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
+        from ***REMOVED***.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=4)
+            triggered += 1
+        self.message_user(
+            request,
+            f"Queued re-render from captions (stage 4) for {triggered} render(s).",
+            messages.SUCCESS,
+        )
+
+    @admin.action(description="Clear stage outputs and reset to PENDING")
+    def clear_stage_outputs(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
+        cleared = 0
+        reset = 0
+        for render in queryset:
+            deleted_count, _ = render.stage_results.all().delete()
+            cleared += deleted_count
+            if render.status != ClipRender.RenderStatus.PENDING:
+                render.status = ClipRender.RenderStatus.PENDING
+                render.last_error = ""
+                render.save(update_fields=["status", "last_error", "updated_at"])
+                reset += 1
+        self.message_user(
+            request,
+            f"Cleared {cleared} stage result(s), reset {reset} render(s) to PENDING.",
+            messages.SUCCESS,
+        )
+
+    actions = ["retry_full_render", "retry_from_stage_2", "retry_from_captions", "clear_stage_outputs"]
+
+
 class ClipCandidateInline(TabularInline):
     model = ClipCandidate
     extra = 0
@@ -217,7 +519,7 @@ class ClippingJobAdmin(ModelAdmin):
         return f"${obj.total_cost_usd:.4f}"
 
     @admin.action(description="Start clipping job (begin download)")
-    def start_clipping_job(self, request: HttpRequest, queryset) -> None:
+    def start_clipping_job(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from ***REMOVED***.clipping.tasks import download_source_video
 
         started = 0
@@ -247,7 +549,7 @@ class ClippingJobAdmin(ModelAdmin):
             )
 
     @admin.action(description="Retry transcription for stuck/failed jobs")
-    def retry_transcription(self, request: HttpRequest, queryset) -> None:
+    def retry_transcription(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from ***REMOVED***.clipping.tasks import transcribe_video
 
         retried = 0
@@ -279,7 +581,7 @@ class ClippingJobAdmin(ModelAdmin):
             )
 
     @admin.action(description="Approve selected candidates")
-    def approve_selected_candidates(self, request: HttpRequest, queryset) -> None:
+    def approve_selected_candidates(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from django.utils import timezone
 
         approved = 0
@@ -294,7 +596,7 @@ class ClippingJobAdmin(ModelAdmin):
         self.message_user(request, f"Approved {approved} candidate(s).", messages.SUCCESS)
 
     @admin.action(description="Trigger rendering for approved candidates")
-    def trigger_render(self, request: HttpRequest, queryset) -> None:
+    def trigger_render(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from ***REMOVED***.clipping.tasks import render_clip
 
         triggered = 0
@@ -401,7 +703,7 @@ class ClipCandidateAdmin(ModelAdmin):
         "created_at",
         "updated_at",
     )
-    inlines = [ClipLayoutConfigInline, ClipRenderInline]
+    inlines = [ClipLayoutConfigInline, ClipStyleConfigInline, ClipTimedOverlayInline, ClipRenderInline]
 
     @display(
         description="Layout",
@@ -418,7 +720,7 @@ class ClipCandidateAdmin(ModelAdmin):
             return "CENTER_CROP"
 
     @admin.action(description="Generate layout preview image")
-    def generate_preview(self, request: HttpRequest, queryset) -> None:
+    def generate_preview(self, request: HttpRequest, queryset: QuerySet[ClipCandidate]) -> None:
         from ***REMOVED***.clipping.tasks import preview_clip_layout
 
         queued = 0
@@ -440,6 +742,101 @@ class ClipCandidateAdmin(ModelAdmin):
                 messages.WARNING,
             )
 
+    @admin.action(description="Generate style preview image")
+    def generate_style_preview(self, request: HttpRequest, queryset: QuerySet[ClipCandidate]) -> None:
+        from ***REMOVED***.clipping.tasks import preview_clip_style
+
+        queued = 0
+        skipped = 0
+        for candidate in queryset:
+            try:
+                sc = candidate.style_config
+                preview_clip_style.delay(str(sc.id))
+                queued += 1
+            except ClipStyleConfig.DoesNotExist:
+                skipped += 1
+
+        if queued:
+            self.message_user(request, f"Queued style preview for {queued} candidate(s).", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"Skipped {skipped} — no style config found.", messages.WARNING)
+
+    actions = ["generate_preview", "generate_style_preview"]
+
+
+@admin.register(ClipMediaAsset)
+class ClipMediaAssetAdmin(ModelAdmin):
+    list_display = ("name", "channel", "asset_type_badge", "duration_display", "is_active", "created_at")
+    list_filter = ("asset_type", "is_active", "channel")
+    search_fields = ("name", "channel__name")
+    readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "video_preview")
+
+    @display(description="Type", label={"INTRO": "info", "OUTRO": "warning"})
+    def asset_type_badge(self, obj: ClipMediaAsset) -> str:
+        return obj.asset_type
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipMediaAsset) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.1f}s"
+
+    @display(description="Preview")
+    def video_preview(self, obj: ClipMediaAsset) -> str:
+        if not obj.file:
+            return "\u2014"
+        return format_html(
+            '<video src="{}" controls style="max-width:240px;max-height:135px;"></video>',
+            obj.file.url,
+        )
+
+
+@admin.register(ClipMusicAsset)
+class ClipMusicAssetAdmin(ModelAdmin):
+    list_display = ("name", "channel", "genre", "duration_display", "bpm", "is_active", "created_at")
+    list_filter = ("is_active", "genre", "channel")
+    search_fields = ("name", "channel__name", "genre")
+    readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "audio_preview")
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipMusicAsset) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.1f}s"
+
+    @display(description="Preview")
+    def audio_preview(self, obj: ClipMusicAsset) -> str:
+        if not obj.file:
+            return "\u2014"
+        return format_html('<audio src="{}" controls style="max-width:300px;"></audio>', obj.file.url)
+
+
+@admin.register(ClipStyleConfig)
+class ClipStyleConfigAdmin(ModelAdmin):
+    list_display = ("__str__", "candidate", "caption_enabled", "watermark_enabled", "music_enabled", "updated_at")
+    list_filter = ("caption_enabled", "watermark_enabled", "music_enabled")
+    search_fields = ("candidate__title", "candidate__clipping_job__source_title")
+    readonly_fields = ("id", "created_at", "updated_at", "preview_thumbnail")
+
+    @display(description="Preview")
+    def preview_thumbnail(self, obj: ClipStyleConfig) -> str:
+        if not obj.preview_image:
+            return "\u2014"
+        return format_html(
+            '<img src="{}" style="max-width:200px;max-height:360px;border-radius:4px;" />',
+            obj.preview_image.url,
+        )
+
+    @admin.action(description="Generate style preview image")
+    def generate_preview(self, request: HttpRequest, queryset: QuerySet[ClipStyleConfig]) -> None:
+        from ***REMOVED***.clipping.tasks import preview_clip_style
+
+        queued = 0
+        for sc in queryset:
+            preview_clip_style.delay(str(sc.id))
+            queued += 1
+        self.message_user(request, f"Queued style preview for {queued} config(s).", messages.SUCCESS)
+
     actions = ["generate_preview"]
 
 
@@ -447,7 +844,14 @@ __all__ = [
     "ClipCandidateAdmin",
     "ClipCandidateInline",
     "ClipLayoutConfigInline",
+    "ClipMediaAssetAdmin",
+    "ClipMusicAssetAdmin",
     "ClipPostAdmin",
+    "ClipRenderAdmin",
     "ClipRenderInline",
+    "ClipRenderStageResultInline",
+    "ClipStyleConfigAdmin",
+    "ClipStyleConfigInline",
+    "ClipTimedOverlayInline",
     "ClippingJobAdmin",
 ]
