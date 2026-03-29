@@ -21,6 +21,8 @@ from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
+from reelforge.clipping.models import ClipStyleConfig
+from reelforge.clipping.models import ClipTimedOverlay
 
 logger = logging.getLogger("reelforge.clipping")
 
@@ -126,6 +128,138 @@ class ClipRenderInline(TabularInline):
             url,
             url,
         )
+
+
+class ClipStyleConfigInline(StackedInline):
+    model = ClipStyleConfig
+    extra = 0
+    can_delete = False
+    max_num = 1
+    collapsible = True
+    verbose_name = "Style Config"
+    verbose_name_plural = "Style Config"
+    readonly_fields = ("preview_thumbnail",)
+    fieldsets = (
+        (
+            "Asset Selection",
+            {
+                "fields": ("intro_asset", "outro_asset", "music_asset"),
+            },
+        ),
+        (
+            "Captions",
+            {
+                "fields": (
+                    ("caption_enabled", "caption_style", "caption_position"),
+                    ("caption_font", "caption_size"),
+                    ("caption_color", "caption_stroke_color", "caption_stroke_width"),
+                    "caption_bg_color",
+                    ("caption_animation", "caption_language", "caption_translate_to"),
+                    "emoji_keyword_map",
+                ),
+            },
+        ),
+        (
+            "Hook",
+            {
+                "fields": (
+                    ("hook_enabled", "hook_style", "hook_duration_sec"),
+                    ("hook_font", "hook_size"),
+                    ("hook_color", "hook_bg_color", "hook_animation"),
+                ),
+            },
+        ),
+        (
+            "Transitions",
+            {
+                "fields": (
+                    ("intro_transition", "outro_transition", "transition_duration_sec"),
+                ),
+            },
+        ),
+        (
+            "Watermark",
+            {
+                "fields": (
+                    ("watermark_enabled", "watermark_type"),
+                    ("watermark_text", "watermark_image"),
+                    ("watermark_position", "watermark_opacity", "watermark_size"),
+                ),
+            },
+        ),
+        (
+            "Progress Bar",
+            {
+                "fields": (
+                    ("progress_bar_enabled", "progress_bar_position"),
+                    ("progress_bar_color", "progress_bar_height"),
+                ),
+            },
+        ),
+        (
+            "Background Music",
+            {
+                "fields": (
+                    ("music_enabled", "music_volume_db"),
+                    ("music_fade_in_sec", "music_fade_out_sec"),
+                ),
+            },
+        ),
+        (
+            "Preview",
+            {
+                "fields": ("preview_thumbnail",),
+            },
+        ),
+    )
+
+    def get_queryset(self, request: HttpRequest):  # type: ignore[override]
+        return super().get_queryset(request).select_related("intro_asset", "outro_asset", "music_asset")
+
+    def formfield_for_foreignkey(self, db_field, request: HttpRequest, **kwargs):  # type: ignore[override]
+        """Filter asset FK dropdowns to the candidate's channel."""
+        if db_field.name in ("intro_asset", "outro_asset", "music_asset"):
+            candidate_id = request.resolver_match.kwargs.get("object_id")
+            if candidate_id:
+                try:
+                    candidate = ClipCandidate.objects.select_related("clipping_job__channel").get(pk=candidate_id)
+                    channel = candidate.clipping_job.channel
+                    if db_field.name == "intro_asset":
+                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="INTRO", is_active=True)
+                    elif db_field.name == "outro_asset":
+                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="OUTRO", is_active=True)
+                    elif db_field.name == "music_asset":
+                        kwargs["queryset"] = ClipMusicAsset.objects.filter(channel=channel, is_active=True)
+                except ClipCandidate.DoesNotExist:
+                    pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @display(description="Style Preview")
+    def preview_thumbnail(self, obj: ClipStyleConfig) -> str:
+        if not obj.preview_image:
+            return "\u2014"
+        return format_html(
+            '<img src="{}" style="max-width:200px;max-height:360px;border-radius:4px;" />',
+            obj.preview_image.url,
+        )
+
+
+class ClipTimedOverlayInline(TabularInline):
+    model = ClipTimedOverlay
+    extra = 0
+    fields = (
+        "overlay_type",
+        "text",
+        "image",
+        "start_sec",
+        "end_sec",
+        "position_x",
+        "position_y",
+        "opacity",
+        "font_size",
+        "font_color",
+    )
+    ordering = ["start_sec"]
 
 
 class ClipCandidateInline(TabularInline):
@@ -403,7 +537,7 @@ class ClipCandidateAdmin(ModelAdmin):
         "created_at",
         "updated_at",
     )
-    inlines = [ClipLayoutConfigInline, ClipRenderInline]
+    inlines = [ClipLayoutConfigInline, ClipStyleConfigInline, ClipTimedOverlayInline, ClipRenderInline]
 
     @display(
         description="Layout",
@@ -442,7 +576,26 @@ class ClipCandidateAdmin(ModelAdmin):
                 messages.WARNING,
             )
 
-    actions = ["generate_preview"]
+    @admin.action(description="Generate style preview image")
+    def generate_style_preview(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import preview_clip_style
+
+        queued = 0
+        skipped = 0
+        for candidate in queryset:
+            try:
+                sc = candidate.style_config
+                preview_clip_style.delay(str(sc.id))
+                queued += 1
+            except ClipStyleConfig.DoesNotExist:
+                skipped += 1
+
+        if queued:
+            self.message_user(request, f"Queued style preview for {queued} candidate(s).", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"Skipped {skipped} — no style config found.", messages.WARNING)
+
+    actions = ["generate_preview", "generate_style_preview"]
 
 
 @admin.register(ClipMediaAsset)
@@ -500,5 +653,7 @@ __all__ = [
     "ClipMusicAssetAdmin",
     "ClipPostAdmin",
     "ClipRenderInline",
+    "ClipStyleConfigInline",
+    "ClipTimedOverlayInline",
     "ClippingJobAdmin",
 ]
