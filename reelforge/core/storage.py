@@ -86,3 +86,13 @@ def get_clip_downloaded_path(clipping_job_id: str) -> Path:
 def get_clip_render_path(clip_candidate_id: str, fmt: str) -> Path:
     """Return path for a rendered clip candidate. fmt: landscape | portrait | square."""
     return _media(f"clipping/renders/{clip_candidate_id}/{fmt}.mp4")
+
+
+def get_stage_output_path(render_id: str, stage_order: int, stage_name: str) -> Path:
+    """Return path for an intermediate render stage output file."""
+    return _media(f"clipping/stage_outputs/{render_id}/{stage_order:02d}_{stage_name}.mp4")
+
+
+def get_clip_ass_path(render_id: str) -> Path:
+    """Return path for an ASS subtitle file generated for a render."""
+    return _media(f"clipping/ass/{render_id}.ass")
