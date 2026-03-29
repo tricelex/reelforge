@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from typing import Any
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
@@ -12,7 +13,16 @@ from django_fsm import transition
 
 from reelforge.channels.models import Channel
 from reelforge.channels.models import SocialAccount
+from reelforge.clipping.constants import CaptionAnimation
+from reelforge.clipping.constants import CaptionPosition
+from reelforge.clipping.constants import CaptionStyle
+from reelforge.clipping.constants import HookStyle
+from reelforge.clipping.constants import MediaAssetType
+from reelforge.clipping.constants import ProgressBarPosition
 from reelforge.clipping.constants import RenderMode as ClipRenderMode
+from reelforge.clipping.constants import TransitionStyle
+from reelforge.clipping.constants import WatermarkPosition
+from reelforge.clipping.constants import WatermarkType
 from reelforge.core.models import BaseAbstractModel
 
 if TYPE_CHECKING:
@@ -502,3 +512,197 @@ class ClipLayoutConfig(BaseAbstractModel):
                 self.region_b_h,
             ]
         )
+
+
+# ---------------------------------------------------------------------------
+# Style mixin — shared by ClipRenderTemplate (channel) and ClipStyleConfig (clip)
+# ---------------------------------------------------------------------------
+
+
+class ClipRenderStyleMixin(models.Model):
+    """Abstract mixin providing all render style fields.
+
+    Both ClipRenderTemplate (channel-level) and ClipStyleConfig (per-clip)
+    inherit this so the operator can override any field at the clip level.
+    """
+
+    # Caption
+    caption_enabled = models.BooleanField(default=True)
+    caption_style = models.CharField(
+        max_length=20, choices=CaptionStyle.choices, default=CaptionStyle.CHUNKED
+    )
+    caption_font = models.CharField(max_length=100, default="Montserrat-Bold")
+    caption_size = models.PositiveIntegerField(default=52)
+    caption_color = models.CharField(max_length=9, default="#FFFFFF")
+    caption_stroke_color = models.CharField(max_length=9, default="#000000")
+    caption_stroke_width = models.PositiveIntegerField(default=3)
+    caption_bg_color = models.CharField(max_length=9, blank=True, default="")
+    caption_position = models.CharField(
+        max_length=10, choices=CaptionPosition.choices, default=CaptionPosition.BOTTOM
+    )
+    caption_animation = models.CharField(
+        max_length=10, choices=CaptionAnimation.choices, default=CaptionAnimation.POP
+    )
+    caption_language = models.CharField(max_length=10, default="en")
+    caption_translate_to = models.CharField(max_length=10, blank=True, default="")
+    emoji_keyword_map = models.JSONField(default=dict, blank=True)
+
+    # Hook
+    hook_enabled = models.BooleanField(default=True)
+    hook_style = models.CharField(
+        max_length=20, choices=HookStyle.choices, default=HookStyle.OVERLAY_TOP
+    )
+    hook_duration_sec = models.FloatField(default=2.5)
+    hook_font = models.CharField(max_length=100, default="Montserrat-Bold")
+    hook_size = models.PositiveIntegerField(default=60)
+    hook_color = models.CharField(max_length=9, default="#FFFFFF")
+    hook_bg_color = models.CharField(max_length=9, default="#CC000000")
+    hook_animation = models.CharField(
+        max_length=10, choices=CaptionAnimation.choices, default=CaptionAnimation.FADE
+    )
+
+    # Transitions
+    intro_transition = models.CharField(
+        max_length=20, choices=TransitionStyle.choices, default=TransitionStyle.NONE
+    )
+    outro_transition = models.CharField(
+        max_length=20, choices=TransitionStyle.choices, default=TransitionStyle.NONE
+    )
+    transition_duration_sec = models.FloatField(default=0.5)
+
+    # Watermark
+    watermark_enabled = models.BooleanField(default=False)
+    watermark_type = models.CharField(
+        max_length=10, choices=WatermarkType.choices, default=WatermarkType.TEXT
+    )
+    watermark_text = models.CharField(max_length=100, blank=True, default="")
+    watermark_image = models.ImageField(
+        upload_to="clipping/watermarks/", blank=True, null=True
+    )
+    watermark_position = models.CharField(
+        max_length=15,
+        choices=WatermarkPosition.choices,
+        default=WatermarkPosition.BOTTOM_RIGHT,
+    )
+    watermark_opacity = models.FloatField(default=0.6)
+    watermark_size = models.PositiveIntegerField(default=32)
+
+    # Progress bar
+    progress_bar_enabled = models.BooleanField(default=False)
+    progress_bar_position = models.CharField(
+        max_length=10,
+        choices=ProgressBarPosition.choices,
+        default=ProgressBarPosition.TOP,
+    )
+    progress_bar_color = models.CharField(max_length=9, default="#FFFFFF")
+    progress_bar_height = models.PositiveIntegerField(default=6)
+
+    # Background music
+    music_enabled = models.BooleanField(default=False)
+    music_volume_db = models.FloatField(default=-20.0)
+    music_fade_in_sec = models.FloatField(default=1.0)
+    music_fade_out_sec = models.FloatField(default=1.0)
+
+    STYLE_FIELD_NAMES: list[str] = [
+        "caption_enabled", "caption_style", "caption_font", "caption_size",
+        "caption_color", "caption_stroke_color", "caption_stroke_width",
+        "caption_bg_color", "caption_position", "caption_animation",
+        "caption_language", "caption_translate_to", "emoji_keyword_map",
+        "hook_enabled", "hook_style", "hook_duration_sec", "hook_font",
+        "hook_size", "hook_color", "hook_bg_color", "hook_animation",
+        "intro_transition", "outro_transition", "transition_duration_sec",
+        "watermark_enabled", "watermark_type", "watermark_text", "watermark_image",
+        "watermark_position", "watermark_opacity", "watermark_size",
+        "progress_bar_enabled", "progress_bar_position", "progress_bar_color",
+        "progress_bar_height",
+        "music_enabled", "music_volume_db", "music_fade_in_sec", "music_fade_out_sec",
+    ]
+
+    class Meta:
+        abstract = True
+
+
+class ClipRenderTemplate(ClipRenderStyleMixin, BaseAbstractModel):
+    """Channel-level render style defaults. One per channel, auto-created on channel save."""
+
+    channel = models.OneToOneField(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name="clip_render_template",
+    )
+
+    class Meta:
+        verbose_name = "Clip Render Template"
+        verbose_name_plural = "Clip Render Templates"
+
+    def __str__(self) -> str:
+        return f"Render Template — {self.channel.name}"
+
+    def to_style_defaults(self) -> dict[str, Any]:
+        """Return a dict of all style fields suitable for seeding a ClipStyleConfig."""
+        result: dict[str, Any] = {}
+        for name in self.STYLE_FIELD_NAMES:
+            value = getattr(self, name)
+            # FileField/ImageField: store the name string (relative path), not the FieldFile
+            if hasattr(value, "name"):
+                value = value.name or ""
+            result[name] = value
+        return result
+
+
+class ClipMediaAsset(BaseAbstractModel):
+    """Intro or outro video clip library for a channel.
+
+    Operator uploads short branded clips; duration_sec is auto-detected via ffprobe.
+    """
+
+    channel = models.ForeignKey(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name="media_assets",
+    )
+    asset_type = models.CharField(
+        max_length=10, choices=MediaAssetType.choices, default=MediaAssetType.INTRO
+    )
+    name = models.CharField(max_length=200)
+    file = models.FileField(upload_to="clipping/media_assets/", max_length=500, blank=True)
+    duration_sec = models.FloatField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["asset_type", "name"]
+        verbose_name = "Clip Media Asset"
+        verbose_name_plural = "Clip Media Assets"
+        indexes = [
+            models.Index(fields=["channel", "asset_type", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_asset_type_display()} — {self.name}"
+
+
+class ClipMusicAsset(BaseAbstractModel):
+    """Background music track library for a channel."""
+
+    channel = models.ForeignKey(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name="music_assets",
+    )
+    name = models.CharField(max_length=200)
+    file = models.FileField(upload_to="clipping/music_assets/", max_length=500, blank=True)
+    duration_sec = models.FloatField(null=True, blank=True)
+    bpm = models.FloatField(null=True, blank=True)
+    genre = models.CharField(max_length=100, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["genre", "name"]
+        verbose_name = "Clip Music Asset"
+        verbose_name_plural = "Clip Music Assets"
+        indexes = [
+            models.Index(fields=["channel", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.genre or 'no genre'})"
