@@ -6,10 +6,8 @@ from django.conf import settings
 
 
 def _media(subpath: str) -> Path:
-    """Return a Path under MEDIA_ROOT, creating parent dirs as needed."""
-    p = Path(settings.MEDIA_ROOT) / subpath
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
+    """Return a Path under MEDIA_ROOT. Caller is responsible for mkdir before writing."""
+    return Path(settings.MEDIA_ROOT) / subpath
 
 
 # ── Voiceover ────────────────────────────────────────────────────────────────
