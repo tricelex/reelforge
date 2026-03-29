@@ -654,7 +654,9 @@ def test_progress_bar_stage_command_uses_drawbox(tmp_path: Path) -> None:
     stage = ProgressBarStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
     input_path = tmp_path / "in.mp4"
     input_path.write_bytes(b"fake")
-    with patch("reelforge.services.media.render_stages.progress_bar.subprocess.run") as mock_run:
+    with patch("reelforge.services.media.render_stages.progress_bar.ffmpeg.probe") as mock_probe, \
+         patch("reelforge.services.media.render_stages.progress_bar.subprocess.run") as mock_run:
+        mock_probe.return_value = {"format": {"duration": "60.0"}}
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         (tmp_path / "out.mp4").write_bytes(b"out")
         stage.run(input_path)
@@ -708,10 +710,53 @@ def test_music_mix_stage_command_uses_amix(tmp_path: Path) -> None:
     stage = MusicMixStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
     input_path = tmp_path / "in.mp4"
     input_path.write_bytes(b"fake")
-    with patch("reelforge.services.media.render_stages.music_mix.subprocess.run") as mock_run:
+    with patch("reelforge.services.media.render_stages.music_mix.ffmpeg.probe") as mock_probe, \
+         patch("reelforge.services.media.render_stages.music_mix.subprocess.run") as mock_run:
+        mock_probe.return_value = {"format": {"duration": "60.0"}}
         mock_run.return_value = MagicMock(returncode=0, stderr="")
         (tmp_path / "out.mp4").write_bytes(b"out")
         stage.run(input_path)
     cmd = " ".join(mock_run.call_args[0][0])
     assert "amix" in cmd
     assert "volume" in cmd or "-18" in cmd
+
+
+def test_progress_bar_stage_uses_probed_duration(tmp_path: Path) -> None:
+    """ProgressBarStage probes actual input duration, not the constructor arg."""
+    sc = MagicMock()
+    sc.progress_bar_enabled = True
+    sc.progress_bar_position = "TOP"
+    sc.progress_bar_color = "#FF0000"
+    sc.progress_bar_height = 6
+    # Pass 30.0 as constructor arg but probe returns 95.5 (actual assembled video)
+    stage = ProgressBarStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=30.0)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.progress_bar.ffmpeg.probe") as mock_probe, \
+         patch("reelforge.services.media.render_stages.progress_bar.subprocess.run") as mock_run:
+        mock_probe.return_value = {"format": {"duration": "95.5"}}
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "95.5" in cmd
+    assert "30.0" not in cmd
+
+
+def test_music_mix_stage_uses_probed_duration(tmp_path: Path) -> None:
+    """MusicMixStage probes actual input duration for fade-out timing."""
+    sc = _make_music_config(volume_db=-20.0, fade_in=1.0, fade_out=3.0)
+    sc.music_asset.duration_sec = 200.0  # longer than video so no loop
+    # Pass 30.0 as constructor arg but probe returns 95.5 (actual assembled video)
+    stage = MusicMixStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=30.0)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.music_mix.ffmpeg.probe") as mock_probe, \
+         patch("reelforge.services.media.render_stages.music_mix.subprocess.run") as mock_run:
+        mock_probe.return_value = {"format": {"duration": "95.5"}}
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    # fade-out start = 95.5 - 3.0 = 92.5
+    assert "92.5" in cmd

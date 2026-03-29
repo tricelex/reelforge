@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import ffmpeg
+
 from reelforge.services.media.render_stages.base import RenderStage
 
 if TYPE_CHECKING:
@@ -48,7 +50,8 @@ class MusicMixStage(RenderStage):
         vol_db = sc.music_volume_db
         fade_in = sc.music_fade_in_sec
         fade_out = sc.music_fade_out_sec
-        dur = self.video_duration_sec
+        probe = ffmpeg.probe(str(input_path))
+        dur = float(probe["format"]["duration"])
 
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
