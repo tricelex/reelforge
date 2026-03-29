@@ -9,6 +9,7 @@ import pytest
 from ***REMOVED***.clipping.tests.factories import ClipCandidateFactory
 from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
 from ***REMOVED***.clipping.tests.factories import ClipStyleConfigFactory
+from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
 
 
 @pytest.mark.django_db
@@ -62,3 +63,30 @@ def test_render_clip_uses_existing_render_when_clip_render_id_provided() -> None
 
     # Should still be the same render, not a new one
     assert ClipRender.objects.filter(candidate=candidate).count() == 1
+
+
+@pytest.mark.django_db
+def test_analyze_clips_sets_failed_status_on_final_retry() -> None:
+    """On the final retry, analyze_clips must mark the job FAILED instead of retrying again."""
+    from unittest.mock import patch
+
+    from ***REMOVED***.clipping.models import ClippingJob
+    from ***REMOVED***.clipping.tasks import analyze_clips
+    from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
+
+    job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
+
+    with patch(
+        "***REMOVED***.clipping.tasks.ClipAnalysisService",
+        side_effect=RuntimeError("analysis boom"),
+    ):
+        # Simulate Celery executing this as the final retry (retries == max_retries)
+        analyze_clips.apply(
+            args=[str(job.pk)],
+            kwargs={},
+            retries=analyze_clips.max_retries,
+        )
+
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.FAILED
+    assert "analysis boom" in job.last_error
