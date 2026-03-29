@@ -407,15 +407,21 @@ class ClipRenderAdmin(ModelAdmin):
             messages.SUCCESS,
         )
 
-    @admin.action(description="Clear stage outputs (reset to PENDING)")
+    @admin.action(description="Clear stage outputs and reset to PENDING")
     def clear_stage_outputs(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
         cleared = 0
+        reset = 0
         for render in queryset:
             deleted_count, _ = render.stage_results.all().delete()
             cleared += deleted_count
+            if render.status != ClipRender.RenderStatus.PENDING:
+                render.status = ClipRender.RenderStatus.PENDING
+                render.last_error = ""
+                render.save(update_fields=["status", "last_error", "updated_at"])
+                reset += 1
         self.message_user(
             request,
-            f"Cleared {cleared} stage result(s) across {queryset.count()} render(s).",
+            f"Cleared {cleared} stage result(s), reset {reset} render(s) to PENDING.",
             messages.SUCCESS,
         )
 
@@ -805,6 +811,35 @@ class ClipMusicAssetAdmin(ModelAdmin):
         return format_html('<audio src="{}" controls style="max-width:300px;"></audio>', obj.file.url)
 
 
+@admin.register(ClipStyleConfig)
+class ClipStyleConfigAdmin(ModelAdmin):
+    list_display = ("__str__", "candidate", "caption_enabled", "watermark_enabled", "music_enabled", "updated_at")
+    list_filter = ("caption_enabled", "watermark_enabled", "music_enabled")
+    search_fields = ("candidate__title", "candidate__clipping_job__source_title")
+    readonly_fields = ("id", "created_at", "updated_at", "preview_thumbnail")
+
+    @display(description="Preview")
+    def preview_thumbnail(self, obj: ClipStyleConfig) -> str:
+        if not obj.preview_image:
+            return "\u2014"
+        return format_html(
+            '<img src="{}" style="max-width:200px;max-height:360px;border-radius:4px;" />',
+            obj.preview_image.url,
+        )
+
+    @admin.action(description="Generate style preview image")
+    def generate_preview(self, request: HttpRequest, queryset: QuerySet[ClipStyleConfig]) -> None:
+        from reelforge.clipping.tasks import preview_clip_style
+
+        queued = 0
+        for sc in queryset:
+            preview_clip_style.delay(str(sc.id))
+            queued += 1
+        self.message_user(request, f"Queued style preview for {queued} config(s).", messages.SUCCESS)
+
+    actions = ["generate_preview"]
+
+
 __all__ = [
     "ClipCandidateAdmin",
     "ClipCandidateInline",
@@ -815,6 +850,7 @@ __all__ = [
     "ClipRenderAdmin",
     "ClipRenderInline",
     "ClipRenderStageResultInline",
+    "ClipStyleConfigAdmin",
     "ClipStyleConfigInline",
     "ClipTimedOverlayInline",
     "ClippingJobAdmin",

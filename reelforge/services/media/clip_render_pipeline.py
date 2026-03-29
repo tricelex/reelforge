@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import shutil
 from dataclasses import dataclass
-from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
@@ -14,6 +13,7 @@ from django.utils import timezone
 from reelforge.clipping.models import ClipRenderStageResult
 from reelforge.core.storage import get_clip_ass_path
 from reelforge.core.storage import get_stage_output_path
+from reelforge.services.media.render_stages.base import RenderStageError
 
 if TYPE_CHECKING:
     from reelforge.channels.models import Channel
@@ -278,4 +278,4 @@ class ClipRenderPipeline:
                     "error": str(exc),
                 },
             )
-            raise
+            raise RenderStageError(stage.name, stage.order, exc) from exc
