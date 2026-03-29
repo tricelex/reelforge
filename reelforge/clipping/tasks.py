@@ -14,7 +14,6 @@ from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
-from ***REMOVED***.clipping.models import ClipRenderStageResult
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
 from ***REMOVED***.core.storage import get_clip_downloaded_path
@@ -286,8 +285,7 @@ def render_clip(
         pipeline.run(start_from_stage=start_from_stage)
 
         # Write back speaker detection results from TrimAndCropStage if available
-        built_stages = pipeline._build_stages()
-        trim_stage = next((s for s in built_stages if s.name == "trim_and_crop"), None)
+        trim_stage = next((s for s in pipeline._stages if s.name == "trim_and_crop"), None)
         if (
             layout_config is not None
             and trim_stage is not None
@@ -498,11 +496,8 @@ def preview_clip_layout(self, layout_config_id: str) -> None:
     For CENTER_CROP: draws the center 9:16 crop window in green.
     Saves the result to ClipLayoutConfig.preview_image.
     """
-    import io
-    import tempfile
 
     import cv2
-    import numpy as np
     from django.core.files.base import ContentFile
 
     try:
