@@ -16,6 +16,11 @@ from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClippingJob
 
+from ***REMOVED***.channels.tests.factories import ChannelFactory
+from ***REMOVED***.clipping.models import ClipMediaAsset
+from ***REMOVED***.clipping.models import ClipMusicAsset
+from ***REMOVED***.clipping.models import ClipRenderTemplate
+
 from .factories import ClipCandidateFactory
 from .factories import ClippingJobFactory
 
@@ -200,6 +205,79 @@ def test_has_spatial_regions_false_when_region_b_missing() -> None:
         region_a_x=0, region_a_y=0, region_a_w=400, region_a_h=300,
     )
     assert config.has_spatial_regions is False
+
+
+@pytest.mark.django_db
+def test_clip_render_template_auto_fields_have_correct_defaults() -> None:
+    channel = ChannelFactory()
+    template = ClipRenderTemplate.objects.create(channel=channel)
+    assert template.caption_enabled is True
+    assert template.caption_style == "CHUNKED"
+    assert template.caption_font == "Montserrat-Bold"
+    assert template.caption_size == 52
+    assert template.caption_color == "#FFFFFF"
+    assert template.caption_stroke_color == "#000000"
+    assert template.caption_stroke_width == 3
+    assert template.caption_bg_color == ""
+    assert template.caption_position == "BOTTOM"
+    assert template.caption_animation == "POP"
+    assert template.caption_language == "en"
+    assert template.caption_translate_to == ""
+    assert template.emoji_keyword_map == {}
+    assert template.hook_enabled is True
+    assert template.hook_style == "OVERLAY_TOP"
+    assert template.hook_duration_sec == 2.5
+    assert template.hook_font == "Montserrat-Bold"
+    assert template.hook_size == 60
+    assert template.hook_color == "#FFFFFF"
+    assert template.hook_bg_color == "#CC000000"
+    assert template.hook_animation == "FADE"
+    assert template.intro_transition == "NONE"
+    assert template.outro_transition == "NONE"
+    assert template.transition_duration_sec == 0.5
+    assert template.watermark_enabled is False
+    assert template.watermark_type == "TEXT"
+    assert template.watermark_text == ""
+    assert template.watermark_position == "BOTTOM_RIGHT"
+    assert template.watermark_opacity == 0.6
+    assert template.watermark_size == 32
+    assert template.progress_bar_enabled is False
+    assert template.progress_bar_position == "TOP"
+    assert template.progress_bar_color == "#FFFFFF"
+    assert template.progress_bar_height == 6
+    assert template.music_enabled is False
+    assert template.music_volume_db == -20.0
+    assert template.music_fade_in_sec == 1.0
+    assert template.music_fade_out_sec == 1.0
+
+
+@pytest.mark.django_db
+def test_clip_render_template_to_style_defaults_returns_all_style_fields() -> None:
+    channel = ChannelFactory()
+    template = ClipRenderTemplate.objects.create(channel=channel, caption_size=72, music_enabled=True)
+    defaults = template.to_style_defaults()
+    assert defaults["caption_size"] == 72
+    assert defaults["music_enabled"] is True
+    assert "channel" not in defaults
+    assert "id" not in defaults
+    assert "created_at" not in defaults
+
+
+@pytest.mark.django_db
+def test_clip_media_asset_str_includes_name_and_type() -> None:
+    channel = ChannelFactory()
+    asset = ClipMediaAsset.objects.create(
+        channel=channel, name="Brand Intro", asset_type="INTRO"
+    )
+    assert "Brand Intro" in str(asset)
+    assert "INTRO" in str(asset) or "Intro" in str(asset)
+
+
+@pytest.mark.django_db
+def test_clip_music_asset_str_includes_name() -> None:
+    channel = ChannelFactory()
+    asset = ClipMusicAsset.objects.create(channel=channel, name="Chill Beat")
+    assert "Chill Beat" in str(asset)
 
 
 @pytest.mark.django_db
