@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import ffmpeg
+
 from ***REMOVED***.services.media.render_stages.base import RenderStage
 
 if TYPE_CHECKING:
@@ -39,7 +41,8 @@ class ProgressBarStage(RenderStage):
         color = sc.progress_bar_color.lstrip("#")
         h = sc.progress_bar_height
         y = "0" if sc.progress_bar_position == "TOP" else f"H-{h}"
-        dur = self.video_duration_sec
+        probe = ffmpeg.probe(str(input_path))
+        dur = float(probe["format"]["duration"])
         vf = (
             f"drawbox=x=0:y={y}"
             f":w=W*t/{dur}"
