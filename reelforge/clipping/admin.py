@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+from typing import Any
 
 from django.contrib import admin
 from django.contrib import messages
-from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django_fsm import TransitionNotAllowed
@@ -14,11 +15,15 @@ from unfold.admin import StackedInline
 from unfold.admin import TabularInline
 from unfold.decorators import display
 
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from django.http import HttpRequest
+
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
-from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
 from reelforge.clipping.models import ClipRenderStageResult
@@ -214,10 +219,10 @@ class ClipStyleConfigInline(StackedInline):
         ),
     )
 
-    def get_queryset(self, request: HttpRequest):  # type: ignore[override]
+    def get_queryset(self, request: HttpRequest) -> QuerySet[ClipStyleConfig]:
         return super().get_queryset(request).select_related("intro_asset", "outro_asset", "music_asset")
 
-    def formfield_for_foreignkey(self, db_field, request: HttpRequest, **kwargs):  # type: ignore[override]
+    def formfield_for_foreignkey(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
         """Filter asset FK dropdowns to the candidate's channel."""
         if db_field.name in ("intro_asset", "outro_asset", "music_asset"):
             candidate_id = request.resolver_match.kwargs.get("object_id")
@@ -369,7 +374,7 @@ class ClipRenderAdmin(ModelAdmin):
         )
 
     @admin.action(description="Retry full render (from stage 1)")
-    def retry_full_render(self, request: HttpRequest, queryset) -> None:
+    def retry_full_render(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
         from reelforge.clipping.tasks import render_clip
 
         triggered = 0
@@ -379,7 +384,7 @@ class ClipRenderAdmin(ModelAdmin):
         self.message_user(request, f"Queued full re-render for {triggered} render(s).", messages.SUCCESS)
 
     @admin.action(description="Retry from stage 2 (skip trim/crop)")
-    def retry_from_stage_2(self, request: HttpRequest, queryset) -> None:
+    def retry_from_stage_2(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
         from reelforge.clipping.tasks import render_clip
 
         triggered = 0
@@ -389,7 +394,7 @@ class ClipRenderAdmin(ModelAdmin):
         self.message_user(request, f"Queued re-render from stage 2 for {triggered} render(s).", messages.SUCCESS)
 
     @admin.action(description="Retry from captions (stage 4)")
-    def retry_from_captions(self, request: HttpRequest, queryset) -> None:
+    def retry_from_captions(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
         from reelforge.clipping.tasks import render_clip
 
         triggered = 0
@@ -403,7 +408,7 @@ class ClipRenderAdmin(ModelAdmin):
         )
 
     @admin.action(description="Clear stage outputs (reset to PENDING)")
-    def clear_stage_outputs(self, request: HttpRequest, queryset) -> None:
+    def clear_stage_outputs(self, request: HttpRequest, queryset: QuerySet[ClipRender]) -> None:
         cleared = 0
         for render in queryset:
             deleted_count, _ = render.stage_results.all().delete()
@@ -508,7 +513,7 @@ class ClippingJobAdmin(ModelAdmin):
         return f"${obj.total_cost_usd:.4f}"
 
     @admin.action(description="Start clipping job (begin download)")
-    def start_clipping_job(self, request: HttpRequest, queryset) -> None:
+    def start_clipping_job(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from reelforge.clipping.tasks import download_source_video
 
         started = 0
@@ -538,7 +543,7 @@ class ClippingJobAdmin(ModelAdmin):
             )
 
     @admin.action(description="Retry transcription for stuck/failed jobs")
-    def retry_transcription(self, request: HttpRequest, queryset) -> None:
+    def retry_transcription(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from reelforge.clipping.tasks import transcribe_video
 
         retried = 0
@@ -570,7 +575,7 @@ class ClippingJobAdmin(ModelAdmin):
             )
 
     @admin.action(description="Approve selected candidates")
-    def approve_selected_candidates(self, request: HttpRequest, queryset) -> None:
+    def approve_selected_candidates(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from django.utils import timezone
 
         approved = 0
@@ -585,7 +590,7 @@ class ClippingJobAdmin(ModelAdmin):
         self.message_user(request, f"Approved {approved} candidate(s).", messages.SUCCESS)
 
     @admin.action(description="Trigger rendering for approved candidates")
-    def trigger_render(self, request: HttpRequest, queryset) -> None:
+    def trigger_render(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from reelforge.clipping.tasks import render_clip
 
         triggered = 0
@@ -709,7 +714,7 @@ class ClipCandidateAdmin(ModelAdmin):
             return "CENTER_CROP"
 
     @admin.action(description="Generate layout preview image")
-    def generate_preview(self, request: HttpRequest, queryset) -> None:
+    def generate_preview(self, request: HttpRequest, queryset: QuerySet[ClipCandidate]) -> None:
         from reelforge.clipping.tasks import preview_clip_layout
 
         queued = 0
@@ -732,7 +737,7 @@ class ClipCandidateAdmin(ModelAdmin):
             )
 
     @admin.action(description="Generate style preview image")
-    def generate_style_preview(self, request: HttpRequest, queryset) -> None:
+    def generate_style_preview(self, request: HttpRequest, queryset: QuerySet[ClipCandidate]) -> None:
         from reelforge.clipping.tasks import preview_clip_style
 
         queued = 0
