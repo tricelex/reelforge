@@ -7,9 +7,15 @@ from reelforge.channels.tests.factories import ChannelFactory
 from reelforge.channels.tests.factories import SocialAccountFactory
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
+from reelforge.clipping.models import ClipMediaAsset
+from reelforge.clipping.models import ClipMusicAsset
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
+from reelforge.clipping.models import ClipRenderStageResult
+from reelforge.clipping.models import ClipRenderTemplate
 from reelforge.clipping.models import ClippingJob
+from reelforge.clipping.models import ClipStyleConfig
+from reelforge.clipping.models import ClipTimedOverlay
 
 
 class ClippingJobFactory(DjangoModelFactory[ClippingJob]):
@@ -82,3 +88,92 @@ class ClipLayoutConfigFactory(DjangoModelFactory[ClipLayoutConfig]):
             )
             return obj
         return super()._create(model_class, *args, **kwargs)
+
+
+class ClipRenderTemplateFactory(DjangoModelFactory[ClipRenderTemplate]):
+    """Factory for ClipRenderTemplate.
+
+    Uses update_or_create because the Channel post_save signal auto-creates one.
+    """
+
+    channel = factory.SubFactory(ChannelFactory)
+
+    class Meta:
+        model = ClipRenderTemplate
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        channel = kwargs.get("channel")
+        if channel is not None:
+            obj, _ = model_class.objects.update_or_create(
+                channel=channel,
+                defaults={k: v for k, v in kwargs.items() if k != "channel"},
+            )
+            return obj
+        return super()._create(model_class, *args, **kwargs)
+
+
+class ClipMediaAssetFactory(DjangoModelFactory[ClipMediaAsset]):
+    channel = factory.SubFactory(ChannelFactory)
+    asset_type = "INTRO"
+    name = factory.Sequence(lambda n: f"Intro Clip {n}")
+    file = factory.django.FileField(filename="intro.mp4", data=b"fake")
+    is_active = True
+
+    class Meta:
+        model = ClipMediaAsset
+
+
+class ClipMusicAssetFactory(DjangoModelFactory[ClipMusicAsset]):
+    channel = factory.SubFactory(ChannelFactory)
+    name = factory.Sequence(lambda n: f"Music Track {n}")
+    file = factory.django.FileField(filename="track.mp3", data=b"fake")
+    genre = "Chill"
+    is_active = True
+
+    class Meta:
+        model = ClipMusicAsset
+
+
+class ClipStyleConfigFactory(DjangoModelFactory[ClipStyleConfig]):
+    """Factory for ClipStyleConfig.
+
+    Uses update_or_create because the ClipCandidate post_save signal auto-creates one.
+    """
+
+    candidate = factory.SubFactory(ClipCandidateFactory)
+
+    class Meta:
+        model = ClipStyleConfig
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        candidate = kwargs.get("candidate")
+        if candidate is not None:
+            obj, _ = model_class.objects.update_or_create(
+                candidate=candidate,
+                defaults={k: v for k, v in kwargs.items() if k != "candidate"},
+            )
+            return obj
+        return super()._create(model_class, *args, **kwargs)
+
+
+class ClipTimedOverlayFactory(DjangoModelFactory[ClipTimedOverlay]):
+    candidate = factory.SubFactory(ClipCandidateFactory)
+    overlay_type = ClipTimedOverlay.OverlayType.TEXT
+    text = "Test overlay text"
+    start_sec = 5.0
+    end_sec = 10.0
+
+    class Meta:
+        model = ClipTimedOverlay
+
+
+class ClipRenderStageResultFactory(DjangoModelFactory[ClipRenderStageResult]):
+    render = factory.SubFactory(ClipRenderFactory)
+    stage_name = "trim_and_crop"
+    stage_order = 1
+    status = ClipRenderStageResult.Status.PENDING
+
+    class Meta:
+        model = ClipRenderStageResult

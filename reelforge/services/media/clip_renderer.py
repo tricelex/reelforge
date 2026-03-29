@@ -1,8 +1,16 @@
+"""Legacy single-pass clip renderer.
+
+.. deprecated::
+    Use :class:`reelforge.services.media.clip_render_pipeline.ClipRenderPipeline`
+    and :class:`reelforge.services.media.clip_render_pipeline.PipelineRenderConfig`
+    instead. This module will be removed in a future release.
+"""
 from __future__ import annotations
 
 import logging
 import subprocess
 import time
+import warnings
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
@@ -44,6 +52,11 @@ class ClipRenderConfig:
 
 class ClipRenderer:
     def __init__(self, config: ClipRenderConfig) -> None:
+        warnings.warn(
+            "ClipRenderer is deprecated. Use ClipRenderPipeline and PipelineRenderConfig instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.config = config
         self.last_speaker_crop_result: SpeakerCropResult | None = None
 
