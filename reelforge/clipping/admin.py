@@ -17,6 +17,8 @@ from unfold.decorators import display
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
 from reelforge.clipping.models import ClippingJob
+from reelforge.clipping.models import ClipMediaAsset
+from reelforge.clipping.models import ClipMusicAsset
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
 
@@ -443,10 +445,59 @@ class ClipCandidateAdmin(ModelAdmin):
     actions = ["generate_preview"]
 
 
+@admin.register(ClipMediaAsset)
+class ClipMediaAssetAdmin(ModelAdmin):
+    list_display = ("name", "channel", "asset_type_badge", "duration_display", "is_active", "created_at")
+    list_filter = ("asset_type", "is_active", "channel")
+    search_fields = ("name", "channel__name")
+    readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "video_preview")
+
+    @display(description="Type", label={"INTRO": "info", "OUTRO": "warning"})
+    def asset_type_badge(self, obj: ClipMediaAsset) -> str:
+        return obj.asset_type
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipMediaAsset) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.1f}s"
+
+    @display(description="Preview")
+    def video_preview(self, obj: ClipMediaAsset) -> str:
+        if not obj.file:
+            return "\u2014"
+        return format_html(
+            '<video src="{}" controls style="max-width:240px;max-height:135px;"></video>',
+            obj.file.url,
+        )
+
+
+@admin.register(ClipMusicAsset)
+class ClipMusicAssetAdmin(ModelAdmin):
+    list_display = ("name", "channel", "genre", "duration_display", "bpm", "is_active", "created_at")
+    list_filter = ("is_active", "genre", "channel")
+    search_fields = ("name", "channel__name", "genre")
+    readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "audio_preview")
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipMusicAsset) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.1f}s"
+
+    @display(description="Preview")
+    def audio_preview(self, obj: ClipMusicAsset) -> str:
+        if not obj.file:
+            return "\u2014"
+        return format_html('<audio src="{}" controls style="max-width:300px;"></audio>', obj.file.url)
+
+
 __all__ = [
     "ClipCandidateAdmin",
     "ClipCandidateInline",
     "ClipLayoutConfigInline",
+    "ClipMediaAssetAdmin",
+    "ClipMusicAssetAdmin",
     "ClipPostAdmin",
     "ClipRenderInline",
     "ClippingJobAdmin",
