@@ -330,6 +330,25 @@ def test_clip_timed_overlay_clean_passes_with_valid_times() -> None:
 
 
 @pytest.mark.django_db
+def test_clip_style_config_factory_handles_signal_conflict() -> None:
+    """Factory must not fail even when the signal already created a ClipStyleConfig."""
+    from ***REMOVED***.clipping.tests.factories import ClipStyleConfigFactory
+
+    config = ClipStyleConfigFactory()
+    assert config.pk is not None
+    assert ClipStyleConfig.objects.filter(candidate=config.candidate).count() == 1
+
+
+@pytest.mark.django_db
+def test_clip_media_asset_factory_creates_valid_record() -> None:
+    from ***REMOVED***.clipping.tests.factories import ClipMediaAssetFactory
+
+    asset = ClipMediaAssetFactory()
+    assert asset.pk is not None
+    assert asset.asset_type == "INTRO"
+
+
+@pytest.mark.django_db
 def test_clip_render_stage_result_str() -> None:
     render = ClipRenderFactory()
     result = ClipRenderStageResult.objects.create(
