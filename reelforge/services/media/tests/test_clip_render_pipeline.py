@@ -128,3 +128,134 @@ def test_pipeline_render_config_has_expected_defaults(tmp_path: Path) -> None:
     assert config.preset == "slow"
     assert config.audio_bitrate == "192k"
     assert config.channel is None
+
+
+@pytest.mark.django_db
+def test_pipeline_resume_deletes_stage_results_from_start_stage() -> None:
+    """When start_from_stage=3, stage results for stages >= 3 are deleted before rerun."""
+    from ***REMOVED***.clipping.models import ClipRenderStageResult
+    from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
+
+    render = ClipRenderFactory()
+    render_id = str(render.id)
+
+    # Pre-create stage results for stages 1–3
+    for order in [1, 2, 3]:
+        ClipRenderStageResult.objects.create(
+            render=render,
+            stage_order=order,
+            stage_name=f"stage_{order}",
+            status=ClipRenderStageResult.Status.COMPLETED,
+        )
+
+    config = PipelineRenderConfig(
+        source_path=Path("/tmp/src.mp4"),
+        output_path=Path("/tmp/out.mp4"),
+        start_sec=0.0,
+        end_sec=10.0,
+        hook_text="",
+        transcript_json={},
+        layout_config=None,
+        style_config=None,
+        timed_overlays=[],
+        render_id=render_id,
+    )
+    pipeline = ClipRenderPipeline(config)
+
+    with patch.object(pipeline, "_build_stages") as mock_build, \
+         patch("shutil.copy2"), \
+         patch("pathlib.Path.mkdir"):
+        mock_stage = MagicMock()
+        mock_stage.order = 3
+        mock_stage.should_run.return_value = False
+        mock_build.return_value = [mock_stage]
+
+        prev_result = ClipRenderStageResult.objects.get(render=render, stage_order=2)
+        with patch.object(ClipRenderStageResult.objects, "get", return_value=prev_result):
+            pipeline.run(start_from_stage=3)
+
+    remaining = list(
+        ClipRenderStageResult.objects.filter(render=render).values_list("stage_order", flat=True)
+    )
+    assert 1 in remaining
+    assert 2 in remaining
+    assert 3 not in remaining
+
+
+@pytest.mark.django_db
+def test_pipeline_resume_falls_back_to_source_when_prev_result_missing() -> None:
+    """When the previous stage result doesn't exist, pipeline logs a warning and uses source_path."""
+    from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
+
+    render = ClipRenderFactory()
+    config = PipelineRenderConfig(
+        source_path=Path("/tmp/src.mp4"),
+        output_path=Path("/tmp/out.mp4"),
+        start_sec=0.0,
+        end_sec=10.0,
+        hook_text="",
+        transcript_json={},
+        layout_config=None,
+        style_config=None,
+        timed_overlays=[],
+        render_id=str(render.id),
+    )
+    pipeline = ClipRenderPipeline(config)
+
+    with patch.object(pipeline, "_build_stages") as mock_build, \
+         patch("shutil.copy2"), \
+         patch("pathlib.Path.mkdir"), \
+         patch("***REMOVED***.services.media.clip_render_pipeline.logger") as mock_logger:
+        mock_stage = MagicMock()
+        mock_stage.order = 5
+        mock_stage.should_run.return_value = False
+        mock_build.return_value = [mock_stage]
+
+        pipeline.run(start_from_stage=5)
+
+    mock_logger.warning.assert_called_once()
+    warning_msg = mock_logger.warning.call_args[0][0]
+    assert "Previous stage result not found" in warning_msg
+
+
+@pytest.mark.django_db
+def test_pipeline_stage_failure_persists_failed_status_and_error() -> None:
+    """When a stage raises, ClipRenderStageResult status=FAILED and last_error is set."""
+    from ***REMOVED***.clipping.models import ClipRenderStageResult
+    from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
+    from ***REMOVED***.services.media.render_stages.base import RenderStageError
+
+    render = ClipRenderFactory()
+    config = PipelineRenderConfig(
+        source_path=Path("/tmp/src.mp4"),
+        output_path=Path("/tmp/out.mp4"),
+        start_sec=0.0,
+        end_sec=10.0,
+        hook_text="",
+        transcript_json={},
+        layout_config=None,
+        style_config=None,
+        timed_overlays=[],
+        render_id=str(render.id),
+    )
+    pipeline = ClipRenderPipeline(config)
+    boom = RuntimeError("ffmpeg exploded")
+
+    with patch.object(pipeline, "_build_stages") as mock_build, \
+         patch("pathlib.Path.mkdir"):
+        mock_stage = MagicMock()
+        mock_stage.order = 2
+        mock_stage.name = "intro_concat"
+        mock_stage.should_run.return_value = True
+        mock_stage.run.side_effect = boom
+        mock_build.return_value = [mock_stage]
+
+        with pytest.raises(RenderStageError) as exc_info:
+            pipeline.run()
+
+    assert exc_info.value.stage_name == "intro_concat"
+    assert exc_info.value.stage_order == 2
+
+    result = ClipRenderStageResult.objects.get(render=render, stage_order=2)
+    assert result.status == ClipRenderStageResult.Status.FAILED
+    assert "ffmpeg exploded" in result.last_error
