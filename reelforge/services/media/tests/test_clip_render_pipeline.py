@@ -99,6 +99,26 @@ def test_pipeline_run_end_to_end_all_skipped(tmp_path: Path) -> None:
     assert output.exists()
 
 
+def test_pipeline_run_stores_stages_on_instance(tmp_path: Path) -> None:
+    """After run(), pipeline._stages holds the stage instances used during execution."""
+    config = _make_config(tmp_path)
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"fake")
+    config.source_path = source
+
+    pipeline = ClipRenderPipeline(config)
+    assert not hasattr(pipeline, "_stages")
+
+    with patch("reelforge.services.media.clip_render_pipeline.ClipRenderPipeline._run_stage") as mock_run, \
+         patch("shutil.copy2"):
+        mock_run.side_effect = lambda stage, path: path
+        pipeline.run()
+
+    assert hasattr(pipeline, "_stages")
+    assert len(pipeline._stages) == 10
+    assert pipeline._stages[0].name == "trim_and_crop"
+
+
 def test_pipeline_render_config_has_expected_defaults(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     assert config.width == 1080

@@ -167,6 +167,7 @@ class ClipRenderPipeline:
         Returns config.output_path (the final assembled file).
         """
         stages = self._build_stages()
+        self._stages = stages
         current_path = self.config.source_path
 
         if start_from_stage > 1:
