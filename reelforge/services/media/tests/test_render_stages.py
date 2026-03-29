@@ -13,7 +13,10 @@ from reelforge.services.media.render_stages.captions import CaptionTranslationSt
 from reelforge.services.media.render_stages.hook import HookStage
 from reelforge.services.media.render_stages.intro_outro import IntroConcatStage
 from reelforge.services.media.render_stages.intro_outro import OutroConcatStage
+from reelforge.services.media.render_stages.progress_bar import ProgressBarStage
+from reelforge.services.media.render_stages.timed_overlays import TimedOverlayStage
 from reelforge.services.media.render_stages.trim_crop import TrimAndCropStage
+from reelforge.services.media.render_stages.watermark import WatermarkStage
 
 
 def _make_layout_config(render_mode: str, **extra) -> MagicMock:
@@ -509,3 +512,117 @@ def test_caption_translation_stage_skipped_when_no_target_language(tmp_path: Pat
         channel=None,
     )
     assert stage.should_run() is False
+
+
+def _make_watermark_config(
+    enabled: bool = True,
+    wtype: str = "TEXT",
+    text: str = "@channel",
+    position: str = "BOTTOM_RIGHT",
+    opacity: float = 0.6,
+    size: int = 32,
+) -> MagicMock:
+    sc = MagicMock()
+    sc.watermark_enabled = enabled
+    sc.watermark_type = wtype
+    sc.watermark_text = text
+    sc.watermark_image = None
+    sc.watermark_position = position
+    sc.watermark_opacity = opacity
+    sc.watermark_size = size
+    return sc
+
+
+def test_watermark_stage_skipped_when_disabled(tmp_path: Path) -> None:
+    sc = _make_watermark_config(enabled=False)
+    stage = WatermarkStage(output_path=tmp_path / "out.mp4", style_config=sc)
+    assert stage.should_run() is False
+
+
+def test_watermark_stage_text_command_uses_drawtext(tmp_path: Path) -> None:
+    sc = _make_watermark_config(wtype="TEXT", text="@testchan")
+    stage = WatermarkStage(output_path=tmp_path / "out.mp4", style_config=sc)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.watermark.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "drawtext" in cmd
+    assert "@testchan" in cmd or "testchan" in cmd
+
+
+def test_watermark_stage_image_command_uses_overlay(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.watermark_enabled = True
+    sc.watermark_type = "IMAGE"
+    mock_file = MagicMock()
+    mock_file.path = str(tmp_path / "logo.png")
+    sc.watermark_image = mock_file
+    sc.watermark_position = "TOP_RIGHT"
+    sc.watermark_opacity = 0.8
+    sc.watermark_size = 64
+    stage = WatermarkStage(output_path=tmp_path / "out.mp4", style_config=sc)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.watermark.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "overlay" in cmd
+
+
+def test_timed_overlay_stage_skipped_when_empty(tmp_path: Path) -> None:
+    stage = TimedOverlayStage(output_path=tmp_path / "out.mp4", timed_overlays=[])
+    assert stage.should_run() is False
+
+
+def test_timed_overlay_stage_text_uses_drawtext_with_between(tmp_path: Path) -> None:
+    overlay = MagicMock()
+    overlay.overlay_type = "TEXT"
+    overlay.text = "Subscribe!"
+    overlay.start_sec = 5.0
+    overlay.end_sec = 10.0
+    overlay.position_x = 540
+    overlay.position_y = 960
+    overlay.opacity = 1.0
+    overlay.font_size = 40
+    overlay.font_color = "#FFFFFF"
+    overlay.image = None
+    stage = TimedOverlayStage(output_path=tmp_path / "out.mp4", timed_overlays=[overlay])
+    assert stage.should_run() is True
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.timed_overlays.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "drawtext" in cmd
+    assert "between" in cmd
+
+
+def test_progress_bar_stage_skipped_when_disabled(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.progress_bar_enabled = False
+    stage = ProgressBarStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
+    assert stage.should_run() is False
+
+
+def test_progress_bar_stage_command_uses_drawbox(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.progress_bar_enabled = True
+    sc.progress_bar_position = "TOP"
+    sc.progress_bar_color = "#FFFFFF"
+    sc.progress_bar_height = 6
+    stage = ProgressBarStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.progress_bar.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "drawbox" in cmd
