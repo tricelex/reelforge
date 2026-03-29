@@ -7,6 +7,9 @@ from unittest.mock import patch
 import pytest
 
 from reelforge.services.media.render_stages.base import RenderStage
+from reelforge.services.media.render_stages.captions import ASSGenerator
+from reelforge.services.media.render_stages.captions import CaptionStage
+from reelforge.services.media.render_stages.captions import CaptionTranslationStage
 from reelforge.services.media.render_stages.hook import HookStage
 from reelforge.services.media.render_stages.intro_outro import IntroConcatStage
 from reelforge.services.media.render_stages.intro_outro import OutroConcatStage
@@ -333,5 +336,176 @@ def test_outro_concat_skipped_when_no_outro_asset(tmp_path: Path) -> None:
         crf=18,
         preset="slow",
         audio_bitrate="192k",
+    )
+    assert stage.should_run() is False
+
+
+_SAMPLE_TRANSCRIPT = {
+    "segments": [
+        {
+            "id": 0,
+            "start": 0.0,
+            "end": 3.5,
+            "text": "You won't believe this",
+            "words": [
+                {"word": "You", "start": 0.0, "end": 0.5},
+                {"word": "won't", "start": 0.6, "end": 1.1},
+                {"word": "believe", "start": 1.2, "end": 2.0},
+                {"word": "this", "start": 2.1, "end": 3.5},
+            ],
+        },
+        {
+            "id": 1,
+            "start": 3.6,
+            "end": 6.0,
+            "text": "It is incredible",
+            "words": [
+                {"word": "It", "start": 3.6, "end": 3.9},
+                {"word": "is", "start": 4.0, "end": 4.3},
+                {"word": "incredible", "start": 4.4, "end": 6.0},
+            ],
+        },
+    ]
+}
+
+
+def test_ass_generator_produces_non_empty_content() -> None:
+    gen = ASSGenerator(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        caption_style="CHUNKED",
+        caption_font="Montserrat-Bold",
+        caption_size=52,
+        caption_color="#FFFFFF",
+        caption_stroke_color="#000000",
+        caption_stroke_width=3,
+        caption_bg_color="",
+        caption_position="BOTTOM",
+        caption_animation="POP",
+        emoji_keyword_map={},
+        video_width=1080,
+        video_height=1920,
+    )
+    content = gen.generate()
+    assert "[Script Info]" in content
+    assert "[Events]" in content
+    assert "You won't believe this" in content or "You" in content
+
+
+def test_ass_generator_word_by_word_creates_one_event_per_word() -> None:
+    gen = ASSGenerator(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        caption_style="WORD_BY_WORD",
+        caption_font="Montserrat-Bold",
+        caption_size=52,
+        caption_color="#FFFFFF",
+        caption_stroke_color="#000000",
+        caption_stroke_width=3,
+        caption_bg_color="",
+        caption_position="BOTTOM",
+        caption_animation="POP",
+        emoji_keyword_map={},
+        video_width=1080,
+        video_height=1920,
+    )
+    content = gen.generate()
+    # 4 words in segment 0 + 3 words in segment 1 = 7 Dialogue lines
+    dialogue_lines = [l for l in content.splitlines() if l.startswith("Dialogue:")]
+    assert len(dialogue_lines) == 7
+
+
+def test_ass_generator_emoji_accent_injects_emoji() -> None:
+    gen = ASSGenerator(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        caption_style="EMOJI_ACCENT",
+        caption_font="Montserrat-Bold",
+        caption_size=52,
+        caption_color="#FFFFFF",
+        caption_stroke_color="#000000",
+        caption_stroke_width=3,
+        caption_bg_color="",
+        caption_position="BOTTOM",
+        caption_animation="POP",
+        emoji_keyword_map={"incredible": "🔥"},
+        video_width=1080,
+        video_height=1920,
+    )
+    content = gen.generate()
+    assert "🔥" in content
+
+
+def test_caption_stage_skipped_when_disabled(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.caption_enabled = False
+    stage = CaptionStage(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        output_path=tmp_path / "out.mp4",
+        ass_path=tmp_path / "sub.ass",
+        style_config=sc,
+        fonts_dir=Path("/fonts"),
+        video_width=1080,
+        video_height=1920,
+    )
+    assert stage.should_run() is False
+
+
+def test_caption_stage_skipped_when_no_transcript(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.caption_enabled = True
+    stage = CaptionStage(
+        transcript_json={},
+        output_path=tmp_path / "out.mp4",
+        ass_path=tmp_path / "sub.ass",
+        style_config=sc,
+        fonts_dir=Path("/fonts"),
+        video_width=1080,
+        video_height=1920,
+    )
+    assert stage.should_run() is False
+
+
+def test_caption_stage_run_writes_ass_and_calls_ffmpeg(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.caption_enabled = True
+    sc.caption_style = "CHUNKED"
+    sc.caption_font = "Montserrat-Bold"
+    sc.caption_size = 52
+    sc.caption_color = "#FFFFFF"
+    sc.caption_stroke_color = "#000000"
+    sc.caption_stroke_width = 3
+    sc.caption_bg_color = ""
+    sc.caption_position = "BOTTOM"
+    sc.caption_animation = "POP"
+    sc.emoji_keyword_map = {}
+    sc.translated_transcript_json = None
+
+    ass_path = tmp_path / "sub.ass"
+    stage = CaptionStage(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        output_path=tmp_path / "out.mp4",
+        ass_path=ass_path,
+        style_config=sc,
+        fonts_dir=tmp_path / "fonts",
+        video_width=1080,
+        video_height=1920,
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.captions.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    assert ass_path.exists()
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "subtitles" in cmd
+
+
+def test_caption_translation_stage_skipped_when_no_target_language(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.caption_translate_to = ""
+    stage = CaptionTranslationStage(
+        transcript_json=_SAMPLE_TRANSCRIPT,
+        output_path=tmp_path / "out.mp4",
+        style_config=sc,
+        channel=None,
     )
     assert stage.should_run() is False
