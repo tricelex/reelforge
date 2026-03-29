@@ -19,9 +19,13 @@ from reelforge.clipping.models import ClippingJob
 from reelforge.channels.tests.factories import ChannelFactory
 from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClipRenderStageResult
 from reelforge.clipping.models import ClipRenderTemplate
+from reelforge.clipping.models import ClipStyleConfig
+from reelforge.clipping.models import ClipTimedOverlay
 
 from .factories import ClipCandidateFactory
+from .factories import ClipRenderFactory
 from .factories import ClippingJobFactory
 
 
@@ -278,6 +282,61 @@ def test_clip_music_asset_str_includes_name() -> None:
     channel = ChannelFactory()
     asset = ClipMusicAsset.objects.create(channel=channel, name="Chill Beat")
     assert "Chill Beat" in str(asset)
+
+
+@pytest.mark.django_db
+def test_clip_style_config_has_all_style_fields() -> None:
+    candidate = ClipCandidateFactory()
+    style_config, _ = ClipStyleConfig.objects.get_or_create(candidate=candidate)
+    assert hasattr(style_config, "caption_enabled")
+    assert hasattr(style_config, "music_volume_db")
+    assert hasattr(style_config, "intro_asset")
+    assert hasattr(style_config, "outro_asset")
+    assert hasattr(style_config, "music_asset")
+    assert hasattr(style_config, "translated_transcript_json")
+    assert hasattr(style_config, "preview_image")
+
+
+@pytest.mark.django_db
+def test_clip_timed_overlay_clean_validates_end_after_start() -> None:
+    from django.core.exceptions import ValidationError
+
+    candidate = ClipCandidateFactory()
+    overlay = ClipTimedOverlay(
+        candidate=candidate,
+        overlay_type="TEXT",
+        text="hello",
+        start_sec=10.0,
+        end_sec=5.0,
+    )
+    with pytest.raises(ValidationError):
+        overlay.clean()
+
+
+@pytest.mark.django_db
+def test_clip_timed_overlay_clean_passes_with_valid_times() -> None:
+    candidate = ClipCandidateFactory()
+    overlay = ClipTimedOverlay(
+        candidate=candidate,
+        overlay_type="TEXT",
+        text="hello",
+        start_sec=5.0,
+        end_sec=10.0,
+    )
+    overlay.clean()  # should not raise
+
+
+@pytest.mark.django_db
+def test_clip_render_stage_result_str() -> None:
+    render = ClipRenderFactory()
+    result = ClipRenderStageResult.objects.create(
+        render=render,
+        stage_name="trim_and_crop",
+        stage_order=1,
+        status=ClipRenderStageResult.Status.COMPLETED,
+    )
+    assert "trim_and_crop" in str(result)
+    assert "1" in str(result)
 
 
 @pytest.mark.django_db
