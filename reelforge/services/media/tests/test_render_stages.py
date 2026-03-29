@@ -135,6 +135,39 @@ def test_trim_and_crop_run_calls_subprocess(tmp_path: Path) -> None:
     mock_run.assert_called_once()
 
 
+def test_spatial_stack_command_does_not_double_trim() -> None:
+    """The filter_complex already trims via trim=start=:end=; no -ss/-to on output."""
+    lc = _make_layout_config(
+        "SPATIAL_STACK",
+        has_spatial_regions=True,
+        stack_ratio=0.5,
+        region_a_x=0,
+        region_a_y=0,
+        region_a_w=540,
+        region_a_h=960,
+        region_b_x=0,
+        region_b_y=480,
+        region_b_w=540,
+        region_b_h=480,
+    )
+    stage = TrimAndCropStage(
+        source_path=Path("/tmp/src.mp4"),
+        start_sec=10.0,
+        end_sec=40.0,
+        output_path=Path("/tmp/out.mp4"),
+        layout_config=lc,
+        width=1080,
+        height=1920,
+        fps=30,
+        crf=18,
+        preset="slow",
+        audio_bitrate="192k",
+    )
+    cmd = stage._build_spatial_stack_command(Path("/tmp/src.mp4"))
+    assert "-ss" not in cmd
+    assert "-to" not in cmd
+
+
 def _make_style_config(
     intro_asset=None,
     outro_asset=None,
