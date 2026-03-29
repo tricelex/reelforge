@@ -147,8 +147,6 @@ class TrimAndCropStage(RenderStage):
             "-filter_complex", filter_complex,
             "-map", "[out]",
             "-map", "0:a",
-            "-ss", str(self.start_sec),
-            "-to", str(self.end_sec),
             "-c:v", "libx264",
             "-crf", str(self.crf),
             "-preset", self.preset,
