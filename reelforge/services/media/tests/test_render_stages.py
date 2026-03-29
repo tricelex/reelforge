@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from reelforge.services.media.render_stages.base import RenderStage
+from reelforge.services.media.render_stages.hook import HookStage
 from reelforge.services.media.render_stages.intro_outro import IntroConcatStage
 from reelforge.services.media.render_stages.intro_outro import OutroConcatStage
 from reelforge.services.media.render_stages.trim_crop import TrimAndCropStage
@@ -232,6 +233,94 @@ def test_intro_concat_crossfade_uses_xfade(tmp_path: Path) -> None:
         stage.run(input_path)
     called_cmd = " ".join(mock_run.call_args[0][0])
     assert "xfade" in called_cmd
+
+
+def _make_hook_style_config(
+    hook_enabled: bool = True,
+    hook_text: str = "You won't believe this",
+    hook_style: str = "OVERLAY_TOP",
+    hook_duration_sec: float = 2.5,
+    hook_font: str = "Montserrat-Bold",
+    hook_size: int = 60,
+    hook_color: str = "#FFFFFF",
+    hook_bg_color: str = "#CC000000",
+    hook_animation: str = "FADE",
+) -> MagicMock:
+    sc = MagicMock()
+    sc.hook_enabled = hook_enabled
+    sc.hook_style = hook_style
+    sc.hook_duration_sec = hook_duration_sec
+    sc.hook_font = hook_font
+    sc.hook_size = hook_size
+    sc.hook_color = hook_color
+    sc.hook_bg_color = hook_bg_color
+    sc.hook_animation = hook_animation
+    return sc
+
+
+def test_hook_stage_skipped_when_disabled(tmp_path: Path) -> None:
+    stage = HookStage(
+        hook_text="Some hook",
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_hook_style_config(hook_enabled=False),
+        width=1080, height=1920, fps=30, crf=18, preset="slow", audio_bitrate="192k",
+    )
+    assert stage.should_run() is False
+
+
+def test_hook_stage_skipped_when_no_hook_text(tmp_path: Path) -> None:
+    stage = HookStage(
+        hook_text="",
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_hook_style_config(hook_enabled=True),
+        width=1080, height=1920, fps=30, crf=18, preset="slow", audio_bitrate="192k",
+    )
+    assert stage.should_run() is False
+
+
+def test_hook_stage_name_and_order(tmp_path: Path) -> None:
+    stage = HookStage(
+        hook_text="Test",
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_hook_style_config(),
+        width=1080, height=1920, fps=30, crf=18, preset="slow", audio_bitrate="192k",
+    )
+    assert stage.name == "hook"
+    assert stage.order == 3
+
+
+def test_hook_overlay_top_command_uses_drawtext_with_enable(tmp_path: Path) -> None:
+    stage = HookStage(
+        hook_text="Watch this",
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_hook_style_config(hook_style="OVERLAY_TOP"),
+        width=1080, height=1920, fps=30, crf=18, preset="slow", audio_bitrate="192k",
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.hook.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "drawtext" in cmd
+    assert "lt(t" in cmd or "enable" in cmd
+
+
+def test_hook_title_card_command_uses_concat(tmp_path: Path) -> None:
+    stage = HookStage(
+        hook_text="Amazing Title",
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_hook_style_config(hook_style="TITLE_CARD"),
+        width=1080, height=1920, fps=30, crf=18, preset="slow", audio_bitrate="192k",
+    )
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.hook.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    assert mock_run.call_count == 2
 
 
 def test_outro_concat_skipped_when_no_outro_asset(tmp_path: Path) -> None:
