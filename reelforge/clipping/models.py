@@ -706,3 +706,144 @@ class ClipMusicAsset(BaseAbstractModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.genre or 'no genre'})"
+
+
+class ClipStyleConfig(ClipRenderStyleMixin, BaseAbstractModel):
+    """Per-clip render style overrides. Auto-created on ClipCandidate save,
+    pre-populated from the channel's ClipRenderTemplate.
+    """
+
+    candidate = models.OneToOneField(
+        ClipCandidate,
+        on_delete=models.CASCADE,
+        related_name="style_config",
+    )
+    intro_asset = models.ForeignKey(
+        ClipMediaAsset,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="intro_style_configs",
+        limit_choices_to={"asset_type": MediaAssetType.INTRO},
+    )
+    outro_asset = models.ForeignKey(
+        ClipMediaAsset,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="outro_style_configs",
+        limit_choices_to={"asset_type": MediaAssetType.OUTRO},
+    )
+    music_asset = models.ForeignKey(
+        ClipMusicAsset,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="style_configs",
+    )
+    translated_transcript_json = models.JSONField(default=dict, blank=True)
+    preview_image = models.ImageField(
+        upload_to="clipping/style_previews/",
+        null=True,
+        blank=True,
+        max_length=500,
+    )
+
+    class Meta:
+        verbose_name = "Clip Style Config"
+        verbose_name_plural = "Clip Style Configs"
+
+    def __str__(self) -> str:
+        return f"Style: {self.candidate}"
+
+
+class ClipTimedOverlay(BaseAbstractModel):
+    """A time-ranged text or image overlay applied in the final output.
+
+    Timestamps reference final output time (including intro + hook prepend).
+    """
+
+    class OverlayType(models.TextChoices):
+        TEXT = "TEXT", "Text"
+        IMAGE = "IMAGE", "Image"
+
+    candidate = models.ForeignKey(
+        ClipCandidate,
+        on_delete=models.CASCADE,
+        related_name="timed_overlays",
+    )
+    overlay_type = models.CharField(
+        max_length=10, choices=OverlayType.choices, default=OverlayType.TEXT
+    )
+    text = models.CharField(max_length=300, blank=True)
+    image = models.ImageField(
+        upload_to="clipping/timed_overlays/", null=True, blank=True, max_length=500
+    )
+    start_sec = models.FloatField()
+    end_sec = models.FloatField()
+    position_x = models.PositiveIntegerField(default=540)
+    position_y = models.PositiveIntegerField(default=960)
+    opacity = models.FloatField(default=1.0)
+    font_size = models.PositiveIntegerField(default=40)
+    font_color = models.CharField(max_length=9, default="#FFFFFF")
+
+    class Meta:
+        ordering = ["start_sec"]
+        verbose_name = "Timed Overlay"
+        verbose_name_plural = "Timed Overlays"
+
+    def __str__(self) -> str:
+        return f"Overlay [{self.start_sec:.1f}s\u2013{self.end_sec:.1f}s] on {self.candidate}"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.end_sec <= self.start_sec:
+            raise ValidationError("end_sec must be greater than start_sec")
+
+
+class ClipRenderStageResult(BaseAbstractModel):
+    """Per-stage tracking record for a ClipRender pipeline run.
+
+    One record per stage per render. Created by the pipeline before each stage,
+    updated on completion or failure. Enables per-stage inspection and retry.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        SKIPPED = "SKIPPED", "Skipped"
+
+    render = models.ForeignKey(
+        ClipRender,
+        on_delete=models.CASCADE,
+        related_name="stage_results",
+    )
+    stage_name = models.CharField(max_length=100)
+    stage_order = models.PositiveIntegerField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING
+    )
+    output_file = models.FileField(
+        upload_to="clipping/stage_outputs/",
+        null=True,
+        blank=True,
+        max_length=500,
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    duration_sec = models.FloatField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["stage_order"]
+        verbose_name = "Render Stage Result"
+        verbose_name_plural = "Render Stage Results"
+        unique_together = [("render", "stage_order")]
+        indexes = [
+            models.Index(fields=["render", "stage_order"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Stage {self.stage_order} ({self.stage_name}) \u2014 {self.render_id}"
