@@ -21,6 +21,7 @@ from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
+from reelforge.clipping.models import ClipRenderStageResult
 from reelforge.clipping.models import ClipStyleConfig
 from reelforge.clipping.models import ClipTimedOverlay
 
@@ -260,6 +261,160 @@ class ClipTimedOverlayInline(TabularInline):
         "font_color",
     )
     ordering = ["start_sec"]
+
+
+class ClipRenderStageResultInline(TabularInline):
+    model = ClipRenderStageResult
+    extra = 0
+    can_delete = False
+    ordering = ["stage_order"]
+    readonly_fields = (
+        "stage_order",
+        "stage_name",
+        "status_badge",
+        "duration_display",
+        "started_at",
+        "completed_at",
+        "last_error",
+        "stage_output_preview",
+    )
+    fields = (
+        "stage_order",
+        "stage_name",
+        "status_badge",
+        "duration_display",
+        "started_at",
+        "completed_at",
+        "last_error",
+        "stage_output_preview",
+    )
+
+    @display(
+        description="Status",
+        label={
+            "PENDING": "default",
+            "RUNNING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+            "SKIPPED": "warning",
+        },
+    )
+    def status_badge(self, obj: ClipRenderStageResult) -> str:
+        return obj.status
+
+    @display(description="Duration")
+    def duration_display(self, obj: ClipRenderStageResult) -> str:
+        if obj.duration_sec is None:
+            return "\u2014"
+        return f"{obj.duration_sec:.2f}s"
+
+    @display(description="Output")
+    def stage_output_preview(self, obj: ClipRenderStageResult) -> str:
+        if not obj.output_file:
+            return "\u2014"
+        url = obj.output_file.url
+        return format_html('<a href="{}" download>Download</a>', url)
+
+
+@admin.register(ClipRender)
+class ClipRenderAdmin(ModelAdmin):
+    list_display = (
+        "__str__",
+        "candidate",
+        "format",
+        "status_badge",
+        "render_duration_sec",
+        "file_size_bytes",
+        "created_at",
+    )
+    list_filter = ("status", "format")
+    search_fields = ("candidate__title", "candidate__clipping_job__source_title")
+    readonly_fields = (
+        "id",
+        "candidate",
+        "format",
+        "status",
+        "video_preview",
+        "file_size_bytes",
+        "render_duration_sec",
+        "last_error",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [ClipRenderStageResultInline]
+
+    @display(
+        description="Status",
+        ordering="status",
+        label={
+            "PENDING": "default",
+            "RENDERING": "info",
+            "COMPLETED": "success",
+            "FAILED": "danger",
+        },
+    )
+    def status_badge(self, obj: ClipRender) -> str:
+        return obj.status
+
+    @display(description="Video")
+    def video_preview(self, obj: ClipRender) -> str:
+        if not obj.video_file:
+            return "\u2014"
+        url = obj.video_file.url
+        return format_html(
+            '<video src="{}" controls style="max-width:320px;max-height:568px;"></video>'
+            '<br><a href="{}" download>Download</a>',
+            url,
+            url,
+        )
+
+    @admin.action(description="Retry full render (from stage 1)")
+    def retry_full_render(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=1)
+            triggered += 1
+        self.message_user(request, f"Queued full re-render for {triggered} render(s).", messages.SUCCESS)
+
+    @admin.action(description="Retry from stage 2 (skip trim/crop)")
+    def retry_from_stage_2(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=2)
+            triggered += 1
+        self.message_user(request, f"Queued re-render from stage 2 for {triggered} render(s).", messages.SUCCESS)
+
+    @admin.action(description="Retry from captions (stage 4)")
+    def retry_from_captions(self, request: HttpRequest, queryset) -> None:
+        from reelforge.clipping.tasks import render_clip
+
+        triggered = 0
+        for render in queryset:
+            render_clip.delay(str(render.candidate_id), clip_render_id=str(render.id), start_from_stage=4)
+            triggered += 1
+        self.message_user(
+            request,
+            f"Queued re-render from captions (stage 4) for {triggered} render(s).",
+            messages.SUCCESS,
+        )
+
+    @admin.action(description="Clear stage outputs (reset to PENDING)")
+    def clear_stage_outputs(self, request: HttpRequest, queryset) -> None:
+        cleared = 0
+        for render in queryset:
+            deleted_count, _ = render.stage_results.all().delete()
+            cleared += deleted_count
+        self.message_user(
+            request,
+            f"Cleared {cleared} stage result(s) across {queryset.count()} render(s).",
+            messages.SUCCESS,
+        )
+
+    actions = ["retry_full_render", "retry_from_stage_2", "retry_from_captions", "clear_stage_outputs"]
 
 
 class ClipCandidateInline(TabularInline):
@@ -652,7 +807,9 @@ __all__ = [
     "ClipMediaAssetAdmin",
     "ClipMusicAssetAdmin",
     "ClipPostAdmin",
+    "ClipRenderAdmin",
     "ClipRenderInline",
+    "ClipRenderStageResultInline",
     "ClipStyleConfigInline",
     "ClipTimedOverlayInline",
     "ClippingJobAdmin",
