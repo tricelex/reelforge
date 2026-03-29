@@ -3,12 +3,42 @@ from __future__ import annotations
 import pytest
 from django_fsm import TransitionNotAllowed
 
+from ***REMOVED***.clipping.constants import CaptionAnimation
+from ***REMOVED***.clipping.constants import CaptionPosition
+from ***REMOVED***.clipping.constants import CaptionStyle
+from ***REMOVED***.clipping.constants import HookStyle
+from ***REMOVED***.clipping.constants import MediaAssetType
+from ***REMOVED***.clipping.constants import ProgressBarPosition
+from ***REMOVED***.clipping.constants import TransitionStyle
+from ***REMOVED***.clipping.constants import WatermarkPosition
+from ***REMOVED***.clipping.constants import WatermarkType
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClippingJob
 
 from .factories import ClipCandidateFactory
 from .factories import ClippingJobFactory
+
+
+def test_caption_style_choices_exist() -> None:
+    assert CaptionStyle.WORD_BY_WORD == "WORD_BY_WORD"
+    assert CaptionStyle.CHUNKED == "CHUNKED"
+    assert CaptionStyle.LOWER_THIRD == "LOWER_THIRD"
+    assert CaptionStyle.EMOJI_ACCENT == "EMOJI_ACCENT"
+
+
+def test_transition_style_choices_exist() -> None:
+    assert TransitionStyle.NONE == "NONE"
+    assert TransitionStyle.CROSSFADE == "CROSSFADE"
+    assert TransitionStyle.FADE_BLACK == "FADE_BLACK"
+    assert TransitionStyle.WIPE_LEFT == "WIPE_LEFT"
+    assert TransitionStyle.WIPE_RIGHT == "WIPE_RIGHT"
+
+
+def test_hook_style_choices_exist() -> None:
+    assert HookStyle.TITLE_CARD == "TITLE_CARD"
+    assert HookStyle.OVERLAY_TOP == "OVERLAY_TOP"
+    assert HookStyle.OVERLAY_CENTER == "OVERLAY_CENTER"
 
 
 @pytest.mark.django_db
