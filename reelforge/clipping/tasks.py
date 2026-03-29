@@ -315,6 +315,29 @@ def render_clip(
         raise self.retry(exc=exc, countdown=2**self.request.retries * 300)
 
 
+def _get_preview_font(size: int) -> object:
+    """Return the best available PIL font for style previews."""
+    from PIL import ImageFont
+
+    static_root = getattr(settings, "STATIC_ROOT", None)
+    if static_root:
+        fonts_dir = Path(static_root) / "fonts"
+    else:
+        fonts_dir = Path(settings.BASE_DIR) / "***REMOVED***" / "static" / "fonts"
+
+    candidates = [
+        fonts_dir / "Montserrat-Bold.ttf",
+        fonts_dir / "DejaVuSans-Bold.ttf",
+    ]
+    for font_path in candidates:
+        if font_path.exists():
+            try:
+                return ImageFont.truetype(str(font_path), size=size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
 @shared_task(
     bind=True,
     name="***REMOVED***.clipping.preview_clip_style",
@@ -335,7 +358,6 @@ def preview_clip_style(self, style_config_id: str) -> None:
     from django.core.files.base import ContentFile
     from PIL import Image
     from PIL import ImageDraw
-    from PIL import ImageFont
 
     try:
         style_config = ClipStyleConfig.objects.select_related(
@@ -380,13 +402,7 @@ def preview_clip_style(self, style_config_id: str) -> None:
         and style_config.watermark_type == "TEXT"
         and style_config.watermark_text
     ):
-        try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                size=style_config.watermark_size,
-            )
-        except OSError:
-            font = ImageFont.load_default()
+        font = _get_preview_font(size=style_config.watermark_size)
         wm_positions = {
             "BOTTOM_RIGHT": (img.width - 150, img.height - 60),
             "TOP_LEFT": (10, 10),
@@ -402,13 +418,7 @@ def preview_clip_style(self, style_config_id: str) -> None:
         )
 
     if style_config.caption_enabled:
-        try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                size=style_config.caption_size // 2,
-            )
-        except OSError:
-            font = ImageFont.load_default()
+        font = _get_preview_font(size=style_config.caption_size // 2)
         draw.text(
             (img.width // 2 - 200, img.height - 200),
             "Sample caption text",
