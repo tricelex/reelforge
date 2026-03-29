@@ -13,6 +13,7 @@ from reelforge.services.media.render_stages.captions import CaptionTranslationSt
 from reelforge.services.media.render_stages.hook import HookStage
 from reelforge.services.media.render_stages.intro_outro import IntroConcatStage
 from reelforge.services.media.render_stages.intro_outro import OutroConcatStage
+from reelforge.services.media.render_stages.music_mix import MusicMixStage
 from reelforge.services.media.render_stages.progress_bar import ProgressBarStage
 from reelforge.services.media.render_stages.timed_overlays import TimedOverlayStage
 from reelforge.services.media.render_stages.trim_crop import TrimAndCropStage
@@ -626,3 +627,58 @@ def test_progress_bar_stage_command_uses_drawbox(tmp_path: Path) -> None:
         stage.run(input_path)
     cmd = " ".join(mock_run.call_args[0][0])
     assert "drawbox" in cmd
+
+
+def _make_music_config(
+    enabled: bool = True,
+    volume_db: float = -20.0,
+    fade_in: float = 1.0,
+    fade_out: float = 1.0,
+) -> MagicMock:
+    sc = MagicMock()
+    sc.music_enabled = enabled
+    sc.music_asset = MagicMock()
+    sc.music_asset.file.path = "/music/track.mp3"
+    sc.music_asset.duration_sec = 120.0
+    sc.music_volume_db = volume_db
+    sc.music_fade_in_sec = fade_in
+    sc.music_fade_out_sec = fade_out
+    return sc
+
+
+def test_music_mix_stage_skipped_when_disabled(tmp_path: Path) -> None:
+    sc = _make_music_config(enabled=False)
+    stage = MusicMixStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
+    assert stage.should_run() is False
+
+
+def test_music_mix_stage_skipped_when_no_music_asset(tmp_path: Path) -> None:
+    sc = MagicMock()
+    sc.music_enabled = True
+    sc.music_asset = None
+    stage = MusicMixStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
+    assert stage.should_run() is False
+
+
+def test_music_mix_stage_name_and_order(tmp_path: Path) -> None:
+    stage = MusicMixStage(
+        output_path=tmp_path / "out.mp4",
+        style_config=_make_music_config(),
+        video_duration_sec=60.0,
+    )
+    assert stage.name == "music_mix"
+    assert stage.order == 10
+
+
+def test_music_mix_stage_command_uses_amix(tmp_path: Path) -> None:
+    sc = _make_music_config(volume_db=-18.0, fade_in=1.0, fade_out=2.0)
+    stage = MusicMixStage(output_path=tmp_path / "out.mp4", style_config=sc, video_duration_sec=60.0)
+    input_path = tmp_path / "in.mp4"
+    input_path.write_bytes(b"fake")
+    with patch("reelforge.services.media.render_stages.music_mix.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        (tmp_path / "out.mp4").write_bytes(b"out")
+        stage.run(input_path)
+    cmd = " ".join(mock_run.call_args[0][0])
+    assert "amix" in cmd
+    assert "volume" in cmd or "-18" in cmd
