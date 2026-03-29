@@ -23,6 +23,8 @@ class ProgressBarStage(RenderStage):
     output_path: Path
     style_config: ClipStyleConfig | None
     video_duration_sec: float = 60.0
+    crf: int = 18
+    preset: str = "slow"
 
     @property
     def name(self) -> str:
@@ -60,9 +62,9 @@ class ProgressBarStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",

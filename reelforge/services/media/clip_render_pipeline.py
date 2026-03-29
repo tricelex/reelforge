@@ -128,19 +128,27 @@ class ClipRenderPipeline:
                 fonts_dir=fonts_dir,
                 video_width=c.width,
                 video_height=c.height,
+                crf=c.crf,
+                preset=c.preset,
             ),
             WatermarkStage(
                 output_path=get_stage_output_path(c.render_id, 6, "watermark"),
                 style_config=c.style_config,
+                crf=c.crf,
+                preset=c.preset,
             ),
             TimedOverlayStage(
                 output_path=get_stage_output_path(c.render_id, 7, "timed_overlays"),
                 timed_overlays=c.timed_overlays,
+                crf=c.crf,
+                preset=c.preset,
             ),
             ProgressBarStage(
                 output_path=get_stage_output_path(c.render_id, 8, "progress_bar"),
                 style_config=c.style_config,
                 video_duration_sec=clip_duration,
+                crf=c.crf,
+                preset=c.preset,
             ),
             OutroConcatStage(
                 output_path=get_stage_output_path(c.render_id, 9, "outro_concat"),

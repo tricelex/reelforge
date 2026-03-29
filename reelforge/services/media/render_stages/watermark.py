@@ -27,6 +27,8 @@ class WatermarkStage(RenderStage):
 
     output_path: Path
     style_config: ClipStyleConfig | None
+    crf: int = 18
+    preset: str = "slow"
 
     @property
     def name(self) -> str:
@@ -74,9 +76,9 @@ class WatermarkStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",
@@ -109,9 +111,9 @@ class WatermarkStage(RenderStage):
             "-c:v",
             "libx264",
             "-crf",
-            "18",
+            str(self.crf),
             "-preset",
-            "slow",
+            self.preset,
             "-c:a",
             "copy",
             "-movflags",
