@@ -200,6 +200,11 @@ def analyze_clips(self, clipping_job_id: str) -> None:
             "Clip analysis failed",
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
         )
+        if self.request.retries >= self.max_retries:
+            if can_proceed(job.mark_failed):
+                job.mark_failed(error=str(exc))
+                job.save(update_fields=["status", "last_error", "failed_at", "updated_at"])
+            return
         raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
 
 
