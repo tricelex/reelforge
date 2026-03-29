@@ -5,6 +5,20 @@ from abc import abstractmethod
 from pathlib import Path
 
 
+class RenderStageError(Exception):
+    """Raised when a pipeline render stage fails.
+
+    Wraps the original exception with stage identity so callers know exactly
+    which stage failed without parsing error strings.
+    """
+
+    def __init__(self, stage_name: str, stage_order: int, cause: Exception) -> None:
+        self.stage_name = stage_name
+        self.stage_order = stage_order
+        self.cause = cause
+        super().__init__(f"Stage {stage_order} ({stage_name}) failed: {cause}")
+
+
 class RenderStage(ABC):
     """Abstract base for a single pipeline render stage.
 
