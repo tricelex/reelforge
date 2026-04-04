@@ -333,3 +333,4 @@ dump.rdb
 .envs/.local/.django
 .idea/
 .worktrees/
+.superpowers/
