@@ -333,3 +333,4 @@ reelforge/media/
 .envs/.local/.django
 .idea/
 .worktrees/
+.superpowers/
