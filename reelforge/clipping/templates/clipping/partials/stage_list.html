@@ -1,0 +1,24 @@
+{# Self-stopping polling. Swaps when render is not terminal. #}
+<div id="stage-list-container"
+     {% if not is_terminal %}
+     hx-get="{% url 'clipping:stage_list_partial' render.pk %}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% else %}
+     data-terminal="true"
+     {% endif %}>
+
+  <h3 class="text-sm font-semibold text-slate-300 mb-3">Pipeline Stages</h3>
+
+  <div class="space-y-1">
+    {% for stage in stages %}
+      {% include "clipping/partials/stage_pill.html" %}
+    {% empty %}
+      <p class="text-xs text-slate-500 py-4 text-center">
+        {% if render.status == 'PENDING' %}Waiting to start…
+        {% else %}No stage results yet.{% endif %}
+      </p>
+    {% endfor %}
+  </div>
+
+</div>

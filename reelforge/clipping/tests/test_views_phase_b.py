@@ -275,3 +275,36 @@ def test_delete_overlay_removes_record(client: Client) -> None:
     response = client.post(url)
     assert response.status_code == 200
     assert not ClipTimedOverlay.objects.filter(pk=overlay.pk).exists()
+
+
+# ── Task 7: render detail view + polled stage list ────────────────────────────
+
+@pytest.mark.django_db
+def test_render_detail_view_returns_200(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    render = ClipRenderFactory()
+    url = reverse("clipping:render_detail", kwargs={"render_id": render.pk})
+    response = client.get(url)
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_stage_list_partial_returns_200(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    render = ClipRenderFactory()
+    url = reverse("clipping:stage_list_partial", kwargs={"render_id": render.pk})
+    response = client.get(url)
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_stage_list_partial_is_terminal_when_render_completed(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    render = ClipRenderFactory(status=ClipRender.RenderStatus.COMPLETED)
+    url = reverse("clipping:stage_list_partial", kwargs={"render_id": render.pk})
+    response = client.get(url)
+    assert response.status_code == 200
+    assert b"data-terminal" in response.content
