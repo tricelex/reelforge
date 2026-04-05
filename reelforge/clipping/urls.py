@@ -22,8 +22,10 @@ from ***REMOVED***.clipping.views.jobs import JobDetailView
 from ***REMOVED***.clipping.views.jobs import JobListView
 from ***REMOVED***.clipping.views.jobs import JobStatusPartialView
 
-# Render views — currently FBVs; Task 9 will convert these to CBVs
-from ***REMOVED***.clipping.views import renders as views_renders
+from ***REMOVED***.clipping.views.renders import RenderDetailView
+from ***REMOVED***.clipping.views.renders import RerunFromStageView
+from ***REMOVED***.clipping.views.renders import ResumeRenderView
+from ***REMOVED***.clipping.views.renders import StageListPartialView
 
 app_name = "clipping"
 
@@ -49,9 +51,8 @@ urlpatterns = [
     path("clips/<uuid:candidate_id>/reject/", CandidateRejectView.as_view(), name="candidate_reject"),
     path("clips/<uuid:candidate_id>/undo-reject/", CandidateUndoRejectView.as_view(), name="candidate_undo_reject"),
     path("clips/<uuid:candidate_id>/gates/", UpdateRenderGatesView.as_view(), name="update_render_gates"),
-    # Render views — Task 9 will replace these FBV references with CBVs
-    path("renders/<uuid:render_id>/", views_renders.render_detail, name="render_detail"),
-    path("renders/<uuid:render_id>/stages/", views_renders.stage_list_partial, name="stage_list_partial"),
-    path("renders/<uuid:render_id>/rerun/<int:stage_order>/", views_renders.rerun_from_stage, name="rerun_from_stage"),
-    path("renders/<uuid:render_id>/resume/", views_renders.resume_render, name="resume_render"),
+    path("renders/<uuid:render_id>/", RenderDetailView.as_view(), name="render_detail"),
+    path("renders/<uuid:render_id>/stages/", StageListPartialView.as_view(), name="stage_list_partial"),
+    path("renders/<uuid:render_id>/rerun/<int:stage_order>/", RerunFromStageView.as_view(), name="rerun_from_stage"),
+    path("renders/<uuid:render_id>/resume/", ResumeRenderView.as_view(), name="resume_render"),
 ]
