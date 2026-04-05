@@ -1,93 +1,136 @@
 {% extends "ui/base.html" %}
 {% load static %}
 
-{% block sidebar %}
-<p class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 mt-1">Overview</p>
-<a href="{% url 'ui:dashboard' %}"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-white bg-slate-700 rounded-md">
-  Home
-</a>
-<a href="{% url 'clipping:job_list' %}"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
-  Active Jobs
-</a>
-
-<p class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 mt-3">Clipping</p>
-<a href="{% url 'clipping:job_list' %}"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
-  All Jobs
-</a>
-{% if awaiting_approval_count %}
-<a href="{% url 'clipping:job_list' %}?status=AWAITING_CLIP_APPROVAL"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
-  Awaiting Approval
-  <span class="ml-auto bg-amber-500 text-black text-xs font-bold px-1.5 rounded-full">
-    {{ awaiting_approval_count }}
-  </span>
-</a>
-{% endif %}
-{% endblock sidebar %}
-
-{% block content %}
+{% block page_header %}
 <div class="flex items-center justify-between mb-6">
   <div>
-    <h1 class="text-lg font-semibold text-white">Dashboard</h1>
-    <p class="text-xs text-slate-500 mt-0.5">{{ request.user.email }}</p>
+    <h5 class="card-title text-xl">Dashboard</h5>
+    <p class="card-subtitle">{{ request.user.email }}</p>
   </div>
 </div>
+{% endblock %}
+
+{% block content %}
 
 <!-- Stats row -->
-<div class="grid grid-cols-4 gap-4 mb-6">
-  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 mb-1">Active Jobs</p>
-    <p class="text-2xl font-bold text-white">{{ active_jobs_count }}</p>
-  </div>
-  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 mb-1">Awaiting Approval</p>
-    <p class="text-2xl font-bold text-amber-400">{{ awaiting_approval_count }}</p>
-  </div>
-  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 mb-1">Completed Today</p>
-    <p class="text-2xl font-bold text-green-400">{{ completed_today_count }}</p>
-  </div>
-  <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 mb-1">Approval Queue</p>
-    <p class="text-2xl font-bold text-cyan-400">{{ awaiting_approval|length }}</p>
-  </div>
-</div>
-
-<!-- Two column -->
-<div class="grid gap-4" style="grid-template-columns: 1fr 300px;">
-
-  <!-- Active Jobs (polled) -->
-  <div class="bg-slate-800 rounded-xl border border-slate-700">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-      <h2 class="text-sm font-semibold text-white">Active Jobs</h2>
-    </div>
-    {% include "ui/partials/active_jobs.html" %}
-  </div>
-
-  <!-- Needs Attention -->
-  <div class="flex flex-col gap-4">
-    <div class="bg-slate-800 rounded-xl border border-amber-800/50">
-      <div class="px-4 py-3 border-b border-slate-700">
-        <h2 class="text-sm font-semibold text-amber-400">Needs Attention</h2>
+<div class="grid grid-cols-12 gap-6 mb-6">
+  <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+    <div class="card shadow-none bg-lightprimary dark:bg-darkprimary">
+      <div class="card-body">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+            <i class="ti ti-activity text-2xl text-white"></i>
+          </div>
+          <div>
+            <p class="text-primary font-semibold text-sm mb-0">Active Jobs</p>
+            <h5 class="text-2xl font-bold text-primary mb-0">{{ active_jobs_count }}</h5>
+          </div>
+        </div>
       </div>
-      {% if awaiting_approval %}
-        {% for job in awaiting_approval %}
-          <a href="{% url 'clipping:job_detail' job.id %}"
-             class="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700 hover:bg-slate-750 cursor-pointer">
-            <span class="text-xs text-white truncate flex-1">{{ job.source_title|default:"Untitled"|truncatechars:40 }}</span>
-            <span class="text-xs bg-amber-900/60 text-amber-300 px-2 py-0.5 rounded-full shrink-0">
-              {{ job.candidate_count }} clips
-            </span>
-          </a>
-        {% endfor %}
-      {% else %}
-        <p class="px-4 py-4 text-xs text-slate-500">Nothing needs attention.</p>
-      {% endif %}
+    </div>
+  </div>
+  <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+    <div class="card shadow-none bg-lightwarning dark:bg-darkwarning">
+      <div class="card-body">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-warning flex items-center justify-center flex-shrink-0">
+            <i class="ti ti-clock text-2xl text-white"></i>
+          </div>
+          <div>
+            <p class="text-warning font-semibold text-sm mb-0">Awaiting Approval</p>
+            <h5 class="text-2xl font-bold text-warning mb-0">{{ awaiting_approval_count }}</h5>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+    <div class="card shadow-none bg-lightsuccess dark:bg-darksuccess">
+      <div class="card-body">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-success flex items-center justify-center flex-shrink-0">
+            <i class="ti ti-circle-check text-2xl text-white"></i>
+          </div>
+          <div>
+            <p class="text-success font-semibold text-sm mb-0">Completed Today</p>
+            <h5 class="text-2xl font-bold text-success mb-0">{{ completed_today_count }}</h5>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+    <div class="card shadow-none bg-lightinfo dark:bg-darkinfo">
+      <div class="card-body">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-info flex items-center justify-center flex-shrink-0">
+            <i class="ti ti-hourglass text-2xl text-white"></i>
+          </div>
+          <div>
+            <p class="text-info font-semibold text-sm mb-0">Approval Queue</p>
+            <h5 class="text-2xl font-bold text-info mb-0">{{ awaiting_approval|length }}</h5>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Two column: active jobs + needs attention -->
+<div class="grid grid-cols-12 gap-6">
+
+  <!-- Active jobs (HTMX polled) -->
+  <div class="col-span-12 lg:col-span-8">
+    <div class="card">
+      <div class="card-body pb-0">
+        <div class="flex items-center justify-between mb-4">
+          <h5 class="card-title mb-0">Active Jobs</h5>
+          <span class="text-sm text-bodytext dark:text-darklink">Auto-refreshes every 2s</span>
+        </div>
+      </div>
+      <div id="active-jobs-table"
+           hx-get="{% url 'ui:active_jobs_partial' %}"
+           hx-trigger="every 2s"
+           hx-swap="innerHTML">
+        {% include "ui/partials/active_jobs.html" %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Needs attention -->
+  <div class="col-span-12 lg:col-span-4">
+    <div class="card border-warning">
+      <div class="card-body">
+        <h5 class="card-title text-warning mb-4">
+          <i class="ti ti-alert-triangle me-2"></i>Needs Attention
+        </h5>
+        {% if awaiting_approval %}
+          <div class="-m-1.5 overflow-x-auto">
+            <div class="p-1.5 min-w-full inline-block align-middle">
+              <div class="divide-y divide-border dark:divide-darkborder">
+                {% for job in awaiting_approval %}
+                <a href="{% url 'clipping:job_detail' job.id %}"
+                   class="flex items-center gap-3 py-3 hover:bg-lightgray dark:hover:bg-darkgray px-2 rounded-md transition-colors">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-dark dark:text-white truncate mb-0">
+                      {{ job.source_title|default:"Untitled"|truncatechars:40 }}
+                    </p>
+                    <p class="text-xs text-bodytext dark:text-darklink mb-0">{{ job.channel.name }}</p>
+                  </div>
+                  <span class="badge-md bg-lightwarning text-warning dark:bg-darkwarning dark:text-warning flex-shrink-0">
+                    {{ job.candidate_count }} clips
+                  </span>
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <p class="text-sm text-bodytext dark:text-darklink text-center py-4">Nothing needs attention.</p>
+        {% endif %}
+      </div>
     </div>
   </div>
 
 </div>
-{% endblock content %}
+{% endblock %}

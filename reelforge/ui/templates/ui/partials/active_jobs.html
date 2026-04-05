@@ -1,44 +1,41 @@
-{% comment %}
-HTMX polled partial. Rendered standalone (no base layout) — returns only this fragment.
-Poll stops when data-terminal="true" (no active jobs).
-{% endcomment %}
-<div id="active-jobs-panel"
-     {% if active_jobs %}
-     hx-get="{% url 'ui:active_jobs_partial' %}"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML"
-     {% else %}
-     data-terminal="true"
-     {% endif %}>
-  {% if active_jobs %}
-    {% for job in active_jobs %}
-      <a href="{% url 'clipping:job_detail' job.id %}"
-         class="flex items-center gap-3 px-4 py-3 border-b border-slate-700 hover:bg-slate-750 cursor-pointer transition-colors">
-        <span class="w-2 h-2 rounded-full shrink-0
-          {% if job.status == 'AWAITING_CLIP_APPROVAL' %}bg-amber-400 animate-pulse
-          {% elif job.status == 'FAILED' %}bg-red-400
-          {% elif job.status == 'COMPLETED' %}bg-green-400
-          {% else %}bg-indigo-400 animate-pulse{% endif %}">
-        </span>
-        <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-white truncate">{{ job.source_title|default:"Untitled" }}</p>
-          <div class="flex items-center gap-2 mt-0.5">
-            <span class="text-xs text-slate-500">{{ job.channel.name }}</span>
-            <span class="text-slate-600">·</span>
-            <span class="text-xs
-              {% if job.status == 'AWAITING_CLIP_APPROVAL' %}text-amber-400
-              {% elif job.status == 'FAILED' %}text-red-400
-              {% else %}text-indigo-400{% endif %}">
-              {{ job.get_status_display }}
-            </span>
-          </div>
-        </div>
-        <svg class="w-4 h-4 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-        </svg>
-      </a>
-    {% endfor %}
-  {% else %}
-    <p class="px-4 py-6 text-xs text-slate-500 text-center">No active jobs right now.</p>
-  {% endif %}
+{% if active_jobs %}
+<div class="-m-1.5 overflow-x-auto">
+  <div class="p-1.5 min-w-full inline-block align-middle">
+    <table class="min-w-full divide-y divide-border dark:divide-darkborder">
+      <thead>
+        <tr>
+          <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Title</th>
+          <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Channel</th>
+          <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Status</th>
+          <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Started</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border dark:divide-darkborder">
+        {% for job in active_jobs %}
+        <tr class="hover:bg-lightgray dark:hover:bg-darkgray cursor-pointer"
+            onclick="window.location='{% url 'clipping:job_detail' job.id %}'">
+          <td class="p-4 whitespace-nowrap">
+            <p class="text-sm font-medium text-dark dark:text-white mb-0 truncate max-w-xs">
+              {{ job.source_title|default:"Untitled" }}
+            </p>
+          </td>
+          <td class="p-4 whitespace-nowrap">
+            <p class="text-sm text-bodytext dark:text-darklink mb-0">{{ job.channel.name }}</p>
+          </td>
+          <td class="p-4 whitespace-nowrap">
+            {% include "ui/partials/status_badge.html" with status=job.status %}
+          </td>
+          <td class="p-4 whitespace-nowrap">
+            <p class="text-sm text-bodytext dark:text-darklink mb-0">{{ job.created_at|timesince }} ago</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+{% else %}
+<div class="p-8 text-center">
+  <p class="text-sm text-bodytext dark:text-darklink">No active jobs.</p>
+</div>
+{% endif %}
