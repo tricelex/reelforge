@@ -215,3 +215,63 @@ def test_update_style_config_saves_boolean_fields(client: Client) -> None:
     style.refresh_from_db()
     assert style.caption_enabled is True
     assert style.hook_enabled is True
+
+
+# ── Task 6: preview + overlay views ──────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_trigger_preview_fires_celery_task(client: Client) -> None:
+    from reelforge.clipping.models import ClipLayoutConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    url = reverse("clipping:trigger_preview", kwargs={"candidate_id": candidate.pk})
+    with patch("reelforge.clipping.views.candidates.preview_clip_layout") as mock_task:
+        response = client.post(url)
+    assert response.status_code == 200
+    mock_task.delay.assert_called_once_with(str(layout.pk))
+
+
+@pytest.mark.django_db
+def test_preview_status_returns_image_url_when_ready(client: Client) -> None:
+    from reelforge.clipping.models import ClipLayoutConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    layout.preview_image = "clipping/previews/test.jpg"
+    layout.save(update_fields=["preview_image"])
+    url = reverse("clipping:preview_status", kwargs={"candidate_id": candidate.pk})
+    response = client.get(url)
+    assert response.status_code == 200
+    assert b"test.jpg" in response.content
+
+
+@pytest.mark.django_db
+def test_add_overlay_creates_record_and_returns_partial(client: Client) -> None:
+    from reelforge.clipping.models import ClipTimedOverlay
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    url = reverse("clipping:add_overlay", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url)
+    assert response.status_code == 200
+    assert ClipTimedOverlay.objects.filter(candidate=candidate).count() == 1
+
+
+@pytest.mark.django_db
+def test_delete_overlay_removes_record(client: Client) -> None:
+    from reelforge.clipping.models import ClipTimedOverlay
+    from reelforge.clipping.tests.factories import ClipTimedOverlayFactory
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    overlay = ClipTimedOverlayFactory()
+    url = reverse("clipping:delete_overlay", kwargs={"overlay_id": overlay.pk})
+    response = client.post(url)
+    assert response.status_code == 200
+    assert not ClipTimedOverlay.objects.filter(pk=overlay.pk).exists()

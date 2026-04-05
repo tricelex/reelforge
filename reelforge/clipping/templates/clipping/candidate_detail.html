@@ -62,6 +62,12 @@
           <p class="text-xs text-slate-500">No timed overlays.</p>
         {% endfor %}
       </div>
+      <button class="mt-3 text-xs text-indigo-400 hover:text-indigo-300"
+              hx-post="{% url 'clipping:add_overlay' candidate.pk %}"
+              hx-target="#overlays-list"
+              hx-swap="beforeend">
+        + Add Overlay
+      </button>
     </div>
 
     {# Review gates #}
