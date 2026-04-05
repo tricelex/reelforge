@@ -264,6 +264,9 @@ class ClipCandidate(BaseAbstractModel):
         related_name="approved_clip_candidates",
     )
     rejection_reason = models.TextField(blank=True)
+    # Review gates — stage order numbers at which the render should pause for operator review.
+    # e.g. [1, 3, 5, 8]. Empty list = no gates.
+    render_gates = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["-relevance_score"]
@@ -316,6 +319,7 @@ class ClipRender(BaseAbstractModel):
         RUNNING = "RUNNING", "Running"
         COMPLETED = "COMPLETED", "Completed"
         FAILED = "FAILED", "Failed"
+        PAUSED_AT_GATE = "PAUSED_AT_GATE", "Paused at Gate"
 
     candidate = models.ForeignKey(
         ClipCandidate,
@@ -348,6 +352,7 @@ class ClipRender(BaseAbstractModel):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
+    paused_at_stage = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
