@@ -82,8 +82,10 @@ def test_job_status_partial_returns_200(staff_client, clipping_job):
 def test_job_status_partial_sets_terminal_for_completed_job(
     staff_client, clipping_job
 ):
-    clipping_job.status = ClippingJob.Status.COMPLETED
-    clipping_job.save(update_fields=["status", "updated_at"])
+    # Use update() to bypass FSMField protected assignment in tests
+    ClippingJob.objects.filter(pk=clipping_job.pk).update(
+        status=ClippingJob.Status.COMPLETED
+    )
     response = staff_client.get(f"/app/clipping/{clipping_job.id}/status/")
     assert response.status_code == 200
     assert b'data-terminal="true"' in response.content
