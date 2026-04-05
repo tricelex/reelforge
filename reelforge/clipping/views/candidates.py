@@ -20,6 +20,7 @@ from ***REMOVED***.clipping.models import ClipRenderStyleMixin
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
+from ***REMOVED***.clipping.tasks import preview_clip_layout
 from ***REMOVED***.clipping.tasks import render_clip
 
 _BOOLEAN_STYLE_FIELDS = frozenset({
@@ -315,4 +316,82 @@ def update_style_config(request: HttpRequest, candidate_id: str) -> HttpResponse
                 pass
 
     style.save(update_fields=update_fields)
+    return HttpResponse(status=200)
+
+
+@staff_member_required
+@require_POST
+def trigger_preview(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Fire the preview_clip_layout Celery task. Returns the polling preview panel."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    layout = get_object_or_404(ClipLayoutConfig, candidate=candidate)
+    preview_clip_layout.delay(str(layout.pk))
+    return render(
+        request,
+        "clipping/partials/preview_panel.html",
+        {"candidate": candidate, "layout": layout, "polling": True},
+    )
+
+
+@staff_member_required
+def preview_status(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """HTMX polling endpoint: returns preview panel partial.
+    Sets data-terminal when preview_image is populated."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    layout = getattr(candidate, "layout_config", None)
+    is_ready = layout is not None and bool(layout.preview_image)
+    return render(
+        request,
+        "clipping/partials/preview_panel.html",
+        {"candidate": candidate, "layout": layout, "polling": not is_ready},
+    )
+
+
+@staff_member_required
+@require_POST
+def add_overlay(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Create a new timed overlay with defaults; return the new overlay row partial."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    overlay = ClipTimedOverlay.objects.create(
+        candidate=candidate,
+        text="New overlay",
+        start_sec=0.0,
+        end_sec=5.0,
+    )
+    return render(
+        request,
+        "clipping/partials/overlay_row.html",
+        {"overlay": overlay, "candidate": candidate},
+    )
+
+
+@staff_member_required
+@require_POST
+def update_overlay(request: HttpRequest, overlay_id: str) -> HttpResponse:
+    """Save text/time fields for a timed overlay."""
+    overlay = get_object_or_404(ClipTimedOverlay, pk=overlay_id)
+    update_fields: list[str] = ["updated_at"]
+    if "text" in request.POST:
+        overlay.text = request.POST["text"]
+        update_fields.append("text")
+    for field in ("start_sec", "end_sec", "position_x", "position_y", "font_size"):
+        if field in request.POST:
+            try:
+                val: float | int = (
+                    float(request.POST[field]) if "sec" in field else int(request.POST[field])
+                )
+                setattr(overlay, field, val)
+                update_fields.append(field)
+            except (ValueError, TypeError):
+                pass
+    overlay.save(update_fields=update_fields)
+    return HttpResponse(status=200)
+
+
+@staff_member_required
+@require_POST
+def delete_overlay(request: HttpRequest, overlay_id: str) -> HttpResponse:
+    """Delete a timed overlay; return empty 200 (HTMX outerHTML swap removes the row)."""
+    overlay = get_object_or_404(ClipTimedOverlay, pk=overlay_id)
+    overlay.delete()
     return HttpResponse(status=200)
