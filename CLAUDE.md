@@ -5,873 +5,365 @@
 
 ---
 
-## IMPLEMENTATION STATUS
+## WORKFLOW — SUPERPOWERS SKILLS
 
-**Current State**: ✅ **Infrastructure Phase Complete**
+This project uses the **Superpowers** Claude Code plugin. Before starting any non-trivial task, invoke the appropriate skill:
 
-Reelforge is currently a fresh cookiecutter-django 5.2 installation with core infrastructure in place. The architecture described in Part II represents the complete vision we are building toward.
+| Situation | Skill to invoke |
+|---|---|
+| New feature / idea to build | `superpowers:brainstorming` |
+| Writing an implementation plan | `superpowers:writing-plans` |
+| Executing a plan from `docs/superpowers/plans/` | `superpowers:executing-plans` |
+| Setting up an isolated branch to work in | `superpowers:using-git-worktrees` |
+| Finishing a feature branch | `superpowers:finishing-a-development-branch` |
 
-**What Works Today:**
-- Django 5.2 with Django REST Framework
-- PostgreSQL database
-- Redis caching and Celery broker
-- Celery workers and beat scheduler
-- Docker Compose development environment
-- Pre-commit hooks with Ruff, djlint, mypy
-- Custom User model (django-allauth)
-- Unfold admin theme
-
-**What's Planned:**
-- Multi-channel YouTube automation pipeline
-- FSM-based orchestration
-- OpenAI Agents SDK integration
-- Provider abstraction layer
-- Asset generation (TTS, images, music)
-- Video rendering and QA
-- YouTube distribution
-- Analytics feedback loop
+Worktrees live in `.worktrees/` (gitignored). Plans live in `docs/superpowers/plans/`. Specs live in `docs/superpowers/specs/`.
 
 ---
 
-# PART I: CURRENT STATE & QUICK START
+## IMPLEMENTATION STATUS
 
-This section describes what exists today and how to work with the current codebase.
+**Current State**: ✅ **Substantial pipeline + operator dashboard in place**
 
-## 1. Project Overview
+**What Works Today:**
+- Full Django 5.2 project with all core apps (channels, research, scripts, assets, production, distribution, pipeline, clipping, ui)
+- Multi-channel YouTube automation pipeline (FSM-orchestrated, Celery-driven)
+- Clipping feature: analyze → render → review dashboard
+- Operator dashboard (`/app/`) — job list, job detail, clip candidate config, render progress
+- Admin interface (Unfold theme) for all models
+- Docker Compose development environment
+- Pre-commit hooks: Ruff, djlint, mypy
 
-ReelForge is a multi-channel YouTube automation SaaS built with Django 5.2. The project is based on cookiecutter-django and uses Python 3.13 with `uv` for dependency management.
+**Apps in `***REMOVED***/`:**
+- `core/` — abstract base models, validators, storage helpers
+- `channels/` — Channel model, YouTube OAuth credentials
+- `research/` — ResearchJob, TopicIdea
+- `scripts/` — ScriptJob, ScriptRevision
+- `assets/` — AssetJob, VoiceoverRun, ImageGenerationRun, etc.
+- `production/` — SceneBreakdownJob, AudioMixJob, ProductionJob
+- `distribution/` — DistributionJob
+- `pipeline/` — PipelineRun, PipelineEvent (FSM orchestration)
+- `clipping/` — ClipCandidate, ClipRender, ClipLayoutConfig, ClipStyleConfig, ClipTimedOverlay
+- `ui/` — Dashboard views, base templates (Tailwind + HTMX + Alpine.js)
+- `agents/` — OpenAI Agents SDK agent definitions
+- `services/` — Provider abstractions, media processing (audio/video/image)
+- `users/` — Custom User model (cookiecutter default)
 
-**Current Tech Stack:**
-- Django 5.2 with Django REST Framework
-- PostgreSQL (via psycopg3)
-- Redis for caching and Celery broker
-- Celery for async task processing
-- Docker for containerization
-- DRF Spectacular for API documentation
-- Unfold for Django admin theme
+---
 
-## 2. Development Commands
+## PART I: QUICK START
 
-### Local Development (without Docker)
+### 1. Tech Stack
 
-Run commands with `uv run` prefix:
+- **Django 5.2** + DRF + Celery + PostgreSQL (psycopg3) + Redis
+- **Python 3.13**, dependency management via `uv`
+- **Docker Compose** for all services (run `just up`)
+- **Tailwind CSS v4** (binary at `bin/tailwindcss`, compiled to `***REMOVED***/static/css/tailwind.css`)
+- **HTMX 2.0.4** + **Alpine.js 3.14** for operator UI (no separate frontend build beyond Tailwind)
+- **Unfold** admin theme
+
+### 2. Running Tests
+
+Tests are run **from the host machine** against the Docker Postgres instance (port 5435):
 
 ```bash
-# Run development server
-uv run python manage.py runserver
-
-# Run tests
+# Standard test run — use real DB credentials from .envs/.local/.***REMOVED***
+DATABASE_URL="***REMOVED***://***REMOVED***:***REMOVED***@localhost:5435/***REMOVED***" \
+CREDENTIAL_ENCRYPTION_KEY="***REMOVED***" \
 uv run pytest
-uv run pytest path/to/test_file.py::test_name  # Run single test
+
+# Single test / subset
+DATABASE_URL="..." CREDENTIAL_ENCRYPTION_KEY="..." uv run pytest ***REMOVED***/clipping/tests/ -v
+DATABASE_URL="..." CREDENTIAL_ENCRYPTION_KEY="..." uv run pytest path/to/test.py::test_name -v
 
 # Type checking
 uv run mypy ***REMOVED***
 
-# Test coverage
-uv run coverage run -m pytest
-uv run coverage html
-uv run open htmlcov/index.html
-
-# Create superuser
-uv run python manage.py createsuperuser
-
-# Run Celery worker
-uv run celery -A config.celery_app worker -l info
-
-# Run Celery beat scheduler
-uv run celery -A config.celery_app beat
-
-# Django management commands
-uv run python manage.py makemigrations
-uv run python manage.py migrate
+# Linting / formatting
+uv run ruff check . --unsafe-fixes
+uv run ruff format .
 ```
 
-### Docker Development
+**The Postgres credentials never change** — they're in `.envs/.local/.***REMOVED***` (gitignored). Always use port **5435** (Docker mapped port, not 5432).
 
-Uses `just` task runner (see `justfile`):
+### 3. Docker / Just Commands
+
+Docker is managed via `just` (see `justfile`):
 
 ```bash
-just build              # Build Docker images
-just up                 # Start all containers
-just down               # Stop containers
-just prune              # Remove containers and volumes
-just logs [service]     # View logs
-just manage [command]   # Run Django management commands
+just up                # Start all Docker services
+just down              # Stop containers
+just build             # Rebuild images
+just prune             # Remove containers + volumes
+just logs [service]    # Follow logs
+just manage <cmd>      # Run manage.py inside Django container
+just tailwind-build    # Compile Tailwind CSS (minified)
+just tailwind-watch    # Watch + recompile Tailwind on change
+just lint              # ruff check
+just format            # ruff format
+just precommit         # Run all pre-commit hooks
 ```
 
-**Docker Services (Currently Available):**
-- `django` - Main Django app (port 8000)
-- `***REMOVED***` - PostgreSQL database
-- `redis` - Redis cache/broker
-- `celeryworker` - Celery worker
-- `celerybeat` - Celery beat scheduler
-- `flower` - Celery monitoring (port 5555)
-- `mailpit` - Email testing (port 8025)
+**Docker services:**
+- `django` — Django app (port 8000)
+- `***REMOVED***` — PostgreSQL (mapped to host port 5435)
+- `redis` — Redis (port 6379)
+- `celeryworker` — Celery worker
+- `celerybeat` — Celery beat scheduler
+- `flower` — Celery monitoring (port 5555)
+- `mailpit` — Email testing (port 8025)
 
-Environment files are in `.envs/.local/` for local development and `.envs/.production/` for production.
+Environment files: `.envs/.local/` (local) and `.envs/.production/` (production). **Never commit these.**
 
-### Code Quality
+### 4. Migrations
 
-Pre-commit hooks are configured (`.pre-commit-config.yaml`):
+Always run makemigrations from the Docker container (access to the running DB):
 
 ```bash
-# Install pre-commit hooks
-uv run pre-commit install
-
-# Run manually
-uv run pre-commit run --all-files
+just manage makemigrations <app> --name <descriptive_name>
+just manage migrate
 ```
 
-**Tools (Already Configured):**
-- `ruff` - Linting and formatting (replaces flake8, isort, black)
-- `djlint` - Django template linting and formatting
-- `mypy` - Type checking
-- `django-upgrade` - Auto-upgrade Django patterns to 5.2
+Or from the host using the real credentials:
 
-## 3. Current Project Structure
-
-```
-***REMOVED***/
-├── config/                    # Django project configuration
-│   ├── settings/
-│   │   ├── base.py           # Base settings
-│   │   ├── local.py          # Local development settings
-│   │   ├── production.py     # Production settings
-│   │   └── test.py           # Test settings
-│   ├── urls.py               # Root URL configuration
-│   ├── api_router.py         # DRF router configuration
-│   ├── celery_app.py         # Celery configuration
-│   └── wsgi.py               # WSGI application
-├── ***REMOVED***/                 # Main Django app directory
-│   ├── users/                # User management (cookiecutter default)
-│   │   ├── models.py         # Custom User model
-│   │   ├── api/              # DRF API endpoints
-│   │   ├── tests/            # User tests
-│   │   └── ...
-│   ├── contrib/              # Third-party app customizations
-│   ├── static/               # Static files
-│   └── templates/            # Django templates
-├── tests/                     # Project-level tests
-├── compose/                   # Docker configuration files
-├── .envs/                     # Environment variables (gitignored)
-└── docs/                      # Sphinx documentation
+```bash
+DATABASE_URL="***REMOVED***://...@localhost:5435/***REMOVED***" \
+CREDENTIAL_ENCRYPTION_KEY="..." \
+uv run python manage.py makemigrations <app> --name <descriptive_name>
 ```
 
-## 4. Current Architecture Patterns
+**Never use placeholder/fake DB URLs for makemigrations** — Django needs to inspect the real schema.
 
-### Settings Structure
+### 5. Tailwind CSS
 
-Settings are split by environment:
-- `config/settings/base.py` - Common settings
-- `config/settings/local.py` - Local development (uses DEBUG=True)
-- `config/settings/production.py` - Production (uses environment variables)
-- `config/settings/test.py` - Testing configuration
-
-The active settings module is controlled by `DJANGO_SETTINGS_MODULE` environment variable.
-
-
-
-### Celery Tasks
-
-Celery is configured in `config/celery_app.py`. Create tasks in `app/tasks.py`:
-```python
-from config.celery_app import app
-
-@app.task()
-def my_task():
-    pass
-```
-
-### Static Files & Media
-
-- Static files: Managed by WhiteNoise in production
-- Media files: Configured for Google Cloud Storage via django-storages
-- Local development serves media from local filesystem
-
-
-
-## 6. Important Notes
-
-- **Python Version:** Requires exactly Python 3.13
-- **Dependency Management:** Uses `uv` (not pip/poetry/pipenv)
-- **Django Version:** 5.2 - use django-upgrade patterns
-- **Database:** PostgreSQL only (no SQLite support in production)
-- **Error Tracking:** Sentry configured for production
-- **CORS:** django-cors-headers configured for API access
-
-## 7. Ruff Configuration
-
-Ruff is configured with extensive rule sets in `pyproject.toml`. Key notes:
-- Uses single-line imports (`force-single-line = true`)
-- Excludes migrations automatically
-- S101 (assert) ignored for tests
-- Max line length follows Django conventions
-
-## 8. Docker Compose Files
-
-- `docker-compose.local.yml` - Local development
-- `docker-compose.production.yml` - Production deployment
-- `docker-compose.docs.yml` - Documentation building
-
-Environment variable is `COMPOSE_FILE=docker-compose.local.yml` by default.
+Tailwind binary lives at `bin/tailwindcss`. Run `just tailwind-build` before committing template changes. The compiled output at `***REMOVED***/static/css/tailwind.css` **is** committed to git (it's served as a static file).
 
 ---
 
-# PART II: ARCHITECTURE VISION
+## PART II: ARCHITECTURE
 
-This section describes the complete Reelforge system we are building. Sections marked **[PLANNED]** represent future functionality. Sections marked **[ACTIVE]** should be applied to all code written today.
+### 1. What We Are Building
 
-## 1. WHAT WE ARE BUILDING [PLANNED]
+**Reelforge** is a multi-channel YouTube automation SaaS — manages the full lifecycle from research to analytics for multiple channels simultaneously. The operator runs everything from the Django admin + a lightweight operator dashboard (`/app/`).
 
-**Reelforge** is a multi-channel YouTube automation SaaS — a production HQ that manages the full lifecycle of faceless YouTube content from research to analytics, for multiple channels simultaneously.
-
-### The Problem We Solve
-
-Running a successful faceless YouTube channel requires 6-8 hours of daily work: finding topics, writing scripts, generating voiceovers, editing videos, optimizing SEO, uploading, and tracking performance. Reelforge reduces this to a monitoring task. The operator sets up a channel once and the system does everything else.
-
-### The Product
-
-A Django-based SaaS with:
-- A pipeline that automatically researches, scripts, produces, and uploads videos
-- Full operator control via Django Admin (Unfold theme) — no custom frontend required
-- Multi-channel support — each channel is isolated with its own config, voice, niche, and credentials
-- An AI agent system (OpenAI Agents SDK) that makes intelligent content decisions
-- Celery-powered async processing with dedicated queues per stage type
-- Django FSM-2 enforcing valid pipeline state transitions
-- A swappable provider architecture — change LLM, TTS, or image APIs without touching pipeline code
-
-### Who Uses It
-
-1. **Internal use** — running Reelforge's own portfolio of channels
-2. **Agency clients (29signals)** — white-labelled per client, managed from one HQ
-3. **Eventually SaaS** — multi-tenant with Stripe billing
-
----
-
-## 2. PLANNED ARCHITECTURE OVERVIEW [PLANNED]
-
-### Future Project Layout
-
-When fully implemented, the structure will be:
-
-```
-***REMOVED***/
-├── config/
-│   ├── settings/
-│   │   ├── base.py          # Shared settings
-│   │   ├── local.py         # Local overrides
-│   │   └── production.py    # Production config
-│   ├── urls.py
-│   ├── celery_app.py
-│   └── wsgi.py
-│
-├── apps/                     # [PLANNED] - To be created
-│   ├── core/                # Abstract base models, shared utilities
-│   ├── channels/            # Channel management, credentials, config
-│   ├── research/            # Topic discovery, trend analysis
-│   ├── scripts/             # Script generation, hooks, SEO metadata
-│   ├── assets/              # Voiceover, images, music, thumbnails
-│   ├── production/          # Video rendering and post-processing
-│   ├── distribution/        # YouTube upload, scheduling, cross-posting
-│   ├── analytics/           # Performance tracking, feedback loop
-│   ├── agents/              # All OpenAI Agents SDK agent definitions
-│   └── pipeline/            # FSM orchestration, state machine, signals
-│
-├── services/                # [PLANNED] - To be created
-│   ├── providers/           # Swappable API provider implementations
-│   │   ├── base.py          # Abstract base classes for all providers
-│   │   ├── registry.py      # Provider factory
-│   │   ├── llm/             # Claude, GPT-4o, Gemini implementations
-│   │   ├── tts/             # ElevenLabs, OpenAI TTS, Azure TTS
-│   │   ├── image_gen/       # Fal.ai, Replicate, DALL-E
-│   │   └── youtube/         # YouTube Data API, Analytics API
-│   └── media/
-│       ├── audio.py         # pydub, librosa — audio processing
-│       ├── video.py         # moviepy, ffmpeg-python — video rendering
-│       └── image.py         # Pillow, opencv — image manipulation
-│
-├── ***REMOVED***/               # Current app directory (users/ will remain)
-│   └── users/              # ✅ Existing user management
-│
-└── storage/                 # [PLANNED] - Media file organization
-    ├── scripts/
-    ├── audio/
-    ├── images/
-    ├── thumbnails/
-    ├── renders/
-    └── final/
-```
-
-### The Pipeline Flow [PLANNED]
+### 2. The Pipeline Flow
 
 ```
 Channel Config
      │
      ▼
-[RESEARCHING]     ResearchAgent discovers topics via YouTube, Google Trends, Reddit
+[RESEARCHING]       ResearchAgent discovers topics
      │
      ▼
-[SCRIPTING]       ScriptAgent writes full script with hooks, SEO metadata, B-roll notes
+[SCRIPTING]         ScriptAgent writes script + hooks + SEO metadata
      │
      ▼
-[AWAITING_APPROVAL]  Operator reviews in Unfold admin (or auto-approves after delay)
+[AWAITING_APPROVAL] Operator reviews in admin (or auto-approves)
      │
      ▼
-[GENERATING_ASSETS]  AssetAgent: voiceover (ElevenLabs), images (Fal.ai), music, thumbnails
+[GENERATING_ASSETS] AssetAgent: voiceover (ElevenLabs), images (Fal.ai), music, thumbnails
      │
      ▼
-[RENDERING]       VideoRenderer: MoviePy compositing + FFmpeg encode with Ken Burns + subtitles
+[RENDERING]         VideoRenderer: MoviePy + FFmpeg encode
      │
      ▼
-[QA]              VideoQA: 9 automated checks (audio sync, black frames, duration, etc.)
+[QA]                VideoQA: 9 automated checks
      │
      ▼
-[UPLOADING]       YouTube upload + thumbnail + chapters + pinned comment + Shorts + cross-post
+[UPLOADING]         YouTube upload + thumbnail + chapters + Shorts
      │
      ▼
-[PUBLISHED]       Analytics polling at 1d / 7d / 30d → feeds back into research config
+[PUBLISHED]         Analytics polling → feeds back into research
 ```
 
-### FSM State Management [PLANNED]
+### 3. Clipping Feature
 
-**Django FSM-2 will govern all state transitions.** This is non-negotiable.
-- `PipelineStageModel.status` uses `FSMField(protected=True)`
-- `PipelineRun.overall_status` uses `FSMField(protected=True)`
-- `protected=True` means direct assignment (`obj.status = "X"`) raises an exception
-- All state changes happen through `@transition`-decorated methods only
-- `post_transition` signals in `apps/pipeline/signals.py` fire Celery tasks automatically
-- `can_proceed()` is used in admin actions and agent tools before attempting transitions
-
-### Agent Architecture (OpenAI Agents SDK) [PLANNED]
+The clipping feature is a separate pipeline for taking existing video content and turning it into social clips:
 
 ```
-OrchestratorAgent              ← Master decision-maker
-    │
-    ├── handoff → ResearchAgent     ← Web search, trend analysis, gap analysis
-    ├── handoff → ScriptAgent       ← Research, hook generation, script writing, SEO
-    ├── handoff → AssetAgent        ← TTS, image gen, music selection
-    └── handoff → QAAgent           ← Script QA, video QA, quality scoring
+ClippingJob (source video)
+     │
+     ▼
+[analyze_clips task]  → ClipCandidates created with relevance scores
+     │
+     ▼
+Operator reviews in /app/clipping/ dashboard:
+  - Approve/reject candidates
+  - Configure layout (Smart Crop / Spatial Stack / Center Crop)
+  - Configure style (captions, hook, watermark, music, etc.)
+  - Configure timed overlays
+  - Set review gates (pause pipeline at stages 1/3/5/8 for review)
+  - Generate preview image
+     │
+     ▼
+[render_clip task]    → ClipRender with 10-stage pipeline
+     │ (may pause at gate)
+     ▼
+Operator reviews render stages at /app/clipping/renders/<id>/
+  - Can re-run from any stage
+  - Can resume after gate pause
 ```
 
-The OrchestratorAgent:
-- Evaluates every stage output (score 0-10) before advancing
-- Decides: proceed / retry / escalate to human
-- Calls `advance_pipeline_stage` tool which calls `run.advance_to()` (FSM-validated)
-- Logs every decision via `PipelineEvent` (immutable audit log)
-- Has a `max_turns=50` safety limit
+**Key models:**
+- `ClipCandidate` — a proposed clip with layout/style config + `render_gates: list[int]`
+- `ClipLayoutConfig` — render mode, crop coords, spatial stack regions (auto-created via signal)
+- `ClipStyleConfig` — all visual style fields (auto-created via signal)
+- `ClipTimedOverlay` — timed text overlays
+- `ClipRender` — one render attempt; statuses include `PAUSED_AT_GATE`
+- `ClipRenderStageResult` — per-stage result for the 10-stage pipeline
 
-### Provider Abstraction [PLANNED]
+**Pipeline gate mechanism:** `render_gates` on `ClipCandidate` lists stage order numbers where the pipeline should pause. `ClipRenderPipeline.run(pause_after_stages=...)` raises `GatePausedException` at those points. The task catches it, marks the render `PAUSED_AT_GATE`, and exits cleanly (no retry).
 
-Every external API call will go through `services/providers/registry.py`. Business logic never imports an API SDK directly.
+### 4. Operator Dashboard (`/app/`)
+
+URL namespace: `ui:` for the dashboard shell, `clipping:` for clipping views.
+
+Key URLs:
+- `/app/` — dashboard home (active jobs, recent activity)
+- `/app/clipping/` — clipping job list
+- `/app/clipping/<job_id>/` — job detail + candidate cards
+- `/app/clipping/clips/<candidate_id>/` — candidate config (layout editor, style panels, overlays, gates)
+- `/app/clipping/renders/<render_id>/` — render detail (stage list, pause/resume actions)
+
+All views require `@staff_member_required`.
+
+### 5. FSM State Management
+
+**Django FSM-2 governs all pipeline state transitions.** This is non-negotiable.
+- `FSMField(protected=True)` — direct assignment raises `AttributeError`
+- All state changes via `@transition`-decorated methods only
+- `post_transition` signals in `apps/pipeline/signals.py` fire Celery tasks
+- Always use `can_proceed()` before calling a transition in non-signal code
+- Never call `save()` inside a `@transition` method
+
+**Exception:** `ClipRender.status` is a plain `CharField` (not FSM-protected) — direct assignment is safe.
+
+### 6. Provider Abstraction
+
+Every external API call goes through `services/providers/registry.py`. Business logic never imports API SDKs directly.
 
 ```python
-# CORRECT — always
+# CORRECT
 llm = get_llm_provider(channel=channel)
 response = llm.complete(prompt=..., system=...)
 
-# WRONG — never do this in pipeline code
+# WRONG — never in pipeline/task/model code
 import anthropic
 client = anthropic.Anthropic(api_key=...)
 ```
 
-Swapping providers (e.g. ElevenLabs → OpenAI TTS) is done by changing `DEFAULT_TTS_PROVIDER` in settings or `channel.tts_provider` — zero pipeline code changes.
-
-### Celery Queue Architecture [PLANNED]
-
-```
-Queue: orchestration   → OrchestratorAgent runs, daily batch triggers
-Queue: research        → Research jobs, trend scraping
-Queue: default         → Script generation, asset coordination
-Queue: rendering       → Video render (CPU intensive, dedicated workers)
-Queue: uploads         → YouTube uploads, cross-posting
-Queue: analytics       → Analytics pulls, performance analysis
-```
-
-Heavy rendering jobs are isolated so they never block the upload queue.
-
 ---
 
-## 3. DATA MODEL HIERARCHY [PLANNED]
+## PART III: CODING STANDARDS — NON-NEGOTIABLE
 
-Every model traces back to a `Channel`. One `Channel` has many `PipelineRun`s. Each `PipelineRun` links to exactly one of each stage job.
+### Type Annotations — Always, Everywhere
 
-```
-Channel
- └── PipelineRun
-      ├── TopicIdea           (from ResearchJob)
-      ├── ScriptJob           (one per TopicIdea)
-      │    └── ScriptRevision (version history)
-      ├── AssetJob
-      │    ├── VoiceoverSegment[]
-      │    ├── GeneratedImage[]
-      │    └── ThumbnailOption[]
-      ├── ProductionJob
-      └── DistributionJob
-           └── AnalyticsSnapshot[]
-```
-
-`PipelineEvent` records every state change, agent action, and operator action for a `PipelineRun`. It is **append-only** — never update or delete events.
-
----
-
-## 4. CODING STANDARDS — NON-NEGOTIABLE [ACTIVE]
-
-**Apply these standards to ALL code written today, even infrastructure code.**
-
-### 4.1 Type Annotations — Always, Everywhere
-
-Every function signature must have complete type annotations. No exceptions.
+Every function signature must have complete type annotations.
 
 ```python
 # CORRECT
-def merge_voiceover_segments(
-    self,
-    segment_files: list[dict[str, Any]],
-    output_path: str,
-    pause_between_ms: int = 200,
-) -> dict[str, Any]:
+def merge_segments(files: list[dict[str, Any]], output_path: str) -> dict[str, Any]:
 
-# WRONG — never write this
-def merge_voiceover_segments(self, segment_files, output_path, pause=200):
+# WRONG
+def merge_segments(files, output_path):
 ```
 
-- Use `from __future__ import annotations` at the top of every file for forward references
-- Use `from typing import Any, Optional, Union` — prefer `X | None` over `Optional[X]` (Python 3.10+)
-- Use `TypedDict` for complex dict shapes that recur across the codebase
-- Use `dataclasses` or Pydantic models for structured return values from services
+- Use `from __future__ import annotations` at the top of every file
+- Prefer `X | None` over `Optional[X]`
+- No wildcard imports (`from module import *`)
 
+### Models — Best Practices
+
+Always define `__str__`, `Meta.ordering`, `verbose_name`, indexes.
+
+Use `update_fields` on every `.save()` call when updating specific fields:
 ```python
-# For structured returns from providers
-from dataclasses import dataclass
-
-@dataclass
-class LLMResponse:
-    text: str
-    model: str
-    tokens_input: int
-    tokens_output: int
-    cost_usd: float
-```
-
-
-Never use wildcard imports (`from module import *`). Never use implicit relative imports.
-
-### 4.4 Models — Best Practices
-
-Always define `__str__`, `Meta.ordering`, and meaningful `verbose_name`/`verbose_name_plural`.
-
-```python
-class ScriptJob(PipelineStageModel):
-
-    class Meta:
-        ordering = ["-created_at"]
-        verbose_name = "Script Job"
-        verbose_name_plural = "Script Jobs"
-        indexes = [
-            models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["topic"]),
-        ]
-
-    def __str__(self) -> str:
-        title = self.final_title or self.topic.title_idea
-        return f"Script: {title[:60]}"
-```
-
-Use `update_fields` on `.save()` whenever you're only updating specific fields:
-```python
-# CORRECT — only hits those columns
+# CORRECT
 self.save(update_fields=["status", "completed_at", "updated_at"])
 
-# WRONG — writes every column
+# WRONG
 self.save()
 ```
 
-Use `select_related` and `prefetch_related` explicitly — never let N+1 queries happen:
-```python
-# In views/admin querysets
-ScriptJob.objects.select_related(
-    "topic__channel",
-    "topic__research_job",
-).prefetch_related("revisions")
-```
+Use `select_related` / `prefetch_related` explicitly — never allow N+1.
 
-### 4.5 Service Layer — Keep Models Thin
+### Service Layer — Keep Models Thin
 
-Models should contain:
-- Field definitions
-- FSM transition methods
-- Simple computed properties (`@property`)
-- `__str__`, `Meta`
-
-Models should NOT contain:
-- Business logic
-- API calls
-- File I/O
-- Celery task dispatch (that's for signals)
-
+Models contain: fields, FSM transitions, simple `@property`, `__str__`, `Meta`.
 Business logic goes in `services/` or `apps/<app>/services.py`.
 
-```python
-# CORRECT — model is thin
-class AssetJob(PipelineStageModel):
-    @property
-    def total_images_count(self) -> int:
-        return self.images.count()
+### Error Handling — Be Specific
 
-# CORRECT — logic is in service
-class AssetGenerationService:
-    def __init__(self, asset_job: AssetJob, channel: Channel) -> None:
-        self.job = asset_job
-        self.channel = channel
+Never swallow exceptions silently. Never catch bare `Exception` without logging and re-raising.
 
-    def generate_all(self) -> None:
-        self._generate_voiceover()
-        self._generate_images()
-        self._generate_thumbnails()
-        self._select_music()
+### Logging — Structured and Contextual
 
-# WRONG — logic in model
-class AssetJob(PipelineStageModel):
-    def generate_voiceover(self):
-        import requests
-        requests.post("https://api.elevenlabs.io/...")  # Never in a model
-```
-
-### 4.6 Error Handling — Be Specific
-
-Never swallow exceptions silently. Never catch bare `Exception` unless you log and re-raise.
+Use structured logging with `extra={}` dicts. Never use `print()`.
 
 ```python
-# CORRECT
-from django_fsm import TransitionNotAllowed
+logger = logging.getLogger("***REMOVED***.clipping")
 
-try:
-    pipeline_run.begin_assets()
-    pipeline_run.save()
-except TransitionNotAllowed as exc:
-    logger.error(
-        "Invalid FSM transition attempted",
-        extra={
-            "pipeline_run_id": str(pipeline_run.id),
-            "current_status": pipeline_run.overall_status,
-            "attempted_transition": "begin_assets",
-            "error": str(exc),
-        }
-    )
-    raise
-
-# CORRECT — Celery tasks
-@shared_task(bind=True, max_retries=3)
-def render_video(self, production_job_id: str) -> None:
-    try:
-        job = ProductionJob.objects.get(id=production_job_id)
-        renderer = VideoRenderer(job)
-        renderer.render()
-    except ProductionJob.DoesNotExist:
-        # Don't retry — the record is gone
-        logger.error(f"ProductionJob {production_job_id} not found — aborting task")
-        return
-    except RenderError as exc:
-        job.mark_failed(error=str(exc), trace=traceback.format_exc())
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 60)
-    except Exception as exc:
-        logger.critical(f"Unexpected render error: {exc}", exc_info=True)
-        job.mark_failed(error=str(exc), trace=traceback.format_exc())
-        raise
-
-# WRONG
-try:
-    something()
-except:
-    pass
-```
-
-### 4.7 Logging — Structured and Contextual
-
-Use structured logging with `extra` dicts. Never use `print()` in application code.
-
-```python
-import logging
-
-logger = logging.getLogger("***REMOVED***.pipeline")  # Use module-specific loggers
-
-# CORRECT
 logger.info(
-    "Script generation completed",
-    extra={
-        "script_job_id": str(script_job.id),
-        "channel_slug": script_job.topic.channel.slug,
-        "word_count": script_job.word_count,
-        "hook_score": script_job.hook_score,
-        "cost_usd": float(script_job.agent_cost_usd),
-    }
+    "Render paused at gate",
+    extra={"render_id": str(render_id), "stage_order": stage_order},
 )
-
-# WRONG
-print(f"Script done: {script_job.id}")
-logger.info("done")
 ```
 
-Logger hierarchy:
-```
-***REMOVED***                      # Root
-***REMOVED***.pipeline             # Pipeline orchestration
-***REMOVED***.agents               # All agent activity
-***REMOVED***.agents.orchestrator  # Orchestrator specifically
-***REMOVED***.media.video          # Video rendering
-***REMOVED***.media.audio          # Audio processing
-***REMOVED***.providers.llm        # LLM API calls
-***REMOVED***.providers.tts        # TTS API calls
-***REMOVED***.youtube              # YouTube API
-```
+### Celery Tasks
 
+- Always `bind=True`, always set `max_retries`
+- Exponential backoff: `countdown=2 ** self.request.retries * 60`
+- Tasks must be idempotent
+- Never dispatch tasks from inside `@transition` methods (use `post_transition` signals)
 
-
-### 4.10 Celery Tasks [PLANNED - Apply when implementing]
-
-- Always use `bind=True` so the task has access to `self.request.id` and retry logic
-- Always set `max_retries` and `default_retry_delay`
-- Always use exponential backoff on retry: `countdown=2 ** self.request.retries * 60`
-- Use `task_id` from `self.request.id` and store it on the model for traceability
-- Tasks should be idempotent — safe to run twice if something goes wrong
+### FSM — Usage Rules
 
 ```python
-@shared_task(
-    bind=True,
-    name="***REMOVED***.pipeline.render_video",  # Explicit task names
-    max_retries=2,
-    default_retry_delay=300,
-    queue="rendering",
-    time_limit=7200,
-    soft_time_limit=6600,
-)
-def render_video(self, production_job_id: str) -> None:
-    """
-    Render the final video for a production job.
-    Idempotent: safe to retry from any point in the render process.
-    """
-    job: ProductionJob = ProductionJob.objects.select_related(
-        "asset_job__script_job__topic__channel"
-    ).get(id=production_job_id)
-
-    job.mark_running(task_id=self.request.id)
-    ...
-```
-
-### 4.11 FSM — Usage Rules [PLANNED - Apply when implementing]
-
-- FSM transition methods should be short — set fields, nothing else
-- Side effects (task dispatch, notifications) belong in `post_transition` signals, not in transition methods
-- Always use `can_proceed(instance.transition_method)` before calling a transition in non-signal code
-- Never call `save()` inside a transition method — call it after the transition
-- If a transition has a `conditions` parameter, the condition function must be a method on the model
-
-```python
-# CORRECT — transition method is pure state mutation
-@transition(field=status, source=[FAILED, PAUSED], target=RETRYING,
-            conditions=[lambda self: self.can_retry()])
-def retry(self) -> None:
-    self.retry_count += 1
-    self.last_error = ""
-    self.started_at = timezone.now()
-
-# Calling code
+# CORRECT
 if can_proceed(job.retry):
     job.retry()
-    job.save()  # save() is outside the transition
+    job.save()  # save() is OUTSIDE the transition
 
-# WRONG — side effects inside transition
-@transition(field=status, source=PENDING, target=RUNNING)
-def start(self, task_id: str = "") -> None:
-    self.started_at = timezone.now()
-    send_notification("job started")          # Wrong — side effect
-    render_video.delay(str(self.id))          # Wrong — task dispatch
-    self.save()                               # Wrong — save inside transition
-```
-
-### 4.12 Agents — Usage Rules [PLANNED - Apply when implementing]
-
-- Agent definitions live exclusively in `apps/agents/`
-- Each agent is built by a `build_<name>_agent()` factory function — never instantiate `Agent()` directly in task code
-- Tool functions inside agents are closures that capture `channel` and `pipeline_run` from the factory scope — keep them short and single-purpose
-- Tools that write to the database must always use `update_fields` on `.save()`
-- The OrchestratorAgent is the only agent that calls `can_proceed()` and `advance_to()`
-- Sub-agents (Research, Script, Asset) do not know about `PipelineRun` — they only operate on their own model
-- Always pass `max_turns` to `Runner.run()` — never let an agent run unbounded
-
-```python
-# CORRECT — factory with captured context
-def build_script_agent(channel: Channel, topic: TopicIdea) -> Agent:
-
-    @Tool(name="save_script_draft")
-    def save_script_draft(script_job_id: str, script_text: str) -> dict[str, Any]:
-        job = ScriptJob.objects.get(id=script_job_id)
-        job.script_text = script_text
-        job.save(update_fields=["script_text", "updated_at"])
-        return {"saved": True}
-
-    return Agent(
-        name="ScriptAgent",
-        model="gpt-4o",
-        instructions=f"...",
-        tools=[save_script_draft]
-    )
-
-# WRONG — agent instantiated inline in a task
-@shared_task
-def run_script_job(script_job_id: str) -> None:
-    agent = Agent(name="ScriptAgent", ...)  # Never do this
+# WRONG — save() inside transition, or side effects inside transition
+@transition(...)
+def start(self) -> None:
+    self.save()              # Wrong
+    send_notification(...)   # Wrong
+    task.delay(...)          # Wrong
 ```
 
 ---
 
-## 5. PROVIDER ABSTRACTION — HOW TO ADD A NEW PROVIDER [PLANNED]
+## PART IV: WHAT NOT TO DO
 
-When a new TTS provider (e.g. Azure TTS) becomes available or preferred:
-
-1. Create `services/providers/tts/azure.py` implementing `BaseTTSProvider`
-2. Add it to `_build_tts_provider()` in `services/providers/registry.py`
-3. Set `DEFAULT_TTS_PROVIDER=azure` in `.env` or `channel.tts_provider = "azure"` per-channel
-4. Done — zero changes to pipeline, tasks, or agents
-
-This is the only acceptable way to switch providers. Never add provider-specific logic to pipeline code.
-
----
-
-## 6. UNFOLD ADMIN — STANDARDS [ACTIVE]
-
-The Django admin is the **entire operator interface** for Reelforge. It must be excellent.
-
-- Every `ModelAdmin` uses `unfold.admin.ModelAdmin` as base — never `django.contrib.admin.ModelAdmin`
-- Every list view must show status with a color-coded badge using `@display(label={...})`
-- Every model with a `status` FSM field must show `available_transitions` as a display column
-- Pipeline stage models always show `duration_seconds` and `agent_cost_usd` in list view
-- `PipelineEvent` is always shown as a read-only `TabularInline` on `PipelineRunAdmin`
-- File fields (audio, video, images) should show preview or playback links where possible
-- Admin actions that trigger FSM transitions must use `can_proceed()` before calling the transition
-- Bulk actions must handle partial failures gracefully and report per-item results
-
-```python
-# Status badge pattern — use consistently across all stage models
-@display(
-    description="Status",
-    ordering="status",
-    label={
-        "PENDING":   "default",
-        "RUNNING":   "info",
-        "COMPLETED": "success",
-        "FAILED":    "danger",
-        "PAUSED":    "warning",
-        "RETRYING":  "warning",
-        "REJECTED":  "default",
-    }
-)
-def status_badge(self, obj: PipelineStageModel) -> str:
-    return obj.status
-```
-
----
-
-## 7. FILE STORAGE CONVENTIONS [PLANNED]
-
-All file paths follow a deterministic structure keyed on model IDs:
-
-```
-storage/
-├── scripts/        {script_job_id}.txt
-├── audio/
-│   ├── segments/   {asset_job_id}/seg_{segment_id}.mp3
-│   └── full/       {asset_job_id}/voiceover.mp3
-├── images/         {asset_job_id}/{position_idx}.jpg
-├── thumbnails/
-│   ├── options/    {asset_job_id}/thumb_{option_number}.jpg
-│   └── selected/   {asset_job_id}/selected.jpg
-├── renders/
-│   ├── raw/        {production_job_id}_raw.mp4
-│   ├── processed/  {production_job_id}_processed.mp4
-│   └── shorts/     {production_job_id}_shorts.mp4
-└── temp/           Cleaned up after 24 hours by a scheduled task
-```
-
-Never hardcode paths. Always derive them from model IDs using helper functions in `apps/core/storage.py`.
-
-```python
-# apps/core/storage.py
-def get_voiceover_segment_path(asset_job_id: str, segment_id: int) -> Path:
-    return settings.MEDIA_ROOT / "audio" / "segments" / asset_job_id / f"seg_{segment_id}.mp3"
-
-def get_render_path(production_job_id: str, variant: str = "processed") -> Path:
-    # variant: "raw" | "processed" | "shorts"
-    return settings.MEDIA_ROOT / "renders" / variant / f"{production_job_id}_{variant}.mp4"
-```
-
----
-
-## 8. AUDIO/VIDEO PROCESSING — RULES [PLANNED]
-
-### Audio
-
-- All audio processing uses `pydub` for manipulation and `ffmpeg-python` for encoding/normalization
-- Target loudness: **-16 LUFS integrated** (YouTube standard)
-- True peak ceiling: **-1.5 dBTP**
-- Export format: MP3 192kbps for segments, MP3 320kbps for final mixed audio
-- Sample rate: always resample to **44100 Hz** before export
-- Background music volume: calculated in **dB** relative to voiceover dBFS — never use fixed percentages
-
-### Video
-
-- Resolution: **1920×1080** (never lower for main video)
-- Shorts: **1080×1920** (9:16 crop from center of 16:9 frame)
-- Frame rate: **30fps**
-- Codec: `libx264` with `crf=18` for archival quality, `preset=slow` for production
-- Audio: `aac` at `192k` bitrate, `movflags=+faststart` for streaming
-- Ken Burns: max zoom delta of **3%** over clip duration — subtle, never jarring
-- Subtitle font: `Montserrat-Bold`, size 52, white with 3px black stroke
-- `ffmpeg.probe()` before every file operation — never assume file validity
-
----
-
-
-## 11. WHAT NOT TO DO [ACTIVE]
-
-These are mistakes to avoid regardless of what seems convenient in the moment:
-
-- **Never** import an API SDK directly in pipeline, task, or model code — use the provider registry
-- **Never** do `obj.status = "RUNNING"` — FSMField is `protected=True`, use transition methods
-- **Never** dispatch Celery tasks from inside `@transition` methods — use `post_transition` signals
+- **Never** import an API SDK directly in pipeline/task/model code — use the provider registry
+- **Never** do `obj.status = "RUNNING"` on FSM-protected fields — use transition methods
+- **Never** dispatch Celery tasks from inside `@transition` methods
 - **Never** call `save()` inside a `@transition` method
-- **Never** use `print()` anywhere in application code — use `logger`
+- **Never** use `print()` anywhere in application code
 - **Never** write a migration without a descriptive name
-- **Never** store credentials or secrets in the database unencrypted — use Fernet encryption
-- **Never** write business logic in model methods — use service classes
-- **Never** write pipeline logic in admin classes — admin calls service methods
-- **Never** let a Celery task run without a `time_limit` on rendering tasks
+- **Never** store credentials or secrets unencrypted — use Fernet encryption
+- **Never** write business logic in model methods
+- **Never** let a rendering Celery task run without a `time_limit`
 - **Never** use wildcard imports
 - **Never** write a function without type annotations
-- **Never** delete or update a `PipelineEvent` record — it's an immutable audit log
+- **Never** delete or update a `PipelineEvent` record (immutable audit log)
 - **Never** catch `Exception` without logging and re-raising
+- **Never** commit `.env` files or secret values to git
 
 ---
 
-## 12. QUICK REFERENCE — KEY FILES [PLANNED]
+## PART V: ADMIN STANDARDS (Unfold)
 
-When implemented, these will be the critical files:
-
-| File | What it contains | Status |
-|---|---|---|
-| `apps/core/models.py` | `UUIDModel`, `TimestampedModel`, `PipelineStageModel` with FSM | ⏳ To be created |
-| `apps/pipeline/models.py` | `PipelineRun` with FSM transitions, `PipelineEvent` | ⏳ To be created |
-| `apps/pipeline/signals.py` | `post_transition` → Celery task dispatch (single source of truth) | ⏳ To be created |
-| `apps/pipeline/services.py` | `PipelineService` — batch trigger, retry, approve logic | ⏳ To be created |
-| `apps/agents/orchestrator.py` | `build_orchestrator()` factory, `run_orchestrator()` async entry point | ⏳ To be created |
-| `services/providers/registry.py` | `get_llm_provider()`, `get_tts_provider()`, etc. — provider factory | ⏳ To be created |
-| `services/providers/base.py` | `BaseLLMProvider`, `BaseTTSProvider`, `BaseImageProvider` ABCs | ⏳ To be created |
-| `services/media/audio.py` | `AudioProcessor` — segment merge, mastering, music mix | ⏳ To be created |
-| `services/media/video.py` | `VideoRenderer`, `VideoQA` — render pipeline, QA checks | ⏳ To be created |
-| `apps/core/storage.py` | Path helper functions for all file types | ⏳ To be created |
+- Every `ModelAdmin` uses `unfold.admin.ModelAdmin` as base — never plain `django.contrib.admin.ModelAdmin`
+- Every list view shows status with a color-coded badge using `@display(label={...})`
+- FSM models always show `available_transitions` as a display column
+- Pipeline stage models always show `duration_seconds` and `agent_cost_usd` in list view
+- `PipelineEvent` is always shown as a read-only `TabularInline` on `PipelineRunAdmin`
+- Admin actions that trigger FSM transitions must use `can_proceed()` first
 
 ---
 
 *Project: Reelforge — YouTube Automation HQ*
-*Stack: Django 5.2 · Celery · PostgreSQL · Redis · OpenAI Agents SDK · Unfold Admin*
+*Stack: Django 5.2 · Celery · PostgreSQL · Redis · OpenAI Agents SDK · Unfold Admin · HTMX · Alpine.js · Tailwind v4*
 *Owner: Emmanuel / 29signals*
