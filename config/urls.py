@@ -28,6 +28,8 @@ urlpatterns = [
         channels_views.youtube_oauth_callback,
         name="youtube_oauth_callback",
     ),
+    # UI dashboard
+    path("app/", include("reelforge.ui.urls", namespace="ui")),
     # Your stuff: custom urls includes go here
     # ...
     # Media files

@@ -100,6 +100,7 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_fsm",
     "django_fsm_log",
+    "django_htmx",
 ]
 
 LOCAL_APPS = [
@@ -114,6 +115,7 @@ LOCAL_APPS = [
     "reelforge.distribution",
     "reelforge.agents",
     "reelforge.clipping",
+    "reelforge.ui",
     # Note: reelforge.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
@@ -174,6 +176,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "django_htmx.middleware.HtmxMiddleware",
 ]
 
 # STATIC
