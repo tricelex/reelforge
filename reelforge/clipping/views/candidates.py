@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+from typing import cast
 
 from django.http import HttpRequest
 from django.http import HttpResponse
@@ -14,60 +16,70 @@ from django_fsm import can_proceed
 
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
-from ***REMOVED***.clipping.models import ClipRenderMode
+from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipRenderStyleMixin
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
-from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.tasks import preview_clip_layout
 from ***REMOVED***.clipping.tasks import render_clip
 from ***REMOVED***.ui.mixins import StaffRequiredMixin
 
-_BOOLEAN_STYLE_FIELDS = frozenset({
-    "caption_enabled",
-    "hook_enabled",
-    "watermark_enabled",
-    "progress_bar_enabled",
-    "music_enabled",
-})
+if TYPE_CHECKING:
+    from ***REMOVED***.users.models import User
 
-_INT_STYLE_FIELDS = frozenset({
-    "caption_size",
-    "caption_stroke_width",
-    "watermark_size",
-    "progress_bar_height",
-    "hook_size",
-})
+_BOOLEAN_STYLE_FIELDS = frozenset(
+    {
+        "caption_enabled",
+        "hook_enabled",
+        "watermark_enabled",
+        "progress_bar_enabled",
+        "music_enabled",
+    }
+)
 
-_FLOAT_STYLE_FIELDS = frozenset({
-    "hook_duration_sec",
-    "transition_duration_sec",
-    "watermark_opacity",
-    "music_volume_db",
-    "music_fade_in_sec",
-    "music_fade_out_sec",
-})
+_INT_STYLE_FIELDS = frozenset(
+    {
+        "caption_size",
+        "caption_stroke_width",
+        "watermark_size",
+        "progress_bar_height",
+        "hook_size",
+    }
+)
+
+_FLOAT_STYLE_FIELDS = frozenset(
+    {
+        "hook_duration_sec",
+        "transition_duration_sec",
+        "watermark_opacity",
+        "music_volume_db",
+        "music_fade_in_sec",
+        "music_fade_out_sec",
+    }
+)
 
 _STYLE_FIELD_SET = frozenset(ClipRenderStyleMixin.STYLE_FIELD_NAMES)
+
+_STACK_RATIO_MIN = 0.3
+_STACK_RATIO_MAX = 0.8
+_RENDER_GATE_MIN = 1
+_RENDER_GATE_MAX = 10
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
 
 class CandidateApproveView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(
-            ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id
-        )
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
+        user = cast("User", request.user)
         candidate.approved = True
         candidate.status = ClipCandidate.CandidateStatus.APPROVED
-        candidate.approved_by = request.user
+        candidate.approved_by = user
         candidate.approved_at = timezone.now()
-        candidate.save(
-            update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"]
-        )
+        candidate.save(update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"])
         logger.info(
             "Clip candidate approved",
-            extra={"candidate_id": str(candidate_id), "user": request.user.email},
+            extra={"candidate_id": str(candidate_id), "user": user.email},
         )
         return HttpResponse(
             render_to_string(
@@ -80,15 +92,14 @@ class CandidateApproveView(StaffRequiredMixin, View):
 
 class CandidateRejectView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(
-            ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id
-        )
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
+        user = cast("User", request.user)
         candidate.approved = False
         candidate.status = ClipCandidate.CandidateStatus.REJECTED
         candidate.save(update_fields=["approved", "status", "updated_at"])
         logger.info(
             "Clip candidate rejected",
-            extra={"candidate_id": str(candidate_id), "user": request.user.email},
+            extra={"candidate_id": str(candidate_id), "user": user.email},
         )
         return HttpResponse(
             render_to_string(
@@ -101,9 +112,7 @@ class CandidateRejectView(StaffRequiredMixin, View):
 
 class CandidateUndoRejectView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(
-            ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id
-        )
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
         candidate.approved = None
         candidate.status = ClipCandidate.CandidateStatus.PROPOSED
         candidate.save(update_fields=["approved", "status", "updated_at"])
@@ -123,18 +132,17 @@ class JobApproveAllView(StaffRequiredMixin, View):
         job = get_object_or_404(ClippingJob, id=job_id)
         now = timezone.now()
         proposed = list(job.candidates.filter(status=ClipCandidate.CandidateStatus.PROPOSED))
+        user = cast("User", request.user)
         for candidate in proposed:
             candidate.approved = True
             candidate.status = ClipCandidate.CandidateStatus.APPROVED
-            candidate.approved_by = request.user
+            candidate.approved_by = user
             candidate.approved_at = now
-            candidate.save(
-                update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"]
-            )
+            candidate.save(update_fields=["approved", "status", "approved_by", "approved_at", "updated_at"])
         all_candidates = job.candidates.order_by("-relevance_score")
         logger.info(
             "Approved all candidates for job",
-            extra={"job_id": str(job_id), "count": len(proposed), "user": request.user.email},
+            extra={"job_id": str(job_id), "count": len(proposed), "user": user.email},
         )
         html = "".join(
             render_to_string(
@@ -152,9 +160,7 @@ class JobStartRenderView(StaffRequiredMixin, View):
 
     def post(self, request: HttpRequest, job_id: str) -> HttpResponse:
         job = get_object_or_404(ClippingJob, id=job_id)
-        approved_candidates = list(
-            job.candidates.filter(status=ClipCandidate.CandidateStatus.APPROVED)
-        )
+        approved_candidates = list(job.candidates.filter(status=ClipCandidate.CandidateStatus.APPROVED))
         triggered = 0
         for candidate in approved_candidates:
             render_clip.delay(str(candidate.id))
@@ -172,9 +178,10 @@ class JobStartRenderView(StaffRequiredMixin, View):
                     extra={"job_id": str(job_id), "current_status": job.status},
                 )
 
+        user = cast("User", request.user)
         logger.info(
             "Started render for approved candidates",
-            extra={"job_id": str(job_id), "triggered": triggered, "user": request.user.email},
+            extra={"job_id": str(job_id), "triggered": triggered, "user": user.email},
         )
         response = HttpResponse(status=204)
         response["HX-Redirect"] = f"/app/clipping/{job_id}/"
@@ -187,20 +194,20 @@ class CandidateDetailView(StaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs: object) -> dict[str, object]:
         context = super().get_context_data(**kwargs)
         candidate = get_object_or_404(
-            ClipCandidate.objects.select_related("clipping_job__channel").prefetch_related(
-                "timed_overlays"
-            ),
+            ClipCandidate.objects.select_related("clipping_job__channel").prefetch_related("timed_overlays"),
             pk=self.kwargs["candidate_id"],
         )
-        context.update({
-            "candidate": candidate,
-            "job": candidate.clipping_job,
-            "layout": getattr(candidate, "layout_config", None),
-            "style": getattr(candidate, "style_config", None),
-            "renders": candidate.renders.prefetch_related("stage_results").order_by("-created_at"),
-            "timed_overlays": list(candidate.timed_overlays.all()),
-            "nav_section": "clipping",
-        })
+        context.update(
+            {
+                "candidate": candidate,
+                "job": candidate.clipping_job,
+                "layout": getattr(candidate, "layout_config", None),
+                "style": getattr(candidate, "style_config", None),
+                "renders": candidate.renders.prefetch_related("stage_results").order_by("-created_at"),
+                "timed_overlays": list(candidate.timed_overlays.all()),
+                "nav_active": "clipping",
+            }
+        )
         return context
 
 
@@ -234,9 +241,18 @@ class UpdateLayoutRegionsView(StaffRequiredMixin, View):
         candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
         layout, _ = ClipLayoutConfig.objects.get_or_create(candidate=candidate)
         coord_fields = [
-            "manual_crop_x", "manual_crop_y", "manual_crop_w", "manual_crop_h",
-            "region_a_x", "region_a_y", "region_a_w", "region_a_h",
-            "region_b_x", "region_b_y", "region_b_w", "region_b_h",
+            "manual_crop_x",
+            "manual_crop_y",
+            "manual_crop_w",
+            "manual_crop_h",
+            "region_a_x",
+            "region_a_y",
+            "region_a_w",
+            "region_a_h",
+            "region_b_x",
+            "region_b_y",
+            "region_b_w",
+            "region_b_h",
         ]
         update_fields: list[str] = ["updated_at"]
         for field in coord_fields:
@@ -249,7 +265,7 @@ class UpdateLayoutRegionsView(StaffRequiredMixin, View):
         if "stack_ratio" in request.POST:
             try:
                 val = float(request.POST["stack_ratio"])
-                if 0.3 <= val <= 0.8:
+                if _STACK_RATIO_MIN <= val <= _STACK_RATIO_MAX:
                     layout.stack_ratio = val
                     update_fields.append("stack_ratio")
             except (ValueError, TypeError):
@@ -268,9 +284,15 @@ class ResetSmartCropView(StaffRequiredMixin, View):
         layout.manual_crop_y = None
         layout.manual_crop_w = None
         layout.manual_crop_h = None
-        layout.save(update_fields=[
-            "manual_crop_x", "manual_crop_y", "manual_crop_w", "manual_crop_h", "updated_at",
-        ])
+        layout.save(
+            update_fields=[
+                "manual_crop_x",
+                "manual_crop_y",
+                "manual_crop_w",
+                "manual_crop_h",
+                "updated_at",
+            ]
+        )
         return HttpResponse(
             render_to_string(
                 "clipping/partials/layout_editor.html",
@@ -372,9 +394,7 @@ class UpdateOverlayView(StaffRequiredMixin, View):
         for field in ("start_sec", "end_sec", "position_x", "position_y", "font_size"):
             if field in request.POST:
                 try:
-                    val: float | int = (
-                        float(request.POST[field]) if "sec" in field else int(request.POST[field])
-                    )
+                    val: float | int = float(request.POST[field]) if "sec" in field else int(request.POST[field])
                     setattr(overlay, field, val)
                     update_fields.append(field)
                 except (ValueError, TypeError):
@@ -403,7 +423,7 @@ class UpdateRenderGatesView(StaffRequiredMixin, View):
             for part in raw_gates.split(","):
                 try:
                     val = int(part.strip())
-                    if 1 <= val <= 10:
+                    if _RENDER_GATE_MIN <= val <= _RENDER_GATE_MAX:
                         gates.append(val)
                 except (ValueError, TypeError):
                     pass
@@ -420,20 +440,20 @@ class UpdateRenderGatesView(StaffRequiredMixin, View):
 
 # Keep module-level references so existing imports still resolve during transition
 __all__ = [
+    "AddOverlayView",
     "CandidateApproveView",
+    "CandidateDetailView",
     "CandidateRejectView",
     "CandidateUndoRejectView",
+    "DeleteOverlayView",
     "JobApproveAllView",
     "JobStartRenderView",
-    "CandidateDetailView",
+    "PreviewStatusView",
+    "ResetSmartCropView",
+    "TriggerPreviewView",
     "UpdateLayoutConfigView",
     "UpdateLayoutRegionsView",
-    "ResetSmartCropView",
-    "UpdateStyleConfigView",
-    "TriggerPreviewView",
-    "PreviewStatusView",
-    "AddOverlayView",
     "UpdateOverlayView",
-    "DeleteOverlayView",
     "UpdateRenderGatesView",
+    "UpdateStyleConfigView",
 ]
