@@ -1,0 +1,67 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ReelForge{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+  <script defer src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+          crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-200 h-full" style="font-family: system-ui, sans-serif;">
+
+<!-- Top Nav -->
+<nav class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-6 sticky top-0 z-50">
+  <a href="{% url 'ui:dashboard' %}" class="flex items-center gap-2 mr-4">
+    <div class="w-7 h-7 bg-indigo-500 rounded-lg flex items-center justify-center text-white text-xs font-bold">RF</div>
+    <span class="font-semibold text-white text-sm">ReelForge</span>
+  </a>
+  <div class="flex items-center gap-1">
+    <a href="{% url 'ui:dashboard' %}"
+       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'dashboard' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
+      Dashboard
+    </a>
+    <a href="{% url 'clipping:job_list' %}"
+       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'clipping' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
+      Clipping
+    </a>
+    <a href="#"
+       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'youtube' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
+      YouTube
+    </a>
+    <a href="#"
+       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'channels' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
+      Channels
+    </a>
+  </div>
+  <div class="ml-auto flex items-center gap-3">
+    <div class="w-7 h-7 bg-slate-700 rounded-full flex items-center justify-center text-xs text-slate-300"
+         title="{{ request.user.email }}">
+      {{ request.user.email|first|upper }}
+    </div>
+  </div>
+</nav>
+
+<!-- Body: sidebar + content -->
+<div class="flex" style="height: calc(100vh - 49px); overflow: hidden;">
+
+  <!-- Left Sidebar -->
+  <aside class="w-48 bg-slate-900 border-r border-slate-700 p-3 flex flex-col gap-1 shrink-0 overflow-y-auto">
+    {% block sidebar %}
+    <!-- Default sidebar: rendered by each view via context or overridden in block -->
+    {% endblock sidebar %}
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 overflow-y-auto p-6">
+    {% block content %}{% endblock content %}
+  </main>
+
+</div>
+
+{% block extra_js %}{% endblock extra_js %}
+</body>
+</html>

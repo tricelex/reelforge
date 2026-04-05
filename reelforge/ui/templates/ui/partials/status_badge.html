@@ -1,0 +1,25 @@
+{% comment %}
+Usage: {% include "ui/partials/status_badge.html" with status=job.status %}
+{% endcomment %}
+{% if status == "INITIALIZING" or status == "DOWNLOADING" or status == "TRANSCRIBING" or status == "ANALYZING" or status == "RENDERING" or status == "DISTRIBUTING" or status == "RUNNING" %}
+  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-900/60 text-indigo-300 border border-indigo-700/40">
+    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>{{ status|title }}
+  </span>
+{% elif status == "AWAITING_CLIP_APPROVAL" or status == "PAUSED" %}
+  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-900/60 text-amber-300 border border-amber-700/40">
+    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+    {% if status == "AWAITING_CLIP_APPROVAL" %}Awaiting Approval{% else %}{{ status|title }}{% endif %}
+  </span>
+{% elif status == "COMPLETED" or status == "RENDERED" or status == "DISTRIBUTED" %}
+  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-900/60 text-green-300 border border-green-700/40">
+    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>{{ status|title }}
+  </span>
+{% elif status == "FAILED" %}
+  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-900/60 text-red-300 border border-red-700/40">
+    <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Failed
+  </span>
+{% else %}
+  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-400 border border-slate-600">
+    {{ status|title }}
+  </span>
+{% endif %}
