@@ -77,6 +77,13 @@ ENV/
 .mypy_cache/
 
 
+### Tailwind CSS
+# Standalone binary (download separately — see justfile)
+bin/tailwindcss
+bin/tailwindcss.exe
+# npm lockfile — not committed, binary approach is preferred
+package-lock.json
+
 ### Node template
 # Logs
 logs
