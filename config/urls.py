@@ -30,6 +30,7 @@ urlpatterns = [
     ),
     # UI dashboard
     path("app/", include("***REMOVED***.ui.urls", namespace="ui")),
+    path("app/clipping/", include("***REMOVED***.clipping.urls", namespace="clipping")),
     # Your stuff: custom urls includes go here
     # ...
     # Media files

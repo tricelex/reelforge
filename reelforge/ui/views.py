@@ -1,42 +1,40 @@
 from __future__ import annotations
 
 from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Count
 from django.shortcuts import render
 from django.utils import timezone
 
-from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClippingJob
+
+_ACTIVE_STATUSES = [
+    ClippingJob.Status.INITIALIZING,
+    ClippingJob.Status.DOWNLOADING,
+    ClippingJob.Status.TRANSCRIBING,
+    ClippingJob.Status.ANALYZING,
+    ClippingJob.Status.AWAITING_CLIP_APPROVAL,
+    ClippingJob.Status.RENDERING,
+    ClippingJob.Status.DISTRIBUTING,
+]
 
 
 @staff_member_required
 def dashboard(request):
+    today = timezone.now().date()
     active_jobs = (
-        ClippingJob.objects.filter(
-            status__in=[
-                ClippingJob.Status.INITIALIZING,
-                ClippingJob.Status.DOWNLOADING,
-                ClippingJob.Status.TRANSCRIBING,
-                ClippingJob.Status.ANALYZING,
-                ClippingJob.Status.AWAITING_CLIP_APPROVAL,
-                ClippingJob.Status.RENDERING,
-                ClippingJob.Status.DISTRIBUTING,
-            ]
-        )
+        ClippingJob.objects.filter(status__in=_ACTIVE_STATUSES)
         .select_related("channel")
         .order_by("-created_at")[:20]
     )
-
     awaiting_approval = (
-        ClippingJob.objects.filter(
-            status=ClippingJob.Status.AWAITING_CLIP_APPROVAL,
-        )
+        ClippingJob.objects.filter(status=ClippingJob.Status.AWAITING_CLIP_APPROVAL)
         .select_related("channel")
+        .annotate(candidate_count=Count("candidates"))
         .order_by("-updated_at")
     )
-
     completed_today_count = ClippingJob.objects.filter(
         status=ClippingJob.Status.COMPLETED,
-        completed_at__date=timezone.now().date(),
+        completed_at__date=today,
     ).count()
 
     context = {
@@ -48,3 +46,14 @@ def dashboard(request):
         "nav_section": "dashboard",
     }
     return render(request, "ui/dashboard.html", context)
+
+
+@staff_member_required
+def active_jobs_partial(request):
+    """HTMX partial — polled every 2s to refresh the active jobs list."""
+    active_jobs = (
+        ClippingJob.objects.filter(status__in=_ACTIVE_STATUSES)
+        .select_related("channel")
+        .order_by("-created_at")[:20]
+    )
+    return render(request, "ui/partials/active_jobs.html", {"active_jobs": active_jobs})
