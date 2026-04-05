@@ -1,0 +1,59 @@
+{% extends "ui/base.html" %}
+
+{% block sidebar %}
+<p class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 mt-1">Clipping</p>
+<a href="{% url 'clipping:job_list' %}"
+   class="flex items-center gap-2 px-2 py-1.5 text-xs text-white bg-slate-700 rounded-md">
+  All Jobs
+</a>
+<a href="{% url 'clipping:job_list' %}?status=AWAITING_CLIP_APPROVAL"
+   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
+  Awaiting Approval
+</a>
+<a href="{% url 'clipping:job_list' %}?status=COMPLETED"
+   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
+  Completed
+</a>
+{% endblock sidebar %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-lg font-semibold text-white">Clipping Jobs</h1>
+</div>
+
+<!-- Status filter tabs -->
+<div class="flex gap-1 mb-4 flex-wrap">
+  <a href="{% url 'clipping:job_list' %}"
+     class="px-3 py-1.5 text-xs rounded-md {% if not status_filter %}bg-indigo-900/60 text-indigo-300{% else %}text-slate-400 hover:text-white{% endif %}">
+    All
+  </a>
+  {% for value, label in status_choices %}
+  <a href="?status={{ value }}"
+     class="px-3 py-1.5 text-xs rounded-md {% if status_filter == value %}bg-indigo-900/60 text-indigo-300{% else %}text-slate-400 hover:text-white{% endif %}">
+    {{ label }}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="bg-slate-800 rounded-xl border border-slate-700">
+  {% if jobs %}
+  <div class="divide-y divide-slate-700">
+    {% for job in jobs %}
+    <a href="{% url 'clipping:job_detail' job.id %}"
+       class="flex items-center gap-4 px-4 py-3 hover:bg-slate-750 cursor-pointer">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-white truncate">{{ job.source_title|default:"Untitled" }}</p>
+        <p class="text-xs text-slate-500 mt-0.5">{{ job.channel.name }} · {{ job.created_at|date:"M d, Y" }}</p>
+      </div>
+      {% include "ui/partials/status_badge.html" with status=job.status %}
+      <svg class="w-4 h-4 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="px-4 py-8 text-xs text-slate-500 text-center">No jobs found.</p>
+  {% endif %}
+</div>
+{% endblock content %}
