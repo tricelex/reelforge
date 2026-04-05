@@ -1,72 +1,167 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en" dir="ltr" data-color-theme="Blue_Theme" class="dark selected"
+  data-layout="vertical" data-boxed-layout="full" data-card="shadow">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}ReelForge{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+
+  <!-- Simplebar CSS -->
+  <link rel="stylesheet" href="{% static 'vendor/modernize/libs/simplebar/simplebar.min.css' %}">
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+  <!-- Plus Jakarta Sans -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Modernize theme CSS -->
+  <link rel="stylesheet" href="{% static 'vendor/modernize/css/theme.css' %}" />
+
+  <!-- HTMX -->
   <script defer src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
           integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
           crossorigin="anonymous"></script>
+  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
   <script>
     document.addEventListener('htmx:configRequest', function(event) {
       event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
     });
   </script>
+  {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-slate-950 text-slate-200 h-full" style="font-family: system-ui, sans-serif;">
 
-<!-- Top Nav -->
-<nav class="bg-slate-900 border-b border-slate-700 px-6 py-3 flex items-center gap-6 sticky top-0 z-50">
-  <a href="{% url 'ui:dashboard' %}" class="flex items-center gap-2 mr-4">
-    <div class="w-7 h-7 bg-indigo-500 rounded-lg flex items-center justify-center text-white text-xs font-bold">RF</div>
-    <span class="font-semibold text-white text-sm">ReelForge</span>
-  </a>
-  <div class="flex items-center gap-1">
-    <a href="{% url 'ui:dashboard' %}"
-       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'dashboard' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
-      Dashboard
-    </a>
-    <a href="{% url 'clipping:job_list' %}"
-       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'clipping' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
-      Clipping
-    </a>
-    <a href="#"
-       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'youtube' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
-      YouTube
-    </a>
-    <a href="#"
-       class="px-3 py-1.5 text-xs font-medium rounded-md {% if nav_section == 'channels' %}text-white bg-indigo-600{% else %}text-slate-400 hover:text-white{% endif %}">
-      Channels
-    </a>
-  </div>
-  <div class="ml-auto flex items-center gap-3">
-    <div class="w-7 h-7 bg-slate-700 rounded-full flex items-center justify-center text-xs text-slate-300"
-         title="{{ request.user.email }}">
-      {{ request.user.email|first|upper }}
+<body class="bg-dark dark:bg-dark">
+<main>
+  <div id="main-wrapper" class="flex">
+
+    <!-- ─── Left Sidebar ─── -->
+    <aside id="application-sidebar-brand"
+      class="hs-overlay hs-overlay-open:translate-x-0 -translate-x-full xl:translate-x-0
+             fixed top-0 left-0 h-screen w-[270px] flex-shrink-0
+             border-r border-border dark:border-darkborder
+             bg-white dark:bg-dark
+             transition-all duration-300 xl:z-[2] z-[60] hidden xl:block with-vertical left-sidebar">
+
+      <!-- Brand -->
+      <div class="py-5 px-5 flex items-center gap-2">
+        <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0">RF</div>
+        <span class="text-lg font-bold text-dark dark:text-white hide-menu">ReelForge</span>
+      </div>
+
+      <!-- Scrollable nav -->
+      <div class="overflow-hidden">
+        <div class="scroll-sidebar" data-simplebar="">
+          <div class="px-4 mt-4 mini-layout">
+            <nav class="hs-accordion-group w-full flex flex-col">
+              <ul id="sidebarnav">
+
+                <!-- HOME -->
+                <div class="caption">
+                  <i class="ti ti-dots nav-small-cap-icon"></i>
+                  <span class="hide-menu">Home</span>
+                </div>
+                <li class="sidebar-item">
+                  <a class="sidebar-link dark-sidebar-link {% if nav_active == 'dashboard' %}active activemenu{% endif %}"
+                     href="{% url 'ui:dashboard' %}">
+                    <i class="ti ti-smart-home text-xl flex-shrink-0"></i>
+                    <span class="hide-menu flex-shrink-0">Dashboard</span>
+                  </a>
+                </li>
+
+                <!-- CLIPPING -->
+                <div class="caption mt-4">
+                  <i class="ti ti-dots nav-small-cap-icon"></i>
+                  <span class="hide-menu">Clipping</span>
+                </div>
+                <li class="sidebar-item">
+                  <a class="sidebar-link dark-sidebar-link {% if nav_active == 'clipping' %}active activemenu{% endif %}"
+                     href="{% url 'clipping:job_list' %}">
+                    <i class="ti ti-scissors text-xl flex-shrink-0"></i>
+                    <span class="hide-menu flex-shrink-0">All Jobs</span>
+                    {% if awaiting_approval_count %}
+                    <span class="hide-menu ms-auto badge-md bg-warning text-white">{{ awaiting_approval_count }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+
+                <!-- YOUTUBE -->
+                <div class="caption mt-4">
+                  <i class="ti ti-dots nav-small-cap-icon"></i>
+                  <span class="hide-menu">YouTube</span>
+                </div>
+                <li class="sidebar-item">
+                  <a class="sidebar-link dark-sidebar-link opacity-50 cursor-not-allowed" href="#">
+                    <i class="ti ti-brand-youtube text-xl flex-shrink-0"></i>
+                    <span class="hide-menu flex-shrink-0">Pipeline</span>
+                    <span class="hide-menu ms-auto badge-sm bg-lightgray text-bodytext dark:bg-darkgray text-xs">soon</span>
+                  </a>
+                </li>
+
+                <!-- CHANNELS -->
+                <div class="caption mt-4">
+                  <i class="ti ti-dots nav-small-cap-icon"></i>
+                  <span class="hide-menu">Channels</span>
+                </div>
+                <li class="sidebar-item">
+                  <a class="sidebar-link dark-sidebar-link opacity-50 cursor-not-allowed" href="#">
+                    <i class="ti ti-tv text-xl flex-shrink-0"></i>
+                    <span class="hide-menu flex-shrink-0">Channels</span>
+                    <span class="hide-menu ms-auto badge-sm bg-lightgray text-bodytext dark:bg-darkgray text-xs">soon</span>
+                  </a>
+                </li>
+
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <!-- ─── End Left Sidebar ─── -->
+
+    <!-- ─── Page Wrapper ─── -->
+    <div class="w-full page-wrapper xl:ps-[270px]">
+
+      <!-- Top Header -->
+      <header class="topbar sticky top-0 z-[1] bg-white dark:bg-dark border-b border-border dark:border-darkborder">
+        <div class="flex items-center gap-4 px-6 py-3">
+          <!-- Mobile sidebar toggle -->
+          <a class="xl:hidden cursor-pointer text-xl text-link dark:text-darklink sidebartoggler"
+             data-hs-overlay="#application-sidebar-brand"
+             aria-controls="application-sidebar-brand"
+             aria-label="Toggle navigation">
+            <i class="ti ti-menu-2"></i>
+          </a>
+          <div class="flex-1"></div>
+          <!-- User avatar -->
+          <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold cursor-default"
+               title="{{ request.user.email }}">
+            {{ request.user.email|first|upper }}
+          </div>
+        </div>
+      </header>
+
+      <!-- Main content -->
+      <div class="py-6 px-6">
+        <div class="page-container">
+          {% block page_header %}{% endblock %}
+          {% block content %}{% endblock %}
+        </div>
+      </div>
+
     </div>
+    <!-- ─── End Page Wrapper ─── -->
+
   </div>
-</nav>
+</main>
 
-<!-- Body: sidebar + content -->
-<div class="flex" style="height: calc(100vh - 49px); overflow: hidden;">
+<!-- Simplebar JS -->
+<script src="{% static 'vendor/modernize/libs/simplebar/simplebar.min.js' %}"></script>
+<!-- Preline UI -->
+<script src="{% static 'vendor/modernize/libs/preline/preline.js' %}"></script>
 
-  <!-- Left Sidebar -->
-  <aside class="w-48 bg-slate-900 border-r border-slate-700 p-3 flex flex-col gap-1 shrink-0 overflow-y-auto">
-    {% block sidebar %}
-    <!-- Default sidebar: rendered by each view via context or overridden in block -->
-    {% endblock sidebar %}
-  </aside>
-
-  <!-- Main Content -->
-  <main class="flex-1 overflow-y-auto p-6">
-    {% block content %}{% endblock content %}
-  </main>
-
-</div>
-
-{% block extra_js %}{% endblock extra_js %}
+{% block extra_js %}{% endblock %}
 </body>
 </html>
