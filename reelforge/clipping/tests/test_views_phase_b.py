@@ -116,3 +116,102 @@ def test_candidate_detail_requires_staff(client: Client) -> None:
     url = reverse("clipping:candidate_detail", kwargs={"candidate_id": candidate.pk})
     response = client.get(url)
     assert response.status_code == 302
+
+
+# ── Task 4: layout editor views ───────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_update_layout_config_saves_render_mode(client: Client) -> None:
+    from reelforge.clipping.models import ClipLayoutConfig
+    from reelforge.clipping.models import ClipRenderMode
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    url = reverse("clipping:update_layout_config", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {"render_mode": ClipRenderMode.SPATIAL_STACK})
+    assert response.status_code == 200
+    layout.refresh_from_db()
+    assert layout.render_mode == ClipRenderMode.SPATIAL_STACK
+
+
+@pytest.mark.django_db
+def test_update_layout_regions_saves_crop_coords(client: Client) -> None:
+    from reelforge.clipping.models import ClipLayoutConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    url = reverse("clipping:update_layout_regions", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {
+        "manual_crop_x": "100", "manual_crop_y": "50",
+        "manual_crop_w": "900", "manual_crop_h": "1600",
+    })
+    assert response.status_code == 200
+    layout.refresh_from_db()
+    assert layout.manual_crop_x == 100
+    assert layout.manual_crop_y == 50
+
+
+@pytest.mark.django_db
+def test_reset_smart_crop_clears_manual_coords(client: Client) -> None:
+    from reelforge.clipping.models import ClipLayoutConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    layout.manual_crop_x = 100
+    layout.manual_crop_y = 100
+    layout.manual_crop_w = 500
+    layout.manual_crop_h = 900
+    layout.save(update_fields=["manual_crop_x", "manual_crop_y", "manual_crop_w", "manual_crop_h"])
+    url = reverse("clipping:reset_smart_crop", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url)
+    assert response.status_code == 200
+    layout.refresh_from_db()
+    assert layout.manual_crop_x is None
+    assert layout.manual_crop_w is None
+
+
+# ── Task 5: style config panels ───────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_update_style_config_saves_caption_fields(client: Client) -> None:
+    from reelforge.clipping.models import ClipStyleConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    style = ClipStyleConfig.objects.get(candidate=candidate)
+    url = reverse("clipping:update_style_config", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {
+        "caption_font": "Arial",
+        "caption_size": "48",
+        "caption_color": "#FF0000",
+        # caption_enabled omitted = False
+    })
+    assert response.status_code == 200
+    style.refresh_from_db()
+    assert style.caption_font == "Arial"
+    assert style.caption_size == 48
+    assert style.caption_color == "#FF0000"
+    assert style.caption_enabled is False
+
+
+@pytest.mark.django_db
+def test_update_style_config_saves_boolean_fields(client: Client) -> None:
+    from reelforge.clipping.models import ClipStyleConfig
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    style = ClipStyleConfig.objects.get(candidate=candidate)
+    url = reverse("clipping:update_style_config", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {"caption_enabled": "1", "hook_enabled": "1"})
+    assert response.status_code == 200
+    style.refresh_from_db()
+    assert style.caption_enabled is True
+    assert style.hook_enabled is True

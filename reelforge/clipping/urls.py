@@ -16,6 +16,10 @@ urlpatterns = [
     path("<uuid:job_id>/start-render/", candidates.job_start_render, name="job_start_render"),
     # Candidate detail + actions
     path("clips/<uuid:candidate_id>/", candidates.candidate_detail, name="candidate_detail"),
+    path("clips/<uuid:candidate_id>/layout/", candidates.update_layout_config, name="update_layout_config"),
+    path("clips/<uuid:candidate_id>/layout/regions/", candidates.update_layout_regions, name="update_layout_regions"),
+    path("clips/<uuid:candidate_id>/layout/reset-crop/", candidates.reset_smart_crop, name="reset_smart_crop"),
+    path("clips/<uuid:candidate_id>/style/", candidates.update_style_config, name="update_style_config"),
     path("clips/<uuid:candidate_id>/approve/", candidates.candidate_approve, name="candidate_approve"),
     path("clips/<uuid:candidate_id>/reject/", candidates.candidate_reject, name="candidate_reject"),
     path("clips/<uuid:candidate_id>/undo-reject/", candidates.candidate_undo_reject, name="candidate_undo_reject"),
