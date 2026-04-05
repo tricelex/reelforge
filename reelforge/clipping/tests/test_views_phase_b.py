@@ -6,8 +6,12 @@ import pytest
 
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipRender
+from django.test import Client
+from django.urls import reverse
+
 from reelforge.clipping.tests.factories import ClipCandidateFactory
 from reelforge.clipping.tests.factories import ClipRenderFactory
+from reelforge.users.tests.factories import UserFactory
 
 
 # ── Task 1: model field tests ──────────────────────────────────────────────────
@@ -90,3 +94,25 @@ def test_render_clip_task_pauses_at_gate() -> None:
     render = candidate.renders.get()
     assert render.status == ClipRender.RenderStatus.PAUSED_AT_GATE
     assert render.paused_at_stage == 1
+
+
+# ── Task 3: candidate detail view ─────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_candidate_detail_view_returns_200(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    url = reverse("clipping:candidate_detail", kwargs={"candidate_id": candidate.pk})
+    response = client.get(url)
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_candidate_detail_requires_staff(client: Client) -> None:
+    user = UserFactory(is_staff=False)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    url = reverse("clipping:candidate_detail", kwargs={"candidate_id": candidate.pk})
+    response = client.get(url)
+    assert response.status_code == 302
