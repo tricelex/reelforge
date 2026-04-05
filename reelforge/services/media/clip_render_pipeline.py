@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger("***REMOVED***.media.pipeline")
 
 
+class GatePausedException(Exception):
+    """Raised by ClipRenderPipeline when a gate stage completes and a pause is required."""
+
+    def __init__(self, stage_order: int) -> None:
+        self.stage_order = stage_order
+        super().__init__(f"Render paused at gate after stage {stage_order}")
+
+
 @dataclass
 class PipelineRenderConfig:
     """All inputs needed by the multi-stage render pipeline."""
@@ -167,12 +175,19 @@ class ClipRenderPipeline:
             ),
         ]
 
-    def run(self, start_from_stage: int = 1) -> Path:
+    def run(
+        self,
+        start_from_stage: int = 1,
+        pause_after_stages: set[int] | None = None,
+    ) -> Path:
         """Run the pipeline, optionally resuming from a specific stage.
 
         When start_from_stage > 1, uses the output of stage N-1 as the
         starting input_path and deletes stage results for stages >= N.
         Returns config.output_path (the final assembled file).
+
+        pause_after_stages: stage order numbers at which to pause after
+        the stage completes. Raises GatePausedException instead of continuing.
         """
         stages = self._build_stages()
         self._stages = stages
@@ -199,10 +214,14 @@ class ClipRenderPipeline:
                 stage_order__gte=start_from_stage,
             ).delete()
 
+        _gates = pause_after_stages or set()
+
         for stage in stages:
             if stage.order < start_from_stage:
                 continue
             current_path = self._run_stage(stage, current_path)
+            if stage.order in _gates:
+                raise GatePausedException(stage_order=stage.order)
 
         self.config.output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(current_path), str(self.config.output_path))
