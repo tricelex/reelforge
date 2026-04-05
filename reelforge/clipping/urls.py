@@ -29,6 +29,7 @@ urlpatterns = [
     path("clips/<uuid:candidate_id>/approve/", candidates.candidate_approve, name="candidate_approve"),
     path("clips/<uuid:candidate_id>/reject/", candidates.candidate_reject, name="candidate_reject"),
     path("clips/<uuid:candidate_id>/undo-reject/", candidates.candidate_undo_reject, name="candidate_undo_reject"),
+    path("clips/<uuid:candidate_id>/gates/", candidates.update_render_gates, name="update_render_gates"),
     # Render views
     path("renders/<uuid:render_id>/", views_renders.render_detail, name="render_detail"),
     path("renders/<uuid:render_id>/stages/", views_renders.stage_list_partial, name="stage_list_partial"),
