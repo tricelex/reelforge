@@ -59,3 +59,17 @@ def test_clipping_job_list_filters_by_status() -> None:
     client.force_login(user)
     response = client.get(reverse("clipping:job_list") + "?status=COMPLETED")
     assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_candidate_detail_accessible_to_staff() -> None:
+    from reelforge.clipping.tests.factories import ClipCandidateFactory
+
+    user = UserFactory(is_staff=True)
+    candidate = ClipCandidateFactory()
+    client = Client()
+    client.force_login(user)
+    response = client.get(
+        reverse("clipping:candidate_detail", kwargs={"candidate_id": candidate.pk})
+    )
+    assert response.status_code == 200
