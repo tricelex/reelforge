@@ -45,6 +45,16 @@ manage +args:
 create-superuser:
     @docker compose run --rm django python ./manage.py createsuperuser
 
+# tailwind-build: Compile Tailwind CSS once.
+tailwind-build:
+    @echo "Building Tailwind CSS..."
+    @./bin/tailwindcss --input reelforge/ui/static/ui/css/input.css --output reelforge/static/css/tailwind.css --content "./reelforge/**/templates/**/*.html" --minify
+
+# tailwind-watch: Watch and recompile Tailwind CSS on template changes.
+tailwind-watch:
+    @echo "Watching Tailwind CSS..."
+    @./bin/tailwindcss --input reelforge/ui/static/ui/css/input.css --output reelforge/static/css/tailwind.css --content "./reelforge/**/templates/**/*.html" --watch
+
 # lint: Run ruff linting checks.
 lint:
     @echo "Running ruff linting checks..."
