@@ -30,6 +30,7 @@ urlpatterns = [
     ),
     # UI dashboard
     path("app/", include("reelforge.ui.urls", namespace="ui")),
+    path("app/clipping/", include("reelforge.clipping.urls", namespace="clipping")),
     # Your stuff: custom urls includes go here
     # ...
     # Media files
