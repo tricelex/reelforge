@@ -390,6 +390,33 @@ def update_overlay(request: HttpRequest, overlay_id: str) -> HttpResponse:
 
 @staff_member_required
 @require_POST
+def update_render_gates(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Save the render_gates list for a candidate. POST body: gates=1,3,5 (comma-separated)."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    raw_gates = request.POST.get("gates", "").strip()
+
+    gates: list[int] = []
+    if raw_gates:
+        for part in raw_gates.split(","):
+            try:
+                val = int(part.strip())
+                if 1 <= val <= 10:
+                    gates.append(val)
+            except (ValueError, TypeError):
+                pass
+
+    candidate.render_gates = sorted(set(gates))
+    candidate.save(update_fields=["render_gates", "updated_at"])
+
+    return render(
+        request,
+        "clipping/partials/gates_panel.html",
+        {"candidate": candidate},
+    )
+
+
+@staff_member_required
+@require_POST
 def delete_overlay(request: HttpRequest, overlay_id: str) -> HttpResponse:
     """Delete a timed overlay; return empty 200 (HTMX outerHTML swap removes the row)."""
     overlay = get_object_or_404(ClipTimedOverlay, pk=overlay_id)

@@ -308,3 +308,69 @@ def test_stage_list_partial_is_terminal_when_render_completed(client: Client) ->
     response = client.get(url)
     assert response.status_code == 200
     assert b"data-terminal" in response.content
+
+
+# ── Task 8: stage rerun/resume + gates panel ─────────────────────────────────
+
+@pytest.mark.django_db
+def test_rerun_from_stage_fires_task_and_redirects(client: Client) -> None:
+    from ***REMOVED***.clipping.models import ClipRenderStageResult
+    from ***REMOVED***.clipping.tests.factories import ClipRenderStageResultFactory
+
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    render = ClipRenderFactory(status=ClipRender.RenderStatus.PAUSED_AT_GATE, paused_at_stage=3)
+    ClipRenderStageResultFactory(render=render, stage_order=1, status=ClipRenderStageResult.Status.COMPLETED)
+    ClipRenderStageResultFactory(render=render, stage_order=2, status=ClipRenderStageResult.Status.COMPLETED)
+    ClipRenderStageResultFactory(render=render, stage_order=3, status=ClipRenderStageResult.Status.COMPLETED)
+    url = reverse("clipping:rerun_from_stage", kwargs={"render_id": render.pk, "stage_order": 2})
+    with patch("***REMOVED***.clipping.views.renders.render_clip") as mock_task:
+        response = client.post(url)
+    assert response.status_code in (200, 302, 204)
+    mock_task.delay.assert_called_once()
+    render.refresh_from_db()
+    assert render.status == ClipRender.RenderStatus.RUNNING
+    assert render.paused_at_stage is None
+
+
+@pytest.mark.django_db
+def test_resume_render_fires_task_from_next_stage(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    render = ClipRenderFactory(status=ClipRender.RenderStatus.PAUSED_AT_GATE, paused_at_stage=1)
+    url = reverse("clipping:resume_render", kwargs={"render_id": render.pk})
+    with patch("***REMOVED***.clipping.views.renders.render_clip") as mock_task:
+        response = client.post(url)
+    assert response.status_code in (200, 302, 204)
+    mock_task.delay.assert_called_once_with(
+        str(render.candidate_id),
+        clip_render_id=str(render.pk),
+        start_from_stage=2,
+    )
+    render.refresh_from_db()
+    assert render.status == ClipRender.RenderStatus.RUNNING
+    assert render.paused_at_stage is None
+
+
+@pytest.mark.django_db
+def test_update_render_gates_saves_list(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory()
+    url = reverse("clipping:update_render_gates", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {"gates": "1,3,5"})
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.render_gates == [1, 3, 5]
+
+
+@pytest.mark.django_db
+def test_update_render_gates_handles_empty(client: Client) -> None:
+    user = UserFactory(is_staff=True)
+    client.force_login(user)
+    candidate = ClipCandidateFactory(render_gates=[1, 3])
+    url = reverse("clipping:update_render_gates", kwargs={"candidate_id": candidate.pk})
+    response = client.post(url, {"gates": ""})
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.render_gates == []
