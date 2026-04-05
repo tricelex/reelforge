@@ -14,7 +14,8 @@ urlpatterns = [
     path("<uuid:job_id>/status/", jobs.job_status_partial, name="job_status_partial"),
     path("<uuid:job_id>/approve-all/", candidates.job_approve_all, name="job_approve_all"),
     path("<uuid:job_id>/start-render/", candidates.job_start_render, name="job_start_render"),
-    # Candidate actions
+    # Candidate detail + actions
+    path("clips/<uuid:candidate_id>/", candidates.candidate_detail, name="candidate_detail"),
     path("clips/<uuid:candidate_id>/approve/", candidates.candidate_approve, name="candidate_approve"),
     path("clips/<uuid:candidate_id>/reject/", candidates.candidate_reject, name="candidate_reject"),
     path("clips/<uuid:candidate_id>/undo-reject/", candidates.candidate_undo_reject, name="candidate_undo_reject"),

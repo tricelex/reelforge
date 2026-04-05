@@ -15,6 +15,7 @@ from django_fsm import can_proceed
 
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClippingJob
+from ***REMOVED***.clipping.models import ClipTimedOverlay
 from ***REMOVED***.clipping.tasks import render_clip
 
 logger = logging.getLogger("***REMOVED***.clipping")
@@ -145,3 +146,30 @@ def job_start_render(request: HttpRequest, job_id: str) -> HttpResponse:
     response = HttpResponse(status=204)
     response["HX-Redirect"] = f"/app/clipping/{job_id}/"
     return response
+
+
+@staff_member_required
+def candidate_detail(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    candidate = get_object_or_404(
+        ClipCandidate.objects.select_related(
+            "clipping_job__channel",
+        ).prefetch_related("timed_overlays"),
+        pk=candidate_id,
+    )
+    layout = getattr(candidate, "layout_config", None)
+    style = getattr(candidate, "style_config", None)
+    renders = candidate.renders.prefetch_related("stage_results").order_by("-created_at")
+
+    return render(
+        request,
+        "clipping/candidate_detail.html",
+        {
+            "candidate": candidate,
+            "job": candidate.clipping_job,
+            "layout": layout,
+            "style": style,
+            "renders": renders,
+            "timed_overlays": list(candidate.timed_overlays.all()),
+            "nav_section": "clipping",
+        },
+    )
