@@ -78,6 +78,57 @@ def test_job_status_partial_returns_200(staff_client, clipping_job):
     assert response.status_code == 200
 
 
+@pytest.fixture
+def candidate(db, clipping_job):
+    return ClipCandidate.objects.create(
+        clipping_job=clipping_job,
+        start_sec=60.0,
+        end_sec=120.0,
+        title="Test Clip",
+        relevance_score=8.5,
+    )
+
+
+@pytest.mark.django_db
+def test_approve_candidate(staff_client, candidate):
+    response = staff_client.post(f"/app/clipping/clips/{candidate.id}/approve/")
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.approved is True
+    assert candidate.status == ClipCandidate.CandidateStatus.APPROVED
+
+
+@pytest.mark.django_db
+def test_reject_candidate(staff_client, candidate):
+    response = staff_client.post(f"/app/clipping/clips/{candidate.id}/reject/")
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.approved is False
+    assert candidate.status == ClipCandidate.CandidateStatus.REJECTED
+
+
+@pytest.mark.django_db
+def test_undo_reject_candidate(staff_client, candidate):
+    # Reject first (no FSM on ClipCandidate.status - it's a plain CharField)
+    ClipCandidate.objects.filter(pk=candidate.pk).update(
+        approved=False,
+        status=ClipCandidate.CandidateStatus.REJECTED,
+    )
+    response = staff_client.post(f"/app/clipping/clips/{candidate.id}/undo-reject/")
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.approved is None
+    assert candidate.status == ClipCandidate.CandidateStatus.PROPOSED
+
+
+@pytest.mark.django_db
+def test_approve_all_candidates(staff_client, clipping_job, candidate):
+    response = staff_client.post(f"/app/clipping/{clipping_job.id}/approve-all/")
+    assert response.status_code == 200
+    candidate.refresh_from_db()
+    assert candidate.approved is True
+
+
 @pytest.mark.django_db
 def test_job_status_partial_sets_terminal_for_completed_job(
     staff_client, clipping_job
