@@ -1,0 +1,73 @@
+<div class="flex items-start gap-3 px-3 py-2 rounded
+  {% if stage.status == 'COMPLETED' %}bg-slate-800 hover:bg-slate-750
+  {% elif stage.status == 'RUNNING' %}bg-indigo-900/40 border border-indigo-700
+  {% elif stage.status == 'FAILED' %}bg-red-900/30 border border-red-800
+  {% elif stage.status == 'SKIPPED' %}bg-slate-850 opacity-50
+  {% else %}bg-slate-850{% endif %}">
+
+  {# Status indicator #}
+  <div class="flex-shrink-0 mt-0.5">
+    {% if stage.status == 'COMPLETED' %}
+      <span class="text-green-400 text-sm">✓</span>
+    {% elif stage.status == 'RUNNING' %}
+      <span class="text-indigo-400 text-sm animate-pulse">●</span>
+    {% elif stage.status == 'FAILED' %}
+      <span class="text-red-400 text-sm">✕</span>
+    {% elif stage.status == 'SKIPPED' %}
+      <span class="text-slate-600 text-sm">—</span>
+    {% else %}
+      <span class="text-slate-700 text-sm">○</span>
+    {% endif %}
+  </div>
+
+  {# Stage info #}
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-slate-200">
+        <span class="text-slate-500 mr-1">{{ stage.stage_order }}.</span>
+        {{ stage.stage_name|title }}
+      </p>
+      {% if stage.duration_sec %}
+        <span class="text-xs text-slate-500 flex-shrink-0 ml-2">{{ stage.duration_sec|floatformat:1 }}s</span>
+      {% endif %}
+    </div>
+
+    {# Error message for failed stages #}
+    {% if stage.status == 'FAILED' and stage.last_error %}
+    <div x-data="{ open: false }">
+      <button @click="open = !open" class="text-xs text-red-400 hover:text-red-300 mt-1">
+        <span x-text="open ? '▲ Hide error' : '▼ Show error'"></span>
+      </button>
+      <pre x-show="open" class="text-xs text-red-300 bg-red-900/20 rounded p-2 mt-1 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{{ stage.last_error }}</pre>
+    </div>
+    {% endif %}
+
+    {# Actions for completed stages #}
+    {% if stage.status == 'COMPLETED' %}
+    <div class="flex gap-2 mt-1">
+      {% if stage.output_file %}
+      <a href="{{ stage.output_file.url }}" target="_blank"
+         class="text-xs text-indigo-400 hover:text-indigo-300">▶ Open preview</a>
+      {% endif %}
+      <button class="text-xs text-slate-400 hover:text-white"
+              hx-post="{% url 'clipping:rerun_from_stage' render.pk stage.stage_order %}"
+              hx-confirm="Re-run from stage {{ stage.stage_order }}? This will delete results for stages {{ stage.stage_order }}+."
+              hx-target="body"
+              hx-push-url="true">
+        ↺ Re-run from here
+      </button>
+    </div>
+    {% endif %}
+
+    {# Action for failed stages #}
+    {% if stage.status == 'FAILED' %}
+    <button class="text-xs text-amber-400 hover:text-amber-300 mt-1"
+            hx-post="{% url 'clipping:rerun_from_stage' render.pk stage.stage_order %}"
+            hx-target="body"
+            hx-push-url="true">
+      ↺ Retry from this stage
+    </button>
+    {% endif %}
+
+  </div>
+</div>
