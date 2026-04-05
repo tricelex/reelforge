@@ -3,86 +3,102 @@
 
 {% block title %}Render — {{ candidate.title|truncatechars:40 }}{% endblock %}
 
-{% block content %}
-<div class="flex items-center gap-3 mb-6">
-  <a href="{% url 'clipping:candidate_detail' candidate.pk %}"
-     class="text-slate-400 hover:text-white text-sm">← {{ candidate.title|truncatechars:40 }}</a>
-  <span class="text-slate-600">/</span>
-  <h1 class="text-lg font-semibold text-white">
-    Render
-    <span class="text-sm font-normal ml-2
-      {% if render.status == 'COMPLETED' %}text-green-400
-      {% elif render.status == 'RUNNING' %}text-indigo-400
-      {% elif render.status == 'PAUSED_AT_GATE' %}text-amber-400
-      {% elif render.status == 'FAILED' %}text-red-400
-      {% else %}text-slate-400{% endif %}">
-      {{ render.get_status_display }}
-    </span>
-  </h1>
+{% block page_header %}
+<nav class="flex items-center gap-2 text-sm text-bodytext dark:text-darklink mb-4">
+  <a href="{% url 'clipping:job_list' %}" class="hover:text-primary transition-colors">Clipping</a>
+  <i class="ti ti-chevron-right text-xs"></i>
+  <a href="{% url 'clipping:candidate_detail' candidate.pk %}" class="hover:text-primary transition-colors truncate max-w-xs">
+    {{ candidate.title|truncatechars:40 }}
+  </a>
+  <i class="ti ti-chevron-right text-xs"></i>
+  <span class="text-dark dark:text-white">Render</span>
+</nav>
+
+<div class="flex items-center gap-4 mb-6">
+  <h5 class="card-title text-xl mb-0">Render Detail</h5>
+  {% include "ui/partials/status_badge.html" with status=render.status %}
 </div>
+{% endblock %}
 
-<div class="grid grid-cols-5 gap-6">
+{% block content %}
 
-  {# ── Left: stage list (2/5 width) ── #}
-  <div class="col-span-2">
-    <div id="stage-list-container">
-      {% include "clipping/partials/stage_list.html" %}
+<div class="grid grid-cols-12 gap-6">
+
+  <!-- Stage list (left) -->
+  <div class="col-span-12 lg:col-span-5">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title mb-4">Pipeline Stages</h5>
+        <div id="stage-list-container">
+          {% include "clipping/partials/stage_list.html" %}
+        </div>
+      </div>
     </div>
   </div>
 
-  {# ── Right: preview + gates (3/5 width) ── #}
-  <div class="col-span-3 space-y-4">
+  <!-- Preview + gates (right) -->
+  <div class="col-span-12 lg:col-span-7">
 
-    {# Video preview panel #}
-    <div id="stage-preview" class="bg-slate-800 rounded-lg p-4">
-      {% if render.status == 'COMPLETED' and render.video_file %}
-        <h3 class="text-sm font-semibold text-slate-300 mb-3">Final Output</h3>
-        <video src="{{ render.video_file.url }}" controls
-               class="w-full rounded max-h-96 bg-black"></video>
-      {% elif render.status == 'PAUSED_AT_GATE' %}
-        {% for stage in stages %}
-          {% if stage.stage_order == render.paused_at_stage and stage.output_file %}
-          <h3 class="text-sm font-semibold text-amber-400 mb-3">
-            Paused at Gate — Stage {{ stage.stage_order }}: {{ stage.stage_name|title }}
-          </h3>
-          <video src="{{ stage.output_file.url }}" controls
-                 class="w-full rounded max-h-96 bg-black"></video>
-          {% endif %}
-        {% endfor %}
-      {% else %}
-        <p class="text-xs text-slate-500 text-center py-8">
-          Click a completed stage to preview its output.
-        </p>
-      {% endif %}
+    <!-- Video preview -->
+    <div id="stage-preview" class="card mb-4">
+      <div class="card-body">
+        {% if render.status == 'COMPLETED' and render.video_file %}
+          <h5 class="card-title mb-3">Final Output</h5>
+          <video src="{{ render.video_file.url }}" controls
+                 class="w-full rounded-md max-h-96 bg-black"></video>
+        {% elif render.status == 'PAUSED_AT_GATE' %}
+          {% for stage in stages %}
+            {% if stage.stage_order == render.paused_at_stage and stage.output_file %}
+            <h5 class="card-title text-warning mb-3">
+              <i class="ti ti-player-pause me-2"></i>
+              Paused at Gate — Stage {{ stage.stage_order }}: {{ stage.stage_name|title }}
+            </h5>
+            <video src="{{ stage.output_file.url }}" controls
+                   class="w-full rounded-md max-h-96 bg-black"></video>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <div class="text-center py-8">
+            <i class="ti ti-video text-4xl text-bodytext dark:text-darklink mb-2 block"></i>
+            <p class="text-sm text-bodytext dark:text-darklink">Click a completed stage to preview its output.</p>
+          </div>
+        {% endif %}
+      </div>
     </div>
 
-    {# Review gates panel #}
-    <div id="gates-panel">
-      {% include "clipping/partials/gates_panel.html" with candidate=candidate render=render %}
+    <!-- Review gates -->
+    <div id="gates-panel" class="card mb-4">
+      <div class="card-body">
+        {% include "clipping/partials/gates_panel.html" with candidate=candidate render=render %}
+      </div>
     </div>
 
-    {# Resume / re-run actions when paused #}
+    <!-- Resume / re-run actions when paused -->
     {% if render.status == 'PAUSED_AT_GATE' %}
-    <div class="bg-amber-900/30 border border-amber-700 rounded-lg p-4">
-      <p class="text-sm text-amber-300 mb-3">
-        Render paused after Stage {{ render.paused_at_stage }}.
-        Review the preview above, then continue or adjust config.
-      </p>
-      <div class="flex gap-3">
-        <button class="text-sm bg-green-700 hover:bg-green-600 text-white rounded px-4 py-2"
-                hx-post="{% url 'clipping:resume_render' render.pk %}"
-                hx-target="body"
-                hx-push-url="true">
-          ✓ Continue Pipeline
-        </button>
-        <a href="{% url 'clipping:candidate_detail' candidate.pk %}"
-           class="text-sm border border-slate-600 hover:border-slate-500 text-slate-300 rounded px-4 py-2">
-          ← Edit Config
-        </a>
+    <div class="card border-warning">
+      <div class="card-body">
+        <p class="text-sm text-warning mb-4">
+          <i class="ti ti-player-pause me-2"></i>
+          Render paused after Stage {{ render.paused_at_stage }}.
+          Review the preview above, then continue or adjust config.
+        </p>
+        <div class="flex gap-3">
+          <button class="btn btn-success btn-sm"
+                  hx-post="{% url 'clipping:resume_render' render.pk %}"
+                  hx-target="body"
+                  hx-push-url="true">
+            <i class="ti ti-player-play me-1"></i> Continue Pipeline
+          </button>
+          <a href="{% url 'clipping:candidate_detail' candidate.pk %}"
+             class="btn btn-outline-primary btn-sm">
+            <i class="ti ti-arrow-left me-1"></i> Edit Config
+          </a>
+        </div>
       </div>
     </div>
     {% endif %}
 
   </div>
 </div>
+
 {% endblock %}
