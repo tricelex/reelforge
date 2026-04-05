@@ -19,6 +19,7 @@ from reelforge.clipping.models import ClipTimedOverlay
 from reelforge.core.storage import get_clip_downloaded_path
 from reelforge.core.storage import get_clip_render_path
 from reelforge.services.media.clip_render_pipeline import ClipRenderPipeline
+from reelforge.services.media.clip_render_pipeline import GatePausedException
 from reelforge.services.media.clip_render_pipeline import PipelineRenderConfig
 
 logger = logging.getLogger("reelforge.clipping")
@@ -287,8 +288,27 @@ def render_clip(
             channel=channel,
         )
 
-        pipeline = ClipRenderPipeline(pipeline_config)
-        pipeline.run(start_from_stage=start_from_stage)
+        gate_stages = set(candidate.render_gates or [])
+
+        try:
+            pipeline = ClipRenderPipeline(pipeline_config)
+            pipeline.run(
+                start_from_stage=start_from_stage,
+                pause_after_stages=gate_stages,
+            )
+        except GatePausedException as exc:
+            render.status = ClipRender.RenderStatus.PAUSED_AT_GATE
+            render.paused_at_stage = exc.stage_order
+            render.save(update_fields=["status", "paused_at_stage", "updated_at"])
+            logger.info(
+                "Render paused at gate",
+                extra={
+                    "render_id": str(render.id),
+                    "candidate_id": str(candidate.id),
+                    "paused_at_stage": exc.stage_order,
+                },
+            )
+            return  # Do not retry — this is an intentional pause
 
         # Write back speaker detection results from TrimAndCropStage if available
         trim_stage = next((s for s in pipeline._stages if s.name == "trim_and_crop"), None)
