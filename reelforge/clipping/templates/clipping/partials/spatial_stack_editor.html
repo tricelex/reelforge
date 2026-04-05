@@ -1,0 +1,101 @@
+{% comment %}Alpine.js dual drag editor for Spatial Stack mode.{% endcomment %}
+<div
+  x-data="regionEditor({
+    mode: 'stack',
+    ax: {{ layout.region_a_x|default:'240' }},
+    ay: {{ layout.region_a_y|default:'0' }},
+    aw: {{ layout.region_a_w|default:'1440' }},
+    ah: {{ layout.region_a_h|default:'540' }},
+    bx: {{ layout.region_b_x|default:'240' }},
+    by: {{ layout.region_b_y|default:'540' }},
+    bw: {{ layout.region_b_w|default:'1440' }},
+    bh: {{ layout.region_b_h|default:'540' }},
+    stackRatio: {{ layout.stack_ratio|default:'0.6' }}
+  })"
+  @mousemove.window="onMouseMove($event)"
+  @mouseup.window="stopDrag()"
+  class="relative select-none"
+>
+  <h3 class="text-sm font-semibold text-slate-300 mb-2">Spatial Stack Regions</h3>
+
+  <div class="relative w-full bg-slate-900 rounded overflow-hidden" style="padding-top: 56.25%">
+    <div class="absolute inset-0">
+      <div class="absolute border-2 border-indigo-500 cursor-move"
+           :style="regionAStyle"
+           @mousedown.prevent="startDrag($event, 'a', 'move')">
+        <div class="absolute bottom-0 right-0 w-3 h-3 bg-indigo-500 cursor-se-resize"
+             @mousedown.prevent.stop="startDrag($event, 'a', 'resize')"></div>
+        <span class="absolute top-1 left-1 text-xs bg-indigo-500/80 px-1 rounded text-white leading-none">A</span>
+      </div>
+      <div class="absolute border-2 border-cyan-500 cursor-move"
+           :style="regionBStyle"
+           @mousedown.prevent="startDrag($event, 'b', 'move')">
+        <div class="absolute bottom-0 right-0 w-3 h-3 bg-cyan-500 cursor-se-resize"
+             @mousedown.prevent.stop="startDrag($event, 'b', 'resize')"></div>
+        <span class="absolute top-1 left-1 text-xs bg-cyan-500/80 px-1 rounded text-white leading-none">B</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <label class="text-xs text-slate-400 flex justify-between">
+      <span>Stack ratio (A:B)</span>
+      <span x-text="stackRatio.toFixed(2)"></span>
+    </label>
+    <input type="range" min="0.3" max="0.8" step="0.05"
+           x-model.number="stackRatio"
+           @change="saveRegions()"
+           class="w-full mt-1">
+  </div>
+
+  <div class="mt-3">
+    <p class="text-xs text-indigo-400 mb-1 font-medium">Region A</p>
+    <div class="grid grid-cols-4 gap-2 text-xs">
+      <div><label class="text-slate-400 block mb-1">X</label>
+        <input type="number" x-model.number="regions.a.x" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">Y</label>
+        <input type="number" x-model.number="regions.a.y" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">W</label>
+        <input type="number" x-model.number="regions.a.w" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">H</label>
+        <input type="number" x-model.number="regions.a.h" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+    </div>
+  </div>
+
+  <div class="mt-2">
+    <p class="text-xs text-cyan-400 mb-1 font-medium">Region B</p>
+    <div class="grid grid-cols-4 gap-2 text-xs">
+      <div><label class="text-slate-400 block mb-1">X</label>
+        <input type="number" x-model.number="regions.b.x" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">Y</label>
+        <input type="number" x-model.number="regions.b.y" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">W</label>
+        <input type="number" x-model.number="regions.b.w" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+      <div><label class="text-slate-400 block mb-1">H</label>
+        <input type="number" x-model.number="regions.b.h" @change="saveRegions()"
+               class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+    </div>
+  </div>
+
+  <form x-ref="saveForm"
+        hx-post="{% url 'clipping:update_layout_regions' candidate.pk %}"
+        hx-swap="none" class="hidden">
+    {% csrf_token %}
+    <input type="hidden" name="region_a_x" :value="regions.a.x">
+    <input type="hidden" name="region_a_y" :value="regions.a.y">
+    <input type="hidden" name="region_a_w" :value="regions.a.w">
+    <input type="hidden" name="region_a_h" :value="regions.a.h">
+    <input type="hidden" name="region_b_x" :value="regions.b.x">
+    <input type="hidden" name="region_b_y" :value="regions.b.y">
+    <input type="hidden" name="region_b_w" :value="regions.b.w">
+    <input type="hidden" name="region_b_h" :value="regions.b.h">
+    <input type="hidden" name="stack_ratio" :value="stackRatio">
+  </form>
+</div>

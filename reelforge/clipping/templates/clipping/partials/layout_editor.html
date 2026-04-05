@@ -1,4 +1,59 @@
-{# Layout editor — populated in Task 4 #}
-<div class="bg-slate-800 rounded-lg p-4">
-  <p class="text-xs text-slate-500">Layout editor coming soon.</p>
+{# Swap target: id="layout-editor-panel" on candidate_detail.html #}
+<div id="layout-editor-panel">
+
+  {# Render mode + format selectors #}
+  <div class="bg-slate-800 rounded-lg p-4 mb-4">
+    <h3 class="text-sm font-semibold text-slate-300 mb-3">Render Mode</h3>
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      {% for mode_value, mode_label in layout.RenderMode.choices %}
+      <button
+        hx-post="{% url 'clipping:update_layout_config' candidate.pk %}"
+        hx-vals='{"render_mode": "{{ mode_value }}"}'
+        hx-target="#layout-editor-panel"
+        hx-swap="outerHTML"
+        class="py-2 px-3 rounded text-sm border transition
+          {% if layout.render_mode == mode_value %}
+            border-indigo-500 bg-indigo-900/40 text-indigo-300
+          {% else %}
+            border-slate-600 bg-slate-700 text-slate-400 hover:border-slate-500
+          {% endif %}">
+        {{ mode_label }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="flex items-center gap-3">
+      <label class="text-xs text-slate-400">Output Format</label>
+      <select name="render_format"
+              hx-post="{% url 'clipping:update_layout_config' candidate.pk %}"
+              hx-include="[name='render_format']"
+              hx-target="#layout-editor-panel"
+              hx-swap="outerHTML"
+              class="bg-slate-700 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1">
+        <option value="VERTICAL_9_16" {% if layout.render_format == 'VERTICAL_9_16' %}selected{% endif %}>Vertical 9:16</option>
+        <option value="LANDSCAPE_16_9" {% if layout.render_format == 'LANDSCAPE_16_9' %}selected{% endif %}>Landscape 16:9</option>
+        <option value="SQUARE_1_1" {% if layout.render_format == 'SQUARE_1_1' %}selected{% endif %}>Square 1:1</option>
+      </select>
+    </div>
+  </div>
+
+  {# Visual editor — swapped based on render mode #}
+  <div class="bg-slate-800 rounded-lg p-4">
+    {% if layout.render_mode == 'SMART_CROP' %}
+      {% include "clipping/partials/smart_crop_editor.html" %}
+    {% elif layout.render_mode == 'SPATIAL_STACK' %}
+      {% include "clipping/partials/spatial_stack_editor.html" %}
+    {% else %}
+      {% include "clipping/partials/center_crop_editor.html" %}
+    {% endif %}
+  </div>
+
+  {# Preview panel #}
+  <div class="bg-slate-800 rounded-lg p-4 mt-4">
+    <h3 class="text-sm font-semibold text-slate-300 mb-3">9:16 Output Preview</h3>
+    <div id="preview-panel">
+      {% include "clipping/partials/preview_panel.html" %}
+    </div>
+  </div>
+
 </div>

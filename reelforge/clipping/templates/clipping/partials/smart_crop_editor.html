@@ -1,0 +1,184 @@
+{% comment %}Alpine.js drag editor for Smart Crop mode. Source assumed 1920×1080.{% endcomment %}
+<div
+  x-data="regionEditor({
+    mode: 'smart',
+    cx: {{ layout.manual_crop_x|default:'null' }},
+    cy: {{ layout.manual_crop_y|default:'null' }},
+    cw: {{ layout.manual_crop_w|default:'null' }},
+    ch: {{ layout.manual_crop_h|default:'null' }}
+  })"
+  @mousemove.window="onMouseMove($event)"
+  @mouseup.window="stopDrag()"
+  class="relative select-none"
+>
+  <h3 class="text-sm font-semibold text-slate-300 mb-2">Smart Crop Region</h3>
+  {% if layout.face_detected is not None %}
+  <p class="text-xs text-slate-400 mb-2">
+    Face detection:
+    {% if layout.face_detected %}
+      <span class="text-green-400">detected</span>
+      {% if layout.detection_confidence %}({{ layout.detection_confidence|floatformat:2 }}){% endif %}
+    {% else %}
+      <span class="text-amber-400">not detected</span>
+    {% endif %}
+  </p>
+  {% endif %}
+
+  {# 16:9 source frame container #}
+  <div class="relative w-full bg-slate-900 rounded overflow-hidden" style="padding-top: 56.25%">
+    <div class="absolute inset-0">
+      <template x-if="crop.x !== null">
+        <div
+          class="absolute border-2 border-indigo-500 cursor-move"
+          :style="cropBoxStyle"
+          @mousedown.prevent="startDrag($event, 'crop', 'move')"
+        >
+          <div
+            class="absolute bottom-0 right-0 w-3 h-3 bg-indigo-500 cursor-se-resize"
+            @mousedown.prevent.stop="startDrag($event, 'crop', 'resize')"
+          ></div>
+          <span class="absolute top-1 left-1 text-xs bg-indigo-500/80 px-1 rounded text-white leading-none">Crop</span>
+        </div>
+      </template>
+      <template x-if="crop.x === null">
+        <div class="absolute inset-0 flex items-center justify-center">
+          <button
+            class="text-xs text-slate-400 border border-dashed border-slate-600 px-3 py-2 rounded hover:border-indigo-500 hover:text-indigo-400"
+            @click="initCrop()"
+          >Click to set crop region</button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div x-show="crop.x !== null" class="grid grid-cols-4 gap-2 mt-3 text-xs">
+    <div><label class="text-slate-400 block mb-1">X</label>
+      <input type="number" x-model.number="crop.x" @change="saveRegions()"
+             class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+    <div><label class="text-slate-400 block mb-1">Y</label>
+      <input type="number" x-model.number="crop.y" @change="saveRegions()"
+             class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+    <div><label class="text-slate-400 block mb-1">W</label>
+      <input type="number" x-model.number="crop.w" @change="saveRegions()"
+             class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+    <div><label class="text-slate-400 block mb-1">H</label>
+      <input type="number" x-model.number="crop.h" @change="saveRegions()"
+             class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1"></div>
+  </div>
+
+  <button x-show="crop.x !== null"
+          class="mt-2 text-xs text-slate-400 hover:text-red-400"
+          hx-post="{% url 'clipping:reset_smart_crop' candidate.pk %}"
+          hx-target="#layout-editor-panel"
+          hx-swap="outerHTML">
+    ↺ Reset to auto-detect
+  </button>
+
+  <form x-ref="saveForm"
+        hx-post="{% url 'clipping:update_layout_regions' candidate.pk %}"
+        hx-swap="none"
+        class="hidden">
+    {% csrf_token %}
+    <input type="hidden" name="manual_crop_x" :value="crop.x ?? ''">
+    <input type="hidden" name="manual_crop_y" :value="crop.y ?? ''">
+    <input type="hidden" name="manual_crop_w" :value="crop.w ?? ''">
+    <input type="hidden" name="manual_crop_h" :value="crop.h ?? ''">
+  </form>
+</div>
+
+<script>
+function regionEditor(config) {
+  const SOURCE_W = 1920;
+  const SOURCE_H = 1080;
+
+  function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+  function toPct(val, total) { return (val / total * 100).toFixed(4) + '%'; }
+
+  return {
+    SOURCE_W, SOURCE_H,
+
+    crop: {
+      x: config.cx,
+      y: config.cy,
+      w: config.cw ?? 540,
+      h: config.ch ?? 960,
+    },
+
+    regions: {
+      a: { x: config.ax ?? 240, y: config.ay ?? 0, w: config.aw ?? 1440, h: config.ah ?? 540 },
+      b: { x: config.bx ?? 240, y: config.by ?? 540, w: config.bw ?? 1440, h: config.bh ?? 540 },
+    },
+
+    stackRatio: config.stackRatio ?? 0.6,
+    dragging: null,
+    _saveTimer: null,
+
+    get cropBoxStyle() {
+      if (this.crop.x === null) return '';
+      return [
+        `left:${toPct(this.crop.x, SOURCE_W)}`,
+        `top:${toPct(this.crop.y, SOURCE_H)}`,
+        `width:${toPct(this.crop.w, SOURCE_W)}`,
+        `height:${toPct(this.crop.h, SOURCE_H)}`,
+      ].join(';');
+    },
+
+    get regionAStyle() {
+      const r = this.regions.a;
+      return `left:${toPct(r.x,SOURCE_W)};top:${toPct(r.y,SOURCE_H)};width:${toPct(r.w,SOURCE_W)};height:${toPct(r.h,SOURCE_H)}`;
+    },
+
+    get regionBStyle() {
+      const r = this.regions.b;
+      return `left:${toPct(r.x,SOURCE_W)};top:${toPct(r.y,SOURCE_H)};width:${toPct(r.w,SOURCE_W)};height:${toPct(r.h,SOURCE_H)}`;
+    },
+
+    initCrop() {
+      this.crop = { x: 240, y: 0, w: 540, h: 960 };
+    },
+
+    startDrag(event, region, type) {
+      const container = this.$el.querySelector('[style*="padding-top"]');
+      const rect = container.getBoundingClientRect();
+      const target = region === 'crop' ? this.crop : this.regions[region];
+      this.dragging = {
+        region, type,
+        startX: event.clientX, startY: event.clientY,
+        containerW: rect.width, containerH: rect.height,
+        origX: target.x, origY: target.y,
+        origW: target.w, origH: target.h,
+      };
+    },
+
+    onMouseMove(event) {
+      if (!this.dragging) return;
+      const d = this.dragging;
+      const dx = (event.clientX - d.startX) / d.containerW * SOURCE_W;
+      const dy = (event.clientY - d.startY) / d.containerH * SOURCE_H;
+      const target = d.region === 'crop' ? this.crop : this.regions[d.region];
+
+      if (d.type === 'move') {
+        target.x = Math.round(clamp(d.origX + dx, 0, SOURCE_W - d.origW));
+        target.y = Math.round(clamp(d.origY + dy, 0, SOURCE_H - d.origH));
+      } else if (d.type === 'resize') {
+        target.w = Math.round(clamp(d.origW + dx, 80, SOURCE_W - d.origX));
+        target.h = Math.round(clamp(d.origH + dy, 80, SOURCE_H - d.origY));
+      }
+    },
+
+    stopDrag() {
+      if (!this.dragging) return;
+      this.dragging = null;
+      this.saveRegions();
+    },
+
+    saveRegions() {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = setTimeout(() => {
+        const form = this.$refs.saveForm;
+        if (form) htmx.trigger(form, 'submit');
+      }, 300);
+    },
+  };
+}
+</script>

@@ -14,9 +14,40 @@ from django_fsm import TransitionNotAllowed
 from django_fsm import can_proceed
 
 from ***REMOVED***.clipping.models import ClipCandidate
+from ***REMOVED***.clipping.models import ClipLayoutConfig
+from ***REMOVED***.clipping.models import ClipRenderMode
+from ***REMOVED***.clipping.models import ClipRenderStyleMixin
 from ***REMOVED***.clipping.models import ClippingJob
+from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
 from ***REMOVED***.clipping.tasks import render_clip
+
+_BOOLEAN_STYLE_FIELDS = frozenset({
+    "caption_enabled",
+    "hook_enabled",
+    "watermark_enabled",
+    "progress_bar_enabled",
+    "music_enabled",
+})
+
+_INT_STYLE_FIELDS = frozenset({
+    "caption_size",
+    "caption_stroke_width",
+    "watermark_size",
+    "progress_bar_height",
+    "hook_size",
+})
+
+_FLOAT_STYLE_FIELDS = frozenset({
+    "hook_duration_sec",
+    "transition_duration_sec",
+    "watermark_opacity",
+    "music_volume_db",
+    "music_fade_in_sec",
+    "music_fade_out_sec",
+})
+
+_STYLE_FIELD_SET = frozenset(ClipRenderStyleMixin.STYLE_FIELD_NAMES)
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
@@ -173,3 +204,115 @@ def candidate_detail(request: HttpRequest, candidate_id: str) -> HttpResponse:
             "nav_section": "clipping",
         },
     )
+
+
+@staff_member_required
+@require_POST
+def update_layout_config(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Save render_mode and/or render_format; return the swapped layout editor partial."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    layout, _ = ClipLayoutConfig.objects.get_or_create(candidate=candidate)
+
+    update_fields: list[str] = ["updated_at"]
+
+    if "render_mode" in request.POST:
+        layout.render_mode = request.POST["render_mode"]
+        update_fields.append("render_mode")
+
+    if "render_format" in request.POST:
+        layout.render_format = request.POST["render_format"]
+        update_fields.append("render_format")
+
+    layout.save(update_fields=update_fields)
+
+    return render(
+        request,
+        "clipping/partials/layout_editor.html",
+        {"candidate": candidate, "layout": layout},
+    )
+
+
+@staff_member_required
+@require_POST
+def update_layout_regions(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Save drag-editor coordinate fields. Returns 200 with no body (hx-swap='none')."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    layout, _ = ClipLayoutConfig.objects.get_or_create(candidate=candidate)
+
+    coord_fields = [
+        "manual_crop_x", "manual_crop_y", "manual_crop_w", "manual_crop_h",
+        "region_a_x", "region_a_y", "region_a_w", "region_a_h",
+        "region_b_x", "region_b_y", "region_b_w", "region_b_h",
+    ]
+    update_fields: list[str] = ["updated_at"]
+
+    for field in coord_fields:
+        if field in request.POST and request.POST[field] != "":
+            try:
+                setattr(layout, field, int(request.POST[field]))
+                update_fields.append(field)
+            except (ValueError, TypeError):
+                pass
+
+    if "stack_ratio" in request.POST:
+        try:
+            val = float(request.POST["stack_ratio"])
+            if 0.3 <= val <= 0.8:
+                layout.stack_ratio = val
+                update_fields.append("stack_ratio")
+        except (ValueError, TypeError):
+            pass
+
+    layout.save(update_fields=update_fields)
+    return HttpResponse(status=200)
+
+
+@staff_member_required
+@require_POST
+def reset_smart_crop(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Clear manual Smart Crop coordinates; return refreshed layout editor partial."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    layout = get_object_or_404(ClipLayoutConfig, candidate=candidate)
+    layout.manual_crop_x = None
+    layout.manual_crop_y = None
+    layout.manual_crop_w = None
+    layout.manual_crop_h = None
+    layout.save(update_fields=[
+        "manual_crop_x", "manual_crop_y", "manual_crop_w", "manual_crop_h", "updated_at",
+    ])
+    return render(
+        request,
+        "clipping/partials/layout_editor.html",
+        {"candidate": candidate, "layout": layout},
+    )
+
+
+@staff_member_required
+@require_POST
+def update_style_config(request: HttpRequest, candidate_id: str) -> HttpResponse:
+    """Save any style config fields sent in POST. Called on blur/change from style panels."""
+    candidate = get_object_or_404(ClipCandidate, pk=candidate_id)
+    style, _ = ClipStyleConfig.objects.get_or_create(candidate=candidate)
+
+    update_fields: list[str] = ["updated_at"]
+
+    for field_name in _STYLE_FIELD_SET - {"emoji_keyword_map"}:
+        if field_name in _BOOLEAN_STYLE_FIELDS:
+            val = field_name in request.POST
+            setattr(style, field_name, val)
+            update_fields.append(field_name)
+        elif field_name in request.POST:
+            raw = request.POST[field_name]
+            try:
+                if field_name in _INT_STYLE_FIELDS:
+                    setattr(style, field_name, int(raw))
+                elif field_name in _FLOAT_STYLE_FIELDS:
+                    setattr(style, field_name, float(raw))
+                else:
+                    setattr(style, field_name, raw)
+                update_fields.append(field_name)
+            except (ValueError, TypeError):
+                pass
+
+    style.save(update_fields=update_fields)
+    return HttpResponse(status=200)

@@ -1,4 +1,302 @@
-{# Style config panels — populated in Task 5 #}
-<div class="bg-slate-800 rounded-lg p-4">
-  <p class="text-xs text-slate-500">Style config coming soon.</p>
+{% comment %}
+  Collapsible style config panels. The entire form auto-saves on any change or blur.
+  Boolean fields (enabled toggles) use checkboxes; their absence in POST = False.
+{% endcomment %}
+{% if style %}
+<div x-data="{ openPanel: 'captions' }">
+
+  <form id="style-form"
+        hx-post="{% url 'clipping:update_style_config' candidate.pk %}"
+        hx-trigger="change delay:200ms, blur delay:200ms"
+        hx-swap="none">
+    {% csrf_token %}
+
+    {# ── Captions panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'captions' ? null : 'captions'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        <span class="flex items-center gap-2">
+          <input type="checkbox" name="caption_enabled" value="1"
+                 {% if style.caption_enabled %}checked{% endif %}
+                 @click.stop
+                 class="mr-1">
+          Captions
+        </span>
+        <span x-text="openPanel === 'captions' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'captions'" class="px-4 pb-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Style</label>
+            <select name="caption_style" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="CHUNKED" {% if style.caption_style == 'CHUNKED' %}selected{% endif %}>Chunked</option>
+              <option value="WORD" {% if style.caption_style == 'WORD' %}selected{% endif %}>Word by Word</option>
+              <option value="KARAOKE" {% if style.caption_style == 'KARAOKE' %}selected{% endif %}>Karaoke</option>
+              <option value="FULL" {% if style.caption_style == 'FULL' %}selected{% endif %}>Full</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Position</label>
+            <select name="caption_position" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="TOP" {% if style.caption_position == 'TOP' %}selected{% endif %}>Top</option>
+              <option value="MIDDLE" {% if style.caption_position == 'MIDDLE' %}selected{% endif %}>Middle</option>
+              <option value="BOTTOM" {% if style.caption_position == 'BOTTOM' %}selected{% endif %}>Bottom</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Animation</label>
+            <select name="caption_animation" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="NONE" {% if style.caption_animation == 'NONE' %}selected{% endif %}>None</option>
+              <option value="POP" {% if style.caption_animation == 'POP' %}selected{% endif %}>Pop</option>
+              <option value="FADE" {% if style.caption_animation == 'FADE' %}selected{% endif %}>Fade</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Font Size</label>
+            <input type="number" name="caption_size" value="{{ style.caption_size }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Color</label>
+            <input type="color" name="caption_color" value="{{ style.caption_color }}"
+                   class="w-full h-8 bg-slate-700 border border-slate-600 rounded">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Stroke Color</label>
+            <input type="color" name="caption_stroke_color" value="{{ style.caption_stroke_color }}"
+                   class="w-full h-8 bg-slate-700 border border-slate-600 rounded">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Stroke Width</label>
+            <input type="number" name="caption_stroke_width" value="{{ style.caption_stroke_width }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Font</label>
+            <input type="text" name="caption_font" value="{{ style.caption_font }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Hook panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'hook' ? null : 'hook'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        <span class="flex items-center gap-2">
+          <input type="checkbox" name="hook_enabled" value="1"
+                 {% if style.hook_enabled %}checked{% endif %}
+                 @click.stop class="mr-1">
+          Hook
+        </span>
+        <span x-text="openPanel === 'hook' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'hook'" class="px-4 pb-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Style</label>
+            <select name="hook_style" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="OVERLAY_TOP" {% if style.hook_style == 'OVERLAY_TOP' %}selected{% endif %}>Overlay Top</option>
+              <option value="OVERLAY_BOTTOM" {% if style.hook_style == 'OVERLAY_BOTTOM' %}selected{% endif %}>Overlay Bottom</option>
+              <option value="FULL_SCREEN" {% if style.hook_style == 'FULL_SCREEN' %}selected{% endif %}>Full Screen</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Duration (sec)</label>
+            <input type="number" name="hook_duration_sec" value="{{ style.hook_duration_sec }}" step="0.5"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Animation</label>
+            <select name="hook_animation" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="NONE" {% if style.hook_animation == 'NONE' %}selected{% endif %}>None</option>
+              <option value="POP" {% if style.hook_animation == 'POP' %}selected{% endif %}>Pop</option>
+              <option value="FADE" {% if style.hook_animation == 'FADE' %}selected{% endif %}>Fade</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Font Size</label>
+            <input type="number" name="hook_size" value="{{ style.hook_size }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Text Color</label>
+            <input type="color" name="hook_color" value="{{ style.hook_color }}"
+                   class="w-full h-8 bg-slate-700 border border-slate-600 rounded">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Watermark panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'watermark' ? null : 'watermark'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        <span class="flex items-center gap-2">
+          <input type="checkbox" name="watermark_enabled" value="1"
+                 {% if style.watermark_enabled %}checked{% endif %}
+                 @click.stop class="mr-1">
+          Watermark
+        </span>
+        <span x-text="openPanel === 'watermark' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'watermark'" class="px-4 pb-4">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Type</label>
+            <select name="watermark_type" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="TEXT" {% if style.watermark_type == 'TEXT' %}selected{% endif %}>Text</option>
+              <option value="IMAGE" {% if style.watermark_type == 'IMAGE' %}selected{% endif %}>Image</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Text</label>
+            <input type="text" name="watermark_text" value="{{ style.watermark_text }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Position</label>
+            <select name="watermark_position" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="TOP_LEFT" {% if style.watermark_position == 'TOP_LEFT' %}selected{% endif %}>Top Left</option>
+              <option value="TOP_RIGHT" {% if style.watermark_position == 'TOP_RIGHT' %}selected{% endif %}>Top Right</option>
+              <option value="BOTTOM_LEFT" {% if style.watermark_position == 'BOTTOM_LEFT' %}selected{% endif %}>Bottom Left</option>
+              <option value="BOTTOM_RIGHT" {% if style.watermark_position == 'BOTTOM_RIGHT' %}selected{% endif %}>Bottom Right</option>
+              <option value="CENTER" {% if style.watermark_position == 'CENTER' %}selected{% endif %}>Center</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Opacity (0-1)</label>
+            <input type="number" name="watermark_opacity" value="{{ style.watermark_opacity }}" step="0.1" min="0" max="1"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Size (px)</label>
+            <input type="number" name="watermark_size" value="{{ style.watermark_size }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Background Music panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'music' ? null : 'music'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        <span class="flex items-center gap-2">
+          <input type="checkbox" name="music_enabled" value="1"
+                 {% if style.music_enabled %}checked{% endif %}
+                 @click.stop class="mr-1">
+          Background Music
+        </span>
+        <span x-text="openPanel === 'music' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'music'" class="px-4 pb-4">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Volume (dB)</label>
+            <input type="number" name="music_volume_db" value="{{ style.music_volume_db }}" step="1"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Fade In (sec)</label>
+            <input type="number" name="music_fade_in_sec" value="{{ style.music_fade_in_sec }}" step="0.5"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Fade Out (sec)</label>
+            <input type="number" name="music_fade_out_sec" value="{{ style.music_fade_out_sec }}" step="0.5"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Transitions panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'transitions' ? null : 'transitions'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        Transitions
+        <span x-text="openPanel === 'transitions' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'transitions'" class="px-4 pb-4">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Intro</label>
+            <select name="intro_transition" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="NONE" {% if style.intro_transition == 'NONE' %}selected{% endif %}>None</option>
+              <option value="FADE" {% if style.intro_transition == 'FADE' %}selected{% endif %}>Fade</option>
+              <option value="SLIDE" {% if style.intro_transition == 'SLIDE' %}selected{% endif %}>Slide</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Outro</label>
+            <select name="outro_transition" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="NONE" {% if style.outro_transition == 'NONE' %}selected{% endif %}>None</option>
+              <option value="FADE" {% if style.outro_transition == 'FADE' %}selected{% endif %}>Fade</option>
+              <option value="SLIDE" {% if style.outro_transition == 'SLIDE' %}selected{% endif %}>Slide</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Duration (sec)</label>
+            <input type="number" name="transition_duration_sec" value="{{ style.transition_duration_sec }}" step="0.1"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Progress Bar panel ── #}
+    <div class="bg-slate-800 rounded-lg mb-2">
+      <button type="button"
+              @click="openPanel = openPanel === 'progressbar' ? null : 'progressbar'"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200">
+        <span class="flex items-center gap-2">
+          <input type="checkbox" name="progress_bar_enabled" value="1"
+                 {% if style.progress_bar_enabled %}checked{% endif %}
+                 @click.stop class="mr-1">
+          Progress Bar
+        </span>
+        <span x-text="openPanel === 'progressbar' ? '▲' : '▼'" class="text-slate-400 text-xs"></span>
+      </button>
+      <div x-show="openPanel === 'progressbar'" class="px-4 pb-4">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Position</label>
+            <select name="progress_bar_position" class="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1">
+              <option value="TOP" {% if style.progress_bar_position == 'TOP' %}selected{% endif %}>Top</option>
+              <option value="BOTTOM" {% if style.progress_bar_position == 'BOTTOM' %}selected{% endif %}>Bottom</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Height (px)</label>
+            <input type="number" name="progress_bar_height" value="{{ style.progress_bar_height }}"
+                   class="w-full bg-slate-700 border border-slate-600 text-white rounded px-2 py-1">
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Color</label>
+            <input type="color" name="progress_bar_color" value="{{ style.progress_bar_color }}"
+                   class="w-full h-8 bg-slate-700 border border-slate-600 rounded">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if channel_template %}
+    <p class="text-xs text-slate-500 mt-2">
+      These are per-clip overrides. (Channel: {{ channel_template.channel.name }})
+    </p>
+    {% endif %}
+
+  </form>
 </div>
+{% else %}
+<div class="bg-slate-800 rounded-lg p-4">
+  <p class="text-xs text-slate-500">No style config available.</p>
+</div>
+{% endif %}
