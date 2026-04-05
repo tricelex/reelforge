@@ -32,3 +32,30 @@ def test_dashboard_forbidden_to_non_staff() -> None:
     client.force_login(user)
     response = client.get(reverse("ui:dashboard"))
     assert response.status_code == 302
+
+
+@pytest.mark.django_db
+def test_clipping_job_list_accessible_to_staff() -> None:
+    from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
+
+    user = UserFactory(is_staff=True)
+    ClippingJobFactory()
+    client = Client()
+    client.force_login(user)
+    response = client.get(reverse("clipping:job_list"))
+    assert response.status_code == 200
+    assert b"Clipping Jobs" in response.content
+
+
+@pytest.mark.django_db
+def test_clipping_job_list_filters_by_status() -> None:
+    from ***REMOVED***.clipping.models import ClippingJob
+    from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
+
+    user = UserFactory(is_staff=True)
+    ClippingJobFactory(status=ClippingJob.Status.COMPLETED)
+    ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
+    client = Client()
+    client.force_login(user)
+    response = client.get(reverse("clipping:job_list") + "?status=COMPLETED")
+    assert response.status_code == 200
