@@ -10,9 +10,9 @@ app_name = "clipping"
 
 urlpatterns = [
     # Job views
-    path("", jobs.job_list, name="job_list"),
-    path("<uuid:job_id>/", jobs.job_detail, name="job_detail"),
-    path("<uuid:job_id>/status/", jobs.job_status_partial, name="job_status_partial"),
+    path("", jobs.JobListView.as_view(), name="job_list"),
+    path("<uuid:job_id>/", jobs.JobDetailView.as_view(), name="job_detail"),
+    path("<uuid:job_id>/status/", jobs.JobStatusPartialView.as_view(), name="job_status_partial"),
     path("<uuid:job_id>/approve-all/", candidates.job_approve_all, name="job_approve_all"),
     path("<uuid:job_id>/start-render/", candidates.job_start_render, name="job_start_render"),
     # Candidate detail + actions

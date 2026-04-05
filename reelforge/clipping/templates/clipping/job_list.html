@@ -1,59 +1,101 @@
 {% extends "ui/base.html" %}
 
-{% block sidebar %}
-<p class="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 mt-1">Clipping</p>
-<a href="{% url 'clipping:job_list' %}"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-white bg-slate-700 rounded-md">
-  All Jobs
-</a>
-<a href="{% url 'clipping:job_list' %}?status=AWAITING_CLIP_APPROVAL"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
-  Awaiting Approval
-</a>
-<a href="{% url 'clipping:job_list' %}?status=COMPLETED"
-   class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded-md">
-  Completed
-</a>
-{% endblock sidebar %}
+{% block page_header %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h5 class="card-title text-xl">Clipping Jobs</h5>
+    <p class="card-subtitle">All video clipping jobs across channels</p>
+  </div>
+</div>
+{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-lg font-semibold text-white">Clipping Jobs</h1>
-</div>
 
 <!-- Status filter tabs -->
-<div class="flex gap-1 mb-4 flex-wrap">
+<div class="flex gap-2 mb-6 flex-wrap">
   <a href="{% url 'clipping:job_list' %}"
-     class="px-3 py-1.5 text-xs rounded-md {% if not status_filter %}bg-indigo-900/60 text-indigo-300{% else %}text-slate-400 hover:text-white{% endif %}">
+     class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
     All
   </a>
   {% for value, label in status_choices %}
   <a href="?status={{ value }}"
-     class="px-3 py-1.5 text-xs rounded-md {% if status_filter == value %}bg-indigo-900/60 text-indigo-300{% else %}text-slate-400 hover:text-white{% endif %}">
+     class="btn btn-sm {% if status_filter == value %}btn-primary{% else %}btn-outline-primary{% endif %}">
     {{ label }}
   </a>
   {% endfor %}
 </div>
 
-<div class="bg-slate-800 rounded-xl border border-slate-700">
-  {% if jobs %}
-  <div class="divide-y divide-slate-700">
-    {% for job in jobs %}
-    <a href="{% url 'clipping:job_detail' job.id %}"
-       class="flex items-center gap-4 px-4 py-3 hover:bg-slate-750 cursor-pointer">
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-white truncate">{{ job.source_title|default:"Untitled" }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">{{ job.channel.name }} · {{ job.created_at|date:"M d, Y" }}</p>
+<!-- Jobs table -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="-m-1.5 overflow-x-auto">
+      <div class="p-1.5 min-w-full inline-block align-middle">
+        {% if jobs %}
+        <div class="border overflow-hidden border-light-dark rounded-md">
+          <table class="min-w-full divide-y divide-border dark:divide-darkborder">
+            <thead>
+              <tr>
+                <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Title</th>
+                <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Channel</th>
+                <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Status</th>
+                <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Clips</th>
+                <th class="p-4 text-start text-sm font-semibold text-dark dark:text-white capitalize">Created</th>
+                <th class="p-4"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border dark:divide-darkborder">
+              {% for job in jobs %}
+              <tr class="hover:bg-lightgray dark:hover:bg-darkgray cursor-pointer"
+                  onclick="window.location='{% url 'clipping:job_detail' job.id %}'">
+                <td class="p-4 whitespace-nowrap">
+                  <p class="text-sm font-semibold text-dark dark:text-white mb-0">
+                    {{ job.source_title|default:"Untitled" }}
+                  </p>
+                  {% if job.source_url %}
+                  <p class="text-xs text-bodytext dark:text-darklink mb-0 truncate max-w-xs">
+                    {{ job.source_url|truncatechars:50 }}
+                  </p>
+                  {% endif %}
+                </td>
+                <td class="p-4 whitespace-nowrap">
+                  <p class="text-sm text-bodytext dark:text-darklink mb-0">{{ job.channel.name }}</p>
+                </td>
+                <td class="p-4 whitespace-nowrap">
+                  {% include "ui/partials/status_badge.html" with status=job.status %}
+                </td>
+                <td class="p-4 whitespace-nowrap">
+                  {% with count=job.candidates.count %}
+                  {% if count %}
+                  <span class="text-sm font-semibold text-dark dark:text-white">{{ count }}</span>
+                  {% else %}
+                  <span class="text-sm text-bodytext dark:text-darklink">—</span>
+                  {% endif %}
+                  {% endwith %}
+                </td>
+                <td class="p-4 whitespace-nowrap">
+                  <p class="text-sm text-bodytext dark:text-darklink mb-0">{{ job.created_at|date:"M d, Y" }}</p>
+                </td>
+                <td class="p-4 whitespace-nowrap text-end">
+                  <a href="{% url 'clipping:job_detail' job.id %}"
+                     class="h-8 w-8 inline-flex items-center justify-center rounded-full hover:bg-lightprimary hover:text-primary dark:hover:bg-darkprimary transition-colors"
+                     onclick="event.stopPropagation()">
+                    <i class="ti ti-chevron-right text-lg"></i>
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+          <i class="ti ti-video-off text-4xl text-bodytext dark:text-darklink mb-3 block"></i>
+          <p class="text-sm text-bodytext dark:text-darklink">No jobs found.</p>
+        </div>
+        {% endif %}
       </div>
-      {% include "ui/partials/status_badge.html" with status=job.status %}
-      <svg class="w-4 h-4 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-      </svg>
-    </a>
-    {% endfor %}
+    </div>
   </div>
-  {% else %}
-  <p class="px-4 py-8 text-xs text-slate-500 text-center">No jobs found.</p>
-  {% endif %}
 </div>
-{% endblock content %}
+
+{% endblock %}

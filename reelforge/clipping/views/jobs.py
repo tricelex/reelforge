@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import get_object_or_404
-from django.shortcuts import render
+from django.views.generic import TemplateView
 
 from reelforge.clipping.models import ClippingJob
+from reelforge.ui.mixins import StaffRequiredMixin
 
 _FSM_STAGE_ORDER = [
     ClippingJob.Status.INITIALIZING,
@@ -38,59 +38,58 @@ def _get_completed_stages(job: ClippingJob) -> set[str]:
     return {s.value for s in _FSM_STAGE_ORDER[:current_idx]}
 
 
-@staff_member_required
-def job_list(request):
-    status_filter = request.GET.get("status", "")
-    jobs = ClippingJob.objects.select_related("channel").order_by("-created_at")
+class JobListView(StaffRequiredMixin, TemplateView):
+    template_name = "clipping/job_list.html"
 
-    if status_filter:
-        jobs = jobs.filter(status=status_filter)
-
-    context = {
-        "jobs": jobs,
-        "status_filter": status_filter,
-        "status_choices": ClippingJob.Status.choices,
-        "nav_section": "clipping",
-    }
-    return render(request, "clipping/job_list.html", context)
-
-
-@staff_member_required
-def job_detail(request, job_id):
-    job = get_object_or_404(
-        ClippingJob.objects.select_related("channel").prefetch_related(
-            "candidates__layout_config",
-            "candidates__style_config",
-        ),
-        id=job_id,
-    )
-    candidates = job.candidates.order_by("-relevance_score")
-
-    context = {
-        "job": job,
-        "candidates": candidates,
-        "nav_section": "clipping",
-        "fsm_stages": _FSM_STAGE_LABELS,
-        "job_completed_stages": _get_completed_stages(job),
-    }
-    return render(request, "clipping/job_detail.html", context)
+    def get_context_data(self, **kwargs: object) -> dict[str, object]:
+        context = super().get_context_data(**kwargs)
+        status_filter = self.request.GET.get("status", "")
+        jobs = ClippingJob.objects.select_related("channel").order_by("-created_at")
+        if status_filter:
+            jobs = jobs.filter(status=status_filter)
+        context.update({
+            "jobs": jobs,
+            "status_filter": status_filter,
+            "status_choices": ClippingJob.Status.choices,
+            "nav_active": "clipping",
+        })
+        return context
 
 
-@staff_member_required
-def job_status_partial(request, job_id):
+class JobDetailView(StaffRequiredMixin, TemplateView):
+    template_name = "clipping/job_detail.html"
+
+    def get_context_data(self, **kwargs: object) -> dict[str, object]:
+        context = super().get_context_data(**kwargs)
+        job = get_object_or_404(
+            ClippingJob.objects.select_related("channel").prefetch_related(
+                "candidates__layout_config",
+                "candidates__style_config",
+            ),
+            id=self.kwargs["job_id"],
+        )
+        context.update({
+            "job": job,
+            "candidates": job.candidates.order_by("-relevance_score"),
+            "nav_active": "clipping",
+            "fsm_stages": _FSM_STAGE_LABELS,
+            "job_completed_stages": _get_completed_stages(job),
+        })
+        return context
+
+
+class JobStatusPartialView(StaffRequiredMixin, TemplateView):
     """HTMX partial — returns just the stage tracker strip."""
-    job = get_object_or_404(ClippingJob, id=job_id)
-    terminal = job.status in (
-        ClippingJob.Status.COMPLETED,
-        ClippingJob.Status.FAILED,
-    )
-    return render(
-        request,
-        "clipping/partials/job_status.html",
-        {
+
+    template_name = "clipping/partials/job_status.html"
+
+    def get_context_data(self, **kwargs: object) -> dict[str, object]:
+        context = super().get_context_data(**kwargs)
+        job = get_object_or_404(ClippingJob, id=self.kwargs["job_id"])
+        context.update({
             "job": job,
             "fsm_stages": _FSM_STAGE_LABELS,
             "job_completed_stages": _get_completed_stages(job),
-            "terminal": terminal,
-        },
-    )
+            "terminal": job.status in (ClippingJob.Status.COMPLETED, ClippingJob.Status.FAILED),
+        })
+        return context
