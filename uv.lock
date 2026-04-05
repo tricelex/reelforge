@@ -728,6 +728,19 @@ wheels = [
 ]
 
 [[package]]
+name = "django-htmx"
+version = "1.27.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "asgiref" },
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/f2/8c3e28a5eed8e5226835c762892bfef74eda7e8629c65b49c186098eb303/django_htmx-1.27.0.tar.gz", hash = "sha256:036e5da801bfdf5f1ca815f21592cfb9f004a898f330c842f15e55c70e301a75", size = 65362, upload-time = "2025-11-28T23:18:55.049Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/ac/25d28489dc43224e260f4ebee7565f7ef1efe12af0f284a89500c19f75e2/django_htmx-1.27.0-py3-none-any.whl", hash = "sha256:13e1e13b87d39b57f95aae6e4987cb3df056d0b1373a41f4a94504a00298ffd8", size = 62126, upload-time = "2025-11-28T23:18:53.57Z" },
+]
+
+[[package]]
 name = "django-model-utils"
 version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2418,6 +2431,7 @@ dependencies = [
     { name = "django-environ" },
     { name = "django-fsm-2" },
     { name = "django-fsm-log" },
+    { name = "django-htmx" },
     { name = "django-model-utils" },
     { name = "django-redis" },
     { name = "django-storages", extra = ["google"] },
@@ -2491,6 +2505,7 @@ requires-dist = [
     { name = "django-environ", specifier = "==0.12.1" },
     { name = "django-fsm-2", specifier = ">=4.1.0" },
     { name = "django-fsm-log", specifier = ">=5.0.2" },
+    { name = "django-htmx", specifier = ">=1.27.0" },
     { name = "django-model-utils", specifier = "==5.0.0" },
     { name = "django-redis", specifier = "==6.0.0" },
     { name = "django-storages", extras = ["google"], specifier = "==1.14.6" },
