@@ -16,7 +16,6 @@ from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
 from reelforge.clipping.models import ClippingJob
 
-from reelforge.channels.tests.factories import ChannelFactory
 from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
 from reelforge.clipping.models import ClipRenderStageResult
@@ -158,10 +157,17 @@ def test_clip_candidate_duration_property() -> None:
 
 @pytest.mark.django_db
 def test_clip_layout_config_default_render_mode() -> None:
-    candidate = ClipCandidateFactory()
-    # Signal auto-creates the config on candidate save — just fetch it
+    from reelforge.channels.models import SocialAccount
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    # YOUTUBE platform maps to CENTER_CROP per PLATFORM_RENDER_MODE_DEFAULTS
+    social_account = SocialAccountFactory(platform=SocialAccount.Platform.YOUTUBE)
+    from reelforge.clipping.tests.factories import ClippingJobFactory as _JobFactory
+
+    job = _JobFactory(social_account=social_account)
+    candidate = ClipCandidateFactory(clipping_job=job)
     config = ClipLayoutConfig.objects.get(candidate=candidate)
-    assert config.render_mode == "SMART_CROP"
+    assert config.render_mode == "CENTER_CROP"
 
 
 @pytest.mark.django_db
@@ -213,8 +219,7 @@ def test_has_spatial_regions_false_when_region_b_missing() -> None:
 
 @pytest.mark.django_db
 def test_clip_render_template_auto_fields_have_correct_defaults() -> None:
-    channel = ChannelFactory()
-    template = ClipRenderTemplate.objects.get(channel=channel)
+    template = ClipRenderTemplate.objects.create(name="Test Template")
     assert template.caption_enabled is True
     assert template.caption_style == "CHUNKED"
     assert template.caption_font == "Montserrat-Bold"
@@ -257,8 +262,7 @@ def test_clip_render_template_auto_fields_have_correct_defaults() -> None:
 
 @pytest.mark.django_db
 def test_clip_render_template_to_style_defaults_returns_all_style_fields() -> None:
-    channel = ChannelFactory()
-    template = ClipRenderTemplate.objects.get(channel=channel)
+    template = ClipRenderTemplate.objects.create(name="Test Template")
     template.caption_size = 72
     template.music_enabled = True
     template.save(update_fields=["caption_size", "music_enabled", "updated_at"])
@@ -272,18 +276,14 @@ def test_clip_render_template_to_style_defaults_returns_all_style_fields() -> No
 
 @pytest.mark.django_db
 def test_clip_media_asset_str_includes_name_and_type() -> None:
-    channel = ChannelFactory()
-    asset = ClipMediaAsset.objects.create(
-        channel=channel, name="Brand Intro", asset_type="INTRO"
-    )
+    asset = ClipMediaAsset.objects.create(name="Brand Intro", asset_type="INTRO")
     assert "Brand Intro" in str(asset)
     assert "INTRO" in str(asset) or "Intro" in str(asset)
 
 
 @pytest.mark.django_db
 def test_clip_music_asset_str_includes_name() -> None:
-    channel = ChannelFactory()
-    asset = ClipMusicAsset.objects.create(channel=channel, name="Chill Beat")
+    asset = ClipMusicAsset.objects.create(name="Chill Beat")
     assert "Chill Beat" in str(asset)
 
 
@@ -363,6 +363,14 @@ def test_clip_render_stage_result_str() -> None:
 
 @pytest.mark.django_db
 def test_clip_layout_config_str() -> None:
-    candidate = ClipCandidateFactory()
+    from reelforge.channels.models import SocialAccount
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    # TIKTOK platform maps to SMART_CROP
+    social_account = SocialAccountFactory(platform=SocialAccount.Platform.TIKTOK)
+    from reelforge.clipping.tests.factories import ClippingJobFactory as _JobFactory
+
+    job = _JobFactory(social_account=social_account)
+    candidate = ClipCandidateFactory(clipping_job=job)
     config = ClipLayoutConfig.objects.get(candidate=candidate)
     assert "Smart Crop" in str(config)
