@@ -1,107 +1,87 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from django.http import HttpRequest
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
-from django.views import View
-from django.views.generic import TemplateView
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.mixins import ListModelMixin
+from rest_framework.mixins import RetrieveModelMixin
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.viewsets import GenericViewSet
 
 from reelforge.clipping.models import ClipRender
+from reelforge.clipping.serializers import ClipRenderSerializer
 from reelforge.clipping.tasks import render_clip
-from reelforge.ui.mixins import StaffRequiredMixin
 
-logger = logging.getLogger("reelforge.clipping.views")
-
-_TERMINAL_RENDER_STATUSES = frozenset({
-    ClipRender.RenderStatus.COMPLETED,
-    ClipRender.RenderStatus.FAILED,
-    ClipRender.RenderStatus.PAUSED_AT_GATE,
-})
+logger = logging.getLogger("reelforge.clipping.api")
 
 
-class RenderDetailView(StaffRequiredMixin, TemplateView):
-    template_name = "clipping/render_detail.html"
+class ClipRenderViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
+    queryset = ClipRender.objects.select_related("candidate").prefetch_related("stage_results")
+    serializer_class = ClipRenderSerializer
+    http_method_names = ["get", "post", "head", "options"]
 
-    def get_context_data(self, **kwargs: object) -> dict[str, object]:
-        context = super().get_context_data(**kwargs)
-        clip_render = get_object_or_404(
-            ClipRender.objects.select_related(
-                "candidate__clipping_job__social_account",
-                "candidate__layout_config",
-            ).prefetch_related("stage_results"),
-            pk=self.kwargs["render_id"],
-        )
-        candidate = clip_render.candidate
-        context.update({
-            "render": clip_render,
-            "candidate": candidate,
-            "layout": getattr(candidate, "layout_config", None),
-            "stages": list(clip_render.stage_results.order_by("stage_order")),
-            "is_terminal": clip_render.status in _TERMINAL_RENDER_STATUSES,
-            "nav_active": "clipping",
-        })
-        return context
+    def get_serializer_context(self) -> dict[str, Any]:
+        ctx = super().get_serializer_context()
+        ctx["request"] = self.request
+        return ctx
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        candidate_id = self.request.query_params.get("candidate")
+        if candidate_id:
+            qs = qs.filter(candidate_id=candidate_id)
+        return qs
 
-class StageListPartialView(StaffRequiredMixin, TemplateView):
-    """HTMX polling target: refreshes the stage list. Self-stopping when render is terminal."""
-
-    template_name = "clipping/partials/stage_list.html"
-
-    def get_context_data(self, **kwargs: object) -> dict[str, object]:
-        context = super().get_context_data(**kwargs)
-        clip_render = get_object_or_404(
-            ClipRender.objects.prefetch_related("stage_results"),
-            pk=self.kwargs["render_id"],
-        )
-        context.update({
-            "render": clip_render,
-            "stages": list(clip_render.stage_results.order_by("stage_order")),
-            "is_terminal": clip_render.status in _TERMINAL_RENDER_STATUSES,
-        })
-        return context
-
-
-class RerunFromStageView(StaffRequiredMixin, View):
-    """Re-run the render pipeline from the given stage order."""
-
-    def post(self, request: HttpRequest, render_id: str, stage_order: int) -> HttpResponse:
-        clip_render = get_object_or_404(ClipRender, pk=render_id)
-        clip_render.status = ClipRender.RenderStatus.RUNNING
-        clip_render.paused_at_stage = None
-        clip_render.last_error = ""
-        clip_render.save(update_fields=["status", "paused_at_stage", "last_error", "updated_at"])
+    @action(detail=True, methods=["post"])
+    def resume(self, request: Request, pk: str | None = None) -> Response:
+        """Resume a PAUSED_AT_GATE render from the next stage."""
+        render: ClipRender = self.get_object()
+        if render.status != ClipRender.RenderStatus.PAUSED_AT_GATE:
+            return Response(
+                {"detail": f"Render is not paused. Current status: {render.status}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if render.paused_at_stage is None:
+            return Response(
+                {"detail": "paused_at_stage is not set."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        next_stage = render.paused_at_stage + 1
         render_clip.delay(
-            str(clip_render.candidate_id),
-            clip_render_id=str(clip_render.pk),
-            start_from_stage=stage_order,
-        )
-        response = HttpResponse(status=204)
-        response["HX-Redirect"] = f"/app/clipping/renders/{render_id}/"
-        return response
-
-
-class ResumeRenderView(StaffRequiredMixin, View):
-    """Continue the pipeline from the stage after the current gate pause."""
-
-    def post(self, request: HttpRequest, render_id: str) -> HttpResponse:
-        clip_render = get_object_or_404(ClipRender, pk=render_id)
-        if (
-            clip_render.status != ClipRender.RenderStatus.PAUSED_AT_GATE
-            or clip_render.paused_at_stage is None
-        ):
-            return HttpResponse("Render is not paused at a gate", status=400)
-        next_stage = clip_render.paused_at_stage + 1
-        clip_render.status = ClipRender.RenderStatus.RUNNING
-        clip_render.paused_at_stage = None
-        clip_render.save(update_fields=["status", "paused_at_stage", "updated_at"])
-        render_clip.delay(
-            str(clip_render.candidate_id),
-            clip_render_id=str(clip_render.pk),
+            str(render.candidate_id),
             start_from_stage=next_stage,
+            clip_render_id=str(render.id),
         )
-        response = HttpResponse(status=204)
-        response["HX-Redirect"] = f"/app/clipping/renders/{render_id}/"
-        return response
+        return Response({"resumed": True, "start_from_stage": next_stage})
+
+    @action(detail=True, methods=["post"], url_path=r"rerun/(?P<stage_order>[0-9]+)")
+    def rerun(self, request: Request, pk: str | None = None, stage_order: str = "1") -> Response:
+        """Re-run a render from a specific stage."""
+        render: ClipRender = self.get_object()
+        start = int(stage_order)
+        if not 1 <= start <= 10:
+            return Response(
+                {"detail": "stage_order must be between 1 and 10."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        render_clip.delay(
+            str(render.candidate_id),
+            start_from_stage=start,
+            clip_render_id=str(render.id),
+        )
+        return Response({"rerunning": True, "start_from_stage": start})
+
+    @action(detail=True, methods=["get"])
+    def download(self, request: Request, pk: str | None = None) -> Response:
+        """Return a URL for downloading the final render file."""
+        render: ClipRender = self.get_object()
+        if not render.video_file:
+            return Response(
+                {"detail": "Render has no video file yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        url = request.build_absolute_uri(render.video_file.url)
+        return Response({"download_url": url})
