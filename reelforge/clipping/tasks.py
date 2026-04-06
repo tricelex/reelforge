@@ -96,7 +96,7 @@ def download_source_video(self, clipping_job_id: str) -> None:
 )
 def transcribe_video(self, clipping_job_id: str) -> None:
     try:
-        job = ClippingJob.objects.select_related("channel").get(id=clipping_job_id)
+        job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
         logger.error("ClippingJob not found for transcription", extra={"id": clipping_job_id})
         return
@@ -166,7 +166,7 @@ def transcribe_video(self, clipping_job_id: str) -> None:
 )
 def analyze_clips(self, clipping_job_id: str) -> None:
     try:
-        job = ClippingJob.objects.select_related("channel").get(id=clipping_job_id)
+        job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
         logger.error("ClippingJob not found for analysis", extra={"id": clipping_job_id})
         return
@@ -231,7 +231,7 @@ def render_clip(
     """
     try:
         candidate = ClipCandidate.objects.select_related(
-            "clipping_job__channel"
+            "clipping_job__social_account"
         ).get(id=clip_candidate_id)
     except ClipCandidate.DoesNotExist:
         logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
@@ -269,7 +269,8 @@ def render_clip(
 
     try:
         job = candidate.clipping_job
-        channel = job.channel
+        social_account = job.social_account
+        channel = social_account.channel
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
         output_path.parent.mkdir(parents=True, exist_ok=True)

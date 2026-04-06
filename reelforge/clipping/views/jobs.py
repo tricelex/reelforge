@@ -44,7 +44,7 @@ class JobListView(StaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs: object) -> dict[str, object]:
         context = super().get_context_data(**kwargs)
         status_filter = self.request.GET.get("status", "")
-        jobs = ClippingJob.objects.select_related("channel").order_by("-created_at")
+        jobs = ClippingJob.objects.select_related("social_account").order_by("-created_at")
         if status_filter:
             jobs = jobs.filter(status=status_filter)
         context.update({
@@ -62,7 +62,7 @@ class JobDetailView(StaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs: object) -> dict[str, object]:
         context = super().get_context_data(**kwargs)
         job = get_object_or_404(
-            ClippingJob.objects.select_related("channel").prefetch_related(
+            ClippingJob.objects.select_related("social_account").prefetch_related(
                 "candidates__layout_config",
                 "candidates__style_config",
             ),

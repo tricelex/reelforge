@@ -21,7 +21,7 @@ class ClipAnalysisService:
     def analyze(self) -> list[ClipCandidate]:
         transcript = self.job.transcript_text
         prompt = self._build_prompt(transcript)
-        llm = get_llm_provider(self.job.channel)
+        llm = get_llm_provider(self.job.social_account.channel)
         response = llm.complete(prompt=prompt, system=self._system_prompt())
 
         raw_clips = self._parse_llm_response(response.text)
@@ -87,7 +87,7 @@ class ClipAnalysisService:
         return " ".join(words)
 
     def _build_prompt(self, transcript: str) -> str:
-        channel = self.job.channel
+        channel = self.job.social_account.channel
         niche = getattr(channel, "niche_category", None) or getattr(channel, "custom_niche", None) or "general"
         return (
             f"Analyze this video transcript from a {niche} YouTube channel. "

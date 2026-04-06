@@ -3,7 +3,6 @@ from __future__ import annotations
 import factory
 from factory.django import DjangoModelFactory
 
-from ***REMOVED***.channels.tests.factories import ChannelFactory
 from ***REMOVED***.channels.tests.factories import SocialAccountFactory
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
@@ -19,7 +18,7 @@ from ***REMOVED***.clipping.models import ClipTimedOverlay
 
 
 class ClippingJobFactory(DjangoModelFactory[ClippingJob]):
-    channel = factory.SubFactory(ChannelFactory)
+    social_account = factory.SubFactory(SocialAccountFactory)
     source_type = ClippingJob.SourceType.YOUTUBE_URL
     source_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     source_title = factory.Sequence(lambda n: f"Test Video {n}")
@@ -35,7 +34,7 @@ class ClipCandidateFactory(DjangoModelFactory[ClipCandidate]):
     end_sec = 120.0
     title = "Amazing clip title"
     hook_text = "You won't believe this"
-    caption_template = "{title} \U0001f3af"
+    caption_template = "{title} 🎯"
     relevance_score = 8.5
     reason = "High engagement moment"
     transcript_excerpt = "Sample transcript text here"
@@ -66,12 +65,6 @@ class ClipPostFactory(DjangoModelFactory[ClipPost]):
 
 
 class ClipLayoutConfigFactory(DjangoModelFactory[ClipLayoutConfig]):
-    """Factory for ClipLayoutConfig.
-
-    Uses update_or_create so it works even when the auto-creation signal
-    has already created a ClipLayoutConfig for the candidate.
-    """
-
     candidate = factory.SubFactory(ClipCandidateFactory)
     render_mode = ClipLayoutConfig.RenderMode.SMART_CROP
 
@@ -91,30 +84,14 @@ class ClipLayoutConfigFactory(DjangoModelFactory[ClipLayoutConfig]):
 
 
 class ClipRenderTemplateFactory(DjangoModelFactory[ClipRenderTemplate]):
-    """Factory for ClipRenderTemplate.
-
-    Uses update_or_create because the Channel post_save signal auto-creates one.
-    """
-
-    channel = factory.SubFactory(ChannelFactory)
+    name = factory.Sequence(lambda n: f"Template {n}")
+    is_default = False
 
     class Meta:
         model = ClipRenderTemplate
 
-    @classmethod
-    def _create(cls, model_class, *args, **kwargs):
-        channel = kwargs.get("channel")
-        if channel is not None:
-            obj, _ = model_class.objects.update_or_create(
-                channel=channel,
-                defaults={k: v for k, v in kwargs.items() if k != "channel"},
-            )
-            return obj
-        return super()._create(model_class, *args, **kwargs)
-
 
 class ClipMediaAssetFactory(DjangoModelFactory[ClipMediaAsset]):
-    channel = factory.SubFactory(ChannelFactory)
     asset_type = "INTRO"
     name = factory.Sequence(lambda n: f"Intro Clip {n}")
     file = factory.django.FileField(filename="intro.mp4", data=b"fake")
@@ -125,7 +102,6 @@ class ClipMediaAssetFactory(DjangoModelFactory[ClipMediaAsset]):
 
 
 class ClipMusicAssetFactory(DjangoModelFactory[ClipMusicAsset]):
-    channel = factory.SubFactory(ChannelFactory)
     name = factory.Sequence(lambda n: f"Music Track {n}")
     file = factory.django.FileField(filename="track.mp3", data=b"fake")
     genre = "Chill"
@@ -136,11 +112,6 @@ class ClipMusicAssetFactory(DjangoModelFactory[ClipMusicAsset]):
 
 
 class ClipStyleConfigFactory(DjangoModelFactory[ClipStyleConfig]):
-    """Factory for ClipStyleConfig.
-
-    Uses update_or_create because the ClipCandidate post_save signal auto-creates one.
-    """
-
     candidate = factory.SubFactory(ClipCandidateFactory)
 
     class Meta:

@@ -28,7 +28,7 @@ class RenderDetailView(StaffRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         clip_render = get_object_or_404(
             ClipRender.objects.select_related(
-                "candidate__clipping_job__channel",
+                "candidate__clipping_job__social_account",
                 "candidate__layout_config",
             ).prefetch_related("stage_results"),
             pk=self.kwargs["render_id"],

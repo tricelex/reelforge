@@ -70,7 +70,7 @@ logger = logging.getLogger("***REMOVED***.clipping")
 
 class CandidateApproveView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__social_account"), id=candidate_id)
         user = cast("User", request.user)
         candidate.approved = True
         candidate.status = ClipCandidate.CandidateStatus.APPROVED
@@ -92,7 +92,7 @@ class CandidateApproveView(StaffRequiredMixin, View):
 
 class CandidateRejectView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__social_account"), id=candidate_id)
         user = cast("User", request.user)
         candidate.approved = False
         candidate.status = ClipCandidate.CandidateStatus.REJECTED
@@ -112,7 +112,7 @@ class CandidateRejectView(StaffRequiredMixin, View):
 
 class CandidateUndoRejectView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, candidate_id: str) -> HttpResponse:
-        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__channel"), id=candidate_id)
+        candidate = get_object_or_404(ClipCandidate.objects.select_related("clipping_job__social_account"), id=candidate_id)
         candidate.approved = None
         candidate.status = ClipCandidate.CandidateStatus.PROPOSED
         candidate.save(update_fields=["approved", "status", "updated_at"])
@@ -194,7 +194,7 @@ class CandidateDetailView(StaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs: object) -> dict[str, object]:
         context = super().get_context_data(**kwargs)
         candidate = get_object_or_404(
-            ClipCandidate.objects.select_related("clipping_job__channel").prefetch_related("timed_overlays"),
+            ClipCandidate.objects.select_related("clipping_job__social_account").prefetch_related("timed_overlays"),
             pk=self.kwargs["candidate_id"],
         )
         context.update(
