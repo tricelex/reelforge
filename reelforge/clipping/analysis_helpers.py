@@ -118,7 +118,7 @@ def build_analysis_manifest(
     diarization: dict[str, Any],
     face_mappings: dict[str, list[dict]],
     scene_cuts: list[float],
-    candidates: list,
+    candidates: list[Any],
 ) -> dict[str, Any]:
     """Assemble the full analysis_manifest JSON (schema v2.0).
 
