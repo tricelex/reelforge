@@ -11,7 +11,6 @@ from django.utils import timezone
 from django_fsm import FSMField
 from django_fsm import transition
 
-from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import SocialAccount
 from ***REMOVED***.clipping.constants import CaptionAnimation
 from ***REMOVED***.clipping.constants import CaptionPosition
@@ -652,27 +651,35 @@ class ClipRenderStyleMixin(models.Model):
 
 
 class ClipRenderTemplate(ClipRenderStyleMixin, BaseAbstractModel):
-    """Channel-level render style defaults. One per channel, auto-created on channel save."""
+    """Global render style defaults. One can be marked as the system default."""
 
-    channel = models.OneToOneField(
-        Channel,
-        on_delete=models.CASCADE,
-        related_name="clip_render_template",
-    )
+    name = models.CharField(max_length=100, default="Default Template")
+    is_default = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Clip Render Template"
         verbose_name_plural = "Clip Render Templates"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=models.Q(is_default=True),
+                name="unique_default_render_template",
+            )
+        ]
 
     def __str__(self) -> str:
-        return f"Render Template — {self.channel.name}"
+        return f"{'[Default] ' if self.is_default else ''}{self.name}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if self.is_default:
+            ClipRenderTemplate.objects.exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
 
     def to_style_defaults(self) -> dict[str, Any]:
-        """Return a dict of all style fields suitable for seeding a ClipStyleConfig."""
+        """Return all style fields suitable for seeding a ClipStyleConfig."""
         result: dict[str, Any] = {}
         for name in self.STYLE_FIELD_NAMES:
             value = getattr(self, name)
-            # FileField/ImageField: store the name string (relative path), not the FieldFile
             if hasattr(value, "name"):
                 value = value.name or ""
             result[name] = value
@@ -680,16 +687,11 @@ class ClipRenderTemplate(ClipRenderStyleMixin, BaseAbstractModel):
 
 
 class ClipMediaAsset(BaseAbstractModel):
-    """Intro or outro video clip library for a channel.
+    """Intro or outro video clip library.
 
     Operator uploads short branded clips; duration_sec is auto-detected via ffprobe.
     """
 
-    channel = models.ForeignKey(
-        Channel,
-        on_delete=models.CASCADE,
-        related_name="media_assets",
-    )
     asset_type = models.CharField(
         max_length=10, choices=MediaAssetType.choices, default=MediaAssetType.INTRO
     )
@@ -697,13 +699,19 @@ class ClipMediaAsset(BaseAbstractModel):
     file = models.FileField(upload_to="clipping/media_assets/", max_length=500, blank=True)
     duration_sec = models.FloatField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    thumbnail = models.ImageField(
+        upload_to="clipping/media_assets/thumbs/",
+        blank=True,
+        null=True,
+        max_length=500,
+    )
 
     class Meta:
         ordering = ["asset_type", "name"]
         verbose_name = "Clip Media Asset"
         verbose_name_plural = "Clip Media Assets"
         indexes = [
-            models.Index(fields=["channel", "asset_type", "is_active"]),
+            models.Index(fields=["asset_type", "is_active"]),
         ]
 
     def __str__(self) -> str:
@@ -711,26 +719,27 @@ class ClipMediaAsset(BaseAbstractModel):
 
 
 class ClipMusicAsset(BaseAbstractModel):
-    """Background music track library for a channel."""
+    """Background music track library."""
 
-    channel = models.ForeignKey(
-        Channel,
-        on_delete=models.CASCADE,
-        related_name="music_assets",
-    )
     name = models.CharField(max_length=200)
     file = models.FileField(upload_to="clipping/music_assets/", max_length=500, blank=True)
     duration_sec = models.FloatField(null=True, blank=True)
     bpm = models.FloatField(null=True, blank=True)
     genre = models.CharField(max_length=100, blank=True)
     is_active = models.BooleanField(default=True)
+    waveform_file = models.FileField(
+        upload_to="clipping/music_assets/waveforms/",
+        blank=True,
+        null=True,
+        max_length=500,
+    )
 
     class Meta:
         ordering = ["genre", "name"]
         verbose_name = "Clip Music Asset"
         verbose_name_plural = "Clip Music Assets"
         indexes = [
-            models.Index(fields=["channel", "is_active"]),
+            models.Index(fields=["is_active"]),
         ]
 
     def __str__(self) -> str:
@@ -746,6 +755,13 @@ class ClipStyleConfig(ClipRenderStyleMixin, BaseAbstractModel):
         ClipCandidate,
         on_delete=models.CASCADE,
         related_name="style_config",
+    )
+    render_template = models.ForeignKey(
+        ClipRenderTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="seeded_style_configs",
     )
     intro_asset = models.ForeignKey(
         ClipMediaAsset,
