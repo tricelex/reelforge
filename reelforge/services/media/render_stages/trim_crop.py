@@ -93,18 +93,20 @@ class TrimAndCropStage(RenderStage):
 
     def _build_smart_crop_command(self, input_path: Path) -> list[str]:
         lc = self.layout_config
-        if lc is not None and lc.has_manual_smart_crop:
-            crop_x = lc.manual_crop_x
-            crop_w = lc.manual_crop_w
-            crop_h = lc.manual_crop_h
-        else:
-            service = SpeakerDetectionService()
-            result = service.detect(input_path, self.start_sec, self.end_sec)
-            self.last_speaker_crop_result = result
-            crop_x = result.crop_x
-            crop_w = result.crop_w
-            crop_h = result.crop_h
-
+        service = SpeakerDetectionService()
+        result = service.detect(
+            video_path=input_path,
+            start_sec=self.start_sec,
+            end_sec=self.end_sec,
+            manual_crop_x=lc.manual_crop_x if lc is not None else None,
+            manual_crop_y=lc.manual_crop_y if lc is not None else None,
+            manual_crop_w=lc.manual_crop_w if lc is not None else None,
+            manual_crop_h=lc.manual_crop_h if lc is not None else None,
+        )
+        self.last_speaker_crop_result = result
+        crop_x = result.crop_x
+        crop_w = result.crop_w
+        crop_h = result.crop_h
         vf = f"crop={crop_w}:{crop_h}:{crop_x}:0,scale={self.width}:{self.height},fps={self.fps}"
         return [
             "ffmpeg", "-y",
