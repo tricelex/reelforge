@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -36,10 +37,10 @@ class SpeakerDetectionService:
     """
 
     def __init__(self) -> None:
-        self._face_detector = None
-        self._diarizer = None
+        self._face_detector: Any = None
+        self._diarizer: Any = None
 
-    def _get_face_detector(self):
+    def _get_face_detector(self) -> Any:
         if self._face_detector is None:
             import mediapipe as mp
 
@@ -49,7 +50,7 @@ class SpeakerDetectionService:
             )
         return self._face_detector
 
-    def _get_diarizer(self):
+    def _get_diarizer(self) -> Any:
         if self._diarizer is None:
             from django.conf import settings
             from pyannote.audio import Pipeline as PyannotePipeline
@@ -93,6 +94,12 @@ class SpeakerDetectionService:
                     DiarizationSegment(speaker_id=speaker, start=turn.start, end=turn.end)
                 )
             return segments
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "ffmpeg audio extraction failed",
+                extra={"video_path": str(video_path), "returncode": exc.returncode},
+            )
+            raise
         finally:
             Path(audio_path).unlink(missing_ok=True)
 
@@ -107,41 +114,40 @@ class SpeakerDetectionService:
         import cv2
 
         cap = cv2.VideoCapture(str(video_path))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        start_frame = int(start_sec * fps)
-        end_frame = int(end_sec * fps)
-        detector = self._get_face_detector()
-        results: list[dict] = []
+            start_frame = int(start_sec * fps)
+            end_frame = int(end_sec * fps)
+            detector = self._get_face_detector()
+            results: list[dict] = []
 
-        for frame_num in range(start_frame, end_frame, sample_every_n_frames):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-            ret, frame = cap.read()
-            if not ret:
-                break
-            import cv2 as _cv2
-
-            frame_rgb = _cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB)
-            detection = detector.process(frame_rgb)
-            timestamp = frame_num / fps
-            faces: list[dict] = []
-            if detection.detections:
-                for d in detection.detections:
-                    bbox = d.location_data.relative_bounding_box
-                    faces.append(
-                        {
-                            "x": int(bbox.xmin * frame_width),
-                            "y": int(bbox.ymin * frame_height),
-                            "w": int(bbox.width * frame_width),
-                            "h": int(bbox.height * frame_height),
-                            "confidence": float(d.score[0]),
-                        }
-                    )
-            results.append({"timestamp": timestamp, "faces": faces})
-
-        cap.release()
+            for frame_num in range(start_frame, end_frame, sample_every_n_frames):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                detection = detector.process(frame_rgb)
+                timestamp = frame_num / fps
+                faces: list[dict] = []
+                if detection.detections:
+                    for d in detection.detections:
+                        bbox = d.location_data.relative_bounding_box
+                        faces.append(
+                            {
+                                "x": int(bbox.xmin * frame_width),
+                                "y": int(bbox.ymin * frame_height),
+                                "w": int(bbox.width * frame_width),
+                                "h": int(bbox.height * frame_height),
+                                "confidence": float(d.score[0]),
+                            }
+                        )
+                results.append({"timestamp": timestamp, "faces": faces})
+        finally:
+            cap.release()
         return results
 
     def detect(
@@ -163,9 +169,11 @@ class SpeakerDetectionService:
         import cv2
 
         cap = cv2.VideoCapture(str(video_path))
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
+        try:
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        finally:
+            cap.release()
 
         # Manual crop override — operator sets exact pixel coordinates
         if all(
