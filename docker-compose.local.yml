@@ -58,8 +58,9 @@ services:
       - redis
       - postgres
 #      - mailpit
-    ports: []
-    command: /start-celeryworker
+    ports:
+      - "5679:5679"
+    command: /start-celeryworker-debug
 
 #  celerybeat:
 #    <<: *django

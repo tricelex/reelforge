@@ -1,6 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="runserver" type="Python.DjangoServer" factoryName="Django server" singleton="true">
     <module name="reelforge" />
+    <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
@@ -12,6 +13,7 @@
     <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="DEBUG_JUST_MY_CODE" value="true" />
     <PathMappingSettings>
       <option name="pathMappings">
         <list>
@@ -19,6 +21,7 @@
         </list>
       </option>
     </PathMappingSettings>
+    <option name="RUN_TOOL" value="true" />
     <option name="launchJavascriptDebuger" value="false" />
     <option name="port" value="8000" />
     <option name="host" value="0.0.0.0" />
@@ -28,6 +31,6 @@
     <option name="runNoReload" value="false" />
     <option name="useCustomRunCommand" value="false" />
     <option name="customRunCommand" value="" />
-    <method />
+    <method v="2" />
   </configuration>
 </component>
