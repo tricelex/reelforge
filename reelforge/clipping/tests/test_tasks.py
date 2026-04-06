@@ -70,15 +70,39 @@ def test_analyze_clips_sets_failed_status_on_final_retry() -> None:
     """On the final retry, analyze_clips must mark the job FAILED instead of retrying again."""
     from unittest.mock import patch
 
+    from django.core.files.base import ContentFile
+
     from reelforge.clipping.models import ClippingJob
     from reelforge.clipping.tasks import analyze_clips
     from reelforge.clipping.tests.factories import ClippingJobFactory
 
     job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
+    # Provide a real-ish downloaded_file so the task doesn't fail on the path check
+    job.downloaded_file.save("fake_video.mp4", ContentFile(b"fake"), save=True)
 
-    with patch(
-        "reelforge.clipping.tasks.ClipAnalysisService",
-        side_effect=RuntimeError("analysis boom"),
+    # Patch all analysis helpers + service at their source modules
+    with (
+        patch(
+            "reelforge.clipping.analysis_helpers.run_speaker_diarization",
+            return_value={"segments": []},
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.run_scene_detection",
+            return_value=[],
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.run_face_detection_for_speakers",
+            return_value={},
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.merge_transcript_with_diarization",
+            return_value={},
+        ),
+        patch(
+            "reelforge.clipping.services.ClipAnalysisService.analyze",
+            side_effect=RuntimeError("analysis boom"),
+        ),
+        patch("reelforge.clipping.sse.emit_job_event"),
     ):
         # Simulate Celery executing this as the final retry (retries == max_retries)
         analyze_clips.apply(
@@ -90,3 +114,52 @@ def test_analyze_clips_sets_failed_status_on_final_retry() -> None:
     job.refresh_from_db()
     assert job.status == ClippingJob.Status.FAILED
     assert "analysis boom" in job.last_error
+
+
+@pytest.mark.django_db
+def test_analyze_clips_always_awaits_approval() -> None:
+    """analyze_clips must always transition to AWAITING_CLIP_APPROVAL — no auto-approve."""
+    from unittest.mock import patch
+
+    from django.core.files.base import ContentFile
+
+    from reelforge.clipping.models import ClippingJob
+    from reelforge.clipping.tasks import analyze_clips
+    from reelforge.clipping.tests.factories import ClipCandidateFactory
+    from reelforge.clipping.tests.factories import ClippingJobFactory
+
+    job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
+    job.downloaded_file.save("fake_video.mp4", ContentFile(b"fake"), save=True)
+    candidates = [ClipCandidateFactory(clipping_job=job) for _ in range(2)]
+
+    with (
+        patch(
+            "reelforge.clipping.analysis_helpers.run_speaker_diarization",
+            return_value={"segments": []},
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.run_scene_detection",
+            return_value=[],
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.run_face_detection_for_speakers",
+            return_value={},
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.merge_transcript_with_diarization",
+            return_value={},
+        ),
+        patch(
+            "reelforge.clipping.services.ClipAnalysisService.analyze",
+            return_value=candidates,
+        ),
+        patch(
+            "reelforge.clipping.analysis_helpers.build_analysis_manifest",
+            return_value={"candidates": 2},
+        ),
+        patch("reelforge.clipping.sse.emit_job_event"),
+    ):
+        analyze_clips.apply(args=[str(job.pk)])
+
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
