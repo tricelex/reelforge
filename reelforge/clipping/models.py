@@ -11,7 +11,6 @@ from django.utils import timezone
 from django_fsm import FSMField
 from django_fsm import transition
 
-from reelforge.channels.models import Channel
 from reelforge.channels.models import SocialAccount
 from reelforge.clipping.constants import CaptionAnimation
 from reelforge.clipping.constants import CaptionPosition
@@ -47,14 +46,9 @@ class ClippingJob(BaseAbstractModel):
         DIRECT_URL = "DIRECT_URL", "Direct URL"
         UPLOAD = "UPLOAD", "File Upload"
 
-    channel = models.ForeignKey(
-        Channel,
-        on_delete=models.CASCADE,
-        related_name="clipping_jobs",
-    )
-    target_accounts = models.ManyToManyField(
+    social_account = models.ForeignKey(
         SocialAccount,
-        blank=True,
+        on_delete=models.PROTECT,
         related_name="clipping_jobs",
     )
     source_type = models.CharField(
@@ -76,7 +70,7 @@ class ClippingJob(BaseAbstractModel):
         max_length=500,
     )
     source_title = models.CharField(max_length=500, blank=True)
-    source_duration_sec = models.PositiveIntegerField(null=True, blank=True)
+    source_duration_sec = models.FloatField(null=True, blank=True)
 
     # Transcription
     transcript_text = models.TextField(blank=True)
@@ -105,6 +99,23 @@ class ClippingJob(BaseAbstractModel):
         default=Decimal(0),
     )
 
+    # Analysis Manifest — structured output from analysis task
+    analysis_manifest = models.JSONField(null=True, blank=True)
+
+    # Derived display assets
+    thumbnail_strip_file = models.FileField(
+        upload_to="clipping/thumbnails/",
+        blank=True,
+        null=True,
+        max_length=500,
+    )
+    waveform_data_file = models.FileField(
+        upload_to="clipping/waveforms/",
+        blank=True,
+        null=True,
+        max_length=500,
+    )
+
     # Task tracking
     celery_task_id = models.CharField(max_length=255, blank=True)
 
@@ -127,7 +138,7 @@ class ClippingJob(BaseAbstractModel):
         verbose_name_plural = "Clipping Jobs"
         indexes = [
             models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["channel"]),
+            models.Index(fields=["social_account"]),
         ]
 
     def __str__(self) -> str:
@@ -153,7 +164,11 @@ class ClippingJob(BaseAbstractModel):
 
     @property
     def total_cost_usd(self) -> Decimal:
-        return self.transcription_cost_usd + self.analysis_cost_usd
+        return (self.transcription_cost_usd or Decimal(0)) + (self.analysis_cost_usd or Decimal(0))
+
+    @property
+    def platform(self) -> str:
+        return self.social_account.platform
 
     # --- FSM transitions ---
 
@@ -223,6 +238,14 @@ class ClippingJob(BaseAbstractModel):
         target=Status.TRANSCRIBING,
     )
     def retry_transcription(self) -> None:
+        self.last_error = ""
+
+    @transition(
+        field=status,
+        source=[Status.FAILED, Status.ANALYZING],
+        target=Status.ANALYZING,
+    )
+    def retry_analysis(self) -> None:
         self.last_error = ""
 
 
