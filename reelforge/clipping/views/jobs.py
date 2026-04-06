@@ -1,95 +1,134 @@
 from __future__ import annotations
 
-from django.shortcuts import get_object_or_404
-from django.views.generic import TemplateView
+import logging
+from typing import Any
 
+from django.http import StreamingHttpResponse
+from django_fsm import can_proceed
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
+
+from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClippingJob
-from reelforge.ui.mixins import StaffRequiredMixin
+from reelforge.clipping.serializers import ClippingJobDetailSerializer
+from reelforge.clipping.serializers import ClippingJobListSerializer
+from reelforge.clipping.sse import emit_job_event
+from reelforge.clipping.sse import job_event_stream
+from reelforge.clipping.tasks import download_source_video
+from reelforge.clipping.tasks import render_clip
+from reelforge.clipping.tasks import transcribe_video
 
-_FSM_STAGE_ORDER = [
-    ClippingJob.Status.INITIALIZING,
-    ClippingJob.Status.DOWNLOADING,
-    ClippingJob.Status.TRANSCRIBING,
-    ClippingJob.Status.ANALYZING,
-    ClippingJob.Status.AWAITING_CLIP_APPROVAL,
-    ClippingJob.Status.RENDERING,
-    ClippingJob.Status.DISTRIBUTING,
-    ClippingJob.Status.COMPLETED,
-]
-
-_FSM_STAGE_LABELS = [
-    (ClippingJob.Status.INITIALIZING, "Init"),
-    (ClippingJob.Status.DOWNLOADING, "Download"),
-    (ClippingJob.Status.TRANSCRIBING, "Transcribe"),
-    (ClippingJob.Status.ANALYZING, "Analyze"),
-    (ClippingJob.Status.AWAITING_CLIP_APPROVAL, "Approval"),
-    (ClippingJob.Status.RENDERING, "Render"),
-    (ClippingJob.Status.DISTRIBUTING, "Distribute"),
-    (ClippingJob.Status.COMPLETED, "Done"),
-]
+logger = logging.getLogger("reelforge.clipping.api")
 
 
-def _get_completed_stages(job: ClippingJob) -> set[str]:
-    """Return set of stage status values that precede the current status."""
-    try:
-        current_idx = _FSM_STAGE_ORDER.index(job.status)
-    except ValueError:
-        current_idx = 0
-    return {s.value for s in _FSM_STAGE_ORDER[:current_idx]}
+class ClippingJobViewSet(ModelViewSet):
+    queryset = ClippingJob.objects.select_related("social_account").order_by("-created_at")
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ClippingJobDetailSerializer
+        return ClippingJobListSerializer
 
-class JobListView(StaffRequiredMixin, TemplateView):
-    template_name = "clipping/job_list.html"
+    def get_serializer_context(self) -> dict[str, Any]:
+        ctx = super().get_serializer_context()
+        ctx["request"] = self.request
+        return ctx
 
-    def get_context_data(self, **kwargs: object) -> dict[str, object]:
-        context = super().get_context_data(**kwargs)
-        status_filter = self.request.GET.get("status", "")
-        jobs = ClippingJob.objects.select_related("channel").order_by("-created_at")
-        if status_filter:
-            jobs = jobs.filter(status=status_filter)
-        context.update({
-            "jobs": jobs,
-            "status_filter": status_filter,
-            "status_choices": ClippingJob.Status.choices,
-            "nav_active": "clipping",
-        })
-        return context
+    def perform_create(self, serializer) -> None:
+        job: ClippingJob = serializer.save()
+        if can_proceed(job.begin_download):
+            job.begin_download()
+            job.save(update_fields=["status", "started_at", "updated_at"])
+        download_source_video.delay(str(job.id))
+        emit_job_event(str(job.id), "status_changed", {"status": job.status})
+        logger.info("ClippingJob created", extra={"job_id": str(job.id)})
 
-
-class JobDetailView(StaffRequiredMixin, TemplateView):
-    template_name = "clipping/job_detail.html"
-
-    def get_context_data(self, **kwargs: object) -> dict[str, object]:
-        context = super().get_context_data(**kwargs)
-        job = get_object_or_404(
-            ClippingJob.objects.select_related("channel").prefetch_related(
-                "candidates__layout_config",
-                "candidates__style_config",
-            ),
-            id=self.kwargs["job_id"],
+    @action(detail=True, methods=["post"], url_path="start-render")
+    def start_render(self, request: Request, pk: str | None = None) -> Response:
+        """Dispatch render_clip for all APPROVED candidates and begin_rendering FSM transition."""
+        job: ClippingJob = self.get_object()
+        approved = list(
+            job.candidates.filter(status=ClipCandidate.CandidateStatus.APPROVED)
         )
-        context.update({
-            "job": job,
-            "candidates": job.candidates.order_by("-relevance_score"),
-            "nav_active": "clipping",
-            "fsm_stages": _FSM_STAGE_LABELS,
-            "job_completed_stages": _get_completed_stages(job),
-        })
-        return context
+        if not approved:
+            return Response(
+                {"detail": "No approved candidates found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not can_proceed(job.begin_rendering):
+            return Response(
+                {"detail": f"Cannot begin rendering from state {job.status}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        job.begin_rendering()
+        job.save(update_fields=["status", "updated_at"])
+        for candidate in approved:
+            render_clip.delay(str(candidate.id))
+        emit_job_event(str(job.id), "status_changed", {"status": job.status})
+        return Response(
+            {
+                "dispatched_renders": len(approved),
+                "candidate_ids": [str(c.id) for c in approved],
+                "job_status": job.status,
+            }
+        )
 
+    @action(detail=True, methods=["post"], url_path="approve-all")
+    def approve_all(self, request: Request, pk: str | None = None) -> Response:
+        """Approve all PROPOSED candidates on this job."""
+        job: ClippingJob = self.get_object()
+        from django.utils import timezone
 
-class JobStatusPartialView(StaffRequiredMixin, TemplateView):
-    """HTMX partial — returns just the stage tracker strip."""
+        updated = job.candidates.filter(
+            status=ClipCandidate.CandidateStatus.PROPOSED
+        ).update(
+            status=ClipCandidate.CandidateStatus.APPROVED,
+            approved=True,
+            approved_by=request.user,
+            approved_at=timezone.now(),
+        )
+        return Response({"approved_count": updated})
 
-    template_name = "clipping/partials/job_status.html"
+    @action(detail=True, methods=["post"], url_path="retry")
+    def retry(self, request: Request, pk: str | None = None) -> Response:
+        """Retry a failed job. Body: {"from_stage": "transcription" | "analysis"}"""
+        job: ClippingJob = self.get_object()
+        from_stage = request.data.get("from_stage", "transcription")
+        if from_stage == "analysis":
+            if not can_proceed(job.retry_analysis):
+                return Response(
+                    {"detail": f"Cannot retry analysis from state {job.status}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            job.retry_analysis()
+            job.save(update_fields=["status", "last_error", "updated_at"])
+            from reelforge.clipping.tasks import analyze_clips
 
-    def get_context_data(self, **kwargs: object) -> dict[str, object]:
-        context = super().get_context_data(**kwargs)
-        job = get_object_or_404(ClippingJob, id=self.kwargs["job_id"])
-        context.update({
-            "job": job,
-            "fsm_stages": _FSM_STAGE_LABELS,
-            "job_completed_stages": _get_completed_stages(job),
-            "terminal": job.status in (ClippingJob.Status.COMPLETED, ClippingJob.Status.FAILED),
-        })
-        return context
+            analyze_clips.delay(str(job.id))
+        else:
+            if not can_proceed(job.retry_transcription):
+                return Response(
+                    {"detail": f"Cannot retry transcription from state {job.status}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            job.retry_transcription()
+            job.save(update_fields=["status", "last_error", "updated_at"])
+            transcribe_video.delay(str(job.id))
+        emit_job_event(str(job.id), "status_changed", {"status": job.status})
+        return Response({"job_status": job.status, "retrying": from_stage})
+
+    @action(detail=True, methods=["get"], url_path="stream")
+    def stream(self, request: Request, pk: str | None = None) -> StreamingHttpResponse:
+        """SSE endpoint. Streams real-time job events from Redis pub/sub."""
+        job: ClippingJob = self.get_object()
+        response = StreamingHttpResponse(
+            job_event_stream(str(job.id)),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response

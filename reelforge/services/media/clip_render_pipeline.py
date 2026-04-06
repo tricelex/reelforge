@@ -16,7 +16,6 @@ from reelforge.core.storage import get_stage_output_path
 from reelforge.services.media.render_stages.base import RenderStageError
 
 if TYPE_CHECKING:
-    from reelforge.channels.models import Channel
     from reelforge.clipping.models import ClipLayoutConfig
     from reelforge.clipping.models import ClipStyleConfig
 
@@ -46,7 +45,7 @@ class PipelineRenderConfig:
     timed_overlays: list[Any]  # list[ClipTimedOverlay]
     render_id: str
     # Optional / quality params
-    channel: Channel | None = None
+    social_account_platform: str = "tiktok"
     width: int = 1080
     height: int = 1920
     fps: int = 30
@@ -126,7 +125,7 @@ class ClipRenderPipeline:
                 transcript_json=c.transcript_json,
                 output_path=get_stage_output_path(c.render_id, 4, "caption_translation"),
                 style_config=c.style_config,
-                channel=c.channel,
+                channel=None,
             ),
             CaptionStage(
                 transcript_json=c.transcript_json,

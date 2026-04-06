@@ -76,6 +76,8 @@ def download_source_video(self, clipping_job_id: str) -> None:
         if can_proceed(job.begin_transcription):
             job.begin_transcription()
             job.save(update_fields=["status", "updated_at"])
+            from reelforge.clipping.sse import emit_job_event
+            emit_job_event(str(job.id), "status_changed", {"status": job.status})
             transcribe_video.delay(clipping_job_id)
 
     except Exception as exc:
@@ -96,7 +98,7 @@ def download_source_video(self, clipping_job_id: str) -> None:
 )
 def transcribe_video(self, clipping_job_id: str) -> None:
     try:
-        job = ClippingJob.objects.select_related("channel").get(id=clipping_job_id)
+        job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
         logger.error("ClippingJob not found for transcription", extra={"id": clipping_job_id})
         return
@@ -138,6 +140,8 @@ def transcribe_video(self, clipping_job_id: str) -> None:
         if can_proceed(job.begin_analysis):
             job.begin_analysis()
             job.save(update_fields=["status", "updated_at"])
+            from reelforge.clipping.sse import emit_job_event
+            emit_job_event(str(job.id), "status_changed", {"status": job.status})
             analyze_clips.delay(clipping_job_id)
 
     except Exception as exc:
@@ -166,45 +170,102 @@ def transcribe_video(self, clipping_job_id: str) -> None:
 )
 def analyze_clips(self, clipping_job_id: str) -> None:
     try:
-        job = ClippingJob.objects.select_related("channel").get(id=clipping_job_id)
+        job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
         logger.error("ClippingJob not found for analysis", extra={"id": clipping_job_id})
         return
 
     try:
+        from reelforge.clipping.analysis_helpers import (
+            build_analysis_manifest,
+            merge_transcript_with_diarization,
+            run_face_detection_for_speakers,
+            run_scene_detection,
+            run_speaker_diarization,
+        )
         from reelforge.clipping.services import ClipAnalysisService
+        from reelforge.clipping.sse import emit_job_event
 
+        video_path = str(job.downloaded_file.path) if job.downloaded_file else None
+        if not video_path:
+            raise ValueError("No downloaded file on job")
+
+        # 1. Speaker diarization (may fail gracefully)
+        try:
+            diarization_result = run_speaker_diarization(video_path)
+        except Exception as exc:
+            logger.warning(
+                "Diarization failed — continuing without speaker data",
+                extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
+            )
+            diarization_result = {"segments": []}
+
+        # 2. Scene detection (always graceful)
+        scene_cuts = run_scene_detection(video_path)
+
+        # 3. Face detection per speaker segment
+        try:
+            face_mappings = run_face_detection_for_speakers(video_path, diarization_result)
+        except Exception as exc:
+            logger.warning(
+                "Face detection failed — continuing without face data",
+                extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
+            )
+            face_mappings = {}
+
+        # 4. Merge transcript + diarization
+        enriched_transcript = merge_transcript_with_diarization(
+            job.transcript_json or {}, diarization_result
+        )
+
+        # 5. GPT-4o analysis with enriched context
         service = ClipAnalysisService(job)
-        candidates = service.analyze()
+        candidates = service.analyze(
+            enriched_transcript=enriched_transcript,
+            diarization=diarization_result,
+        )
 
-        # Check if auto-approve applies for all target accounts
-        target_accounts = job.target_accounts.all()
-        all_auto_approve = all(a.auto_approve_clips for a in target_accounts) and target_accounts.exists()
+        # 6. Build and save analysis manifest
+        manifest = build_analysis_manifest(
+            transcript=enriched_transcript,
+            diarization=diarization_result,
+            face_mappings=face_mappings,
+            scene_cuts=scene_cuts,
+            candidates=candidates,
+        )
+        job.analysis_manifest = manifest
 
-        if all_auto_approve:
-            for candidate in candidates:
-                candidate.approved = True
-                candidate.status = ClipCandidate.CandidateStatus.APPROVED
-                candidate.save(update_fields=["approved", "status", "updated_at"])
-
-            if can_proceed(job.begin_rendering):
-                job.begin_rendering()
-                job.save(update_fields=["status", "updated_at"])
-                for candidate in candidates:
-                    render_clip.delay(str(candidate.id))
-        elif can_proceed(job.await_clip_approval):
+        # 7. Transition — always await approval, no auto-approve
+        if can_proceed(job.await_clip_approval):
             job.await_clip_approval()
-            job.save(update_fields=["status", "updated_at"])
+        job.save(
+            update_fields=[
+                "status",
+                "analysis_manifest",
+                "analysis_cost_usd",
+                "analysis_provider",
+                "updated_at",
+            ]
+        )
+
+        emit_job_event(
+            str(job.id),
+            "analysis_complete",
+            {"status": job.status, "candidate_count": len(candidates)},
+        )
 
     except Exception as exc:
         logger.error(
             "Clip analysis failed",
             extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
+            exc_info=True,
         )
         if self.request.retries >= self.max_retries:
             if can_proceed(job.mark_failed):
                 job.mark_failed(error=str(exc))
                 job.save(update_fields=["status", "last_error", "failed_at", "updated_at"])
+                from reelforge.clipping.sse import emit_job_event
+                emit_job_event(str(job.id), "job_failed", {"error": str(exc), "stage": "analysis"})
             return
         raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
 
@@ -231,7 +292,7 @@ def render_clip(
     """
     try:
         candidate = ClipCandidate.objects.select_related(
-            "clipping_job__channel"
+            "clipping_job__social_account"
         ).get(id=clip_candidate_id)
     except ClipCandidate.DoesNotExist:
         logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
@@ -269,7 +330,7 @@ def render_clip(
 
     try:
         job = candidate.clipping_job
-        channel = job.channel
+        social_account = job.social_account
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -285,7 +346,6 @@ def render_clip(
             style_config=style_config,
             timed_overlays=timed_overlays,
             render_id=str(render.id),
-            channel=channel,
         )
 
         gate_stages = set(candidate.render_gates or [])
@@ -303,6 +363,16 @@ def render_clip(
             logger.info(
                 "Render paused at gate",
                 extra={
+                    "render_id": str(render.id),
+                    "candidate_id": str(candidate.id),
+                    "paused_at_stage": exc.stage_order,
+                },
+            )
+            from reelforge.clipping.sse import emit_job_event
+            emit_job_event(
+                str(candidate.clipping_job_id),
+                "render_paused",
+                {
                     "render_id": str(render.id),
                     "candidate_id": str(candidate.id),
                     "paused_at_stage": exc.stage_order,
@@ -326,18 +396,33 @@ def render_clip(
         render.file_size_bytes = output_path.stat().st_size
         render.status = ClipRender.RenderStatus.COMPLETED
         render.save(update_fields=["video_file", "file_size_bytes", "status", "updated_at"])
+        from reelforge.clipping.sse import emit_job_event
+        emit_job_event(
+            str(candidate.clipping_job_id),
+            "render_complete",
+            {
+                "render_id": str(render.id),
+                "candidate_id": str(candidate.id),
+                "video_url": render.video_file.url if render.video_file else None,
+            },
+        )
 
         candidate.status = ClipCandidate.CandidateStatus.RENDERED
         candidate.save(update_fields=["status", "updated_at"])
 
-        for account in job.target_accounts.filter(is_active=True, should_post=True):
-            post = ClipPost.objects.create(render=render, social_account=account)
-            post_clip.delay(str(post.id))
+        post = ClipPost.objects.create(render=render, social_account=job.social_account)
+        post_clip.delay(str(post.id))
 
     except Exception as exc:
         render.status = ClipRender.RenderStatus.FAILED
         render.last_error = str(exc)
         render.save(update_fields=["status", "last_error", "updated_at"])
+        from reelforge.clipping.sse import emit_job_event
+        emit_job_event(
+            str(candidate.clipping_job_id),
+            "render_failed",
+            {"render_id": str(render.id), "candidate_id": str(candidate.id), "error": str(exc)},
+        )
         raise self.retry(exc=exc, countdown=2**self.request.retries * 300)
 
 
@@ -505,6 +590,12 @@ def post_clip(self, clip_post_id: str) -> None:
                     "updated_at",
                 ]
             )
+            from reelforge.clipping.sse import emit_job_event
+            emit_job_event(
+                str(clip_post.render.candidate.clipping_job_id),
+                "post_complete",
+                {"post_id": str(clip_post.id), "platform_url": clip_post.platform_url},
+            )
         else:
             clip_post.status = ClipPost.PostStatus.FAILED
             clip_post.last_error = result.error_message
@@ -630,6 +721,15 @@ def preview_clip_layout(self, layout_config_id: str) -> None:
 
     filename = f"preview_{layout_config_id}.jpg"
     lc.preview_image.save(filename, ContentFile(buf.tobytes()), save=True)
+    from reelforge.clipping.sse import emit_job_event
+    emit_job_event(
+        str(lc.candidate.clipping_job_id),
+        "preview_ready",
+        {
+            "layout_config_id": str(lc.id),
+            "preview_url": lc.preview_image.url if lc.preview_image else None,
+        },
+    )
     logger.info(
         "Preview image generated",
         extra={"layout_config_id": layout_config_id, "filename": filename},

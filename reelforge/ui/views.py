@@ -26,12 +26,12 @@ class DashboardView(StaffRequiredMixin, TemplateView):
         today = timezone.now().date()
         active_jobs = (
             ClippingJob.objects.filter(status__in=_ACTIVE_STATUSES)
-            .select_related("channel")
+            .select_related("social_account")
             .order_by("-created_at")[:20]
         )
         awaiting_approval = (
             ClippingJob.objects.filter(status=ClippingJob.Status.AWAITING_CLIP_APPROVAL)
-            .select_related("channel")
+            .select_related("social_account")
             .annotate(candidate_count=Count("candidates"))
             .order_by("-updated_at")
         )
@@ -58,7 +58,7 @@ class ActiveJobsPartialView(StaffRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context["active_jobs"] = (
             ClippingJob.objects.filter(status__in=_ACTIVE_STATUSES)
-            .select_related("channel")
+            .select_related("social_account")
             .order_by("-created_at")[:20]
         )
         return context
