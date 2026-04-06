@@ -13,7 +13,7 @@
       <tbody class="divide-y divide-border dark:divide-darkborder">
         {% for job in active_jobs %}
         <tr class="hover:bg-lightgray dark:hover:bg-darkgray cursor-pointer"
-            onclick="window.location='{% url 'clipping:job_detail' job.id %}'">
+            onclick="window.location='/api/v1/clipping/jobs/{{ job.id }}/'">
           <td class="p-4 whitespace-nowrap">
             <p class="text-sm font-medium text-dark dark:text-white mb-0 truncate max-w-xs">
               {{ job.source_title|default:"Untitled" }}

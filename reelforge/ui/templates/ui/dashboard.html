@@ -109,7 +109,7 @@
             <div class="p-1.5 min-w-full inline-block align-middle">
               <div class="divide-y divide-border dark:divide-darkborder">
                 {% for job in awaiting_approval %}
-                <a href="{% url 'clipping:job_detail' job.id %}"
+                <a href="/api/v1/clipping/jobs/{{ job.id }}/"
                    class="flex items-center gap-3 py-3 hover:bg-lightgray dark:hover:bg-darkgray px-2 rounded-md transition-colors">
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-dark dark:text-white truncate mb-0">
