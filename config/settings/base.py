@@ -299,6 +299,9 @@ LOGGING = {
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
 
+# PyAnnote speaker diarization model — required for Phase 2 ML analysis
+HUGGINGFACE_TOKEN: str = env("HUGGINGFACE_TOKEN", default="")
+
 # Celery
 # ------------------------------------------------------------------------------
 if USE_TZ:
