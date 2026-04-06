@@ -78,7 +78,7 @@
                 </div>
                 <li class="sidebar-item">
                   <a class="sidebar-link dark-sidebar-link {% if nav_active == 'clipping' %}active activemenu{% endif %}"
-                     href="{% url 'clipping:job_list' %}">
+                     href="/api/v1/clipping/jobs/">
                     <i class="ti ti-scissors text-xl flex-shrink-0"></i>
                     <span class="hide-menu flex-shrink-0">All Jobs</span>
                     {% if awaiting_approval_count %}

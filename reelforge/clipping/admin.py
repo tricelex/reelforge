@@ -223,21 +223,13 @@ class ClipStyleConfigInline(StackedInline):
         return super().get_queryset(request).select_related("intro_asset", "outro_asset", "music_asset")
 
     def formfield_for_foreignkey(self, db_field: Any, request: HttpRequest, **kwargs: Any) -> Any:
-        """Filter asset FK dropdowns to the candidate's channel."""
-        if db_field.name in ("intro_asset", "outro_asset", "music_asset"):
-            candidate_id = request.resolver_match.kwargs.get("object_id")
-            if candidate_id:
-                try:
-                    candidate = ClipCandidate.objects.select_related("clipping_job__channel").get(pk=candidate_id)
-                    channel = candidate.clipping_job.channel
-                    if db_field.name == "intro_asset":
-                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="INTRO", is_active=True)
-                    elif db_field.name == "outro_asset":
-                        kwargs["queryset"] = ClipMediaAsset.objects.filter(channel=channel, asset_type="OUTRO", is_active=True)
-                    elif db_field.name == "music_asset":
-                        kwargs["queryset"] = ClipMusicAsset.objects.filter(channel=channel, is_active=True)
-                except ClipCandidate.DoesNotExist:
-                    pass
+        """Filter asset FK dropdowns to active assets only (assets are now global)."""
+        if db_field.name == "intro_asset":
+            kwargs["queryset"] = ClipMediaAsset.objects.filter(asset_type="INTRO", is_active=True)
+        elif db_field.name == "outro_asset":
+            kwargs["queryset"] = ClipMediaAsset.objects.filter(asset_type="OUTRO", is_active=True)
+        elif db_field.name == "music_asset":
+            kwargs["queryset"] = ClipMusicAsset.objects.filter(is_active=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     @display(description="Style Preview")
@@ -470,14 +462,14 @@ class ClipCandidateInline(TabularInline):
 class ClippingJobAdmin(ModelAdmin):
     list_display = (
         "__str__",
-        "channel",
+        "social_account",
         "status_badge",
         "candidates_count",
         "total_cost_display",
         "created_at",
     )
-    list_filter = ("status", "source_type", "channel")
-    search_fields = ("source_title", "source_url", "channel__name")
+    list_filter = ("status", "source_type", "social_account")
+    search_fields = ("source_title", "source_url", "social_account__handle")
     readonly_fields = (
         "id",
         "status",
@@ -766,9 +758,9 @@ class ClipCandidateAdmin(ModelAdmin):
 
 @admin.register(ClipMediaAsset)
 class ClipMediaAssetAdmin(ModelAdmin):
-    list_display = ("name", "channel", "asset_type_badge", "duration_display", "is_active", "created_at")
-    list_filter = ("asset_type", "is_active", "channel")
-    search_fields = ("name", "channel__name")
+    list_display = ("name", "asset_type_badge", "duration_display", "is_active", "created_at")
+    list_filter = ("asset_type", "is_active")
+    search_fields = ("name",)
     readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "video_preview")
 
     @display(description="Type", label={"INTRO": "info", "OUTRO": "warning"})
@@ -793,9 +785,9 @@ class ClipMediaAssetAdmin(ModelAdmin):
 
 @admin.register(ClipMusicAsset)
 class ClipMusicAssetAdmin(ModelAdmin):
-    list_display = ("name", "channel", "genre", "duration_display", "bpm", "is_active", "created_at")
-    list_filter = ("is_active", "genre", "channel")
-    search_fields = ("name", "channel__name", "genre")
+    list_display = ("name", "genre", "duration_display", "bpm", "is_active", "created_at")
+    list_filter = ("is_active", "genre")
+    search_fields = ("name", "genre")
     readonly_fields = ("id", "duration_sec", "created_at", "updated_at", "audio_preview")
 
     @display(description="Duration")

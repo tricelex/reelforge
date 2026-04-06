@@ -127,7 +127,7 @@ def test_pipeline_render_config_has_expected_defaults(tmp_path: Path) -> None:
     assert config.crf == 18
     assert config.preset == "slow"
     assert config.audio_bitrate == "192k"
-    assert config.channel is None
+    assert config.social_account_platform == "tiktok"
 
 
 @pytest.mark.django_db

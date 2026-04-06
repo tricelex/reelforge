@@ -18,10 +18,14 @@ class ClipAnalysisService:
     def __init__(self, clipping_job: ClippingJob) -> None:
         self.job = clipping_job
 
-    def analyze(self) -> list[ClipCandidate]:
+    def analyze(
+        self,
+        enriched_transcript: list[dict] | None = None,
+        diarization: dict | None = None,
+    ) -> list[ClipCandidate]:
         transcript = self.job.transcript_text
-        prompt = self._build_prompt(transcript)
-        llm = get_llm_provider(self.job.channel)
+        prompt = self._build_prompt(transcript, enriched_transcript=enriched_transcript, diarization=diarization)
+        llm = get_llm_provider()
         response = llm.complete(prompt=prompt, system=self._system_prompt())
 
         raw_clips = self._parse_llm_response(response.text)
@@ -86,28 +90,33 @@ class ClipAnalysisService:
                     words.append(word_data.get("word", "").strip())
         return " ".join(words)
 
-    def _build_prompt(self, transcript: str) -> str:
-        channel = self.job.channel
-        niche = getattr(channel, "niche_category", None) or getattr(channel, "custom_niche", None) or "general"
-        return (
-            f"Analyze this video transcript from a {niche} YouTube channel. "
-            f"Identify the {self.job.clips_requested} most engaging moments for short-form clips.\n\n"
-            f"TRANSCRIPT:\n{transcript}\n\n"
-            f"Return a JSON array with {self.job.clips_requested} clip objects. "
-            f"Each object must have: start_sec (float), end_sec (float), title (str, max 100 chars), "
-            f"hook_text (str, max 100 chars — the opening statement), "
-            f"caption_template (str — social media caption with hashtags), "
-            f"relevance_score (float 0-10), reason (str).\n"
-            f"Clips must be 30–180 seconds. No overlapping clips. "
-            f"Order by relevance_score descending."
+    def _build_prompt(
+        self,
+        transcript: str,
+        enriched_transcript: list[dict] | None = None,
+        diarization: dict | None = None,
+    ) -> str:
+        lines = [
+            f"Source video transcript:\n{transcript}\n",
+            f"Number of clips to identify: {self.job.clips_requested}",
+        ]
+        if diarization and diarization.get("segments"):
+            speaker_count = len({s["speaker_id"] for s in diarization["segments"]})
+            lines.append(f"\nThis video has {speaker_count} speaker(s).")
+        lines.append(
+            "\nReturn a JSON array of clip objects with keys: "
+            "start_sec, end_sec, title, hook_text, caption_template, relevance_score (1-10), reason."
         )
+        return "\n".join(lines)
 
     def _system_prompt(self) -> str:
+        platform = self.job.social_account.platform
+        account_name = self.job.social_account.handle or self.job.social_account.display_name
         return (
-            "You are an expert short-form content strategist. You identify the highest-value moments "
-            "in long-form videos that work as standalone clips without needing context. "
-            "Focus on: surprising facts, emotional peaks, actionable insights, and strong hooks. "
-            "Always respond with valid JSON array only, no markdown fences."
+            f"You are an expert video editor specialising in short-form content for {platform}. "
+            f"You are working on clips for the account @{account_name}. "
+            "Identify the most engaging segments that will perform well on this platform. "
+            "Return valid JSON only."
         )
 
     def _parse_llm_response(self, response_text: str) -> list[dict[str, Any]]:

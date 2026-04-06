@@ -56,85 +56,6 @@ class SocialAccountInline(StackedInline):
     readonly_fields = ("created_at", "last_sync_at", "follower_count")
 
 
-class ClipRenderTemplateInline(StackedInline):
-    """Channel-level render style defaults — editable inline on ChannelAdmin."""
-
-    extra = 0
-    can_delete = False
-    max_num = 1
-    collapsible = True
-    verbose_name = "Clip Render Style"
-    verbose_name_plural = "Clip Render Style"
-    fieldsets = (
-        (
-            "Captions",
-            {
-                "fields": (
-                    ("caption_enabled", "caption_style", "caption_position"),
-                    ("caption_font", "caption_size"),
-                    ("caption_color", "caption_stroke_color", "caption_stroke_width"),
-                    "caption_bg_color",
-                    ("caption_animation", "caption_language", "caption_translate_to"),
-                    "emoji_keyword_map",
-                ),
-            },
-        ),
-        (
-            "Hook",
-            {
-                "fields": (
-                    ("hook_enabled", "hook_style", "hook_duration_sec"),
-                    ("hook_font", "hook_size"),
-                    ("hook_color", "hook_bg_color", "hook_animation"),
-                ),
-            },
-        ),
-        (
-            "Transitions",
-            {
-                "fields": (
-                    ("intro_transition", "outro_transition", "transition_duration_sec"),
-                ),
-            },
-        ),
-        (
-            "Watermark",
-            {
-                "fields": (
-                    ("watermark_enabled", "watermark_type"),
-                    ("watermark_text", "watermark_image"),
-                    ("watermark_position", "watermark_opacity", "watermark_size"),
-                ),
-            },
-        ),
-        (
-            "Progress Bar",
-            {
-                "fields": (
-                    ("progress_bar_enabled", "progress_bar_position"),
-                    ("progress_bar_color", "progress_bar_height"),
-                ),
-            },
-        ),
-        (
-            "Background Music",
-            {
-                "fields": (
-                    ("music_enabled", "music_volume_db"),
-                    ("music_fade_in_sec", "music_fade_out_sec"),
-                ),
-            },
-        ),
-    )
-
-
-def _get_clip_render_template_model():  # type: ignore[return]
-    from ***REMOVED***.clipping.models import ClipRenderTemplate
-
-    return ClipRenderTemplate
-
-
-ClipRenderTemplateInline.model = _get_clip_render_template_model()
 
 
 @admin.register(Channel)
@@ -174,7 +95,7 @@ class ChannelAdmin(ModelAdmin):
         "oauth_credentials_display",
     ]
     prepopulated_fields = {"slug": ("name",)}
-    inlines = [ChannelCompetitorInline, ChannelPlaylistInline, SocialAccountInline, ClipRenderTemplateInline]
+    inlines = [ChannelCompetitorInline, ChannelPlaylistInline, SocialAccountInline]
     actions_row = ["validate_voice", "setup_youtube_oauth"]
     actions = ["sync_analytics", "trigger_research"]
 

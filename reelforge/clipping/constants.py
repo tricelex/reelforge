@@ -62,3 +62,18 @@ class ProgressBarPosition(models.TextChoices):
 class MediaAssetType(models.TextChoices):
     INTRO = "INTRO", "Intro"
     OUTRO = "OUTRO", "Outro"
+
+
+# Maps SocialAccount.Platform values to clip render mode defaults
+PLATFORM_RENDER_MODE_DEFAULTS: dict[str, str] = {
+    "TIKTOK": RenderMode.SMART_CROP,
+    "YOUTUBE": RenderMode.CENTER_CROP,
+    "INSTAGRAM": RenderMode.SMART_CROP,
+}
+
+# Maps SocialAccount.Platform values to clip render format defaults
+PLATFORM_FORMAT_DEFAULTS: dict[str, str] = {
+    "TIKTOK": "VERTICAL_9_16",
+    "YOUTUBE": "LANDSCAPE_16_9",
+    "INSTAGRAM": "SQUARE_1_1",
+}
