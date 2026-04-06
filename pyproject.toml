@@ -303,4 +303,5 @@ dependencies = [
     "fal-client>=0.10.0",
     "celery-types>=0.26.0",
     "django-htmx>=1.27.0",
+    "djangorestframework-simplejwt>=5.5.1",
 ]
