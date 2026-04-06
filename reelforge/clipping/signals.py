@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 from typing import Any
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django_fsm.signals import post_transition
 
+from ***REMOVED***.clipping.constants import PLATFORM_RENDER_MODE_DEFAULTS
+from ***REMOVED***.clipping.constants import RenderMode
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClipMediaAsset
@@ -15,9 +16,6 @@ from ***REMOVED***.clipping.models import ClipMusicAsset
 from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipRenderTemplate
 from ***REMOVED***.clipping.models import ClipStyleConfig
-
-if TYPE_CHECKING:
-    from ***REMOVED***.channels.models import Channel
 
 logger = logging.getLogger("***REMOVED***.clipping")
 
@@ -50,19 +48,15 @@ def create_layout_config_for_candidate(
 ) -> None:
     """Auto-create a ClipLayoutConfig when a ClipCandidate is first saved.
 
-    Pre-populates from channel.default_render_mode and channel.default_layout_config
-    so new candidates inherit the channel's preferred layout without manual setup.
+    Uses the social account's platform to pick the default render mode.
     """
     if not created:
         return
-    channel = instance.clipping_job.channel
-    channel_defaults: dict = channel.default_layout_config or {}
+    platform = instance.clipping_job.social_account.platform
+    render_mode = PLATFORM_RENDER_MODE_DEFAULTS.get(platform, RenderMode.SMART_CROP)
     ClipLayoutConfig.objects.get_or_create(
         candidate=instance,
-        defaults={
-            "render_mode": channel.default_render_mode,
-            **channel_defaults,
-        },
+        defaults={"render_mode": render_mode},
     )
 
 
@@ -75,17 +69,17 @@ def create_style_config_for_candidate(
 ) -> None:
     """Auto-create a ClipStyleConfig when a ClipCandidate is first saved.
 
-    Pre-populates all style fields from the channel's ClipRenderTemplate.
+    Pre-populates from the global default ClipRenderTemplate.
     """
     if not created:
         return
-    channel = instance.clipping_job.channel
-    template = ClipRenderTemplate.objects.filter(channel=channel).first()
+    template = ClipRenderTemplate.objects.filter(is_default=True).first()
+    if template is None:
+        template = ClipRenderTemplate.objects.first()
     style_defaults = template.to_style_defaults() if template is not None else {}
-
     ClipStyleConfig.objects.get_or_create(
         candidate=instance,
-        defaults=style_defaults,
+        defaults={**style_defaults, "render_template": template},
     )
 
 
@@ -109,7 +103,6 @@ def detect_media_asset_duration(
             return
         probe = ffmpeg.probe(str(file_path))
         duration = float(probe["format"]["duration"])
-        # Use queryset.update() to avoid recursive signal dispatch
         ClipMediaAsset.objects.filter(pk=instance.pk).update(duration_sec=duration)
         logger.info(
             "Auto-detected media asset duration",
@@ -152,21 +145,3 @@ def detect_music_asset_duration(
             "Could not auto-detect music asset duration",
             extra={"asset_id": str(instance.pk), "error": str(exc)},
         )
-
-
-def create_clip_render_template_for_channel(
-    sender: type,
-    instance: Channel,
-    created: bool,
-    **kwargs: Any,
-) -> None:
-    """Auto-create a ClipRenderTemplate when a Channel is first saved.
-
-    Defined as a plain function (not @receiver) because it's connected in
-    ClippingConfig.ready() to avoid circular imports (channels ↔ clipping).
-    """
-    if not created:
-        return
-    from ***REMOVED***.clipping.models import ClipRenderTemplate
-
-    ClipRenderTemplate.objects.get_or_create(channel=instance)
