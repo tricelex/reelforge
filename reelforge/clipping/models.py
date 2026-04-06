@@ -11,6 +11,7 @@ from django.utils import timezone
 from django_fsm import FSMField
 from django_fsm import transition
 
+from reelforge.channels.models import Channel
 from reelforge.channels.models import SocialAccount
 from reelforge.clipping.constants import CaptionAnimation
 from reelforge.clipping.constants import CaptionPosition
