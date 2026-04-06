@@ -11,6 +11,7 @@ from django.utils import timezone
 from django_fsm import FSMField
 from django_fsm import transition
 
+from ***REMOVED***.channels.models import Channel
 from ***REMOVED***.channels.models import SocialAccount
 from ***REMOVED***.clipping.constants import CaptionAnimation
 from ***REMOVED***.clipping.constants import CaptionPosition
