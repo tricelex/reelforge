@@ -5,6 +5,12 @@ from typing import Any
 
 from django.http import StreamingHttpResponse
 from django_fsm import can_proceed
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema_view
+from drf_spectacular.utils import inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -24,6 +30,33 @@ from reelforge.clipping.tasks import transcribe_video
 logger = logging.getLogger("reelforge.clipping.api")
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["clipping-jobs"],
+        summary="List clipping jobs",
+        responses={200: ClippingJobListSerializer(many=True)},
+    ),
+    create=extend_schema(
+        tags=["clipping-jobs"],
+        summary="Create a clipping job and start download",
+        responses={201: ClippingJobDetailSerializer},
+    ),
+    retrieve=extend_schema(
+        tags=["clipping-jobs"],
+        summary="Get a clipping job with candidates",
+        responses={200: ClippingJobDetailSerializer},
+    ),
+    partial_update=extend_schema(
+        tags=["clipping-jobs"],
+        summary="Partially update a clipping job",
+        responses={200: ClippingJobDetailSerializer},
+    ),
+    destroy=extend_schema(
+        tags=["clipping-jobs"],
+        summary="Delete a clipping job",
+        responses={204: None},
+    ),
+)
 class ClippingJobViewSet(ModelViewSet):
     queryset = ClippingJob.objects.select_related("social_account").order_by("-created_at")
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
@@ -47,6 +80,22 @@ class ClippingJobViewSet(ModelViewSet):
         emit_job_event(str(job.id), "status_changed", {"status": job.status})
         logger.info("ClippingJob created", extra={"job_id": str(job.id)})
 
+    @extend_schema(
+        tags=["clipping-jobs"],
+        summary="Dispatch render_clip for all approved candidates",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="StartRenderResponse",
+                fields={
+                    "dispatched_renders": drf_serializers.IntegerField(),
+                    "candidate_ids": drf_serializers.ListField(child=drf_serializers.UUIDField()),
+                    "job_status": drf_serializers.CharField(),
+                },
+            ),
+            400: OpenApiResponse(description="No approved candidates or invalid FSM state"),
+        },
+    )
     @action(detail=True, methods=["post"], url_path="start-render")
     def start_render(self, request: Request, pk: str | None = None) -> Response:
         """Dispatch render_clip for all APPROVED candidates and begin_rendering FSM transition."""
@@ -77,6 +126,17 @@ class ClippingJobViewSet(ModelViewSet):
             }
         )
 
+    @extend_schema(
+        tags=["clipping-jobs"],
+        summary="Approve all PROPOSED candidates on this job",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="ApproveAllResponse",
+                fields={"approved_count": drf_serializers.IntegerField()},
+            ),
+        },
+    )
     @action(detail=True, methods=["post"], url_path="approve-all")
     def approve_all(self, request: Request, pk: str | None = None) -> Response:
         """Approve all PROPOSED candidates on this job."""
@@ -93,6 +153,28 @@ class ClippingJobViewSet(ModelViewSet):
         )
         return Response({"approved_count": updated})
 
+    @extend_schema(
+        tags=["clipping-jobs"],
+        summary="Retry a failed job from transcription or analysis stage",
+        request=inline_serializer(
+            name="RetryRequest",
+            fields={
+                "from_stage": drf_serializers.ChoiceField(
+                    choices=["transcription", "analysis"],
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="RetryResponse",
+                fields={
+                    "job_status": drf_serializers.CharField(),
+                    "retrying": drf_serializers.CharField(),
+                },
+            ),
+            400: OpenApiResponse(description="Invalid FSM state for retry"),
+        },
+    )
     @action(detail=True, methods=["post"], url_path="retry")
     def retry(self, request: Request, pk: str | None = None) -> Response:
         """Retry a failed job. Body: {"from_stage": "transcription" | "analysis"}"""
@@ -121,6 +203,17 @@ class ClippingJobViewSet(ModelViewSet):
         emit_job_event(str(job.id), "status_changed", {"status": job.status})
         return Response({"job_status": job.status, "retrying": from_stage})
 
+    @extend_schema(
+        tags=["clipping-jobs"],
+        summary="SSE stream — real-time job events via Redis pub/sub",
+        description=(
+            "Server-Sent Events stream. Connect with EventSource. "
+            "Each event is a JSON payload: `{type, job_id, ...}`. "
+            "Event types: status_changed, analysis_complete, job_failed, "
+            "render_paused, render_complete, render_failed, post_complete, preview_ready."
+        ),
+        responses={200: OpenApiTypes.STR},
+    )
     @action(detail=True, methods=["get"], url_path="stream")
     def stream(self, request: Request, pk: str | None = None) -> StreamingHttpResponse:
         """SSE endpoint. Streams real-time job events from Redis pub/sub."""
