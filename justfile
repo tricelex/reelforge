@@ -74,3 +74,20 @@ format-check:
 precommit:
     @echo "Running pre-commit hooks on all files..."
     @uv run pre-commit run --all-files
+
+# test: Run tests using pytest on the host (requires Docker containers to be running for DB).
+test +args:
+    @echo "Running tests..."
+    @DATABASE_URL="postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge" \
+    CREDENTIAL_ENCRYPTION_KEY="SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=" \
+    uv run pytest {{args}}
+
+# test-coverage: Run tests and generate coverage report.
+test-coverage:
+    @echo "Running tests with coverage..."
+    @DATABASE_URL="postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge" \
+    CREDENTIAL_ENCRYPTION_KEY="SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=" \
+    uv run coverage run -m pytest
+    @uv run coverage report
+    @uv run coverage html
+    @echo "HTML coverage report generated in htmlcov/index.html"

@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from reelforge.channels import views as channels_views
+from reelforge.channels.views import SocialAccountViewSet
 from reelforge.clipping.views import (
     ClipCandidateViewSet,
     ClipLayoutConfigViewSet,
@@ -41,7 +42,8 @@ router.register(r"clipping/media-assets",     ClipMediaAssetViewSet,      basena
 router.register(r"clipping/music-assets",     ClipMusicAssetViewSet,      basename="clip-music-asset")
 router.register(r"clipping/render-templates", ClipRenderTemplateViewSet,  basename="clip-render-template")
 router.register(r"clipping/posts",            ClipPostViewSet,            basename="clip-post")
-# social-accounts added in Task 5 after SocialAccountViewSet is created
+router.register(r"social-accounts", SocialAccountViewSet, basename="social-account")
+
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),

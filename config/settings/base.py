@@ -417,6 +417,21 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
     "ENUM_GENERATE_CHOICE_DESCRIPTION": True,
+    "ENUM_NAME_OVERRIDES": {
+        # Status enums — each distinct choice set gets an explicit name to avoid hash-suffixed collisions
+        "ChannelStatusEnum": "reelforge.channels.choices.ChannelStatus",
+        "AssetStatusEnum": "reelforge.assets.models.AssetStatusChoices",
+        "ClippingJobStatusEnum": "reelforge.clipping.models.ClippingJob.Status",
+        "ClipCandidateStatusEnum": "reelforge.clipping.models.ClipCandidate.CandidateStatus",
+        "ClipRenderStatusEnum": "reelforge.clipping.models.ClipRender.RenderStatus",
+        "ClipPostStatusEnum": "reelforge.clipping.models.ClipPost.PostStatus",
+        "ClipRenderStageStatusEnum": "reelforge.clipping.models.ClipRenderStageResult.Status",
+        # Shared enums that appear on multiple serializers — canonical names prevent duplicate-name warnings
+        "ClipFormatEnum": "reelforge.clipping.models.ClipRender.Format",
+        "HookAnimationEnum": "reelforge.clipping.constants.CaptionAnimation",
+        "OutroTransitionEnum": "reelforge.clipping.constants.TransitionStyle",
+        "OverlayTypeEnum": "reelforge.clipping.models.ClipTimedOverlay.OverlayType",
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
