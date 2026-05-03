@@ -3,6 +3,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.utils import OpenApiResponse
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema_view
+from drf_spectacular.utils import inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin
@@ -18,6 +24,26 @@ from ***REMOVED***.clipping.tasks import render_clip
 logger = logging.getLogger("***REMOVED***.clipping.api")
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["clipping-renders"],
+        summary="List renders (filter by ?candidate=)",
+        parameters=[
+            OpenApiParameter(
+                name="candidate",
+                description="Filter renders by ClipCandidate UUID",
+                required=False,
+                type=str,
+            ),
+        ],
+        responses={200: ClipRenderSerializer(many=True)},
+    ),
+    retrieve=extend_schema(
+        tags=["clipping-renders"],
+        summary="Get a render with all stage results",
+        responses={200: ClipRenderSerializer},
+    ),
+)
 class ClipRenderViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
     queryset = ClipRender.objects.select_related("candidate").prefetch_related("stage_results")
     serializer_class = ClipRenderSerializer
@@ -35,6 +61,21 @@ class ClipRenderViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
             qs = qs.filter(candidate_id=candidate_id)
         return qs
 
+    @extend_schema(
+        tags=["clipping-renders"],
+        summary="Resume a PAUSED_AT_GATE render from the next stage",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="ResumeRenderResponse",
+                fields={
+                    "resumed": drf_serializers.BooleanField(),
+                    "start_from_stage": drf_serializers.IntegerField(),
+                },
+            ),
+            400: OpenApiResponse(description="Render is not paused or paused_at_stage not set"),
+        },
+    )
     @action(detail=True, methods=["post"])
     def resume(self, request: Request, pk: str | None = None) -> Response:
         """Resume a PAUSED_AT_GATE render from the next stage."""
@@ -57,6 +98,21 @@ class ClipRenderViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         )
         return Response({"resumed": True, "start_from_stage": next_stage})
 
+    @extend_schema(
+        tags=["clipping-renders"],
+        summary="Re-run a render from a specific stage (1–10)",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="RerunRenderResponse",
+                fields={
+                    "rerunning": drf_serializers.BooleanField(),
+                    "start_from_stage": drf_serializers.IntegerField(),
+                },
+            ),
+            400: OpenApiResponse(description="stage_order out of range 1–10"),
+        },
+    )
     @action(detail=True, methods=["post"], url_path=r"rerun/(?P<stage_order>[0-9]+)")
     def rerun(self, request: Request, pk: str | None = None, stage_order: str = "1") -> Response:
         """Re-run a render from a specific stage."""
@@ -74,6 +130,17 @@ class ClipRenderViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         )
         return Response({"rerunning": True, "start_from_stage": start})
 
+    @extend_schema(
+        tags=["clipping-renders"],
+        summary="Get download URL for the final rendered video",
+        responses={
+            200: inline_serializer(
+                name="DownloadUrlResponse",
+                fields={"download_url": drf_serializers.URLField()},
+            ),
+            404: OpenApiResponse(description="Render has no video file yet"),
+        },
+    )
     @action(detail=True, methods=["get"])
     def download(self, request: Request, pk: str | None = None) -> Response:
         """Return a URL for downloading the final render file."""
