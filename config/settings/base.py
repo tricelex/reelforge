@@ -417,6 +417,21 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
     "ENUM_GENERATE_CHOICE_DESCRIPTION": True,
+    "ENUM_NAME_OVERRIDES": {
+        # Status enums — each distinct choice set gets an explicit name to avoid hash-suffixed collisions
+        "ChannelStatusEnum": "***REMOVED***.channels.choices.ChannelStatus",
+        "AssetStatusEnum": "***REMOVED***.assets.models.AssetStatusChoices",
+        "ClippingJobStatusEnum": "***REMOVED***.clipping.models.ClippingJob.Status",
+        "ClipCandidateStatusEnum": "***REMOVED***.clipping.models.ClipCandidate.CandidateStatus",
+        "ClipRenderStatusEnum": "***REMOVED***.clipping.models.ClipRender.RenderStatus",
+        "ClipPostStatusEnum": "***REMOVED***.clipping.models.ClipPost.PostStatus",
+        "ClipRenderStageStatusEnum": "***REMOVED***.clipping.models.ClipRenderStageResult.Status",
+        # Shared enums that appear on multiple serializers — canonical names prevent duplicate-name warnings
+        "ClipFormatEnum": "***REMOVED***.clipping.models.ClipRender.Format",
+        "HookAnimationEnum": "***REMOVED***.clipping.constants.CaptionAnimation",
+        "OutroTransitionEnum": "***REMOVED***.clipping.constants.TransitionStyle",
+        "OverlayTypeEnum": "***REMOVED***.clipping.models.ClipTimedOverlay.OverlayType",
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------

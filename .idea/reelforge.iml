@@ -17,6 +17,7 @@
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/clip-render-enhancements/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/ui-revamp/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/.worktrees/clipping-backend-v2/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv Docker Compose (django)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
