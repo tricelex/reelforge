@@ -79,6 +79,61 @@ def test_non_staff_user_returns_403(db):
     assert response.status_code == 403
 
 
+# ── Auth — logout ─────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_logout_blacklists_refresh_token(staff_user):
+    client = APIClient()
+    # Obtain tokens
+    response = client.post(
+        "/api/v1/auth/token/",
+        {"email": staff_user.email, "password": "password"},
+        format="json",
+    )
+    assert response.status_code == 200
+    refresh_token = response.json()["refresh"]
+
+    # Logout — blacklist the refresh token
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['access']}")
+    logout_response = client.post(
+        "/api/v1/auth/logout/",
+        {"refresh": refresh_token},
+        format="json",
+    )
+    assert logout_response.status_code == 200
+
+    # Attempt to refresh using the blacklisted token — should fail
+    refresh_response = client.post(
+        "/api/v1/auth/token/refresh/",
+        {"refresh": refresh_token},
+        format="json",
+    )
+    assert refresh_response.status_code == 401
+
+
+# ── Auth — /me/ ───────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_me_returns_current_user(auth_client, staff_user):
+    response = auth_client.get("/api/v1/auth/me/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == staff_user.email
+    assert data["is_staff"] is True
+    assert "name" in data
+    assert "id" in data
+    assert "date_joined" in data
+    # oauth_credentials must never be exposed
+    assert "oauth_credentials" not in data
+    assert "password" not in data
+
+
+@pytest.mark.django_db
+def test_me_requires_authentication():
+    client = APIClient()
+    response = client.get("/api/v1/auth/me/")
+    assert response.status_code == 401
+
 # ── ClippingJob ───────────────────────────────────────────────────────────────
 
 

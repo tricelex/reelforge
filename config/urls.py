@@ -10,6 +10,7 @@ from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenBlacklistView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -26,6 +27,7 @@ from ***REMOVED***.clipping.views import (
     ClipTimedOverlayViewSet,
     ClippingJobViewSet,
 )
+from ***REMOVED***.users.api.views import CurrentUserView
 
 # DRF Router
 router = DefaultRouter()
@@ -39,6 +41,7 @@ router.register(r"clipping/media-assets",     ClipMediaAssetViewSet,      basena
 router.register(r"clipping/music-assets",     ClipMusicAssetViewSet,      basename="clip-music-asset")
 router.register(r"clipping/render-templates", ClipRenderTemplateViewSet,  basename="clip-render-template")
 router.register(r"clipping/posts",            ClipPostViewSet,            basename="clip-post")
+# social-accounts added in Task 5 after SocialAccountViewSet is created
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
@@ -54,8 +57,10 @@ urlpatterns = [
     path("app/", include("***REMOVED***.ui.urls", namespace="ui")),
     # API v1
     path("api/v1/", include(router.urls)),
-    path("api/v1/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/v1/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/v1/auth/token/",         TokenObtainPairView.as_view(),  name="token_obtain_pair"),
+    path("api/v1/auth/token/refresh/", TokenRefreshView.as_view(),     name="token_refresh"),
+    path("api/v1/auth/logout/",        TokenBlacklistView.as_view(),   name="token_blacklist"),
+    path("api/v1/auth/me/",            CurrentUserView.as_view(),      name="current_user"),
     # Legacy API router (users)
     path("api/", include("config.api_router")),
     path("api/auth-token/", include("rest_framework.urls")),
