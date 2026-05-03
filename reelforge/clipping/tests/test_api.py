@@ -87,7 +87,9 @@ def test_list_clipping_jobs(auth_client):
     ClippingJobFactory.create_batch(3)
     response = auth_client.get("/api/v1/clipping/jobs/")
     assert response.status_code == 200
-    assert len(response.json()) == 3
+    data = response.json()
+    assert data["count"] == 3
+    assert len(data["results"]) == 3
 
 
 @pytest.mark.django_db
