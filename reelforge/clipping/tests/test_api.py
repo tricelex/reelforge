@@ -395,3 +395,20 @@ def test_social_accounts_read_only(auth_client):
     # DELETE — should be 405
     response = auth_client.delete(f"/api/v1/social-accounts/{account.id}/")
     assert response.status_code == 405
+
+# ── ClipCandidate list ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_list_candidates_by_job(auth_client):
+    job = ClippingJobFactory()
+    ClipCandidateFactory(clipping_job=job)
+    ClipCandidateFactory(clipping_job=job)
+    # Candidate from a different job — should not appear
+    ClipCandidateFactory()
+    response = auth_client.get(f"/api/v1/clipping/candidates/?job={job.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 2
+    assert len(data["results"]) == 2
+
