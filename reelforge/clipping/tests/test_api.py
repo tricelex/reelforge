@@ -321,3 +321,77 @@ def test_resume_paused_render_dispatches_task(auth_client):
             start_from_stage=4,
             clip_render_id=str(render.id),
         )
+
+
+# ── Social Accounts ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_list_social_accounts_returns_paginated(auth_client):
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    SocialAccountFactory.create_batch(3, is_active=True)
+    response = auth_client.get("/api/v1/social-accounts/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] >= 3
+    result = data["results"][0]
+    # Check expected fields are present
+    assert "id" in result
+    assert "platform" in result
+    assert "platform_display" in result
+    assert "handle" in result
+    assert "display_name" in result
+    assert "is_active" in result
+    assert "channel_id" in result
+    assert "channel_name" in result
+    # Sensitive fields must never appear
+    assert "oauth_credentials" not in result
+
+
+@pytest.mark.django_db
+def test_filter_social_accounts_by_platform(auth_client):
+    from reelforge.channels.models import SocialAccount
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    SocialAccountFactory(platform=SocialAccount.Platform.TIKTOK)
+    SocialAccountFactory(platform=SocialAccount.Platform.INSTAGRAM)
+    response = auth_client.get("/api/v1/social-accounts/?platform=TIKTOK")
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert all(r["platform"] == "TIKTOK" for r in results)
+
+
+@pytest.mark.django_db
+def test_filter_social_accounts_by_is_active(auth_client):
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    SocialAccountFactory(is_active=True)
+    SocialAccountFactory(is_active=False)
+    response = auth_client.get("/api/v1/social-accounts/?is_active=true")
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert all(r["is_active"] is True for r in results)
+
+
+@pytest.mark.django_db
+def test_retrieve_social_account(auth_client):
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    account = SocialAccountFactory()
+    response = auth_client.get(f"/api/v1/social-accounts/{account.id}/")
+    assert response.status_code == 200
+    assert response.json()["id"] == str(account.id)
+
+
+@pytest.mark.django_db
+def test_social_accounts_read_only(auth_client):
+    from reelforge.channels.tests.factories import SocialAccountFactory
+
+    account = SocialAccountFactory()
+    # POST to list — should be 405 Method Not Allowed
+    response = auth_client.post("/api/v1/social-accounts/", {}, format="json")
+    assert response.status_code == 405
+    # DELETE — should be 405
+    response = auth_client.delete(f"/api/v1/social-accounts/{account.id}/")
+    assert response.status_code == 405
