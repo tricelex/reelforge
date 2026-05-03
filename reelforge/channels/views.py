@@ -7,8 +7,16 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import redirect
 from django.urls import reverse
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema_view
+from rest_framework.mixins import ListModelMixin
+from rest_framework.mixins import RetrieveModelMixin
+from rest_framework.viewsets import GenericViewSet
 
 from ***REMOVED***.channels.models import Channel
+from ***REMOVED***.channels.models import SocialAccount
+from ***REMOVED***.channels.serializers import SocialAccountSerializer
 from ***REMOVED***.channels.services import ChannelSetupService
 
 if TYPE_CHECKING:
@@ -68,3 +76,44 @@ def youtube_oauth_callback(request: HttpRequest) -> HttpResponse:
         )
 
     return redirect(reverse("admin:channels_channel_change", args=[channel.pk]))
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["social-accounts"],
+        summary="List social accounts",
+        parameters=[
+            OpenApiParameter(
+                name="platform",
+                description="Filter by platform (YOUTUBE, TIKTOK, INSTAGRAM)",
+                required=False,
+                type=str,
+                enum=["YOUTUBE", "TIKTOK", "INSTAGRAM"],
+            ),
+            OpenApiParameter(
+                name="is_active",
+                description="Filter by active status (true/false)",
+                required=False,
+                type=bool,
+            ),
+        ],
+    ),
+    retrieve=extend_schema(
+        tags=["social-accounts"],
+        summary="Get a social account",
+    ),
+)
+class SocialAccountViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
+    queryset = SocialAccount.objects.select_related("channel").order_by("channel", "platform")
+    serializer_class = SocialAccountSerializer
+    http_method_names = ["get", "head", "options"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        platform = self.request.query_params.get("platform")
+        if platform:
+            qs = qs.filter(platform=platform)
+        is_active = self.request.query_params.get("is_active")
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active.lower() == "true")
+        return qs
