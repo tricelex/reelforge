@@ -149,7 +149,7 @@ def test_list_clipping_jobs(auth_client):
 
 @pytest.mark.django_db
 def test_create_clipping_job_dispatches_download(auth_client):
-    with patch("***REMOVED***.clipping.views.jobs.download_source_video.delay") as mock_delay:
+    with patch("***REMOVED***.clipping.api.api_views.download_source_video.delay") as mock_delay:
         account = SocialAccountFactory()
         response = auth_client.post(
             "/api/v1/clipping/jobs/",
@@ -309,7 +309,7 @@ def test_resume_non_paused_render_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_resume_paused_render_dispatches_task(auth_client):
-    with patch("***REMOVED***.clipping.views.renders.render_clip.delay") as mock_delay:
+    with patch("***REMOVED***.clipping.api.api_views.render_clip.delay") as mock_delay:
         render = ClipRenderFactory(
             status=ClipRender.RenderStatus.PAUSED_AT_GATE,
             paused_at_stage=3,

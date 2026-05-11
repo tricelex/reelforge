@@ -394,7 +394,7 @@ REST_FRAMEWORK = {
 
 # djangorestframework-simplejwt
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=120),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -414,7 +414,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "ReelForge API",
     "DESCRIPTION": "Documentation of API endpoints of ReelForge",
     "VERSION": "1.0.0",
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "SCHEMA_PATH_PREFIX": "/api/",
     "ENUM_GENERATE_CHOICE_DESCRIPTION": True,
     "ENUM_NAME_OVERRIDES": {

@@ -16,32 +16,10 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from ***REMOVED***.channels import views as channels_views
 from ***REMOVED***.channels.views import SocialAccountViewSet
-from ***REMOVED***.clipping.views import (
-    ClipCandidateViewSet,
-    ClipLayoutConfigViewSet,
-    ClipMediaAssetViewSet,
-    ClipMusicAssetViewSet,
-    ClipPostViewSet,
-    ClipRenderTemplateViewSet,
-    ClipRenderViewSet,
-    ClipStyleConfigViewSet,
-    ClipTimedOverlayViewSet,
-    ClippingJobViewSet,
-)
 from ***REMOVED***.users.api.views import CurrentUserView
 
-# DRF Router
+# DRF Router (non-clipping routes)
 router = DefaultRouter()
-router.register(r"clipping/jobs",             ClippingJobViewSet,         basename="clipping-job")
-router.register(r"clipping/candidates",       ClipCandidateViewSet,       basename="clip-candidate")
-router.register(r"clipping/renders",          ClipRenderViewSet,          basename="clip-render")
-router.register(r"clipping/layout-configs",   ClipLayoutConfigViewSet,    basename="clip-layout")
-router.register(r"clipping/style-configs",    ClipStyleConfigViewSet,     basename="clip-style")
-router.register(r"clipping/overlays",         ClipTimedOverlayViewSet,    basename="clip-overlay")
-router.register(r"clipping/media-assets",     ClipMediaAssetViewSet,      basename="clip-media-asset")
-router.register(r"clipping/music-assets",     ClipMusicAssetViewSet,      basename="clip-music-asset")
-router.register(r"clipping/render-templates", ClipRenderTemplateViewSet,  basename="clip-render-template")
-router.register(r"clipping/posts",            ClipPostViewSet,            basename="clip-post")
 router.register(r"social-accounts", SocialAccountViewSet, basename="social-account")
 
 
@@ -59,8 +37,9 @@ urlpatterns = [
     path("app/", include("***REMOVED***.ui.urls", namespace="ui")),
     # API v1
     path("api/v1/", include(router.urls)),
-    path("api/v1/auth/token/",         TokenObtainPairView.as_view(),  name="token_obtain_pair"),
-    path("api/v1/auth/token/refresh/", TokenRefreshView.as_view(),     name="token_refresh"),
+    path("api/v1/", include("***REMOVED***.clipping.api.urls")),
+    path("api/v1/auth/login/",         TokenObtainPairView.as_view(),  name="token_obtain_pair"),
+    path("api/v1/auth/token-refresh/", TokenRefreshView.as_view(),     name="token_refresh"),
     path("api/v1/auth/logout/",        TokenBlacklistView.as_view(),   name="token_blacklist"),
     path("api/v1/auth/me/",            CurrentUserView.as_view(),      name="current_user"),
     # Legacy API router (users)
