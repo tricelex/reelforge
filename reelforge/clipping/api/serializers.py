@@ -189,8 +189,8 @@ class ClippingJobListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClippingJob
         fields = [
-            "id", "social_account", "source_type", "source_url", "source_title",
-            "source_duration_sec", "clips_requested", "status",
+            "id", "social_account", "source_type", "source_url", "source_video_file",
+            "source_title", "source_duration_sec", "clips_requested", "status",
             "started_at", "completed_at", "failed_at", "last_error",
             "total_cost_usd", "created_at", "updated_at",
         ]

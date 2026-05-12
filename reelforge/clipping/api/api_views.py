@@ -15,14 +15,24 @@ from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.decorators import renderer_classes
 from rest_framework.mixins import ListModelMixin
 from rest_framework.mixins import RetrieveModelMixin
 from rest_framework.mixins import UpdateModelMixin
+from rest_framework.renderers import BaseRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet
+
+
+class ServerSentEventRenderer(BaseRenderer):
+    media_type = "text/event-stream"
+    format = "event-stream"
+
+    def render(self, data: Any, accepted_media_type: str | None = None, renderer_context: dict | None = None) -> Any:
+        return data
 
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
@@ -242,7 +252,7 @@ class ClippingJobViewSet(ModelViewSet):
         ),
         responses={200: OpenApiTypes.STR},
     )
-    @action(detail=True, methods=["get"], url_path="stream")
+    @action(detail=True, methods=["get"], url_path="stream", renderer_classes=[ServerSentEventRenderer])
     def stream(self, request: Request, pk: str | None = None) -> StreamingHttpResponse:
         """SSE endpoint. Streams real-time job events from Redis pub/sub."""
         job: ClippingJob = self.get_object()
