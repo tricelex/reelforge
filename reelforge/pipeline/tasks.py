@@ -15,11 +15,9 @@ from django.utils import timezone
 from ***REMOVED***.agents.containers import AgentContainer
 
 if TYPE_CHECKING:
-    from ***REMOVED***.agents.providers.protocols import CommunitySearchProvider
     from ***REMOVED***.agents.providers.protocols import LLMProvider
-    from ***REMOVED***.agents.providers.protocols import TrendsProvider
-    from ***REMOVED***.agents.providers.protocols import VideoSearchProvider
     from ***REMOVED***.agents.providers.protocols import WebSearchProvider
+    from ***REMOVED***.ai.schemas.research import ResearchAgentOutput
     from ***REMOVED***.services.youtube.client import YouTubeClient  # used by upload/analytics tasks below
 
 logger = get_task_logger(__name__)
@@ -39,20 +37,19 @@ _SIX_PLACES = Decimal("0.000001")
     soft_time_limit=1800,
     time_limit=2400,
 )
-@inject
 def run_research_job(
     self: Any,
     channel_id: str,
     research_job_id: str,
-    video_search: VideoSearchProvider = Provide[AgentContainer.video_search],
-    trends: TrendsProvider = Provide[AgentContainer.trends],
-    community: CommunitySearchProvider = Provide[AgentContainer.community],
-    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
 ) -> None:
-    import asyncio
+    from django.conf import settings
 
-    from agents import Runner
-    from ***REMOVED***.agents.research_agent import build_research_agent
+    from ***REMOVED***.ai.agents.research import research_agent
+    from ***REMOVED***.ai.deps import ResearchDeps
+    from ***REMOVED***.ai.providers.serpapi import get_community
+    from ***REMOVED***.ai.providers.serpapi import get_trends
+    from ***REMOVED***.ai.providers.serpapi import get_youtube_search
+    from ***REMOVED***.ai.providers.tavily import get_web_search
     from ***REMOVED***.channels.models import Channel
     from ***REMOVED***.research.models import ResearchJob
 
@@ -71,13 +68,17 @@ def run_research_job(
     try:
         channel = Channel.objects.prefetch_related("competitors").get(id=channel_id)
 
-        agent = build_research_agent(channel, video_search, trends, community, web_search)
-        result = asyncio.run(
-            Runner.run(
-                agent,
-                input=f"Research topics for channel {channel.name}. Niches: {channel.target_niches}",
-                max_turns=50,
-            )
+        deps = ResearchDeps(
+            video_search=get_youtube_search(),
+            web_search=get_web_search(),
+            trends=get_trends(),
+            community=get_community(),
+            channel=channel,
+        )
+        result = research_agent.run_sync(
+            f"Research topics for channel {channel.name}. Niches: {channel.target_niches}",
+            deps=deps,
+            model=settings.RESEARCH_AGENT_MODEL,
         )
         _save_research_results(job, result, channel)
         job.mark_completed()
@@ -1634,37 +1635,24 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
         result: RunResult from Runner.run()
         channel: Channel instance
     """
-    from ***REMOVED***.agents.schemas import ResearchAgentOutput
     from ***REMOVED***.research.choices import CompetitionLevel
     from ***REMOVED***.research.choices import TrendDirection
     from ***REMOVED***.research.models import TopicIdea
 
-    if isinstance(result.final_output, ResearchAgentOutput):
-        # output_type was set — SDK already validated and deserialized
-        output = result.final_output
-    else:
-        # Fallback: raw string (e.g. agent ran without output_type)
-        raw: str = result.final_output or ""
-        try:
-            output = ResearchAgentOutput.model_validate_json(raw)
-        except Exception:
-            logger.exception(
-                "Failed to parse research agent output",
-                extra={"research_job_id": str(job.id), "raw_output": raw[:500]},
-            )
-            raise
+    output: ResearchAgentOutput = result.output
 
     # ── Token usage and cost ─────────────────────────────────────────────────
-    total_input = sum(r.usage.input_tokens for r in result.raw_responses)
-    total_output = sum(r.usage.output_tokens for r in result.raw_responses)
-    total_tokens = total_input + total_output
+    usage = result.usage()
+    total_input = usage.request_tokens or 0
+    total_output = usage.response_tokens or 0
+    total_tokens = usage.total_tokens or (total_input + total_output)
 
     cost_usd = (
         Decimal(str(total_input)) * _GPT4O_INPUT_COST_PER_M / Decimal(1000000)
         + Decimal(str(total_output)) * _GPT4O_OUTPUT_COST_PER_M / Decimal(1000000)
     ).quantize(_SIX_PLACES, rounding=ROUND_HALF_UP)
 
-    agent_run_id = result.last_response_id or ""
+    agent_run_id = ""
 
     # ── Raw data snapshots ────────────────────────────────────────────────────
     trend_data_raw: dict[str, Any] = {
