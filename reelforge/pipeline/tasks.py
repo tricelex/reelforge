@@ -326,9 +326,11 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
     job.mark_running(task_id=self.request.id)
 
     try:
-        from agents import Runner
-        from reelforge.agents.schemas import VisualPlannerOutput  # noqa: TC001
-        from reelforge.agents.visual_planner import build_visual_planner_agent
+        from django.conf import settings
+
+        from reelforge.ai.agents.visual_planner import visual_planner_agent
+        from reelforge.ai.deps import VisualPlannerDeps
+        from reelforge.ai.schemas.visual import VisualPlannerOutput  # noqa: TC001
 
         sections = job.script_job.sections or []
         broll_suggestions = job.script_job.broll_suggestions or []
@@ -361,16 +363,19 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
             },
         )
 
-        agent = build_visual_planner_agent(
+        deps = VisualPlannerDeps(
             sections=sections,
             broll_suggestions=broll_suggestions,
             total_duration_seconds=total_duration_seconds,
             channel_tone=channel.content_tone or "informative",
             narrative_mode=narrative_mode,
         )
-
-        result = Runner.run_sync(agent, input="Generate the complete visual timeline.", max_turns=1)
-        planner_output: VisualPlannerOutput = result.final_output
+        result = visual_planner_agent.run_sync(
+            "Generate the complete visual timeline.",
+            deps=deps,
+            model=settings.VISUAL_PLANNER_MODEL,
+        )
+        planner_output: VisualPlannerOutput = result.output
 
         scenes = [
             {
@@ -399,7 +404,7 @@ def run_scene_breakdown_job(self, scene_breakdown_job_id: str, pipeline_run_id: 
         job.scenes = scenes
         job.scene_count = len(scenes)
         job.total_estimated_duration = planner_output.total_duration_seconds
-        job.breakdown_provider = "gpt-5.2"
+        job.breakdown_provider = settings.VISUAL_PLANNER_MODEL
         job.save(update_fields=[
             "scenes", "scene_count", "total_estimated_duration",
             "breakdown_provider", "updated_at",
