@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 
 from reelforge.services.media.render_stages.base import RenderStage
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from reelforge.channels.models import Channel
     from reelforge.clipping.models import ClipStyleConfig
 
@@ -85,7 +86,6 @@ class ASSGenerator:
 
     def _header(self) -> str:
         alignment = self._alignment()
-        bg_line = f"\nBackColour={self.bg_color}" if self.bg_color else ""
         return (
             "[Script Info]\n"
             "ScriptType: v4.00+\n"
@@ -194,23 +194,26 @@ class CaptionTranslationStage(RenderStage):
             logger.info("Using cached translation", extra={"style_config_id": str(sc.pk)})
             return input_path
 
-        from reelforge.services.providers.registry import get_llm_provider
+        from django.conf import settings
 
-        llm = get_llm_provider(self.channel)
+        from reelforge.ai.agents.translation import translation_agent
+
         target_lang = sc.caption_translate_to
         prompt = (
+            f"You are a professional translator.\n"
             f"Translate the following Whisper transcript JSON to {target_lang}. "
             "Preserve the exact JSON structure, keys, and timestamps. "
             "Only translate the 'text' and 'word' string values. "
             "Return only valid JSON with no commentary.\n\n"
             f"{self.transcript_json}"
         )
-        response = llm.complete(prompt=prompt, system="You are a professional translator.")
+        result = translation_agent.run_sync(prompt, model=settings.CAPTION_TRANSLATION_MODEL)
 
         try:
-            translated = json.loads(response.text)
+            translated = json.loads(result.output)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"LLM returned invalid JSON for translation: {exc}") from exc
+            msg = f"LLM returned invalid JSON for translation: {exc}"
+            raise RuntimeError(msg) from exc
 
         type(sc).objects.filter(pk=sc.pk).update(translated_transcript_json=translated)
         sc.translated_transcript_json = translated
@@ -296,7 +299,8 @@ class CaptionStage(RenderStage):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"CaptionStage ffmpeg failed: {result.stderr}")
+            msg = f"CaptionStage ffmpeg failed: {result.stderr}"
+            raise RuntimeError(msg)
 
         logger.info(
             "CaptionStage completed",
