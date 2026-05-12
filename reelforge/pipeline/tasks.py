@@ -8,15 +8,9 @@ from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
-from dependency_injector.wiring import Provide
-from dependency_injector.wiring import inject
 from django.utils import timezone
 
-from reelforge.agents.containers import AgentContainer
-
 if TYPE_CHECKING:
-    from reelforge.agents.providers.protocols import LLMProvider
-    from reelforge.agents.providers.protocols import WebSearchProvider
     from reelforge.ai.schemas.research import ResearchAgentOutput
     from reelforge.services.youtube.client import YouTubeClient  # used by upload/analytics tasks below
 
@@ -118,19 +112,17 @@ def run_research_job_for_channel(self, channel_id: str) -> None:  # noqa: ANN001
     soft_time_limit=1200,
     time_limit=1800,
 )
-@inject
 def run_script_job(
     self: Any,
     topic_id: str,
     pipeline_run_id: str,
-    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
-    llm: LLMProvider = Provide[AgentContainer.llm_openai],
 ) -> None:
     """Build ScriptAgent and run it for the given topic."""
-    import asyncio
+    from django.conf import settings
 
-    from agents import Runner
-    from reelforge.agents.script_agent import build_script_agent
+    from reelforge.ai.agents.script import script_agent
+    from reelforge.ai.deps import ScriptDeps
+    from reelforge.ai.providers.tavily import get_web_search
     from reelforge.pipeline.models import PipelineRun
     from reelforge.research.models import TopicIdea
     from reelforge.scripts.models import ScriptJob
@@ -146,13 +138,11 @@ def run_script_job(
     job.mark_running(task_id=self.request.id)
 
     try:
-        agent = build_script_agent(channel, topic, web_search, llm)
-        result = asyncio.run(
-            Runner.run(
-                agent,
-                input=f"Write a full script for: {topic.title_idea}",
-                max_turns=12,
-            )
+        deps = ScriptDeps(web_search=get_web_search(), channel=channel, topic=topic)
+        result = script_agent.run_sync(
+            f"Write a full script for: {topic.title_idea}",
+            deps=deps,
+            model=settings.SCRIPT_AGENT_MODEL,
         )
         _save_script_results(job, result)
         job.mark_completed()
@@ -174,21 +164,19 @@ def run_script_job(
     soft_time_limit=1200,
     time_limit=1800,
 )
-@inject
 def run_script_revision_job(
     self: Any,
     script_job_id: str,
-    web_search: WebSearchProvider = Provide[AgentContainer.web_search],
-    llm: LLMProvider = Provide[AgentContainer.llm_openai],
 ) -> None:
     """Re-run the ScriptAgent on an existing ScriptJob to incorporate a change request.
     Reads script_job.change_request, passes existing script + request to agent,
     updates ScriptJob fields, and creates a new ScriptRevision.
     """
-    import asyncio
+    from django.conf import settings
 
-    from agents import Runner
-    from reelforge.agents.script_agent import build_script_agent
+    from reelforge.ai.agents.script import script_agent
+    from reelforge.ai.deps import ScriptDeps
+    from reelforge.ai.providers.tavily import get_web_search
     from reelforge.scripts.models import ScriptJob
 
     script_job = ScriptJob.objects.select_related("topic__channel").get(id=script_job_id)
@@ -214,7 +202,7 @@ def run_script_revision_job(
         last_revision = script_job.revisions.order_by("-version_number").first()
         next_version = (last_revision.version_number + 1) if last_revision else 2
 
-        agent = build_script_agent(channel, topic, web_search, llm)
+        deps = ScriptDeps(web_search=get_web_search(), channel=channel, topic=topic)
         hook_text = script_job.selected_hook.text if script_job.selected_hook else ""
         revision_input = (
             f"Revise the existing script for: {topic.title_idea}\n\n"
@@ -226,7 +214,11 @@ def run_script_revision_job(
             "Incorporate the change request. Keep what works well. "
             "Return the complete refined script via the standard output format."
         )
-        result = asyncio.run(Runner.run(agent, input=revision_input, max_turns=12))
+        result = script_agent.run_sync(
+            revision_input,
+            deps=deps,
+            model=settings.SCRIPT_AGENT_MODEL,
+        )
 
         _save_script_results(
             script_job,
@@ -1810,7 +1802,7 @@ def _save_research_results(job: Any, result: Any, channel: Any) -> None:
     )
 
 
-def _save_script_results(  # noqa: PLR0915
+def _save_script_results(
     job: Any,
     result: Any,
     version_number: int = 1,
@@ -1824,20 +1816,9 @@ def _save_script_results(  # noqa: PLR0915
         version_number: ScriptRevision version number to create
         change_summary: Human-readable description of what changed in this revision
     """
-    from reelforge.agents.schemas import ScriptAgentOutput
+    from reelforge.ai.schemas.script import ScriptAgentOutput  # noqa: TC001
 
-    if isinstance(result.final_output, ScriptAgentOutput):
-        output = result.final_output
-    else:
-        raw: str = result.final_output or ""
-        try:
-            output = ScriptAgentOutput.model_validate_json(raw)
-        except Exception:
-            logger.exception(
-                "Failed to parse ScriptAgent output",
-                extra={"script_job_id": str(job.id), "raw_output": raw[:500]},
-            )
-            raise
+    output: ScriptAgentOutput = result.output
 
     seo = output.seo_metadata
 
