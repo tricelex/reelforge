@@ -2,24 +2,13 @@ from __future__ import annotations
 
 from abc import ABC
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 from typing import Any
 
-from ***REMOVED***.services.dataclass import ImageResponse
-from ***REMOVED***.services.dataclass import LLMResponse
-from ***REMOVED***.services.dataclass import TTSResponse
-from ***REMOVED***.services.dataclass import VideoClipResponse
-
-
-class BaseLLMProvider(ABC):
-    name: str
-
-    @abstractmethod
-    def complete(
-        self, prompt: str, system: str = "", temperature: float = 0.7, max_tokens: int = 4000, **kwargs: Any
-    ) -> LLMResponse: ...
-
-    @abstractmethod
-    def complete_json(self, prompt: str, system: str = "", **kwargs: Any) -> dict: ...
+if TYPE_CHECKING:
+    from ***REMOVED***.services.dataclass import ImageResponse
+    from ***REMOVED***.services.dataclass import TTSResponse
+    from ***REMOVED***.services.dataclass import VideoClipResponse
 
 
 class BaseTTSProvider(ABC):
