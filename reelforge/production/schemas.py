@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic import RootModel
 
-from ***REMOVED***.agents.schemas import VisualSegment
+from ***REMOVED***.ai.schemas.visual import VisualSegment
 
 
 class SceneList(RootModel[list[VisualSegment]]):

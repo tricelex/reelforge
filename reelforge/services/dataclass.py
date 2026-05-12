@@ -3,16 +3,6 @@ from typing import Any
 
 
 @dataclass
-class LLMResponse:
-    text: str
-    model: str
-    tokens_input: int
-    tokens_output: int
-    cost_usd: float
-    raw: Any = None
-
-
-@dataclass
 class TTSResponse:
     audio_bytes: bytes
     duration_sec: float
