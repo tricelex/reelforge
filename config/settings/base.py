@@ -116,7 +116,7 @@ LOCAL_APPS = [
     "reelforge.assets",
     "reelforge.production",
     "reelforge.distribution",
-    "reelforge.agents",
+    "reelforge.ai",
     "reelforge.clipping",
     "reelforge.ui",
     # Note: reelforge.services is a utility module, not a Django app
@@ -750,14 +750,20 @@ UNFOLD_STUDIO_ENABLE_RESET_PASSWORD = True
 
 # AI PROVIDER CONFIGURATION
 # ------------------------------------------------------------------------------
-# API Keys for AI providers
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
-# Provider Defaults (overridable per channel)
-DEFAULT_LLM_PROVIDER = env("DEFAULT_LLM_PROVIDER", default="claude")  # claude | openai | gemini
-DEFAULT_TTS_PROVIDER = env("DEFAULT_TTS_PROVIDER", default="elevenlabs")  # elevenlabs | openai_tts
-DEFAULT_IMAGE_PROVIDER = env("DEFAULT_IMAGE_PROVIDER", default="fal_ai")  # fal_ai | replicate | dalle
+# Per-agent model strings — PydanticAI resolves "openai:*" and "anthropic:*" natively
+RESEARCH_AGENT_MODEL      = env("RESEARCH_AGENT_MODEL",      default="openai:gpt-4o")
+SCRIPT_AGENT_MODEL        = env("SCRIPT_AGENT_MODEL",        default="openai:gpt-4o")
+VISUAL_PLANNER_MODEL      = env("VISUAL_PLANNER_MODEL",      default="openai:gpt-4o")
+CLIP_ANALYSIS_MODEL       = env("CLIP_ANALYSIS_MODEL",       default="anthropic:claude-sonnet-4-5")
+CAPTION_TRANSLATION_MODEL = env("CAPTION_TRANSLATION_MODEL", default="anthropic:claude-sonnet-4-5")
+
+# Provider Defaults (TTS, image, video — unchanged)
+DEFAULT_TTS_PROVIDER        = env("DEFAULT_TTS_PROVIDER",        default="elevenlabs")
+DEFAULT_IMAGE_PROVIDER      = env("DEFAULT_IMAGE_PROVIDER",      default="fal_ai")
+DEFAULT_VIDEO_CLIP_PROVIDER = env("DEFAULT_VIDEO_CLIP_PROVIDER", default="fal_ai_kling")
 
 # EXTERNAL SERVICES (OPTIONAL)
 # ------------------------------------------------------------------------------

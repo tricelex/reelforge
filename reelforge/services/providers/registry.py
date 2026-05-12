@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-from typing import Any
 
 from django.conf import settings
 
@@ -10,73 +9,65 @@ if TYPE_CHECKING:
     from reelforge.channels.models import Channel
     from reelforge.channels.models import SocialAccount
     from reelforge.services.base import BaseImageProvider
-    from reelforge.services.base import BaseLLMProvider
     from reelforge.services.base import BaseTTSProvider
     from reelforge.services.base import BaseVideoClipProvider
     from reelforge.services.providers.distribution.base import BaseClipDistributionProvider
 
 logger = logging.getLogger("reelforge.providers")
 
-
-def _container() -> Any:
-    """Return the AgentContainer singleton (avoids circular imports)."""
-    from reelforge.agents.apps import AgentsConfig
-
-    return AgentsConfig.container
-
-
-def get_llm_provider(channel: Channel | None = None) -> BaseLLMProvider:
-    """Returns the configured LLM provider, optionally channel-specific."""
-    name = channel.llm_provider if channel and channel.llm_provider else settings.DEFAULT_LLM_PROVIDER
-    if name == "claude":
-        return _container().llm_claude()
-    if name == "openai":
-        return _container().llm_openai()
-    msg = f"Unknown LLM provider: {name}"
-    raise ValueError(msg)
+_singletons: dict[str, object] = {}
 
 
 def get_tts_provider(channel: Channel | None = None) -> BaseTTSProvider:
-    """Returns the configured TTS provider, optionally channel-specific."""
+    from reelforge.services.providers.tts.elevenlabs import ElevenLabsProvider
+    from reelforge.services.providers.tts.mock import MockTTSProvider
+
     name = channel.tts_provider if channel and channel.tts_provider else settings.DEFAULT_TTS_PROVIDER
-    if name == "mock":
-        return _container().tts_mock()
-    if name == "elevenlabs":
-        return _container().tts_elevenlabs()
-    msg = f"Unknown TTS provider: {name}"
-    raise ValueError(msg)
+    key = f"tts_{name}"
+    if key not in _singletons:
+        if name == "mock":
+            _singletons[key] = MockTTSProvider(name="mock")
+        else:
+            _singletons[key] = ElevenLabsProvider(api_key=settings.ELEVENLABS_API_KEY)
+    return _singletons[key]  # type: ignore[return-value]
 
 
 def get_image_provider(channel: Channel | None = None) -> BaseImageProvider:
-    """Returns the configured image generation provider, optionally channel-specific."""
+    from reelforge.services.fal.client import FalAiClient
+    from reelforge.services.providers.image.fal_ai import FalAiImageProvider
+    from reelforge.services.providers.image.mock import MockImageProvider
+
     name = channel.image_provider if channel and channel.image_provider else settings.DEFAULT_IMAGE_PROVIDER
-    if name == "mock":
-        return _container().image_mock()
-    if name == "fal_ai":
-        return _container().image_fal()
-    msg = f"Unknown image provider: {name}"
-    raise ValueError(msg)
+    key = f"image_{name}"
+    if key not in _singletons:
+        if name == "mock":
+            _singletons[key] = MockImageProvider(name="mock")
+        else:
+            _singletons[key] = FalAiImageProvider(client=FalAiClient(api_key=settings.FAL_API_KEY))
+    return _singletons[key]  # type: ignore[return-value]
 
 
 def get_video_clip_provider(channel: Channel | None = None) -> BaseVideoClipProvider:
-    """Returns the configured video clip generation provider, optionally channel-specific."""
-    name = (getattr(channel, "video_clip_provider", None) if channel else None) or getattr(
-        settings, "DEFAULT_VIDEO_CLIP_PROVIDER", "fal_ai_kling"
-    )
-    if name == "mock":
-        return _container().video_clip_mock()
-    if name in ("fal_ai_kling", "fal_ai"):
-        return _container().video_clip_fal()
-    msg = f"Unknown video clip provider: {name}"
-    raise ValueError(msg)
+    from reelforge.services.fal.client import FalAiClient
+    from reelforge.services.providers.video_clip.fal_ai import FalAiVideoClipProvider
+    from reelforge.services.providers.video_clip.mock import MockVideoClipProvider
+
+    name = (
+        getattr(channel, "video_clip_provider", None) if channel else None
+    ) or settings.DEFAULT_VIDEO_CLIP_PROVIDER
+    key = f"video_clip_{name}"
+    if key not in _singletons:
+        if name == "mock":
+            _singletons[key] = MockVideoClipProvider(name="mock")
+        else:
+            _singletons[key] = FalAiVideoClipProvider(client=FalAiClient(api_key=settings.FAL_API_KEY))
+    return _singletons[key]  # type: ignore[return-value]
 
 
 def get_distribution_provider(
     social_account: SocialAccount,
 ) -> BaseClipDistributionProvider:
-    """Returns the appropriate distribution provider for the given social account platform."""
     from reelforge.channels.models import SocialAccount as _SocialAccount
-    from reelforge.services.providers.distribution.base import BaseClipDistributionProvider  # noqa: F401
     from reelforge.services.providers.distribution.instagram import InstagramClipProvider
     from reelforge.services.providers.distribution.tiktok import TikTokClipProvider
     from reelforge.services.providers.distribution.youtube import YouTubeClipProvider
