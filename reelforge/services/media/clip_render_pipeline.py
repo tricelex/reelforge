@@ -297,7 +297,7 @@ class ClipRenderPipeline:
             result.save(
                 update_fields=["status", "last_error", "completed_at", "updated_at"]
             )
-            logger.error(
+            logger.exception(
                 "Stage failed",
                 extra={
                     "stage": stage.name,

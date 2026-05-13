@@ -3,10 +3,7 @@ from __future__ import annotations
 import pytest
 
 from reelforge.channels.models import SocialAccount
-from reelforge.services.providers.distribution.base import BaseClipDistributionProvider
 from reelforge.services.providers.registry import get_distribution_provider
-
-from .factories import ClippingJobFactory
 
 
 @pytest.mark.django_db

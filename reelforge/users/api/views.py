@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 
 from drf_spectacular.utils import extend_schema
@@ -9,13 +10,15 @@ from rest_framework.generics import RetrieveAPIView
 from rest_framework.mixins import ListModelMixin
 from rest_framework.mixins import RetrieveModelMixin
 from rest_framework.mixins import UpdateModelMixin
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
 from reelforge.users.api.serializers import CurrentUserSerializer
 from reelforge.users.api.serializers import UserSerializer
 from reelforge.users.models import User
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
 
 
 class UserViewSet(RetrieveModelMixin, ListModelMixin, UpdateModelMixin, GenericViewSet):

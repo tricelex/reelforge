@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pytest
+
 from reelforge.channels.tests.factories import SocialAccountFactory
-from reelforge.clipping.tests.factories import ClipCandidateFactory, ClippingJobFactory
-from reelforge.clipping.constants import PLATFORM_RENDER_MODE_DEFAULTS
+from reelforge.clipping.tests.factories import ClipCandidateFactory
+from reelforge.clipping.tests.factories import ClippingJobFactory
 
 
 @pytest.mark.django_db

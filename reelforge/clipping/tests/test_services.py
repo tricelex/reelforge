@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import pytest
 
-from reelforge.services.transcription.whisper import WhistlerTranscriptionResult
 from reelforge.services.transcription.whisper import WhisperTranscriptionService
 
 
@@ -52,7 +51,6 @@ def test_whisper_service_calculates_cost() -> None:
 
 from reelforge.clipping.services import ClipAnalysisService
 from reelforge.clipping.tests.factories import ClippingJobFactory
-
 
 SAMPLE_TRANSCRIPT_JSON = {
     "text": "This is amazing. You should try this. The results will surprise you.",

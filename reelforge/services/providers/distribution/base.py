@@ -24,7 +24,7 @@ class AnalyticsResult:
     likes: int = 0
     comments: int = 0
     shares: int = 0
-    revenue_est_usd: Decimal = Decimal("0")
+    revenue_est_usd: Decimal = Decimal(0)
 
 
 class BaseClipDistributionProvider(ABC):

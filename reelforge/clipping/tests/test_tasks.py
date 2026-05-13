@@ -7,9 +7,9 @@ from unittest.mock import patch
 import pytest
 
 from reelforge.clipping.tests.factories import ClipCandidateFactory
+from reelforge.clipping.tests.factories import ClippingJobFactory
 from reelforge.clipping.tests.factories import ClipRenderFactory
 from reelforge.clipping.tests.factories import ClipStyleConfigFactory
-from reelforge.clipping.tests.factories import ClippingJobFactory
 
 
 @pytest.mark.django_db
@@ -74,7 +74,6 @@ def test_analyze_clips_sets_failed_status_on_final_retry() -> None:
 
     from reelforge.clipping.models import ClippingJob
     from reelforge.clipping.tasks import analyze_clips
-    from reelforge.clipping.tests.factories import ClippingJobFactory
 
     job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
     # Provide a real-ish downloaded_file so the task doesn't fail on the path check
@@ -126,7 +125,6 @@ def test_analyze_clips_always_awaits_approval() -> None:
     from reelforge.clipping.models import ClippingJob
     from reelforge.clipping.tasks import analyze_clips
     from reelforge.clipping.tests.factories import ClipCandidateFactory
-    from reelforge.clipping.tests.factories import ClippingJobFactory
 
     job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
     job.downloaded_file.save("fake_video.mp4", ContentFile(b"fake"), save=True)

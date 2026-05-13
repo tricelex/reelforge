@@ -6,12 +6,12 @@ from reelforge.clipping.api.api_views import ClipCandidateViewSet
 from reelforge.clipping.api.api_views import ClipLayoutConfigViewSet
 from reelforge.clipping.api.api_views import ClipMediaAssetViewSet
 from reelforge.clipping.api.api_views import ClipMusicAssetViewSet
+from reelforge.clipping.api.api_views import ClippingJobViewSet
 from reelforge.clipping.api.api_views import ClipPostViewSet
 from reelforge.clipping.api.api_views import ClipRenderTemplateViewSet
 from reelforge.clipping.api.api_views import ClipRenderViewSet
 from reelforge.clipping.api.api_views import ClipStyleConfigViewSet
 from reelforge.clipping.api.api_views import ClipTimedOverlayViewSet
-from reelforge.clipping.api.api_views import ClippingJobViewSet
 
 router = DefaultRouter()
 router.register(r"clipping/jobs",             ClippingJobViewSet,         basename="clipping-job")

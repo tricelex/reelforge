@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 from reelforge.services.fal.exceptions import FalAiAuthError
 from reelforge.services.fal.exceptions import FalAiError
 from reelforge.services.fal.exceptions import FalAiRateLimitError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger("reelforge.providers.fal_ai")
 

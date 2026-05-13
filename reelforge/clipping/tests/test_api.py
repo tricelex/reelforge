@@ -8,18 +8,10 @@ from rest_framework.test import APIClient
 from reelforge.channels.tests.factories import SocialAccountFactory
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipRender
-from reelforge.clipping.models import ClipRenderTemplate
-from reelforge.clipping.tests.factories import (
-    ClipCandidateFactory,
-    ClipLayoutConfigFactory,
-    ClipMediaAssetFactory,
-    ClipMusicAssetFactory,
-    ClipRenderFactory,
-    ClipRenderTemplateFactory,
-    ClippingJobFactory,
-    ClipStyleConfigFactory,
-    ClipTimedOverlayFactory,
-)
+from reelforge.clipping.tests.factories import ClipCandidateFactory
+from reelforge.clipping.tests.factories import ClippingJobFactory
+from reelforge.clipping.tests.factories import ClipRenderFactory
+from reelforge.clipping.tests.factories import ClipRenderTemplateFactory
 from reelforge.users.tests.factories import UserFactory
 
 

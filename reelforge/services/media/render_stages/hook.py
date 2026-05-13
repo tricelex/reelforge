@@ -95,7 +95,8 @@ class HookStage(RenderStage):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"HookStage overlay failed: {result.stderr}")
+            msg = f"HookStage overlay failed: {result.stderr}"
+            raise RuntimeError(msg)
 
     def _run_title_card(self, input_path: Path, sc) -> None:
         """Generate a black title card video, then prepend to input via concat."""
@@ -124,7 +125,8 @@ class HookStage(RenderStage):
             ]
             result = subprocess.run(gen_cmd, capture_output=True, text=True, check=False)
             if result.returncode != 0:
-                raise RuntimeError(f"HookStage title card generation failed: {result.stderr}")
+                msg = f"HookStage title card generation failed: {result.stderr}"
+                raise RuntimeError(msg)
 
             filter_complex = "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]"
             concat_cmd = [
@@ -144,6 +146,7 @@ class HookStage(RenderStage):
             ]
             result = subprocess.run(concat_cmd, capture_output=True, text=True, check=False)
             if result.returncode != 0:
-                raise RuntimeError(f"HookStage title card concat failed: {result.stderr}")
+                msg = f"HookStage title card concat failed: {result.stderr}"
+                raise RuntimeError(msg)
         finally:
             title_card_path.unlink(missing_ok=True)

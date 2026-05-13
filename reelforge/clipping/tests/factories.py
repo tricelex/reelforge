@@ -8,11 +8,11 @@ from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
 from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipPost
 from reelforge.clipping.models import ClipRender
 from reelforge.clipping.models import ClipRenderStageResult
 from reelforge.clipping.models import ClipRenderTemplate
-from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipStyleConfig
 from reelforge.clipping.models import ClipTimedOverlay
 

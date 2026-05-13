@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 import httpx
 
 from reelforge.services.base import BaseVideoClipProvider
 from reelforge.services.dataclass import VideoClipResponse
-from reelforge.services.fal.client import FalAiClient
+
+if TYPE_CHECKING:
+    from reelforge.services.fal.client import FalAiClient
 
 logger = logging.getLogger("reelforge.providers.video_clip.fal_ai")
 
@@ -190,7 +193,7 @@ class FalAiVideoClipProvider(BaseVideoClipProvider):
                 raw=result,
             )
 
-        clip_tasks = [_generate_one(req, url) for req, url in zip(clip_requests, image_urls_or_exc)]
+        clip_tasks = [_generate_one(req, url) for req, url in zip(clip_requests, image_urls_or_exc, strict=False)]
         results = await asyncio.gather(*clip_tasks, return_exceptions=True)
         succeeded = sum(1 for r in results if not isinstance(r, BaseException))
         logger.info(

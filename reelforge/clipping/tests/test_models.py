@@ -3,29 +3,21 @@ from __future__ import annotations
 import pytest
 from django_fsm import TransitionNotAllowed
 
-from reelforge.clipping.constants import CaptionAnimation
-from reelforge.clipping.constants import CaptionPosition
 from reelforge.clipping.constants import CaptionStyle
 from reelforge.clipping.constants import HookStyle
-from reelforge.clipping.constants import MediaAssetType
-from reelforge.clipping.constants import ProgressBarPosition
 from reelforge.clipping.constants import TransitionStyle
-from reelforge.clipping.constants import WatermarkPosition
-from reelforge.clipping.constants import WatermarkType
 from reelforge.clipping.models import ClipCandidate
 from reelforge.clipping.models import ClipLayoutConfig
-from reelforge.clipping.models import ClippingJob
-
 from reelforge.clipping.models import ClipMediaAsset
 from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.models import ClipRenderStageResult
 from reelforge.clipping.models import ClipRenderTemplate
 from reelforge.clipping.models import ClipStyleConfig
 from reelforge.clipping.models import ClipTimedOverlay
-
-from .factories import ClipCandidateFactory
-from .factories import ClipRenderFactory
-from .factories import ClippingJobFactory
+from reelforge.clipping.tests.factories import ClipCandidateFactory
+from reelforge.clipping.tests.factories import ClippingJobFactory
+from reelforge.clipping.tests.factories import ClipRenderFactory
 
 
 def test_caption_style_choices_exist() -> None:

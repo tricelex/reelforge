@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import ffmpeg
@@ -11,6 +10,8 @@ import ffmpeg
 from reelforge.services.media.render_stages.base import RenderStage
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from reelforge.clipping.models import ClipStyleConfig
 
 logger = logging.getLogger("reelforge.media.render_stages")
@@ -94,7 +95,8 @@ class MusicMixStage(RenderStage):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"MusicMixStage failed: {result.stderr}")
+            msg = f"MusicMixStage failed: {result.stderr}"
+            raise RuntimeError(msg)
         logger.info(
             "MusicMixStage completed",
             extra={"output": str(self.output_path), "volume_db": vol_db},

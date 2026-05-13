@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
 import httpx
 
 from reelforge.services.base import BaseImageProvider
 from reelforge.services.dataclass import ImageResponse
-from reelforge.services.fal.client import FalAiClient
+
+if TYPE_CHECKING:
+    from reelforge.services.fal.client import FalAiClient
 
 logger = logging.getLogger("reelforge.providers.image.fal_ai")
 

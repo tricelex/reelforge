@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
 from django.http import StreamingHttpResponse
@@ -15,12 +16,10 @@ from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.decorators import renderer_classes
 from rest_framework.mixins import ListModelMixin
 from rest_framework.mixins import RetrieveModelMixin
 from rest_framework.mixins import UpdateModelMixin
 from rest_framework.renderers import BaseRenderer
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.viewsets import ModelViewSet
@@ -34,28 +33,28 @@ class ServerSentEventRenderer(BaseRenderer):
     def render(self, data: Any, accepted_media_type: str | None = None, renderer_context: dict | None = None) -> Any:
         return data
 
-from reelforge.clipping.models import ClipCandidate
-from reelforge.clipping.models import ClipLayoutConfig
-from reelforge.clipping.models import ClipMediaAsset
-from reelforge.clipping.models import ClipMusicAsset
-from reelforge.clipping.models import ClipPost
-from reelforge.clipping.models import ClipRender
-from reelforge.clipping.models import ClipRenderTemplate
-from reelforge.clipping.models import ClipStyleConfig
-from reelforge.clipping.models import ClipTimedOverlay
-from reelforge.clipping.models import ClippingJob
 from reelforge.clipping.api.serializers import ClipCandidateDetailSerializer
 from reelforge.clipping.api.serializers import ClipCandidateListSerializer
 from reelforge.clipping.api.serializers import ClipLayoutConfigSerializer
 from reelforge.clipping.api.serializers import ClipMediaAssetSerializer
 from reelforge.clipping.api.serializers import ClipMusicAssetSerializer
+from reelforge.clipping.api.serializers import ClippingJobDetailSerializer
+from reelforge.clipping.api.serializers import ClippingJobListSerializer
 from reelforge.clipping.api.serializers import ClipPostSerializer
 from reelforge.clipping.api.serializers import ClipRenderSerializer
 from reelforge.clipping.api.serializers import ClipRenderTemplateSerializer
 from reelforge.clipping.api.serializers import ClipStyleConfigSerializer
 from reelforge.clipping.api.serializers import ClipTimedOverlaySerializer
-from reelforge.clipping.api.serializers import ClippingJobDetailSerializer
-from reelforge.clipping.api.serializers import ClippingJobListSerializer
+from reelforge.clipping.models import ClipCandidate
+from reelforge.clipping.models import ClipLayoutConfig
+from reelforge.clipping.models import ClipMediaAsset
+from reelforge.clipping.models import ClipMusicAsset
+from reelforge.clipping.models import ClippingJob
+from reelforge.clipping.models import ClipPost
+from reelforge.clipping.models import ClipRender
+from reelforge.clipping.models import ClipRenderTemplate
+from reelforge.clipping.models import ClipStyleConfig
+from reelforge.clipping.models import ClipTimedOverlay
 from reelforge.clipping.sse import emit_job_event
 from reelforge.clipping.sse import job_event_stream
 from reelforge.clipping.tasks import download_source_video
@@ -63,6 +62,9 @@ from reelforge.clipping.tasks import preview_clip_layout
 from reelforge.clipping.tasks import render_clip
 from reelforge.clipping.tasks import sync_clip_analytics
 from reelforge.clipping.tasks import transcribe_video
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
 
 logger = logging.getLogger("reelforge.clipping.api")
 
