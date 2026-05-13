@@ -6,12 +6,12 @@ from ***REMOVED***.clipping.api.api_views import ClipCandidateViewSet
 from ***REMOVED***.clipping.api.api_views import ClipLayoutConfigViewSet
 from ***REMOVED***.clipping.api.api_views import ClipMediaAssetViewSet
 from ***REMOVED***.clipping.api.api_views import ClipMusicAssetViewSet
+from ***REMOVED***.clipping.api.api_views import ClippingJobViewSet
 from ***REMOVED***.clipping.api.api_views import ClipPostViewSet
 from ***REMOVED***.clipping.api.api_views import ClipRenderTemplateViewSet
 from ***REMOVED***.clipping.api.api_views import ClipRenderViewSet
 from ***REMOVED***.clipping.api.api_views import ClipStyleConfigViewSet
 from ***REMOVED***.clipping.api.api_views import ClipTimedOverlayViewSet
-from ***REMOVED***.clipping.api.api_views import ClippingJobViewSet
 
 router = DefaultRouter()
 router.register(r"clipping/jobs",             ClippingJobViewSet,         basename="clipping-job")

@@ -8,11 +8,11 @@ from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClipMediaAsset
 from ***REMOVED***.clipping.models import ClipMusicAsset
+from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
 from ***REMOVED***.clipping.models import ClipRenderStageResult
 from ***REMOVED***.clipping.models import ClipRenderTemplate
-from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
 

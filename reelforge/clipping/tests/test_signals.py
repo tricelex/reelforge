@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pytest
+
 from ***REMOVED***.channels.tests.factories import SocialAccountFactory
-from ***REMOVED***.clipping.tests.factories import ClipCandidateFactory, ClippingJobFactory
-from ***REMOVED***.clipping.constants import PLATFORM_RENDER_MODE_DEFAULTS
+from ***REMOVED***.clipping.tests.factories import ClipCandidateFactory
+from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
 
 
 @pytest.mark.django_db

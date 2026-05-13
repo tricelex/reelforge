@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import redis
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger("***REMOVED***.clipping.sse")
 
@@ -28,7 +31,7 @@ def emit_job_event(job_id: str, event_type: str, data: dict) -> None:
         )
 
 
-def job_event_stream(job_id: str) -> Generator[str, None, None]:
+def job_event_stream(job_id: str) -> Generator[str]:
     """Subscribe to a job's Redis channel and yield SSE-formatted event strings.
 
     Intended to be used as the content generator for a StreamingHttpResponse.

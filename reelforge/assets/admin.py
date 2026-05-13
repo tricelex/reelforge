@@ -405,7 +405,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
     # ── "Start New Run" admin actions ─────────────────────────────────────────
 
     @admin.action(description=_("Start new voiceover run"))
-    def start_new_voiceover_run(self, request, queryset):
+    def start_new_voiceover_run(self, request, queryset) -> None:
         from django.db.models import Max
 
         from ***REMOVED***.pipeline.tasks import run_voiceover_run
@@ -417,7 +417,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
         self.message_user(request, _("New voiceover run(s) dispatched."))
 
     @admin.action(description=_("Start new image generation run"))
-    def start_new_image_generation_run(self, request, queryset):
+    def start_new_image_generation_run(self, request, queryset) -> None:
         from django.db.models import Max
 
         from ***REMOVED***.pipeline.tasks import run_image_generation_run
@@ -429,7 +429,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
         self.message_user(request, _("New image generation run(s) dispatched."))
 
     @admin.action(description=_("Generate video clips (requires completed image run)"))
-    def start_new_video_clip_run(self, request, queryset):
+    def start_new_video_clip_run(self, request, queryset) -> None:
         from django.db.models import Max
 
         from ***REMOVED***.pipeline.tasks import run_video_clip_generation_run
@@ -456,7 +456,7 @@ class AssetJobAdmin(FSMModelAdminMixin, ModelAdmin):
             self.message_user(request, _(f"Video clip generation dispatched for {dispatched} asset job(s)."))
 
     @admin.action(description=_("Start new thumbnail run"))
-    def start_new_thumbnail_run(self, request, queryset):
+    def start_new_thumbnail_run(self, request, queryset) -> None:
         from django.db.models import Max
 
         from ***REMOVED***.pipeline.tasks import run_thumbnail_run
@@ -495,7 +495,7 @@ class VoiceoverRunAdmin(ModelAdmin):
         return obj.status
 
     @admin.action(description=_("Select as active voiceover run"))
-    def select_as_active_voiceover_run(self, request, queryset):
+    def select_as_active_voiceover_run(self, request, queryset) -> None:
         for run in queryset.select_related("asset_job"):
             run.asset_job.selected_voiceover_run = run
             run.asset_job.save(update_fields=["selected_voiceover_run", "updated_at"])
@@ -526,7 +526,7 @@ class ImageGenerationRunAdmin(ModelAdmin):
         return obj.status
 
     @admin.action(description=_("Select as active image run"))
-    def select_as_active_image_run(self, request, queryset):
+    def select_as_active_image_run(self, request, queryset) -> None:
         for run in queryset.select_related("asset_job"):
             run.asset_job.selected_image_run = run
             run.asset_job.save(update_fields=["selected_image_run", "updated_at"])
@@ -557,7 +557,7 @@ class VideoClipGenerationRunAdmin(ModelAdmin):
         return obj.status
 
     @admin.action(description=_("Select as active video clip run"))
-    def select_as_active_clip_run(self, request, queryset):
+    def select_as_active_clip_run(self, request, queryset) -> None:
         for run in queryset.select_related("asset_job"):
             run.asset_job.selected_video_clip_run = run
             run.asset_job.save(update_fields=["selected_video_clip_run", "updated_at"])
@@ -588,7 +588,7 @@ class ThumbnailRunAdmin(ModelAdmin):
         return obj.status
 
     @admin.action(description=_("Select as active thumbnail run"))
-    def select_as_active_thumbnail_run(self, request, queryset):
+    def select_as_active_thumbnail_run(self, request, queryset) -> None:
         for run in queryset.select_related("asset_job"):
             run.asset_job.selected_thumbnail_run = run
             run.asset_job.save(update_fields=["selected_thumbnail_run", "updated_at"])

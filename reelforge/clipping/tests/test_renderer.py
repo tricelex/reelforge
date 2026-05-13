@@ -4,23 +4,21 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-import pytest
-
 from ***REMOVED***.services.media.clip_renderer import ClipRenderConfig
 from ***REMOVED***.services.media.clip_renderer import ClipRenderer
 from ***REMOVED***.services.media.speaker_detection import SpeakerCropResult
 
 
 def _make_config(**kwargs) -> ClipRenderConfig:
-    defaults = dict(
-        source_path=Path("/tmp/source.mp4"),
-        output_path=Path("/tmp/output.mp4"),
-        start_sec=0.0,
-        end_sec=60.0,
-        include_captions=False,
-        include_title_card=False,
-        include_branding=False,
-    )
+    defaults = {
+        "source_path": Path("/tmp/source.mp4"),
+        "output_path": Path("/tmp/output.mp4"),
+        "start_sec": 0.0,
+        "end_sec": 60.0,
+        "include_captions": False,
+        "include_title_card": False,
+        "include_branding": False,
+    }
     defaults.update(kwargs)
     return ClipRenderConfig(**defaults)
 

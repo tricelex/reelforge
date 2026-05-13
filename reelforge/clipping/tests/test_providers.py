@@ -3,10 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ***REMOVED***.channels.models import SocialAccount
-from ***REMOVED***.services.providers.distribution.base import BaseClipDistributionProvider
 from ***REMOVED***.services.providers.registry import get_distribution_provider
-
-from .factories import ClippingJobFactory
 
 
 @pytest.mark.django_db

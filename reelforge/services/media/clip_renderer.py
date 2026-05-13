@@ -13,7 +13,6 @@ import time
 import warnings
 from dataclasses import dataclass
 from dataclasses import field
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -23,6 +22,8 @@ from ***REMOVED***.services.media.speaker_detection import SpeakerCropResult
 from ***REMOVED***.services.media.speaker_detection import SpeakerDetectionService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ***REMOVED***.clipping.models import ClipLayoutConfig
 
 logger = logging.getLogger("***REMOVED***.media.clip_renderer")
@@ -83,7 +84,8 @@ class ClipRenderer:
         cmd = self._build_ffmpeg_command()
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg failed: {result.stderr}")
+            msg = f"FFmpeg failed: {result.stderr}"
+            raise RuntimeError(msg)
 
         elapsed = time.perf_counter() - start_time
         logger.info(

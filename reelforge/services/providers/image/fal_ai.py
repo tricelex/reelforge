@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from typing import Any
 
 import httpx
 
 from ***REMOVED***.services.base import BaseImageProvider
 from ***REMOVED***.services.dataclass import ImageResponse
-from ***REMOVED***.services.fal.client import FalAiClient
+
+if TYPE_CHECKING:
+    from ***REMOVED***.services.fal.client import FalAiClient
 
 logger = logging.getLogger("***REMOVED***.providers.image.fal_ai")
 

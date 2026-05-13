@@ -57,7 +57,8 @@ def _concat_hard_cut(
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"concat failed: {result.stderr}")
+        msg = f"concat failed: {result.stderr}"
+        raise RuntimeError(msg)
 
 
 def _concat_xfade(
@@ -94,7 +95,8 @@ def _concat_xfade(
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"xfade concat failed: {result.stderr}")
+        msg = f"xfade concat failed: {result.stderr}"
+        raise RuntimeError(msg)
 
 
 @dataclass

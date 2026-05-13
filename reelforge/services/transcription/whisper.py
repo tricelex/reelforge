@@ -3,10 +3,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 import openai
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger("***REMOVED***.services.transcription")
 
@@ -61,5 +64,5 @@ class WhisperTranscriptionService:
         )
 
     def _calculate_cost(self, duration_sec: float) -> Decimal:
-        minutes = Decimal(str(duration_sec)) / Decimal("60")
+        minutes = Decimal(str(duration_sec)) / Decimal(60)
         return (minutes * WHISPER_COST_PER_MINUTE_USD).quantize(Decimal("0.000001"))

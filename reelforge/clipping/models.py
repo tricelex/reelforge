@@ -306,15 +306,18 @@ class ClipCandidate(BaseAbstractModel):
     def clean(self) -> None:
         super().clean()
         if self.end_sec <= self.start_sec:
-            raise ValidationError("end_sec must be greater than start_sec")
+            msg = "end_sec must be greater than start_sec"
+            raise ValidationError(msg)
         duration = self.end_sec - self.start_sec
         if duration < 30:
+            msg = f"Clip duration {duration:.1f}s is below minimum 30s"
             raise ValidationError(
-                f"Clip duration {duration:.1f}s is below minimum 30s"
+                msg
             )
         if duration > 180:
+            msg = f"Clip duration {duration:.1f}s exceeds maximum 180s"
             raise ValidationError(
-                f"Clip duration {duration:.1f}s exceeds maximum 180s"
+                msg
             )
         # Overlap detection (±1s tolerance for frame precision)
         # Use pk=0 fallback so .exclude() works correctly for unsaved records (pk=None)
@@ -325,9 +328,12 @@ class ClipCandidate(BaseAbstractModel):
         ).exclude(pk=self.pk or 0)
         if overlapping.exists():
             other = overlapping.first()
-            raise ValidationError(
+            msg = (
                 f"Clip overlaps with existing candidate '{other.title}' "
                 f"({other.start_sec:.0f}s\u2013{other.end_sec:.0f}s)"
+            )
+            raise ValidationError(
+                msg
             )
 
 
@@ -843,7 +849,8 @@ class ClipTimedOverlay(BaseAbstractModel):
     def clean(self) -> None:
         super().clean()
         if self.end_sec <= self.start_sec:
-            raise ValidationError("end_sec must be greater than start_sec")
+            msg = "end_sec must be greater than start_sec"
+            raise ValidationError(msg)
 
 
 class ClipRenderStageResult(BaseAbstractModel):

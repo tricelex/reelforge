@@ -8,18 +8,10 @@ from rest_framework.test import APIClient
 from ***REMOVED***.channels.tests.factories import SocialAccountFactory
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipRender
-from ***REMOVED***.clipping.models import ClipRenderTemplate
-from ***REMOVED***.clipping.tests.factories import (
-    ClipCandidateFactory,
-    ClipLayoutConfigFactory,
-    ClipMediaAssetFactory,
-    ClipMusicAssetFactory,
-    ClipRenderFactory,
-    ClipRenderTemplateFactory,
-    ClippingJobFactory,
-    ClipStyleConfigFactory,
-    ClipTimedOverlayFactory,
-)
+from ***REMOVED***.clipping.tests.factories import ClipCandidateFactory
+from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
+from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
+from ***REMOVED***.clipping.tests.factories import ClipRenderTemplateFactory
 from ***REMOVED***.users.tests.factories import UserFactory
 
 

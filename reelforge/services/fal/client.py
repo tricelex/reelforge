@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 from ***REMOVED***.services.fal.exceptions import FalAiAuthError
 from ***REMOVED***.services.fal.exceptions import FalAiError
 from ***REMOVED***.services.fal.exceptions import FalAiRateLimitError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger("***REMOVED***.providers.fal_ai")
 

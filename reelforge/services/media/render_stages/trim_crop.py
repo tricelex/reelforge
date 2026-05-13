@@ -4,7 +4,6 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from dataclasses import field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import ffmpeg
@@ -14,6 +13,8 @@ from ***REMOVED***.services.media.speaker_detection import SpeakerCropResult
 from ***REMOVED***.services.media.speaker_detection import SpeakerDetectionService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ***REMOVED***.clipping.models import ClipLayoutConfig
 
 logger = logging.getLogger("***REMOVED***.media.render_stages")
@@ -57,7 +58,8 @@ class TrimAndCropStage(RenderStage):
         cmd = self._build_command(input_path)
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"TrimAndCropStage ffmpeg failed: {result.stderr}")
+            msg = f"TrimAndCropStage ffmpeg failed: {result.stderr}"
+            raise RuntimeError(msg)
         logger.info(
             "TrimAndCropStage completed",
             extra={"output": str(self.output_path)},

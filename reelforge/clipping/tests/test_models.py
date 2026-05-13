@@ -3,29 +3,21 @@ from __future__ import annotations
 import pytest
 from django_fsm import TransitionNotAllowed
 
-from ***REMOVED***.clipping.constants import CaptionAnimation
-from ***REMOVED***.clipping.constants import CaptionPosition
 from ***REMOVED***.clipping.constants import CaptionStyle
 from ***REMOVED***.clipping.constants import HookStyle
-from ***REMOVED***.clipping.constants import MediaAssetType
-from ***REMOVED***.clipping.constants import ProgressBarPosition
 from ***REMOVED***.clipping.constants import TransitionStyle
-from ***REMOVED***.clipping.constants import WatermarkPosition
-from ***REMOVED***.clipping.constants import WatermarkType
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
-from ***REMOVED***.clipping.models import ClippingJob
-
 from ***REMOVED***.clipping.models import ClipMediaAsset
 from ***REMOVED***.clipping.models import ClipMusicAsset
+from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipRenderStageResult
 from ***REMOVED***.clipping.models import ClipRenderTemplate
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
-
-from .factories import ClipCandidateFactory
-from .factories import ClipRenderFactory
-from .factories import ClippingJobFactory
+from ***REMOVED***.clipping.tests.factories import ClipCandidateFactory
+from ***REMOVED***.clipping.tests.factories import ClippingJobFactory
+from ***REMOVED***.clipping.tests.factories import ClipRenderFactory
 
 
 def test_caption_style_choices_exist() -> None:

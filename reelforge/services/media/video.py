@@ -5,13 +5,8 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import ffmpeg
-import numpy as np
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger("***REMOVED***.media.video")
 
@@ -192,13 +187,14 @@ class VideoRenderer:
             stream.run(quiet=True, capture_stderr=True)
         except ffmpeg.Error as exc:
             stderr = exc.stderr.decode(errors="replace") if exc.stderr else "(no stderr)"
-            logger.error(
+            logger.exception(
                 "FFmpeg error in %s:\n%s",
                 label,
                 stderr,
                 extra={"label": label, "stderr": stderr},
             )
-            raise RuntimeError(f"FFmpeg error in {label}: {stderr}") from None
+            msg = f"FFmpeg error in {label}: {stderr}"
+            raise RuntimeError(msg) from None
 
     def _prepare_one_scene(self, scene: dict, out_path: str) -> None:
         """Prepare a single scene clip with scaling, fades, and optional Ken Burns."""
@@ -244,13 +240,11 @@ class VideoRenderer:
 
         # zoompan expression: max 3% zoom delta
         if "zoom_out" in animation_type:
-            zoom_expr = f"'min(1.03,zoom-0.0005)'"
-        elif "pan_right" in animation_type:
-            zoom_expr = "'1.02'"
-        elif "pan_left" in animation_type:
+            zoom_expr = "'min(1.03,zoom-0.0005)'"
+        elif "pan_right" in animation_type or "pan_left" in animation_type:
             zoom_expr = "'1.02'"
         else:  # zoom_in / default
-            zoom_expr = f"'min(zoom+0.0005,1.03)'"
+            zoom_expr = "'min(zoom+0.0005,1.03)'"
 
         self._run_ffmpeg(
             ffmpeg.input(image_path, loop=1, framerate=fps)

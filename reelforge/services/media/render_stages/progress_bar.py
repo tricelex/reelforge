@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import ffmpeg
@@ -11,6 +10,8 @@ import ffmpeg
 from ***REMOVED***.services.media.render_stages.base import RenderStage
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ***REMOVED***.clipping.models import ClipStyleConfig
 
 logger = logging.getLogger("***REMOVED***.media.render_stages")
@@ -73,6 +74,7 @@ class ProgressBarStage(RenderStage):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"ProgressBarStage failed: {result.stderr}")
+            msg = f"ProgressBarStage failed: {result.stderr}"
+            raise RuntimeError(msg)
         logger.info("ProgressBarStage completed", extra={"output": str(self.output_path)})
         return self.output_path

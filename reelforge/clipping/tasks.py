@@ -34,7 +34,7 @@ def download_source_video(self, clipping_job_id: str) -> None:
     try:
         job = ClippingJob.objects.get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
-        logger.error("ClippingJob not found", extra={"id": clipping_job_id})
+        logger.exception("ClippingJob not found", extra={"id": clipping_job_id})
         return
 
     job.celery_task_id = self.request.id
@@ -100,7 +100,7 @@ def transcribe_video(self, clipping_job_id: str) -> None:
     try:
         job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
-        logger.error("ClippingJob not found for transcription", extra={"id": clipping_job_id})
+        logger.exception("ClippingJob not found for transcription", extra={"id": clipping_job_id})
         return
 
     audio_path: Path | None = None
@@ -172,23 +172,22 @@ def analyze_clips(self, clipping_job_id: str) -> None:
     try:
         job = ClippingJob.objects.select_related("social_account").get(id=clipping_job_id)
     except ClippingJob.DoesNotExist:
-        logger.error("ClippingJob not found for analysis", extra={"id": clipping_job_id})
+        logger.exception("ClippingJob not found for analysis", extra={"id": clipping_job_id})
         return
 
     try:
-        from ***REMOVED***.clipping.analysis_helpers import (
-            build_analysis_manifest,
-            merge_transcript_with_diarization,
-            run_face_detection_for_speakers,
-            run_scene_detection,
-            run_speaker_diarization,
-        )
+        from ***REMOVED***.clipping.analysis_helpers import build_analysis_manifest
+        from ***REMOVED***.clipping.analysis_helpers import merge_transcript_with_diarization
+        from ***REMOVED***.clipping.analysis_helpers import run_face_detection_for_speakers
+        from ***REMOVED***.clipping.analysis_helpers import run_scene_detection
+        from ***REMOVED***.clipping.analysis_helpers import run_speaker_diarization
         from ***REMOVED***.clipping.services import ClipAnalysisService
         from ***REMOVED***.clipping.sse import emit_job_event
 
         video_path = str(job.downloaded_file.path) if job.downloaded_file else None
         if not video_path:
-            raise ValueError("No downloaded file on job")
+            msg = "No downloaded file on job"
+            raise ValueError(msg)
 
         # 1. Speaker diarization (may fail gracefully)
         try:
@@ -295,7 +294,7 @@ def render_clip(
             "clipping_job__social_account"
         ).get(id=clip_candidate_id)
     except ClipCandidate.DoesNotExist:
-        logger.error("ClipCandidate not found", extra={"id": clip_candidate_id})
+        logger.exception("ClipCandidate not found", extra={"id": clip_candidate_id})
         return
 
     layout_config = ClipLayoutConfig.objects.filter(candidate=candidate).first()
@@ -312,7 +311,7 @@ def render_clip(
         try:
             render = ClipRender.objects.get(id=clip_render_id, candidate=candidate)
         except ClipRender.DoesNotExist:
-            logger.error(
+            logger.exception(
                 "ClipRender not found for retry",
                 extra={"clip_render_id": clip_render_id, "candidate_id": clip_candidate_id},
             )
@@ -330,7 +329,6 @@ def render_clip(
 
     try:
         job = candidate.clipping_job
-        social_account = job.social_account
         source_path = Path(settings.MEDIA_ROOT) / job.downloaded_file.name
         output_path = get_clip_render_path(str(candidate.id), render.format)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -475,7 +473,7 @@ def preview_clip_style(self, style_config_id: str) -> None:
             "candidate__clipping_job"
         ).get(id=style_config_id)
     except ClipStyleConfig.DoesNotExist:
-        logger.error("ClipStyleConfig not found", extra={"id": style_config_id})
+        logger.exception("ClipStyleConfig not found", extra={"id": style_config_id})
         return
 
     candidate = style_config.candidate
@@ -561,7 +559,7 @@ def post_clip(self, clip_post_id: str) -> None:
             "social_account",
         ).get(id=clip_post_id)
     except ClipPost.DoesNotExist:
-        logger.error("ClipPost not found", extra={"id": clip_post_id})
+        logger.exception("ClipPost not found", extra={"id": clip_post_id})
         return
 
     clip_post.status = ClipPost.PostStatus.POSTING
@@ -632,7 +630,7 @@ def preview_clip_layout(self, layout_config_id: str) -> None:
             "candidate__clipping_job"
         ).get(id=layout_config_id)
     except ClipLayoutConfig.DoesNotExist:
-        logger.error("ClipLayoutConfig not found", extra={"id": layout_config_id})
+        logger.exception("ClipLayoutConfig not found", extra={"id": layout_config_id})
         return
 
     candidate = lc.candidate
@@ -746,7 +744,7 @@ def sync_clip_analytics(self, clip_post_id: str) -> None:
     try:
         clip_post = ClipPost.objects.select_related("social_account").get(id=clip_post_id)
     except ClipPost.DoesNotExist:
-        logger.error("ClipPost not found for analytics sync", extra={"id": clip_post_id})
+        logger.exception("ClipPost not found for analytics sync", extra={"id": clip_post_id})
         return
 
     try:

@@ -6,11 +6,11 @@ from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClipLayoutConfig
 from ***REMOVED***.clipping.models import ClipMediaAsset
 from ***REMOVED***.clipping.models import ClipMusicAsset
+from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipPost
 from ***REMOVED***.clipping.models import ClipRender
 from ***REMOVED***.clipping.models import ClipRenderStageResult
 from ***REMOVED***.clipping.models import ClipRenderTemplate
-from ***REMOVED***.clipping.models import ClippingJob
 from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
 
@@ -206,16 +206,8 @@ class ClippingJobDetailSerializer(ClippingJobListSerializer):
     analysis_manifest = serializers.JSONField(read_only=True)
 
     class Meta(ClippingJobListSerializer.Meta):
-        fields = ClippingJobListSerializer.Meta.fields + [
-            "transcript_text", "transcript_json", "analysis_manifest",
-            "analysis_provider", "analysis_cost_usd", "agent_run_id",
-            "celery_task_id", "candidates",
-        ]
-        read_only_fields = ClippingJobListSerializer.Meta.read_only_fields + [
-            "transcript_text", "transcript_json", "analysis_manifest",
-            "analysis_provider", "analysis_cost_usd", "agent_run_id",
-            "celery_task_id", "candidates",
-        ]
+        fields = [*ClippingJobListSerializer.Meta.fields, "transcript_text", "transcript_json", "analysis_manifest", "analysis_provider", "analysis_cost_usd", "agent_run_id", "celery_task_id", "candidates"]
+        read_only_fields = [*ClippingJobListSerializer.Meta.read_only_fields, "transcript_text", "transcript_json", "analysis_manifest", "analysis_provider", "analysis_cost_usd", "agent_run_id", "celery_task_id", "candidates"]
 
 
 class ClipRenderTemplateSerializer(serializers.ModelSerializer):

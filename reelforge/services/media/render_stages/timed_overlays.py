@@ -4,10 +4,13 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from dataclasses import field
-from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 from ***REMOVED***.services.media.render_stages.base import RenderStage
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger("***REMOVED***.media.render_stages")
 
@@ -45,7 +48,8 @@ class TimedOverlayStage(RenderStage):
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise RuntimeError(f"TimedOverlayStage failed: {result.stderr}")
+            msg = f"TimedOverlayStage failed: {result.stderr}"
+            raise RuntimeError(msg)
         logger.info("TimedOverlayStage completed", extra={"count": len(self.timed_overlays)})
         return self.output_path
 

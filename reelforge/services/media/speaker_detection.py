@@ -95,7 +95,7 @@ class SpeakerDetectionService:
                 )
             return segments
         except subprocess.CalledProcessError as exc:
-            logger.error(
+            logger.exception(
                 "ffmpeg audio extraction failed",
                 extra={"video_path": str(video_path), "returncode": exc.returncode},
             )

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
-import pytest
-
-from ***REMOVED***.services.media.speaker_detection import (
-    DiarizationSegment,
-    SpeakerCropResult,
-    SpeakerDetectionService,
-)
+from ***REMOVED***.services.media.speaker_detection import DiarizationSegment
+from ***REMOVED***.services.media.speaker_detection import SpeakerCropResult
+from ***REMOVED***.services.media.speaker_detection import SpeakerDetectionService
 
 
 def test_detect_returns_manual_crop_when_all_fields_set():
