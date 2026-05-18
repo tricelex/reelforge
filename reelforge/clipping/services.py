@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from ***REMOVED***.clipping.models import ClipCandidate
 from ***REMOVED***.clipping.models import ClippingJob
 
 logger = logging.getLogger("***REMOVED***.clipping")
+
+_WORDS_JSON_CAP = 2000
+_SCENE_CUTS_CAP = 50
 
 
 class ClipAnalysisService:
@@ -16,6 +20,8 @@ class ClipAnalysisService:
         self,
         enriched_transcript: list[dict] | None = None,
         diarization: dict | None = None,
+        scene_cuts: list[float] | None = None,
+        video_duration: float | None = None,
     ) -> list[ClipCandidate]:
         from django.conf import settings
 
@@ -26,6 +32,8 @@ class ClipAnalysisService:
             transcript,
             enriched_transcript=enriched_transcript,
             diarization=diarization,
+            scene_cuts=scene_cuts,
+            video_duration=video_duration,
             platform_context=self._system_prompt(),
         )
 
@@ -95,18 +103,59 @@ class ClipAnalysisService:
         transcript: str,
         enriched_transcript: list[dict] | None = None,
         diarization: dict | None = None,
+        scene_cuts: list[float] | None = None,
+        video_duration: float | None = None,
         platform_context: str = "",
     ) -> str:
-        lines = []
+        lines: list[str] = []
+
         if platform_context:
             lines.append(platform_context)
+
         lines.extend([
             f"Source video transcript:\n{transcript}\n",
             f"Number of clips to identify: {self.job.clips_requested}",
         ])
+
         if diarization and diarization.get("segments"):
             speaker_count = len({s["speaker_id"] for s in diarization["segments"]})
             lines.append(f"\nThis video has {speaker_count} speaker(s).")
+
+        if video_duration is not None:
+            lines.append(f"\nVIDEO_DURATION_SECONDS: {video_duration:.3f}")
+
+        if enriched_transcript:
+            compact_words = [
+                {
+                    "w": entry["word"],
+                    "s": round(float(entry["start"]), 3),
+                    "e": round(float(entry["end"]), 3),
+                    "spk": entry.get("speaker_id", "UNKNOWN"),
+                }
+                for entry in enriched_transcript[:_WORDS_JSON_CAP]
+            ]
+            lines.append(
+                f"\nWORDS_JSON (array of {{w, s, e, spk}} — s/e are seconds):\n"
+                f"{json.dumps(compact_words, separators=(',', ':'))}"
+            )
+            if len(enriched_transcript) > _WORDS_JSON_CAP:
+                lines.append(
+                    f"[Note: WORDS_JSON capped at {_WORDS_JSON_CAP} entries. "
+                    f"Full video has {len(enriched_transcript)} words.]"
+                )
+
+        if scene_cuts:
+            display_cuts = scene_cuts[:_SCENE_CUTS_CAP]
+            lines.append(
+                f"\nSCENE_CUTS (seconds where scene changes occur — prefer these as cut points):\n"
+                f"{json.dumps([round(t, 3) for t in display_cuts])}"
+            )
+            if len(scene_cuts) > _SCENE_CUTS_CAP:
+                lines.append(
+                    f"[Note: SCENE_CUTS capped at {_SCENE_CUTS_CAP} entries. "
+                    f"Full video has {len(scene_cuts)} scene cuts.]"
+                )
+
         return "\n".join(lines)
 
     def _system_prompt(self) -> str:
@@ -118,4 +167,3 @@ class ClipAnalysisService:
             "Identify the most engaging segments that will perform well on this platform. "
             "Return valid JSON only."
         )
-
