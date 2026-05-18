@@ -124,6 +124,54 @@ def test_clip_analysis_service_creates_candidates() -> None:
 
 
 @pytest.mark.django_db
+def test_build_prompt_includes_words_json() -> None:
+    import json
+
+    job = ClippingJobFactory(
+        transcript_json=SAMPLE_TRANSCRIPT_JSON,
+        transcript_text="This is amazing.",
+        clips_requested=1,
+    )
+    enriched = [
+        {"word": "This", "start": 0.0, "end": 0.3, "speaker_id": "SPEAKER_00"},
+        {"word": "is", "start": 0.4, "end": 0.5, "speaker_id": "SPEAKER_00"},
+        {"word": "amazing.", "start": 0.6, "end": 1.0, "speaker_id": "SPEAKER_00"},
+    ]
+    service = ClipAnalysisService(job)
+    prompt = service._build_prompt(
+        "This is amazing.",
+        enriched_transcript=enriched,
+        scene_cuts=[30.0, 60.5],
+        video_duration=120.0,
+    )
+
+    assert "WORDS_JSON" in prompt
+    assert "VIDEO_DURATION_SECONDS: 120.000" in prompt
+    assert "SCENE_CUTS" in prompt
+    words_line = next(line for line in prompt.split("\n") if line.startswith("[{"))
+    parsed = json.loads(words_line)
+    assert len(parsed) == 3
+    assert parsed[0] == {"w": "This", "s": 0.0, "e": 0.3, "spk": "SPEAKER_00"}
+
+
+@pytest.mark.django_db
+def test_build_prompt_without_enriched_transcript() -> None:
+    job = ClippingJobFactory(
+        transcript_json=SAMPLE_TRANSCRIPT_JSON,
+        transcript_text="This is amazing.",
+        clips_requested=1,
+    )
+    service = ClipAnalysisService(job)
+    prompt = service._build_prompt("This is amazing.")
+
+    assert "This is amazing." in prompt
+    assert "WORDS_JSON" not in prompt
+    assert "SCENE_CUTS" not in prompt
+    assert "VIDEO_DURATION_SECONDS" not in prompt
+    assert "Number of clips to identify: 1" in prompt
+
+
+@pytest.mark.django_db
 def test_clip_analysis_service_extracts_transcript_excerpt() -> None:
     job = ClippingJobFactory(transcript_json=SAMPLE_TRANSCRIPT_JSON)
     service = ClipAnalysisService(job)
