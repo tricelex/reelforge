@@ -217,14 +217,28 @@ def analyze_clips(self, clipping_job_id: str) -> None:
             job.transcript_json or {}, diarization_result
         )
 
-        # 5. GPT-4o analysis with enriched context
+        # 5. Extract video duration from transcript metadata
+        video_duration: float | None = None
+        raw_duration = (job.transcript_json or {}).get("duration")
+        if raw_duration is not None:
+            try:
+                video_duration = float(raw_duration)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Could not parse video duration from transcript_json",
+                    extra={"clipping_job_id": clipping_job_id, "raw_duration": raw_duration},
+                )
+
+        # 6. LLM analysis with full timing context
         service = ClipAnalysisService(job)
         candidates = service.analyze(
             enriched_transcript=enriched_transcript,
             diarization=diarization_result,
+            scene_cuts=scene_cuts,
+            video_duration=video_duration,
         )
 
-        # 6. Build and save analysis manifest
+        # 7. Build and save analysis manifest
         manifest = build_analysis_manifest(
             transcript=enriched_transcript,
             diarization=diarization_result,
@@ -234,7 +248,7 @@ def analyze_clips(self, clipping_job_id: str) -> None:
         )
         job.analysis_manifest = manifest
 
-        # 7. Transition — always await approval, no auto-approve
+        # 8. Transition — always await approval, no auto-approve
         if can_proceed(job.await_clip_approval):
             job.await_clip_approval()
         job.save(
