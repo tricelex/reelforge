@@ -30,10 +30,19 @@ class DiarizationSegment:
 
 
 class SpeakerDetectionService:
-    """Speaker detection using MediaPipe face detection + PyAnnote diarization.
+    """Speaker detection using MediaPipe face detection + pyannote diarization.
 
-    Replaces the legacy OpenCV Haar cascade implementation.
-    Lazy-loads models to avoid import-time overhead in workers.
+    Diarization uses pyannote/speaker-diarization-community-1 (best open-source DER ~17-27%).
+    Model is loaded once and cached on the instance.
+
+    Setup (one-time per environment):
+      1. Accept terms at https://hf.co/pyannote/speaker-diarization-community-1
+      2. Accept terms at https://hf.co/pyannote/segmentation-3.0
+      3. Create a read token at https://hf.co/settings/tokens
+      4. Set HUGGINGFACE_TOKEN in your .envs/.local/.django file
+
+    Docker production: bake model weights into the image at build time so the
+    token is NOT needed at runtime (see compose/production/django/Dockerfile).
     """
 
     def __init__(self) -> None:
@@ -55,16 +64,20 @@ class SpeakerDetectionService:
             from django.conf import settings
             from pyannote.audio import Pipeline as PyannotePipeline
 
+            # token=None works when model weights are pre-baked into the Docker image.
+            # In development, set HUGGINGFACE_TOKEN in .envs/.local/.django to trigger download.
+            token: str | None = getattr(settings, "HUGGINGFACE_TOKEN", "") or None
             self._diarizer = PyannotePipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                use_auth_token=settings.HUGGINGFACE_TOKEN,
+                "pyannote/speaker-diarization-community-1",
+                token=token,
             )
         return self._diarizer
 
     def diarize(self, video_path: str | Path) -> list[DiarizationSegment]:
-        """Run full speaker diarization on the audio of a video file.
+        """Run speaker diarization on the audio of a video file.
 
-        Extracts audio to a temp WAV, runs PyAnnote, returns segment list.
+        Extracts audio to a temp WAV, runs pyannote/speaker-diarization-community-1,
+        returns segment list.
         """
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             audio_path = tmp.name
@@ -87,9 +100,10 @@ class SpeakerDetectionService:
                 capture_output=True,
             )
             diarizer = self._get_diarizer()
-            diarization = diarizer(audio_path)
+            result = diarizer(audio_path)
+            annotation = result.speaker_diarization
             segments: list[DiarizationSegment] = []
-            for turn, _, speaker in diarization.itertracks(yield_label=True):
+            for turn, _, speaker in annotation.itertracks(yield_label=True):
                 segments.append(
                     DiarizationSegment(speaker_id=speaker, start=turn.start, end=turn.end)
                 )
@@ -176,14 +190,16 @@ class SpeakerDetectionService:
             cap.release()
 
         # Manual crop override — operator sets exact pixel coordinates
-        if all(
-            v is not None
-            for v in [manual_crop_x, manual_crop_y, manual_crop_w, manual_crop_h]
+        if (
+            manual_crop_x is not None
+            and manual_crop_y is not None
+            and manual_crop_w is not None
+            and manual_crop_h is not None
         ):
             return SpeakerCropResult(
-                crop_x=int(manual_crop_x),
-                crop_w=int(manual_crop_w),
-                crop_h=int(manual_crop_h),
+                crop_x=manual_crop_x,
+                crop_w=manual_crop_w,
+                crop_h=manual_crop_h,
                 confidence=1.0,
                 face_detected=True,
             )
