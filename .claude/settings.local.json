@@ -40,7 +40,18 @@
       "WebFetch(domain:pypi.org)",
       "Bash(/Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)",
       "Bash(USE_DOCKER=no DATABASE_URL=\"postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge\" CREDENTIAL_ENCRYPTION_KEY=\"SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=\" uv run:*)",
-      "Bash(USE_DOCKER=no DATABASE_URL=\"postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge\" CREDENTIAL_ENCRYPTION_KEY=\"SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=\" uv:*)"
+      "Bash(USE_DOCKER=no DATABASE_URL=\"postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge\" CREDENTIAL_ENCRYPTION_KEY=\"SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=\" uv:*)",
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(pip show *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.pyannote.ai)",
+      "Skill(superpowers:writing-plans)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:mutonby-openshorts.mintlify.app)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(HUGGINGFACE_TOKEN=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 uv run python -c ' *)"
     ]
   }
 }

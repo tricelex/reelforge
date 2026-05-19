@@ -28,6 +28,26 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-dev
 
+# Pre-download pyannote speaker diarization model into /app/.cache/huggingface so the
+# COPY below carries it into the run stage. No token is needed at runtime.
+#
+# Before running: accept gated model terms on HuggingFace (one-time):
+#   https://hf.co/pyannote/speaker-diarization-community-1
+#   https://hf.co/pyannote/segmentation-3.0
+#   Then create a read token at https://hf.co/settings/tokens
+#
+# Build with:
+#   DOCKER_BUILDKIT=1 docker build --secret id=hf_token,env=HUGGINGFACE_TOKEN ...
+RUN --mount=type=secret,id=hf_token \
+    if [ -f /run/secrets/hf_token ]; then \
+      HF_HOME=${APP_HOME}/.cache/huggingface uv run python -c " \
+from pyannote.audio import Pipeline; \
+import os; \
+os.environ.setdefault('HF_HOME', '${APP_HOME}/.cache/huggingface'); \
+Pipeline.from_pretrained('pyannote/speaker-diarization-community-1', token=open('/run/secrets/hf_token').read().strip()); \
+print('pyannote model cached'); \
+"; fi
+
 # Python 'run' stage
 FROM python:3.13-slim-bookworm AS python-run-stage
 
@@ -84,6 +104,8 @@ RUN chown django:django ${APP_HOME}
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
+# Point HuggingFace Hub at the model weights baked into the image at build time.
+ENV HF_HOME="/app/.cache/huggingface"
 
 USER django
 

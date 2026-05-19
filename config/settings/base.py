@@ -300,7 +300,11 @@ LOGGING = {
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
 
-# PyAnnote speaker diarization model — required for Phase 2 ML analysis
+# pyannote speaker diarization
+# Required for first-time model download. Accept gated model terms at:
+#   https://hf.co/pyannote/speaker-diarization-community-1
+#   https://hf.co/pyannote/segmentation-3.0
+# In production Docker, model is pre-baked — leave empty to load from cache.
 HUGGINGFACE_TOKEN: str = env("HUGGINGFACE_TOKEN", default="")
 
 # Celery
@@ -757,8 +761,8 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 RESEARCH_AGENT_MODEL      = env("RESEARCH_AGENT_MODEL",      default="openai:gpt-4o")
 SCRIPT_AGENT_MODEL        = env("SCRIPT_AGENT_MODEL",        default="openai:gpt-4o")
 VISUAL_PLANNER_MODEL      = env("VISUAL_PLANNER_MODEL",      default="openai:gpt-4o")
-CLIP_ANALYSIS_MODEL       = env("CLIP_ANALYSIS_MODEL",       default="anthropic:claude-sonnet-4-5")
-CAPTION_TRANSLATION_MODEL = env("CAPTION_TRANSLATION_MODEL", default="anthropic:claude-sonnet-4-5")
+CLIP_ANALYSIS_MODEL       = env("CLIP_ANALYSIS_MODEL",       default="openai:gpt-4o")
+CAPTION_TRANSLATION_MODEL = env("CAPTION_TRANSLATION_MODEL", default="openai:gpt-4o")
 
 # Provider Defaults (TTS, image, video — unchanged)
 DEFAULT_TTS_PROVIDER        = env("DEFAULT_TTS_PROVIDER",        default="elevenlabs")

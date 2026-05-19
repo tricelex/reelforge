@@ -32,3 +32,9 @@ FAL_KEY=832c9408-8c9c-4adb-baa2-e7012a4edc1e:9544efbdef00306c10aac45c9dd47186
 
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 
+HUGGINGFACE_TOKEN=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
+
+# AI Model Selection
+# ------------------------------------------------------------------------------
+CLIP_ANALYSIS_MODEL=openai:gpt-4o
+CAPTION_TRANSLATION_MODEL=openai:gpt-4.1

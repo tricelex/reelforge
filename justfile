@@ -9,6 +9,67 @@ export COMPOSE_FILE := "docker-compose.local.yml"
 default:
     @just --list
 
+# infra: Start only Postgres and Redis in Docker (infrastructure only, no app containers).
+infra:
+    @echo "Starting infrastructure (Postgres + Redis)..."
+    @docker compose up -d postgres redis
+
+# dotenv: Regenerate .env.local by merging env files (local .host overrides win on duplicate keys).
+dotenv:
+    #!/usr/bin/env bash
+    awk -F'=' '/^[A-Za-z]/ { if (!seen[$1]++) print }' \
+        .envs/.local/.host .envs/.local/.django .envs/.local/.postgres > .env.local
+
+# migrate: Run Django migrations against local Postgres.
+migrate: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run python manage.py migrate
+
+# purge: Purge all pending Celery task messages from Redis queues.
+purge: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run celery -A config.celery_app purge -f
+
+# dev: Run all processes together via Procfile (all logs in one terminal).
+dev: infra dotenv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source .env.local; set +a
+    uv run python manage.py migrate
+    uv run honcho start -e .env.local
+
+# dev-web: Django dev server — run in its own terminal tab.
+dev-web: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run python manage.py runserver_plus 0.0.0.0:8000
+
+# dev-worker: Celery worker — run in its own terminal tab.
+dev-worker: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run celery -A config.celery_app worker -l INFO -Q default,orchestration,research,clipping,rendering,uploads,analytics
+
+# dev-beat: Celery beat scheduler — run in its own terminal tab.
+dev-beat: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    rm -f celerybeat.pid
+    exec uv run celery -A config.celery_app beat -l INFO
+
+# dev-flower: Flower monitor (http://localhost:5555) — run in its own terminal tab.
+dev-flower: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run celery -A config.celery_app flower --basic_auth="${CELERY_FLOWER_USER}:${CELERY_FLOWER_PASSWORD}"
+
+# dev-stop: Stop Docker infrastructure services.
+dev-stop:
+    @echo "Stopping infrastructure..."
+    @docker compose stop postgres redis
+
 # build: Build python image.
 build *args:
     @echo "Building python image..."
@@ -38,9 +99,15 @@ prune *args:
 logs *args:
     @docker compose logs -f {{args}}
 
-# manage: Executes `manage.py` command.
+# manage: Executes `manage.py` inside Docker (requires containers running).
 manage +args:
     @docker compose run --rm django python ./manage.py {{args}}
+
+# run: Executes `manage.py` locally against Docker Postgres/Redis (no app container needed).
+run +args: dotenv
+    #!/usr/bin/env bash
+    set -a; source .env.local; set +a
+    exec uv run python manage.py {{args}}
 
 create-superuser:
     @docker compose run --rm django python ./manage.py createsuperuser

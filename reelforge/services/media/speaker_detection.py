@@ -51,12 +51,25 @@ class SpeakerDetectionService:
 
     def _get_face_detector(self) -> Any:
         if self._face_detector is None:
+            import urllib.request
             import mediapipe as mp
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision
+            from pathlib import Path
 
-            self._face_detector = mp.solutions.face_detection.FaceDetection(
-                model_selection=1,
-                min_detection_confidence=0.5,
-            )
+            model_path = Path.home() / ".cache" / "mediapipe" / "blaze_face_short_range.tflite"
+            if not model_path.exists():
+                model_path.parent.mkdir(parents=True, exist_ok=True)
+                url = (
+                    "https://storage.googleapis.com/mediapipe-models/face_detector"
+                    "/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
+                )
+                logger.info("Downloading MediaPipe face detector model", extra={"path": str(model_path)})
+                urllib.request.urlretrieve(url, model_path)
+
+            base_options = mp_python.BaseOptions(model_asset_path=str(model_path))
+            options = vision.FaceDetectorOptions(base_options=base_options)
+            self._face_detector = vision.FaceDetector.create_from_options(options)
         return self._face_detector
 
     def _get_diarizer(self) -> Any:
@@ -138,27 +151,30 @@ class SpeakerDetectionService:
             detector = self._get_face_detector()
             results: list[dict] = []
 
+            import mediapipe as mp
+
             for frame_num in range(start_frame, end_frame, sample_every_n_frames):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
                 ret, frame = cap.read()
                 if not ret:
                     break
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                detection = detector.process(frame_rgb)
+                frame_rgb = np.ascontiguousarray(frame_rgb)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                detection_result = detector.detect(mp_image)
                 timestamp = frame_num / fps
                 faces: list[dict] = []
-                if detection.detections:
-                    for d in detection.detections:
-                        bbox = d.location_data.relative_bounding_box
-                        faces.append(
-                            {
-                                "x": int(bbox.xmin * frame_width),
-                                "y": int(bbox.ymin * frame_height),
-                                "w": int(bbox.width * frame_width),
-                                "h": int(bbox.height * frame_height),
-                                "confidence": float(d.score[0]),
-                            }
-                        )
+                for d in detection_result.detections:
+                    bb = d.bounding_box
+                    faces.append(
+                        {
+                            "x": bb.origin_x,
+                            "y": bb.origin_y,
+                            "w": bb.width,
+                            "h": bb.height,
+                            "confidence": float(d.categories[0].score) if d.categories else 0.0,
+                        }
+                    )
                 results.append({"timestamp": timestamp, "faces": faces})
         finally:
             cap.release()
