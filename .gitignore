@@ -335,6 +335,7 @@ dump.rdb
 .pytest_cache/
 .ipython/
 .env
+.env.local
 .envs/*
 .envs/.local/
 .envs/.local/.django

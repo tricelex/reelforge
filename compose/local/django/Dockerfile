@@ -35,6 +35,27 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock:rw \
     uv sync
 
+# Pre-download pyannote speaker diarization model weights into the image layer
+# so the Celery worker never downloads at runtime. Requires a build secret.
+#
+# Before running: accept gated model terms on HuggingFace (one-time):
+#   https://hf.co/pyannote/speaker-diarization-community-1
+#   https://hf.co/pyannote/segmentation-3.0
+#   Then create a read token at https://hf.co/settings/tokens
+#
+# Build with:
+#   DOCKER_BUILDKIT=1 docker compose build --secret id=hf_token,env=HUGGINGFACE_TOKEN django
+#
+# Skip the --secret flag to build without diarization (pipeline falls back gracefully).
+RUN --mount=type=secret,id=hf_token \
+    if [ -f /run/secrets/hf_token ]; then \
+      uv run python -c " \
+from pyannote.audio import Pipeline; \
+import os; \
+Pipeline.from_pretrained('pyannote/speaker-diarization-community-1', token=open('/run/secrets/hf_token').read().strip()); \
+print('pyannote model cached'); \
+"; fi
+
 # devcontainer dependencies and utils
 RUN apt-get update && apt-get install --no-install-recommends -y \
   sudo git bash-completion nano ssh

@@ -3,23 +3,26 @@ volumes:
   ***REMOVED***_local_***REMOVED***_data_backups: {}
   ***REMOVED***_local_redis_data: {}
 
+x-app: &app
+  image: tricelex/***REMOVED***:local
+  volumes:
+    - /app/.venv
+    - .:/app:z
+  env_file:
+    - ./.envs/.local/.django
+    - ./.envs/.local/.***REMOVED***
+
 services:
-  django: &django
+  django:
+    <<: *app
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ***REMOVED***_local_django
     container_name: ***REMOVED***_local_django
     depends_on:
       - ***REMOVED***
       - redis
 #      - mailpit
-    volumes:
-      - /app/.venv
-      - .:/app:z
-    env_file:
-      - ./.envs/.local/.django
-      - ./.envs/.local/.***REMOVED***
     ports:
       - '8000:8000'
     command: /start
@@ -28,7 +31,6 @@ services:
     build:
       context: .
       dockerfile: ./compose/production/***REMOVED***/Dockerfile
-    image: ***REMOVED***_production_***REMOVED***
     container_name: ***REMOVED***_local_***REMOVED***
     volumes:
       - ***REMOVED***_local_***REMOVED***_data:/var/lib/***REMOVED***ql/18/docker
@@ -51,8 +53,7 @@ services:
       - ***REMOVED***_local_redis_data:/data
 
   celeryworker:
-    <<: *django
-    image: ***REMOVED***_local_celeryworker
+    <<: *app
     container_name: ***REMOVED***_local_celeryworker
     depends_on:
       - redis
@@ -63,8 +64,7 @@ services:
     command: /start-celeryworker-debug
 
 #  celerybeat:
-#    <<: *django
-#    image: ***REMOVED***_local_celerybeat
+#    <<: *app
 #    container_name: ***REMOVED***_local_celerybeat
 #    depends_on:
 #      - redis
@@ -74,9 +74,11 @@ services:
 #    command: /start-celerybeat
 
   flower:
-    <<: *django
-    image: ***REMOVED***_local_flower
+    <<: *app
     container_name: ***REMOVED***_local_flower
+    depends_on:
+      - redis
+      - ***REMOVED***
     ports:
       - '5555:5555'
     command: /start-flower

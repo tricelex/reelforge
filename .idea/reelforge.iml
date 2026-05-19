@@ -19,7 +19,7 @@
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/ui-revamp/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/clipping-backend-v2/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="uv Docker Compose (django)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="uv (***REMOVED***)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">

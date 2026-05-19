@@ -245,6 +245,7 @@ dev = [
     "watchfiles==1.1.1",
     "werkzeug[watchdog]==3.1.5",
     "debugpy==1.8.20",
+    "honcho>=2.0.0",
 ]
 
 [project]

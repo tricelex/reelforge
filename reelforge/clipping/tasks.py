@@ -209,6 +209,7 @@ def analyze_clips(self, clipping_job_id: str) -> None:
             logger.warning(
                 "Face detection failed — continuing without face data",
                 extra={"clipping_job_id": clipping_job_id, "error": str(exc)},
+                exc_info=True,
             )
             face_mappings = {}
 
