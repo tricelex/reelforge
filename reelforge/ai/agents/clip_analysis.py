@@ -40,8 +40,8 @@ Return only the structured ClipAnalysisOutput with valid start_sec / end_sec val
 """
 
 clip_analysis_agent: Agent[None, ClipAnalysisOutput] = Agent(
-    "openai:gpt-4.1",
     output_type=ClipAnalysisOutput,
     system_prompt=_SYSTEM_PROMPT,
-    retries=2,
+    tool_retries=2,
+    output_retries=2,
 )

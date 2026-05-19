@@ -79,43 +79,45 @@ SAMPLE_TRANSCRIPT_JSON = {
 
 @pytest.mark.django_db
 def test_clip_analysis_service_creates_candidates() -> None:
+    from ***REMOVED***.ai.schemas.clipping import ClipData
+    from ***REMOVED***.clipping.models import ClipCandidate
+
     job = ClippingJobFactory(
         transcript_json=SAMPLE_TRANSCRIPT_JSON,
         transcript_text="This is amazing. You should try this.",
         clips_requested=2,
     )
 
-    mock_llm_response = [
-        {
-            "start_sec": 0.0,
-            "end_sec": 60.0,
-            "title": "Amazing discovery",
-            "hook_text": "This will blow your mind",
-            "caption_template": "Amazing discovery 🎯",
-            "relevance_score": 9.0,
-            "reason": "High engagement opener",
-        },
-        {
-            "start_sec": 60.0,
-            "end_sec": 120.0,
-            "title": "Try this method",
-            "hook_text": "The method that changes everything",
-            "caption_template": "Try this method 🔥",
-            "relevance_score": 8.5,
-            "reason": "Actionable advice",
-        },
+    mock_clips = [
+        ClipData(
+            start_sec=0.0,
+            end_sec=61.3,
+            title="Amazing discovery",
+            hook_text="This will blow your mind",
+            caption_template="Amazing discovery",
+            relevance_score=9.0,
+            reason="High engagement opener",
+        ),
+        ClipData(
+            start_sec=65.0,
+            end_sec=120.0,
+            title="Try this method",
+            hook_text="The method that changes everything",
+            caption_template="Try this method",
+            relevance_score=8.5,
+            reason="Actionable advice",
+        ),
     ]
 
-    from ***REMOVED***.clipping.models import ClipCandidate
+    mock_result = MagicMock()
+    mock_result.output.clips = mock_clips
 
-    with patch("***REMOVED***.clipping.services.get_llm_provider") as mock_provider:
-        mock_llm = MagicMock()
-        mock_provider.return_value = mock_llm
-        mock_llm.complete.return_value = MagicMock(text=str(mock_llm_response), cost_usd=0)
-
-        with patch.object(ClipAnalysisService, "_parse_llm_response", return_value=mock_llm_response):
-            service = ClipAnalysisService(job)
-            candidates = service.analyze()
+    with patch(
+        "***REMOVED***.ai.agents.clip_analysis.clip_analysis_agent.run_sync",
+        return_value=mock_result,
+    ):
+        service = ClipAnalysisService(job)
+        candidates = service.analyze()
 
     assert len(candidates) == 2
     assert ClipCandidate.objects.filter(clipping_job=job).count() == 2
