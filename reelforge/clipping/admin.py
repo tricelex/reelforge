@@ -572,6 +572,44 @@ class ClippingJobAdmin(ModelAdmin):
                 messages.WARNING,
             )
 
+    @admin.action(description="Fast-forward to candidates (skip AI analysis)")
+    def fast_forward_to_candidates(
+        self, request: HttpRequest, queryset: QuerySet[ClippingJob]
+    ) -> None:
+        from ***REMOVED***.clipping.sse import emit_job_event
+        from ***REMOVED***.clipping.tasks import _create_manual_candidate
+
+        forwarded = 0
+        skipped = 0
+        for job in queryset:
+            if not can_proceed(job.skip_to_candidates):
+                skipped += 1
+                continue
+            try:
+                job.skip_to_candidates()
+                job.save(update_fields=["status", "updated_at"])
+                _create_manual_candidate(job)
+                emit_job_event(str(job.id), "status_changed", {"status": job.status})
+                forwarded += 1
+            except Exception as exc:
+                logger.warning(
+                    "fast_forward_to_candidates failed",
+                    extra={"job_id": str(job.id), "error": str(exc)},
+                )
+                skipped += 1
+        if forwarded:
+            self.message_user(
+                request,
+                f"Fast-forwarded {forwarded} job(s) to candidate stage.",
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} job(s) — not in TRANSCRIBING, ANALYZING, or FAILED state.",
+                messages.WARNING,
+            )
+
     @admin.action(description="Approve selected candidates")
     def approve_selected_candidates(self, request: HttpRequest, queryset: QuerySet[ClippingJob]) -> None:
         from django.utils import timezone
@@ -611,7 +649,7 @@ class ClippingJobAdmin(ModelAdmin):
 
         self.message_user(request, f"Triggered rendering for {triggered} candidate(s).", messages.SUCCESS)
 
-    actions = ["start_clipping_job", "retry_transcription", "approve_selected_candidates", "trigger_render"]
+    actions = ["start_clipping_job", "retry_transcription", "fast_forward_to_candidates", "approve_selected_candidates", "trigger_render"]
 
 
 @admin.register(ClipPost)
