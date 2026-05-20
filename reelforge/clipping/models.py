@@ -84,6 +84,7 @@ class ClippingJob(BaseAbstractModel):
 
     # Analysis
     clips_requested = models.PositiveIntegerField(default=5)
+    skip_analysis = models.BooleanField(default=False)
     analysis_provider = models.CharField(max_length=50, blank=True)
     analysis_cost_usd = models.DecimalField(
         max_digits=10,
@@ -234,6 +235,14 @@ class ClippingJob(BaseAbstractModel):
 
     @transition(
         field=status,
+        source=[Status.TRANSCRIBING, Status.ANALYZING, Status.FAILED],
+        target=Status.AWAITING_CLIP_APPROVAL,
+    )
+    def skip_to_candidates(self) -> None:
+        pass
+
+    @transition(
+        field=status,
         source=[Status.FAILED, Status.TRANSCRIBING],
         target=Status.TRANSCRIBING,
     )
@@ -290,6 +299,7 @@ class ClipCandidate(BaseAbstractModel):
     # Review gates — stage order numbers at which the render should pause for operator review.
     # e.g. [1, 3, 5, 8]. Empty list = no gates.
     render_gates = models.JSONField(default=list, blank=True)
+    is_manual = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-relevance_score"]
@@ -308,33 +318,28 @@ class ClipCandidate(BaseAbstractModel):
         if self.end_sec <= self.start_sec:
             msg = "end_sec must be greater than start_sec"
             raise ValidationError(msg)
-        duration = self.end_sec - self.start_sec
-        if duration < 30:
-            msg = f"Clip duration {duration:.1f}s is below minimum 30s"
-            raise ValidationError(
-                msg
-            )
-        if duration > 180:
-            msg = f"Clip duration {duration:.1f}s exceeds maximum 180s"
-            raise ValidationError(
-                msg
-            )
-        # Overlap detection (±1s tolerance for frame precision)
-        # Use pk=0 fallback so .exclude() works correctly for unsaved records (pk=None)
-        overlapping = ClipCandidate.objects.filter(
-            clipping_job=self.clipping_job,
-            start_sec__lt=self.end_sec + 1,
-            end_sec__gt=self.start_sec - 1,
-        ).exclude(pk=self.pk or 0)
-        if overlapping.exists():
-            other = overlapping.first()
-            msg = (
-                f"Clip overlaps with existing candidate '{other.title}' "
-                f"({other.start_sec:.0f}s\u2013{other.end_sec:.0f}s)"
-            )
-            raise ValidationError(
-                msg
-            )
+        if not self.is_manual:
+            duration = self.end_sec - self.start_sec
+            if duration < 30:
+                msg = f"Clip duration {duration:.1f}s is below minimum 30s"
+                raise ValidationError(msg)
+            if duration > 180:
+                msg = f"Clip duration {duration:.1f}s exceeds maximum 180s"
+                raise ValidationError(msg)
+            # Overlap detection (±1s tolerance for frame precision)
+            # Use pk=0 fallback so .exclude() works correctly for unsaved records (pk=None)
+            overlapping = ClipCandidate.objects.filter(
+                clipping_job=self.clipping_job,
+                start_sec__lt=self.end_sec + 1,
+                end_sec__gt=self.start_sec - 1,
+            ).exclude(pk=self.pk or 0)
+            if overlapping.exists():
+                other = overlapping.first()
+                msg = (
+                    f"Clip overlaps with existing candidate '{other.title}' "
+                    f"({other.start_sec:.0f}s\u2013{other.end_sec:.0f}s)"
+                )
+                raise ValidationError(msg)
 
 
 class ClipRender(BaseAbstractModel):
