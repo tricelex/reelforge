@@ -144,9 +144,9 @@ class ClipCandidateListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "clipping_job", "title", "start_sec", "end_sec", "duration_sec",
             "relevance_score", "status", "approved", "approved_at", "render_gates",
-            "created_at", "updated_at",
+            "is_manual", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "duration_sec", "clipping_job", "created_at", "updated_at"]
+        read_only_fields = ["id", "duration_sec", "clipping_job", "is_manual", "created_at", "updated_at"]
 
 
 class ClipCandidateDetailSerializer(serializers.ModelSerializer):
@@ -161,12 +161,12 @@ class ClipCandidateDetailSerializer(serializers.ModelSerializer):
             "start_sec", "end_sec", "duration_sec", "relevance_score",
             "reason", "transcript_excerpt", "status", "approved",
             "approved_at", "approved_by", "rejection_reason", "render_gates",
-            "layout_config", "style_config", "timed_overlays",
+            "is_manual", "layout_config", "style_config", "timed_overlays",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "duration_sec", "clipping_job", "approved", "approved_at",
-            "approved_by", "status", "layout_config", "style_config",
+            "approved_by", "status", "is_manual", "layout_config", "style_config",
             "timed_overlays", "created_at", "updated_at",
         ]
 
@@ -178,7 +178,7 @@ class ClipCandidateSummarySerializer(serializers.ModelSerializer):
         model = ClipCandidate
         fields = [
             "id", "title", "start_sec", "end_sec", "duration_sec",
-            "relevance_score", "status", "approved", "render_gates",
+            "relevance_score", "status", "approved", "render_gates", "is_manual",
         ]
         read_only_fields = fields
 
@@ -190,7 +190,7 @@ class ClippingJobListSerializer(serializers.ModelSerializer):
         model = ClippingJob
         fields = [
             "id", "social_account", "source_type", "source_url", "source_video_file",
-            "source_title", "source_duration_sec", "clips_requested", "status",
+            "source_title", "source_duration_sec", "clips_requested", "skip_analysis", "status",
             "started_at", "completed_at", "failed_at", "last_error",
             "total_cost_usd", "created_at", "updated_at",
         ]
