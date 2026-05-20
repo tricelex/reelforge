@@ -556,7 +556,7 @@ def preview_clip_style(self, style_config_id: str) -> None:
     style_config.preview_image.save(filename, ContentFile(buf.getvalue()), save=True)
     logger.info(
         "Style preview generated",
-        extra={"style_config_id": style_config_id, "filename": filename},
+        extra={"style_config_id": style_config_id, "preview_filename": filename},
     )
 
 
@@ -745,7 +745,7 @@ def preview_clip_layout(self, layout_config_id: str) -> None:
     )
     logger.info(
         "Preview image generated",
-        extra={"layout_config_id": layout_config_id, "filename": filename},
+        extra={"layout_config_id": layout_config_id, "preview_filename": filename},
     )
 
 
