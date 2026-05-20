@@ -57,6 +57,7 @@ from ***REMOVED***.clipping.models import ClipStyleConfig
 from ***REMOVED***.clipping.models import ClipTimedOverlay
 from ***REMOVED***.clipping.sse import emit_job_event
 from ***REMOVED***.clipping.sse import job_event_stream
+from ***REMOVED***.clipping.tasks import _create_manual_candidate
 from ***REMOVED***.clipping.tasks import download_source_video
 from ***REMOVED***.clipping.tasks import preview_clip_layout
 from ***REMOVED***.clipping.tasks import render_clip
@@ -242,6 +243,37 @@ class ClippingJobViewSet(ModelViewSet):
             transcribe_video.delay(str(job.id))
         emit_job_event(str(job.id), "status_changed", {"status": job.status})
         return Response({"job_status": job.status, "retrying": from_stage})
+
+    @extend_schema(
+        tags=["clipping-jobs"],
+        summary="Fast-forward a job to candidate stage, skipping AI analysis",
+        description=(
+            "Creates a single is_manual=True ClipCandidate spanning the full video "
+            "and transitions the job to AWAITING_CLIP_APPROVAL. "
+            "Valid from TRANSCRIBING, ANALYZING, or FAILED states."
+        ),
+        request=None,
+        responses={
+            200: ClippingJobDetailSerializer,
+            400: OpenApiResponse(description="Job cannot be fast-forwarded from its current state"),
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="skip-to-candidates")
+    def skip_to_candidates(self, request: Request, pk: str | None = None) -> Response:
+        job: ClippingJob = self.get_object()
+        if not can_proceed(job.skip_to_candidates):
+            return Response(
+                {"detail": f"Cannot skip to candidates from state {job.status}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        job.skip_to_candidates()
+        job.save(update_fields=["status", "updated_at"])
+        _create_manual_candidate(job)
+        emit_job_event(str(job.id), "status_changed", {"status": job.status})
+        logger.info("Job fast-forwarded to candidates via API", extra={"job_id": str(job.id)})
+        return Response(
+            ClippingJobDetailSerializer(job, context=self.get_serializer_context()).data
+        )
 
     @extend_schema(
         tags=["clipping-jobs"],
