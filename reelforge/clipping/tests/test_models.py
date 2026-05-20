@@ -366,3 +366,117 @@ def test_clip_layout_config_str() -> None:
     candidate = ClipCandidateFactory(clipping_job=job)
     config = ClipLayoutConfig.objects.get(candidate=candidate)
     assert "Smart Crop" in str(config)
+
+
+# ── Manual Clip Bypass ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_skip_analysis_default_is_false() -> None:
+    job = ClippingJobFactory()
+    assert job.skip_analysis is False
+
+
+@pytest.mark.django_db
+def test_clipping_job_skip_to_candidates_from_transcribing() -> None:
+    job = ClippingJobFactory(status=ClippingJob.Status.TRANSCRIBING)
+    job.skip_to_candidates()
+    job.save(update_fields=["status", "updated_at"])
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+
+
+@pytest.mark.django_db
+def test_clipping_job_skip_to_candidates_from_analyzing() -> None:
+    job = ClippingJobFactory(status=ClippingJob.Status.ANALYZING)
+    job.skip_to_candidates()
+    job.save(update_fields=["status", "updated_at"])
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+
+
+@pytest.mark.django_db
+def test_clipping_job_skip_to_candidates_from_failed() -> None:
+    job = ClippingJobFactory(status=ClippingJob.Status.FAILED)
+    job.skip_to_candidates()
+    job.save(update_fields=["status", "updated_at"])
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+
+
+@pytest.mark.django_db
+def test_clipping_job_skip_to_candidates_blocked_from_initializing() -> None:
+    from django_fsm import TransitionNotAllowed
+
+    job = ClippingJobFactory()  # status=INITIALIZING
+    with pytest.raises(TransitionNotAllowed):
+        job.skip_to_candidates()
+
+
+@pytest.mark.django_db
+def test_is_manual_default_is_false() -> None:
+    candidate = ClipCandidateFactory()
+    assert candidate.is_manual is False
+
+
+@pytest.mark.django_db
+def test_manual_candidate_bypasses_duration_max_validation() -> None:
+    job = ClippingJobFactory()
+    candidate = ClipCandidate(
+        clipping_job=job, start_sec=0.0, end_sec=3600.0, title="Full Video", is_manual=True,
+    )
+    candidate.full_clean()  # must not raise
+
+
+@pytest.mark.django_db
+def test_manual_candidate_bypasses_duration_min_validation() -> None:
+    job = ClippingJobFactory()
+    candidate = ClipCandidate(
+        clipping_job=job, start_sec=0.0, end_sec=10.0, title="Short Manual", is_manual=True,
+    )
+    candidate.full_clean()  # must not raise
+
+
+@pytest.mark.django_db
+def test_manual_candidate_bypasses_overlap_validation() -> None:
+    job = ClippingJobFactory()
+    ClipCandidateFactory(clipping_job=job, start_sec=0.0, end_sec=60.0)
+    candidate = ClipCandidate(
+        clipping_job=job, start_sec=30.0, end_sec=120.0, title="Overlapping Manual", is_manual=True,
+    )
+    candidate.full_clean()  # must not raise
+
+
+@pytest.mark.django_db
+def test_non_manual_candidate_still_validates_max_duration() -> None:
+    job = ClippingJobFactory()
+    candidate = ClipCandidate(
+        clipping_job=job, start_sec=0.0, end_sec=3600.0, title="Too long", is_manual=False,
+    )
+    with pytest.raises(Exception, match="180"):
+        candidate.full_clean()
+
+
+@pytest.mark.django_db
+def test_admin_fast_forward_action_transitions_job() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from django.contrib.admin.sites import AdminSite
+
+    from ***REMOVED***.clipping.admin import ClippingJobAdmin
+    from ***REMOVED***.users.tests.factories import UserFactory
+
+    site = AdminSite()
+    ma = ClippingJobAdmin(ClippingJob, site)
+    job = ClippingJobFactory(
+        status=ClippingJob.Status.TRANSCRIBING,
+        source_duration_sec=120.0,
+        source_title="Admin Test Video",
+    )
+    request = MagicMock()
+    request.user = UserFactory(is_staff=True)
+    with patch("***REMOVED***.clipping.sse.emit_job_event"):
+        ma.fast_forward_to_candidates(request, ClippingJob.objects.filter(pk=job.pk))
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+    assert ClipCandidate.objects.filter(clipping_job=job, is_manual=True).count() == 1

@@ -161,3 +161,114 @@ def test_analyze_clips_always_awaits_approval() -> None:
 
     job.refresh_from_db()
     assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+
+
+# ── Manual Clip Bypass ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_transcribe_video_bypass_skips_analyze_and_creates_manual_candidate() -> None:
+    from decimal import Decimal
+    from unittest.mock import MagicMock, patch
+
+    from django.core.files.base import ContentFile
+
+    from ***REMOVED***.clipping.models import ClipCandidate, ClippingJob
+    from ***REMOVED***.clipping.tasks import transcribe_video
+
+    job = ClippingJobFactory(
+        status=ClippingJob.Status.TRANSCRIBING,
+        skip_analysis=True,
+        source_duration_sec=600.0,
+        source_title="My Pre-edited Video",
+    )
+    job.downloaded_file.save("video.mp4", ContentFile(b"fake"), save=True)
+    mock_result = MagicMock()
+    mock_result.transcript_text = "hello world"
+    mock_result.transcript_json = {"segments": []}
+    mock_result.cost_usd = Decimal("0.01")
+    mock_result.provider = "whisper"
+
+    with (
+        patch("***REMOVED***.clipping.tasks.ffmpeg") as mock_ffmpeg,
+        patch("***REMOVED***.services.transcription.whisper.WhisperTranscriptionService") as mock_ws_cls,
+        patch("***REMOVED***.clipping.tasks.analyze_clips") as mock_analyze,
+        patch("***REMOVED***.clipping.sse.emit_job_event"),
+        patch("tempfile.NamedTemporaryFile"),
+    ):
+        mock_ffmpeg.input.return_value.output.return_value.overwrite_output.return_value.run.return_value = None
+        mock_ws_cls.return_value.transcribe.return_value = mock_result
+        transcribe_video.apply(args=[str(job.pk)])
+
+    mock_analyze.delay.assert_not_called()
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+    candidates = ClipCandidate.objects.filter(clipping_job=job)
+    assert candidates.count() == 1
+    candidate = candidates.first()
+    assert candidate.is_manual is True
+    assert candidate.start_sec == 0.0
+    assert candidate.end_sec == 600.0
+    assert candidate.title == "My Pre-edited Video"
+
+
+@pytest.mark.django_db
+def test_transcribe_video_normal_path_dispatches_analyze_clips() -> None:
+    from decimal import Decimal
+    from unittest.mock import MagicMock, patch
+
+    from django.core.files.base import ContentFile
+
+    from ***REMOVED***.clipping.models import ClipCandidate, ClippingJob
+    from ***REMOVED***.clipping.tasks import transcribe_video
+
+    job = ClippingJobFactory(
+        status=ClippingJob.Status.TRANSCRIBING,
+        skip_analysis=False,
+        source_duration_sec=600.0,
+    )
+    job.downloaded_file.save("video.mp4", ContentFile(b"fake"), save=True)
+    mock_result = MagicMock()
+    mock_result.transcript_text = "hello"
+    mock_result.transcript_json = {"segments": []}
+    mock_result.cost_usd = Decimal("0.005")
+    mock_result.provider = "whisper"
+
+    with (
+        patch("***REMOVED***.clipping.tasks.ffmpeg") as mock_ffmpeg,
+        patch("***REMOVED***.services.transcription.whisper.WhisperTranscriptionService") as mock_ws_cls,
+        patch("***REMOVED***.clipping.tasks.analyze_clips") as mock_analyze,
+        patch("***REMOVED***.clipping.sse.emit_job_event"),
+        patch("tempfile.NamedTemporaryFile"),
+    ):
+        mock_ffmpeg.input.return_value.output.return_value.overwrite_output.return_value.run.return_value = None
+        mock_ws_cls.return_value.transcribe.return_value = mock_result
+        transcribe_video.apply(args=[str(job.pk)])
+
+    mock_analyze.delay.assert_called_once_with(str(job.pk))
+    assert ClipCandidate.objects.filter(clipping_job=job, is_manual=True).count() == 0
+
+
+@pytest.mark.django_db
+def test_create_manual_candidate_probes_duration_for_upload_jobs() -> None:
+    from unittest.mock import patch
+
+    from django.core.files.base import ContentFile
+
+    from ***REMOVED***.clipping.models import ClippingJob
+    from ***REMOVED***.clipping.tasks import _create_manual_candidate
+
+    job = ClippingJobFactory(
+        source_type=ClippingJob.SourceType.UPLOAD,
+        source_duration_sec=None,
+        source_title="Uploaded Video",
+    )
+    job.downloaded_file.save("upload.mp4", ContentFile(b"fake"), save=True)
+    with patch("***REMOVED***.clipping.tasks.ffmpeg") as mock_ffmpeg:
+        mock_ffmpeg.probe.return_value = {"format": {"duration": "300.5"}}
+        candidate = _create_manual_candidate(job)
+
+    assert candidate.end_sec == 300.5
+    assert candidate.is_manual is True
+    job.refresh_from_db()
+    assert job.source_duration_sec == 300.5

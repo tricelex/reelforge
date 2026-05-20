@@ -404,3 +404,109 @@ def test_list_candidates_by_job(auth_client):
     assert data["count"] == 2
     assert len(data["results"]) == 2
 
+
+
+# ── Manual Clip Bypass ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_create_clipping_job_with_skip_analysis(auth_client) -> None:
+    from unittest.mock import patch
+
+    from ***REMOVED***.clipping.models import ClippingJob
+
+    social_account = SocialAccountFactory()
+    with patch("***REMOVED***.clipping.api.api_views.download_source_video"):
+        response = auth_client.post(
+            "/api/v1/clipping/jobs/",
+            {
+                "social_account": str(social_account.pk),
+                "source_type": "YOUTUBE_URL",
+                "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "skip_analysis": True,
+            },
+            format="json",
+        )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["skip_analysis"] is True
+    assert ClippingJob.objects.get(id=data["id"]).skip_analysis is True
+
+
+@pytest.mark.django_db
+def test_candidate_list_includes_is_manual(auth_client) -> None:
+    candidate = ClipCandidateFactory(is_manual=True)
+    response = auth_client.get(f"/api/v1/clipping/candidates/?job={candidate.clipping_job_id}")
+    assert response.status_code == 200
+    assert response.json()[0]["is_manual"] is True
+
+
+@pytest.mark.django_db
+def test_candidate_detail_includes_is_manual(auth_client) -> None:
+    candidate = ClipCandidateFactory(is_manual=False)
+    response = auth_client.get(f"/api/v1/clipping/candidates/{candidate.pk}/")
+    assert response.status_code == 200
+    assert response.json()["is_manual"] is False
+
+
+@pytest.mark.django_db
+def test_is_manual_is_read_only_via_patch(auth_client) -> None:
+    candidate = ClipCandidateFactory(is_manual=False)
+    auth_client.patch(
+        f"/api/v1/clipping/candidates/{candidate.pk}/", {"is_manual": True}, format="json"
+    )
+    candidate.refresh_from_db()
+    assert candidate.is_manual is False
+
+
+@pytest.mark.django_db
+def test_skip_to_candidates_transitions_transcribing_job(auth_client) -> None:
+    from unittest.mock import patch
+
+    from ***REMOVED***.clipping.models import ClipCandidate, ClippingJob
+
+    job = ClippingJobFactory(
+        status=ClippingJob.Status.TRANSCRIBING, source_duration_sec=180.0, source_title="In-flight Video"
+    )
+    with patch("***REMOVED***.clipping.api.api_views.emit_job_event"):
+        response = auth_client.post(f"/api/v1/clipping/jobs/{job.pk}/skip-to-candidates/")
+    assert response.status_code == 200
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+    candidate = ClipCandidate.objects.get(clipping_job=job)
+    assert candidate.is_manual is True
+    assert candidate.end_sec == 180.0
+
+
+@pytest.mark.django_db
+def test_skip_to_candidates_transitions_failed_job(auth_client) -> None:
+    from unittest.mock import patch
+
+    from ***REMOVED***.clipping.models import ClipCandidate, ClippingJob
+
+    job = ClippingJobFactory(status=ClippingJob.Status.FAILED, source_duration_sec=90.0)
+    with patch("***REMOVED***.clipping.api.api_views.emit_job_event"):
+        response = auth_client.post(f"/api/v1/clipping/jobs/{job.pk}/skip-to-candidates/")
+    assert response.status_code == 200
+    job.refresh_from_db()
+    assert job.status == ClippingJob.Status.AWAITING_CLIP_APPROVAL
+    assert ClipCandidate.objects.filter(clipping_job=job, is_manual=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_skip_to_candidates_returns_400_for_completed_job(auth_client) -> None:
+    from ***REMOVED***.clipping.models import ClippingJob
+
+    job = ClippingJobFactory(status=ClippingJob.Status.COMPLETED)
+    response = auth_client.post(f"/api/v1/clipping/jobs/{job.pk}/skip-to-candidates/")
+    assert response.status_code == 400
+    assert "Cannot" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+def test_skip_to_candidates_returns_400_for_initializing_job(auth_client) -> None:
+    from ***REMOVED***.clipping.models import ClippingJob
+
+    job = ClippingJobFactory(status=ClippingJob.Status.INITIALIZING)
+    response = auth_client.post(f"/api/v1/clipping/jobs/{job.pk}/skip-to-candidates/")
+    assert response.status_code == 400
