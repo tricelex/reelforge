@@ -25,6 +25,27 @@ from reelforge.services.media.clip_render_pipeline import PipelineRenderConfig
 logger = logging.getLogger("reelforge.clipping")
 
 
+def _create_manual_candidate(job: ClippingJob) -> ClipCandidate:
+    """Create a full-video manual ClipCandidate for a job that bypassed analysis.
+
+    Probes the downloaded file for duration when source_duration_sec is unset
+    (UPLOAD source type does not populate it during download).
+    """
+    duration = job.source_duration_sec
+    if duration is None and job.downloaded_file:
+        probe = ffmpeg.probe(str(Path(settings.MEDIA_ROOT) / job.downloaded_file.name))
+        duration = float(probe["format"]["duration"])
+        job.source_duration_sec = duration
+        job.save(update_fields=["source_duration_sec", "updated_at"])
+    return ClipCandidate.objects.create(
+        clipping_job=job,
+        title=job.source_title or "Full Video",
+        start_sec=0.0,
+        end_sec=duration or 0.0,
+        is_manual=True,
+    )
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -137,12 +158,20 @@ def transcribe_video(self, clipping_job_id: str) -> None:
             ]
         )
 
-        if can_proceed(job.begin_analysis):
-            job.begin_analysis()
-            job.save(update_fields=["status", "updated_at"])
+        if job.skip_analysis:
+            if can_proceed(job.skip_to_candidates):
+                job.skip_to_candidates()
+                job.save(update_fields=["status", "updated_at"])
+            _create_manual_candidate(job)
             from reelforge.clipping.sse import emit_job_event
             emit_job_event(str(job.id), "status_changed", {"status": job.status})
-            analyze_clips.delay(clipping_job_id)
+        else:
+            if can_proceed(job.begin_analysis):
+                job.begin_analysis()
+                job.save(update_fields=["status", "updated_at"])
+                from reelforge.clipping.sse import emit_job_event
+                emit_job_event(str(job.id), "status_changed", {"status": job.status})
+                analyze_clips.delay(clipping_job_id)
 
     except Exception as exc:
         logger.error(
