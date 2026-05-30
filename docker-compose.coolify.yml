@@ -1,18 +1,8 @@
-volumes:
-  coolify_***REMOVED***_data: {}
-  coolify_***REMOVED***_data_backups: {}
-  coolify_redis_data: {}
-
 x-app: &app
   build:
     context: .
     dockerfile: ./compose/production/django/Dockerfile
   restart: unless-stopped
-  depends_on:
-    ***REMOVED***:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
   environment:
     # Django core
     - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
@@ -25,9 +15,12 @@ x-app: &app
     - DJANGO_ACCOUNT_ALLOW_REGISTRATION=${DJANGO_ACCOUNT_ALLOW_REGISTRATION:-False}
     # Workers
     - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
-    # Storage
-    - DJANGO_GCP_STORAGE_BUCKET_NAME=${DJANGO_GCP_STORAGE_BUCKET_NAME}
-    - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+    # RustFS (S3-compatible) storage
+    - RUSTFS_ENDPOINT_URL=${RUSTFS_ENDPOINT_URL}
+    - RUSTFS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY_ID}
+    - RUSTFS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_ACCESS_KEY}
+    - RUSTFS_BUCKET_NAME=${RUSTFS_BUCKET_NAME}
+    - RUSTFS_REGION=${RUSTFS_REGION:-us-east-1}
     # Email
     - MAILGUN_API_KEY=${MAILGUN_API_KEY}
     - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
@@ -36,49 +29,22 @@ x-app: &app
     # Celery Flower auth (used by flower if you add it later)
     - CELERY_FLOWER_USER=${CELERY_FLOWER_USER}
     - CELERY_FLOWER_PASSWORD=${CELERY_FLOWER_PASSWORD}
-    # Redis — internal service, hardcoded
-    - REDIS_URL=redis://redis:6379/0
-    # Postgres — host/port hardcoded to internal service; credentials from env
-    - POSTGRES_HOST=***REMOVED***
-    - POSTGRES_PORT=5432
+    # Redis — external server
+    - REDIS_URL=${REDIS_URL}
+    # Postgres — external server
+    - POSTGRES_HOST=${POSTGRES_HOST}
+    - POSTGRES_PORT=${POSTGRES_PORT}
     - POSTGRES_DB=${POSTGRES_DB}
     - POSTGRES_USER=${POSTGRES_USER}
     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    # AI / API keys
+    - OPENAI_API_KEY=${OPENAI_API_KEY}
+    - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+    - FAL_KEY=${FAL_KEY}
+    - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}
 
 
 services:
-  ***REMOVED***:
-    build:
-      context: .
-      dockerfile: ./compose/production/***REMOVED***/Dockerfile
-    image: ***REMOVED***_coolify_***REMOVED***
-    restart: unless-stopped
-    volumes:
-      - coolify_***REMOVED***_data:/var/lib/***REMOVED***ql/18/docker
-      - coolify_***REMOVED***_data_backups:/backups
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  redis:
-    image: docker.io/redis:7.2
-    restart: unless-stopped
-    volumes:
-      - coolify_redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   django:
     <<: *app
     image: ***REMOVED***_coolify_django

@@ -275,7 +275,7 @@ dependencies = [
     "django-fsm-log>=5.0.2",
     "django-model-utils==5.0.0",
     "django-redis==6.0.0",
-    "django-storages[google]==1.14.6",
+    "django-storages[s3]==1.14.6",
     "django-unfold>=0.80.1",
     "djangorestframework==3.16.1",
     "drf-spectacular==0.29.0",
