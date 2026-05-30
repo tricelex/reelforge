@@ -70,23 +70,31 @@ SECURE_CONTENT_TYPE_NOSNIFF = env.bool(
 )
 
 
-GS_BUCKET_NAME = env("DJANGO_GCP_STORAGE_BUCKET_NAME")
-GS_DEFAULT_ACL = "publicRead"
+RUSTFS_ENDPOINT_URL = env("RUSTFS_ENDPOINT_URL")
+RUSTFS_BUCKET_NAME = env("RUSTFS_BUCKET_NAME")
+
 # STATIC & MEDIA
 # ------------------------
 STORAGES = {
     "default": {
-        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
+            "endpoint_url": RUSTFS_ENDPOINT_URL,
+            "access_key": env("RUSTFS_ACCESS_KEY_ID"),
+            "secret_key": env("RUSTFS_SECRET_ACCESS_KEY"),
+            "bucket_name": RUSTFS_BUCKET_NAME,
+            "region_name": env("RUSTFS_REGION", default="us-east-1"),
             "location": "media",
             "file_overwrite": False,
+            "default_acl": None,
+            "querystring_auth": False,
         },
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
-MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/media/"
+MEDIA_URL = f"{RUSTFS_ENDPOINT_URL}/{RUSTFS_BUCKET_NAME}/media/"
 
 # EMAIL
 # ------------------------------------------------------------------------------
