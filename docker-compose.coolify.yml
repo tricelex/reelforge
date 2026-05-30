@@ -3,6 +3,48 @@ volumes:
   coolify_***REMOVED***_data_backups: {}
   coolify_redis_data: {}
 
+x-app: &app
+  build:
+    context: .
+    dockerfile: ./compose/production/django/Dockerfile
+  restart: unless-stopped
+  depends_on:
+    ***REMOVED***:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment:
+    # Django core
+    - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
+    - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+    - DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}
+    - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+    # Set to False — Coolify terminates SSL at its own proxy
+    - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-False}
+    - DJANGO_SERVER_EMAIL=${DJANGO_SERVER_EMAIL}
+    - DJANGO_ACCOUNT_ALLOW_REGISTRATION=${DJANGO_ACCOUNT_ALLOW_REGISTRATION:-False}
+    # Workers
+    - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+    # Storage
+    - DJANGO_GCP_STORAGE_BUCKET_NAME=${DJANGO_GCP_STORAGE_BUCKET_NAME}
+    - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+    # Email
+    - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+    - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
+    # Monitoring
+    - SENTRY_DSN=${SENTRY_DSN}
+    # Celery Flower auth (used by flower if you add it later)
+    - CELERY_FLOWER_USER=${CELERY_FLOWER_USER}
+    - CELERY_FLOWER_PASSWORD=${CELERY_FLOWER_PASSWORD}
+    # Redis — internal service, hardcoded
+    - REDIS_URL=redis://redis:6379/0
+    # Postgres — host/port hardcoded to internal service; credentials from env
+    - POSTGRES_HOST=***REMOVED***
+    - POSTGRES_PORT=5432
+    - POSTGRES_DB=${POSTGRES_DB}
+    - POSTGRES_USER=${POSTGRES_USER}
+    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
 
 services:
   ***REMOVED***:
@@ -37,50 +79,11 @@ services:
       timeout: 5s
       retries: 3
 
-  django: &django
-    build:
-      context: .
-      dockerfile: ./compose/production/django/Dockerfile
+  django:
+    <<: *app
     image: ***REMOVED***_coolify_django
-    restart: unless-stopped
-    depends_on:
-      ***REMOVED***:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
       - "5000:5000"
-    environment:
-      # Django core
-      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-      - DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}
-      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-      # Set to False — Coolify terminates SSL at its own proxy
-      - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-False}
-      - DJANGO_SERVER_EMAIL=${DJANGO_SERVER_EMAIL}
-      - DJANGO_ACCOUNT_ALLOW_REGISTRATION=${DJANGO_ACCOUNT_ALLOW_REGISTRATION:-False}
-      # Workers
-      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
-      # Storage
-      - DJANGO_GCP_STORAGE_BUCKET_NAME=${DJANGO_GCP_STORAGE_BUCKET_NAME}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
-      # Email
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
-      # Monitoring
-      - SENTRY_DSN=${SENTRY_DSN}
-      # Celery Flower auth (used by flower if you add it later)
-      - CELERY_FLOWER_USER=${CELERY_FLOWER_USER}
-      - CELERY_FLOWER_PASSWORD=${CELERY_FLOWER_PASSWORD}
-      # Redis — internal service, hardcoded
-      - REDIS_URL=redis://redis:6379/0
-      # Postgres — host/port hardcoded to internal service; credentials from env
-      - POSTGRES_HOST=***REMOVED***
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     command: /start
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
@@ -90,10 +93,8 @@ services:
       start_period: 60s
 
   celeryworker:
-    <<: *django
+    <<: *app
     image: ***REMOVED***_coolify_celeryworker
-    restart: unless-stopped
-    ports: []
     command: /start-celeryworker
     healthcheck:
       test: ["CMD-SHELL", "celery -A config.celery_app inspect ping --timeout 10 || exit 1"]
