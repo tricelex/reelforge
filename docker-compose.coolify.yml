@@ -94,7 +94,7 @@ services:
 
   celeryworker:
     <<: *app
-    image: ***REMOVED***_coolify_celeryworker
+    image: ***REMOVED***_coolify_django
     command: /start-celeryworker
     healthcheck:
       test: ["CMD-SHELL", "celery -A config.celery_app inspect ping --timeout 10 || exit 1"]
