@@ -118,7 +118,6 @@ LOCAL_APPS = [
     "reelforge.distribution",
     "reelforge.ai",
     "reelforge.clipping",
-    "reelforge.ui",
     # Note: reelforge.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
