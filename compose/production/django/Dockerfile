@@ -111,6 +111,7 @@ USER django
 
 RUN DATABASE_URL="" \
   CREDENTIAL_ENCRYPTION_KEY="build-time-placeholder" \
+  DJANGO_SECRET_KEY="build-time-placeholder" \
   DJANGO_SETTINGS_MODULE="config.settings.test" \
   python manage.py compilemessages
 
