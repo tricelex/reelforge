@@ -4,26 +4,4 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-# Support either individual POSTGRES_* vars or a single DATABASE_URL.
-# If DATABASE_URL is already set, extract host/port from it for wait-for-it.
-if [ -n "${DATABASE_URL:-}" ]; then
-    # Parse host and port from DATABASE_URL (postgres://user:pass@host:port/db)
-    db_host=$(echo "$DATABASE_URL" | sed -E 's|.*@([^:/]+).*|\1|')
-    db_port=$(echo "$DATABASE_URL" | sed -E 's|.*@[^:]+:([0-9]+)/.*|\1|')
-    # Fall back to 5432 if port not in URL
-    db_port="${db_port:-5432}"
-else
-    if [ -z "${POSTGRES_USER:-}" ]; then
-        base_postgres_image_default_user='postgres'
-        export POSTGRES_USER="${base_postgres_image_default_user}"
-    fi
-    export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-    db_host="${POSTGRES_HOST}"
-    db_port="${POSTGRES_PORT}"
-fi
-
-wait-for-it "${db_host}:${db_port}" -t 30
-
->&2 echo 'PostgreSQL is available'
-
 exec "$@"

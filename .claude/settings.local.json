@@ -51,7 +51,13 @@
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:mutonby-openshorts.mintlify.app)",
       "Skill(superpowers:subagent-driven-development)",
-      "Bash(HUGGINGFACE_TOKEN=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 uv run python -c ' *)"
+      "Bash(HUGGINGFACE_TOKEN=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 uv run python -c ' *)",
+      "Bash(xxd)",
+      "Bash(ffmpeg -hide_banner -h filter=subtitles)",
+      "Bash(ffmpeg -filters)",
+      "Bash(ffmpeg -version)",
+      "Bash(brew info *)",
+      "Bash(brew search *)"
     ]
   }
 }
