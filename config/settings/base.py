@@ -118,7 +118,6 @@ LOCAL_APPS = [
     "***REMOVED***.distribution",
     "***REMOVED***.ai",
     "***REMOVED***.clipping",
-    "***REMOVED***.ui",
     # Note: ***REMOVED***.services is a utility module, not a Django app
     # Your stuff: custom apps go here
 ]
