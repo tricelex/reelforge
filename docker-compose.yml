@@ -1,70 +1,39 @@
 x-app: &app
   build:
     context: .
-    dockerfile: ./compose/production/django/Dockerfile
+    dockerfile: compose/production/django/Dockerfile
   restart: unless-stopped
   environment:
-    # Django core
     - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
     - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
     - DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}
     - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-    # Set to False — Coolify terminates SSL at its own proxy
     - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-False}
     - DJANGO_SERVER_EMAIL=${DJANGO_SERVER_EMAIL}
     - DJANGO_ACCOUNT_ALLOW_REGISTRATION=${DJANGO_ACCOUNT_ALLOW_REGISTRATION:-False}
-    # Workers
     - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
-    # RustFS (S3-compatible) storage
+    - DATABASE_URL=${DATABASE_URL}
+    - REDIS_URL=${REDIS_URL}
     - RUSTFS_ENDPOINT_URL=${RUSTFS_ENDPOINT_URL}
     - RUSTFS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY_ID}
     - RUSTFS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_ACCESS_KEY}
     - RUSTFS_BUCKET_NAME=${RUSTFS_BUCKET_NAME}
     - RUSTFS_REGION=${RUSTFS_REGION:-us-east-1}
-    # Email
     - MAILGUN_API_KEY=${MAILGUN_API_KEY}
     - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
-    # Monitoring
     - SENTRY_DSN=${SENTRY_DSN}
-    # Celery Flower auth (used by flower if you add it later)
-    - CELERY_FLOWER_USER=${CELERY_FLOWER_USER}
-    - CELERY_FLOWER_PASSWORD=${CELERY_FLOWER_PASSWORD}
-    # Redis — external server
-    - REDIS_URL=${REDIS_URL}
-    # Postgres — external server
-    - POSTGRES_HOST=${POSTGRES_HOST}
-    - POSTGRES_PORT=${POSTGRES_PORT}
-    - POSTGRES_DB=${POSTGRES_DB}
-    - POSTGRES_USER=${POSTGRES_USER}
-    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    # AI / API keys
     - OPENAI_API_KEY=${OPENAI_API_KEY}
     - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
     - FAL_KEY=${FAL_KEY}
     - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}
 
-
 services:
   django:
     <<: *app
-    image: ***REMOVED***_coolify_django
     ports:
       - "5000:5000"
     command: /start
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
   celeryworker:
     <<: *app
-    image: ***REMOVED***_coolify_django
     command: /start-celeryworker
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A config.celery_app inspect ping --timeout 10 || exit 1"]
-      interval: 60s
-      timeout: 15s
-      retries: 3
-      start_period: 90s
