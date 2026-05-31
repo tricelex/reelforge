@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS python-build-stage
 
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0 UV_HTTP_TIMEOUT=120
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -55,7 +55,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 USER django
 
-RUN DATABASE_URL="" \
+RUN DATABASE_URL="postgres://build:build@localhost/build" \
   CREDENTIAL_ENCRYPTION_KEY="build-time-placeholder" \
   DJANGO_SECRET_KEY="build-time-placeholder" \
   DJANGO_SETTINGS_MODULE="config.settings.test" \
