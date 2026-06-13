@@ -6,57 +6,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Setup
 ```bash
-poetry install                    # install all dependencies
-poetry install --only=main        # production deps only
-poetry install --with=docs        # include docs dependencies
+# All development happens inside the running Docker web container.
+# Start it once and exec into it for all commands:
+docker compose up -d
+docker compose exec web bash
 ```
 
-### Run (local, without Docker app container)
+### Run manage.py commands
 ```bash
-# Bring up only the database in Docker:
-docker compose up -d db
-
-# Run the dev server locally:
-python manage.py runserver
-
-# Or run fully containerized:
-docker compose up
+just run migrate
+just run makemigrations
+just run createsuperuser
+just run shell
 ```
-
-Config is loaded from `config/.env` by python-decouple. Copy `config/.env.template` to `config/.env` and fill in values. The `DJANGO_ENV` env var controls which settings environment is active (`development` by default, `production` for prod).
-
-### Manage Django
-```bash
-python manage.py migrate
-python manage.py makemigrations
-python manage.py createsuperuser
-python manage.py shell
-```
+`just run <cmd>` sources `.env.local` and calls `python manage.py <cmd>` without needing the app container.
 
 ### Tests
 ```bash
-pytest                                        # all tests (requires 100% coverage)
-pytest tests/test_apps/test_main/             # single app
-pytest tests/test_apps/test_main/test_api/test_blog_post_create.py  # single file
-pytest --no-cov                               # skip coverage (faster in TDD)
+docker compose exec web pytest                          # all tests (requires 100% coverage)
+docker compose exec web pytest tests/test_apps/test_main/          # single app
+docker compose exec web pytest tests/test_apps/test_main/test_api/test_blog_post_create.py  # single file
+docker compose exec web pytest --no-cov                # skip coverage (faster in TDD)
 ```
 
 ### Linting & type checking
 ```bash
-ruff check && ruff format          # lint + format (configured in pyproject.toml)
-flake8 .                           # wemake-python-styleguide (WPS + E99 only)
-mypy server tests/**/*.py          # type checking
-lint-imports                       # enforce layered architecture contracts
-yamllint -d '{"extends": "default", "ignore": ".venv"}' -s .
-find server -type f -name '*.html' | xargs djangofmt --line-length=80 --indent-width=2
-dotenv-linter config/.env config/.env.template
-polint -i location,unsorted locale
+docker compose exec web ruff check .                   # lint
+docker compose exec web ruff format --check .          # format check
+docker compose exec web mypy server                    # strict type checking
+docker compose exec web lint-imports                   # enforce layered architecture contracts
 ```
 
 ### Migration checks
 ```bash
-python manage.py lintmigrations                        # backward-compatible migrations
-python manage.py check_migrations --exclude-apps=axes  # safe for zero-downtime
+docker compose exec web python manage.py lintmigrations
+docker compose exec web python manage.py check_migrations --exclude-apps=axes
 ```
 
 ## Architecture
@@ -70,12 +54,15 @@ server/               Django project root (Python package)
   apps/               Django apps (one dir per bounded context)
     main/             example/template app
       api/            DMR controllers + URL routing
-      infra/          repository + mapper classes (DB access layer)
-      logic/          pure domain: usecases/, value_objects.py, constants.py
+      infra/          repository, mapper, store, queries (DB access layer)
+      logic/          pure domain: usecases/, ports.py, value_objects.py, events.py
       models.py       Django ORM models
   common/             shared utilities (no imports from server.apps.*)
-    di.py             HasContainer mixin + punq container resolution
-  implemented.py      DI wiring — registers all concrete classes into punq
+    container.py      module-level punq singleton, populated once at startup
+    di.py             HasContainer mixin — resolve() delegates to container singleton
+    events.py         EventBus Protocol + InProcessEventBus implementation
+  services/           cross-app application services (may import from multiple apps)
+  implemented.py      DI wiring — all Scope.singleton registrations go here
   urls.py             root URL conf with OpenAPI docs + health check
 tests/                mirrors server/apps/ layout; not a Python package
   plugins/            pytest fixtures/plugins
@@ -93,34 +80,130 @@ Imports flow strictly downward — upper layers may import from lower, never the
 (logic)
 ```
 
-All apps in `server.apps.*` are independent — no cross-app imports (enforced). `server.common` cannot import from `server.apps.*`.
+All apps in `server.apps.*` are independent — no cross-app imports.
+`server.common` cannot import from `server.apps.*`.
+`server.apps.*` cannot import from `server.services` (services may import from apps, never the reverse).
 
-### API layer — django-modern-rest (DMR)
-Controllers inherit from `dmr.Controller` and optionally `HasContainer` for DI. Request parsing uses `Body[PayloadType]`. Payloads are `msgspec.Struct` subclasses defined in `logic/value_objects.py`.
+### Dependency injection — punq singleton container
 
+The global container lives in `server/common/container.py`:
 ```python
-class MyController(HasContainer, Controller[MsgspecSerializer]):
-    def post(self, parsed_body: Body[MyPayload]) -> MyResponsePayload:
-        return self.resolve(my_usecase.MyUseCase)(parsed_body)
+container: punq.Container = punq.Container()
 ```
 
-### Dependency injection — punq
-`server/implemented.py` is the single place where all concrete implementations are registered. `HasContainer.resolve(SomeUseCase)` retrieves a fully-wired instance per request.
+It is populated **once** in `MainConfig.ready()` by calling `implemented.populate_dependencies(container)`. All registrations use `Scope.singleton`.
+
+**Never** build a new container per-request. **Never** use the old `inject()` / `_create_injector` pattern.
+
+Registering a new dependency in `implemented.py`:
+```python
+def _inject_main(container: Container) -> None:
+    from server.apps.main.infra import repository
+    from server.apps.main.logic import ports
+    from server.apps.main.infra import store
+
+    container.register(repository.MyRepo, scope=Scope.singleton)
+    container.register(
+        ports.MyPort, factory=store.MyStoreImpl, scope=Scope.singleton
+    )
+```
+
+### Ports / Protocols pattern
+Usecases depend on **Protocols** (in `logic/ports.py`), not on concrete infra classes. This keeps logic and infra strictly decoupled:
+
+```python
+# logic/ports.py
+class BlogPostStore(Protocol):
+    def create(self, payload: BlogPostCreatePayload) -> BlogPostFullPayload: ...
+
+
+# infra/store.py  — satisfies the Protocol structurally
+@final
+@attrs.define(slots=True, frozen=True)
+class BlogPostWriteStoreImpl:
+    _repository: BlogPostRepo
+    _mapper: BlogPostMapper
+
+    def create(self, payload: BlogPostCreatePayload) -> BlogPostFullPayload:
+        return self._mapper(self._repository.create(payload))
+```
+
+Register the Protocol → concrete mapping in `implemented.py`:
+```python
+container.register(
+    ports.BlogPostStore,
+    factory=store.BlogPostWriteStoreImpl,
+    scope=Scope.singleton,
+)
+```
+
+### CQRS — separate write usecases from read queries
+- **Write side**: `logic/usecases/` — callable `@attrs.define` classes that take a Port and an EventBus.
+- **Read side**: `infra/queries.py` — callable `@attrs.define` classes that hit the DB directly (via ORM `.values()` calls) and return lightweight value objects.
+
+Read query example:
+```python
+@final
+@attrs.define(slots=True, frozen=True)
+class BlogPostListQuery:
+    def __call__(self) -> list[BlogPostSummaryPayload]:
+        return [
+            BlogPostSummaryPayload(id=row['id'], title=row['title'])
+            for row in BlogPost.objects.values('id', 'title').order_by('-id')
+        ]
+```
+
+### Domain events — EventBus
+`server/common/events.py` defines the `EventBus` Protocol and an `InProcessEventBus` implementation. Domain event dataclasses live in `apps/<app>/logic/events.py`.
+
+Emit in a usecase:
+```python
+self._events.emit(BlogPostCreated(blog_post_id=result.id))
+```
+
+Subscribe a handler (e.g., in `implemented.py` or `apps.py`):
+```python
+bus = container.resolve(EventBus)
+bus.subscribe(BlogPostCreated, send_welcome_email)
+```
+
+### API layer — django-modern-rest (DMR)
+Controllers inherit from `Controller[MsgspecSerializer]` and `HasContainer`. Payloads are `msgspec.Struct` subclasses defined in `logic/value_objects.py`.
+
+```python
+@final
+class BlogPostCreate(HasContainer, Controller[MsgspecSerializer]):
+    def post(
+        self, parsed_body: Body[BlogPostCreatePayload]
+    ) -> BlogPostFullPayload:
+        return self.resolve(blogpost_create.CreateBlogPost)(parsed_body)
+```
+
+### Application Services layer
+`server/services/` holds orchestrators that coordinate multiple apps. Import freely from any `server.apps.*` package here, but apps must never import back into services. Enforced by import-linter contract `apps-cannot-import-services`.
+
+### Class conventions
+- `@final` on every concrete class (mypy-enforced, prevents subclassing).
+- `@attrs.define(slots=True, frozen=True)` for all immutable service objects.
+- `__call__` makes usecases and queries callable objects (no extra method naming).
+- No `from __future__ import annotations` in files resolved by punq — punq needs live type objects at registration time.
 
 ### Settings
-`DJANGO_SETTINGS_MODULE = "server.settings"` — the `__init__.py` uses django-split-settings to compose components and then overlay the active environment file. A `server/settings/environments/local.py` (gitignored) can override anything locally without touching tracked files.
+`DJANGO_SETTINGS_MODULE = "server.settings"` — composes components then overlays the active environment. `server/settings/environments/local.py` (gitignored) for local overrides.
 
 ### Testing patterns
-- Test files use `@pytest.mark.django_db` for DB access.
+- `@pytest.mark.django_db` for any test that touches the ORM.
+- `dmr.test.DMRClient` for API endpoint tests (not Django's `Client`).
 - Factories use `polyfactory` with `MsgspecFactory` for value objects.
-- `dmr.test.DMRClient` (not Django's `Client`) for API endpoint tests.
-- Pytest plugins in `tests/plugins/` (registered in `conftest.py`) provide autouse fixtures for media root, password hashers, and Axes backend.
-- 100% coverage is required — `--cov-fail-under=100` is hardcoded in `pyproject.toml`.
+- 100% coverage required — `--cov-fail-under=100` in `pyproject.toml`.
+- `--doctest-modules` is active — docstring code examples must be valid.
+- No invalid `from __future__ import annotations` in files used by punq.
 
 ## Key constraints
-- Python 3.13.13 (pinned in `.python-version`).
-- Django 6.0.x (pinned in `pyproject.toml`).
-- `ruff` uses single quotes and 80-char line length.
+- Python 3.13.x.
+- Django 6.0.x.
+- `ruff` uses single quotes, 80-char line length.
 - `mypy` runs in strict mode — all public functions need type annotations.
-- Migrations must be backward-compatible (zero-downtime) — migration linter will fail otherwise.
-- `ZEAL_RAISE = True` in development: N+1 queries raise exceptions, not just warnings.
+- Migrations must be backward-compatible (zero-downtime) — migration linter enforces this.
+- `ZEAL_RAISE = True` in development: N+1 queries raise exceptions.
+- `server/apps/*/apps.py` is exempt from `PLC0415` (inline imports in `ready()` required by Django).
