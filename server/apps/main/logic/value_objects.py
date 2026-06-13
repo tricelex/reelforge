@@ -20,3 +20,11 @@ class BlogPostFullPayload(BlogPostCreatePayload):
     """Used to represent existing ``BlogPost`` models."""
 
     id: int
+
+
+@final
+class BlogPostSummaryPayload(msgspec.Struct):
+    """Lightweight list representation — id and title only."""
+
+    id: int
+    title: str

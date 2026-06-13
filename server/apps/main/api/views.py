@@ -8,10 +8,12 @@ from dmr.errors import ErrorType
 from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
+from server.apps.main.infra.queries import BlogPostListQuery
 from server.apps.main.logic.usecases import blogpost_create, blogpost_get
 from server.apps.main.logic.value_objects import (
     BlogPostCreatePayload,
     BlogPostFullPayload,
+    BlogPostSummaryPayload,
 )
 from server.apps.main.models import BlogPost
 from server.common.di import HasContainer
@@ -59,8 +61,6 @@ class BlogPostGet(
         exc: Exception,
     ) -> HttpResponse:
         """Handle specific errors for this controller."""
-        # Since it is the only error that can happen here,
-        # we don't reach full coverage:
         if isinstance(exc, BlogPost.DoesNotExist):  # pragma: no branch
             return self.to_error(
                 self.format_error(
@@ -74,3 +74,15 @@ class BlogPostGet(
             controller,
             exc,
         )
+
+
+@final
+class BlogPostList(
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Returns a summary list of all blog posts."""
+
+    def get(self) -> list[BlogPostSummaryPayload]:
+        """List all blog posts, newest first."""
+        return self.resolve(BlogPostListQuery)()
