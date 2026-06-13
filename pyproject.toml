@@ -29,6 +29,7 @@ django-health-check = "^4.3.0"
 django-permissions-policy = "^4.27"
 django-stubs-ext = "^6.0"
 django-modern-rest = { version = "^0.10.0", extras = ["msgspec", "pydantic", "attrs", "jwt", "openapi"] }
+django-unfold = ">=0.40"
 
 psycopg2-binary = "^2.9"
 gunicorn = "^26.0"
