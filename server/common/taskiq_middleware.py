@@ -6,6 +6,8 @@ from typing import Any, override
 
 import logfire
 import sentry_sdk
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from taskiq import TaskiqMiddleware
 from taskiq.message import TaskiqMessage
 from taskiq.result import TaskiqResult
@@ -54,8 +56,11 @@ class ObservabilityMiddleware(TaskiqMiddleware):
         result: TaskiqResult[Any],
         exception: BaseException,
     ) -> None:
-        """Capture the exception to Sentry with task name and ID as tags."""
+        """Capture exception to Sentry and mark the Logfire span as failed."""
         with sentry_sdk.new_scope() as scope:
             scope.set_tag('task_name', message.task_name)
             scope.set_tag('task_id', message.task_id)
             scope.capture_exception(exception)
+        span = trace.get_current_span()
+        span.record_exception(exception)
+        span.set_status(StatusCode.ERROR, str(exception))

@@ -1,8 +1,11 @@
 """Tests for server/common/taskiq_middleware.py."""
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+from opentelemetry.trace import StatusCode
 from taskiq.message import TaskiqMessage
 from taskiq.result import TaskiqResult
 
@@ -34,7 +37,7 @@ def _make_result() -> TaskiqResult[None]:
     )
 
 
-def _run(coro):  # type: ignore[no-untyped-def]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -98,14 +101,21 @@ def test_post_execute_handles_no_active_span() -> None:
 
 
 def test_on_error_captures_exception_to_sentry_with_task_tags() -> None:
-    """on_error sends the exception to Sentry tagged with task name and ID."""
+    """on_error captures to Sentry and marks the Logfire span as failed."""
     middleware = ObservabilityMiddleware()
     message = _make_message(task_name='failing_task', task_id='id-2')
     result = _make_result()
     error = ValueError('task failed')
     mock_scope = MagicMock()
+    mock_span = MagicMock()
 
-    with patch('sentry_sdk.new_scope') as mock_new_scope:
+    with (
+        patch('sentry_sdk.new_scope') as mock_new_scope,
+        patch(
+            'server.common.taskiq_middleware.trace.get_current_span',
+            return_value=mock_span,
+        ),
+    ):
         mock_new_scope.return_value.__enter__ = MagicMock(
             return_value=mock_scope,
         )
@@ -115,3 +125,7 @@ def test_on_error_captures_exception_to_sentry_with_task_tags() -> None:
     mock_scope.set_tag.assert_any_call('task_name', 'failing_task')
     mock_scope.set_tag.assert_any_call('task_id', 'id-2')
     mock_scope.capture_exception.assert_called_once_with(error)
+    mock_span.record_exception.assert_called_once_with(error)
+    mock_span.set_status.assert_called_once_with(
+        StatusCode.ERROR, 'task failed',
+    )
