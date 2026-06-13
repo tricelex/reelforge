@@ -41,7 +41,7 @@ def test_init_logfire_is_noop_without_token(settings) -> None:
 def test_init_logfire_configures_and_instruments_all_integrations(
     settings,
 ) -> None:
-    """init_logfire calls configure then all four instrument_* functions."""
+    """init_logfire calls configure then all instrument_* functions."""
     settings.LOGFIRE_TOKEN = 'pylf_v1_test_abc123'
     settings.LOGFIRE_SERVICE_NAME = 'reelforge-test'
     with (
@@ -50,6 +50,9 @@ def test_init_logfire_configures_and_instruments_all_integrations(
         patch('logfire.instrument_psycopg') as mock_psycopg2,
         patch('logfire.instrument_redis') as mock_redis,
         patch('logfire.instrument_httpx') as mock_httpx,
+        patch('logfire.instrument_pydantic_ai') as mock_pydantic_ai,
+        patch('logfire.LogfireLoggingHandler') as mock_handler,
+        patch('logging.getLogger') as mock_get_logger,
     ):
         init_logfire()
     mock_configure.assert_called_once_with(
@@ -60,3 +63,9 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     mock_psycopg2.assert_called_once_with('psycopg2')
     mock_redis.assert_called_once_with()
     mock_httpx.assert_called_once_with()
+    mock_pydantic_ai.assert_called_once_with()
+    mock_handler.assert_called_once_with()
+    mock_get_logger.assert_called_once_with()
+    mock_get_logger.return_value.addHandler.assert_called_once_with(
+        mock_handler.return_value,
+    )

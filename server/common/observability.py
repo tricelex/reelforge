@@ -43,3 +43,5 @@ def init_logfire() -> None:
     logfire.instrument_psycopg('psycopg2')
     logfire.instrument_redis()
     logfire.instrument_httpx()
+    logfire.instrument_pydantic_ai()
+    logging.getLogger().addHandler(logfire.LogfireLoggingHandler())
