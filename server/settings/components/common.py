@@ -37,6 +37,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     # Our apps come after auth/axes (so their admin.py loads first, allowing
     # us to call admin.site.unregister) but before unfold (so our templates
     # take precedence over Unfold's built-in admin/index.html):
+    'server.apps.core',
     'server.apps.main',
     # Unfold must come before django.contrib.admin:
     'unfold',
