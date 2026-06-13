@@ -35,6 +35,9 @@ gunicorn = "^26.0"
 python-decouple = "^3.8"
 structlog = "^25.4"
 punq = "^0.7"
+taskiq = "^0.11"
+taskiq-aio-pika = "^0.4"
+taskiq-redis = "^1.0"
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"
@@ -199,6 +202,7 @@ norecursedirs = [
   ".git",
   "__pycache__",
   ".hypothesis",
+  ".local",
 ]
 
 # You will need to measure your tests speed with `-n auto` and without it,
@@ -238,6 +242,10 @@ plugins = [
 omit = [
   # Is not reported, because is imported during setup:
   "server/settings/components/logging.py",
+  # ASGI entrypoint — imported only by the application server, not tests:
+  "server/asgi.py",
+  # Production settings — only active in production deployments:
+  "server/settings/environments/production.py",
 ]
 
 

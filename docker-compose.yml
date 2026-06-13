@@ -16,7 +16,7 @@ services:
       # so we mount the parent directory to persist the actual data path.
       - postgres-data:/var/lib/postgresql
     networks:
-      - postgres-net
+      - backend-net
     env_file: ./config/.env
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -24,6 +24,33 @@ services:
       timeout: 30s
       retries: 5
       start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - backend-net
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    networks:
+      - backend-net
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 10s
 
   web:
     <<: &web
@@ -44,9 +71,12 @@ services:
       depends_on:
         db:
           condition: service_healthy
+        redis:
+          condition: service_healthy
+        rabbitmq:
+          condition: service_healthy
       networks:
-        - web-net
-        - postgres-net
+        - backend-net
       env_file: ./config/.env
       environment:
         DJANGO_DATABASE_HOST: db
@@ -59,17 +89,24 @@ services:
       retries: 5
       start_period: 30s
 
-# This task is an example of how to extend existing ones:
-#   some_worker:
-#     <<: *web
-#     command: python manage.py worker_process
+  worker:
+    <<: *web
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: python -m taskiq worker server.common.broker:broker server.apps.main.tasks
+    healthcheck:
+      disable: true
 
 networks:
-  # Network for postgres, use it for services that need access to the db:
-  postgres-net:
-  # Network for your internals, use it by default:
-  web-net:
+  backend-net:
 
 volumes:
   postgres-data:
   django-static:
+  redis-data:
+  rabbitmq-data:

@@ -22,3 +22,11 @@ services:
       args:
         - UID=${UID:-1000}
         - GID=${GID:-1000}
+
+  worker:
+    volumes:
+      - .:/code
+    build:
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}

@@ -11,4 +11,5 @@ pytest_plugins = [
     'plugins.django_settings',
     # TODO: add your own plugins here!
     'plugins.main.main_templates',
+    'plugins.taskiq_broker',
 ]

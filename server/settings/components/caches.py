@@ -1,11 +1,14 @@
 # Caching
 # https://docs.djangoproject.com/en/6.0/topics/cache/
 
+from server.settings.components import config
+
+REDIS_URL: str = config('REDIS_URL', default='redis://localhost:6379')
+
 CACHES = {
     'default': {
-        # TODO: use some other cache in production,
-        # like https://github.com/jazzband/django-redis
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
     },
 }
 
