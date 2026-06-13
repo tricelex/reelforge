@@ -8,14 +8,13 @@ from dmr.errors import ErrorType
 from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
-from server.apps.main.infra.queries import BlogPostListQuery
-from server.apps.main.logic.usecases import blogpost_create, blogpost_get
 from server.apps.main.logic.value_objects import (
     BlogPostCreatePayload,
     BlogPostFullPayload,
     BlogPostSummaryPayload,
 )
 from server.apps.main.models import BlogPost
+from server.apps.main.services import BlogPostService
 from server.common.di import HasContainer
 
 
@@ -31,7 +30,7 @@ class BlogPostCreate(
         parsed_body: Body[BlogPostCreatePayload],
     ) -> BlogPostFullPayload:
         """Create new ``BlogPost`` model."""
-        return self.resolve(blogpost_create.CreateBlogPost)(parsed_body)
+        return self.resolve(BlogPostService).create(parsed_body)
 
 
 @final
@@ -51,7 +50,7 @@ class BlogPostGet(
     )
     def get(self) -> BlogPostFullPayload:
         """Return existing ``BlogPost`` model by id."""
-        return self.resolve(blogpost_get.GetBlogPost)(self.kwargs['id'])
+        return self.resolve(BlogPostService).get_by_id(self.kwargs['id'])
 
     @override
     def handle_error(
@@ -85,4 +84,4 @@ class BlogPostList(
 
     def get(self) -> list[BlogPostSummaryPayload]:
         """List all blog posts, newest first."""
-        return self.resolve(BlogPostListQuery)()
+        return self.resolve(BlogPostService).list_all()

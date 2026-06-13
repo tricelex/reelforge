@@ -14,32 +14,11 @@ def _inject_django(container: Container) -> None:
 
 
 def _inject_main(container: Container) -> None:
-    from server.apps.main.infra import mappers, queries, repository
-    from server.apps.main.infra import store as write_store
-    from server.apps.main.logic import ports
-    from server.apps.main.logic.usecases import blogpost_create, blogpost_get
+    from server.apps.main.services import BlogPostService
     from server.common.events import EventBus, InProcessEventBus
 
-    # Internal infra components
-    container.register(repository.BlogPostRepo, scope=Scope.singleton)
-    container.register(mappers.BlogPostMapper, scope=Scope.singleton)
-
-    # Event bus — singleton so handlers registered at startup are retained
     container.register(EventBus, instance=InProcessEventBus())
-
-    # Register BlogPostStore Protocol → concrete implementation
-    container.register(
-        ports.BlogPostStore,
-        factory=write_store.BlogPostWriteStoreImpl,
-        scope=Scope.singleton,
-    )
-
-    # Use cases
-    container.register(blogpost_create.CreateBlogPost, scope=Scope.singleton)
-    container.register(blogpost_get.GetBlogPost, scope=Scope.singleton)
-
-    # CQRS read queries
-    container.register(queries.BlogPostListQuery, scope=Scope.singleton)
+    container.register(BlogPostService, scope=Scope.singleton)
 
 
 def populate_dependencies(container: Container) -> Container:

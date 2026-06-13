@@ -53,20 +53,32 @@ server/               Django project root (Python package)
     environments/     per-environment overrides (development, production, local.py)
   apps/               Django apps (one dir per bounded context)
     main/             example/template app
-      api/            DMR controllers + URL routing
-      infra/          repository, mapper, store, queries (DB access layer)
-      logic/          pure domain: usecases/, ports.py, value_objects.py, events.py
+      services.py     ALL business logic + DB ops for this app (one class per domain)
       models.py       Django ORM models
+      logic/          pure domain types — value_objects.py, events.py, constants.py
+      api/            DMR controllers + URL routing
   common/             shared utilities (no imports from server.apps.*)
     container.py      module-level punq singleton, populated once at startup
     di.py             HasContainer mixin — resolve() delegates to container singleton
     events.py         EventBus Protocol + InProcessEventBus implementation
-  services/           cross-app application services (may import from multiple apps)
+  services/           cross-app orchestration (may import from multiple apps)
   implemented.py      DI wiring — all Scope.singleton registrations go here
   urls.py             root URL conf with OpenAPI docs + health check
 tests/                mirrors server/apps/ layout; not a Python package
   plugins/            pytest fixtures/plugins
 ```
+
+### Per-app structure (new entity checklist)
+Every domain entity in an app follows this minimal structure:
+
+1. `models.py` — Django ORM model
+2. `logic/value_objects.py` — msgspec.Struct input/output DTOs
+3. `logic/events.py` — domain events (attrs frozen dataclass, e.g. `ThingCreated`)
+4. `services.py` — one `@final @attrs.define` class with all read + write methods
+5. `api/views.py` — thin controllers that delegate to the service
+6. `api/urls.py` — URL routing
+7. `implemented.py` — register the service as a singleton
+8. `just run makemigrations` — generate migration
 
 ### Layered architecture (enforced by import-linter)
 Imports flow strictly downward — upper layers may import from lower, never the reverse:
@@ -75,7 +87,6 @@ Imports flow strictly downward — upper layers may import from lower, never the
 (urls) | (admin)
 (views) | (api)
 (tasks)
-(infra)
 (models)
 (logic)
 ```
@@ -86,110 +97,92 @@ All apps in `server.apps.*` are independent — no cross-app imports.
 
 ### Dependency injection — punq singleton container
 
-The global container lives in `server/common/container.py`:
+The global container lives in `server/common/container.py`. It is populated **once** in
+`MainConfig.ready()` by calling `implemented.populate_dependencies(container)`.
+
+All registrations use `Scope.singleton`. Every class stored in the container must be
+`frozen=True` (stateless — no mutable fields).
+
+Adding a new service in `implemented.py`:
 ```python
-container: punq.Container = punq.Container()
+def _inject_myapp(container: Container) -> None:
+    from server.apps.myapp.services import MyService
+    from server.common.events import EventBus
+
+    # EventBus already registered — punq injects it automatically
+    container.register(MyService, scope=Scope.singleton)
 ```
 
-It is populated **once** in `MainConfig.ready()` by calling `implemented.populate_dependencies(container)`. All registrations use `Scope.singleton`.
+Controllers retrieve instances via `self.resolve(MyService)` — never construct manually.
 
-**Never** build a new container per-request. **Never** use the old `inject()` / `_create_injector` pattern.
+**CRITICAL:** Never add `from __future__ import annotations` to files registered with punq.
+It makes annotations lazy strings punq cannot resolve at registration time.
 
-Registering a new dependency in `implemented.py`:
-```python
-def _inject_main(container: Container) -> None:
-    from server.apps.main.infra import repository
-    from server.apps.main.logic import ports
-    from server.apps.main.infra import store
-
-    container.register(repository.MyRepo, scope=Scope.singleton)
-    container.register(
-        ports.MyPort, factory=store.MyStoreImpl, scope=Scope.singleton
-    )
-```
-
-### Ports / Protocols pattern
-Usecases depend on **Protocols** (in `logic/ports.py`), not on concrete infra classes. This keeps logic and infra strictly decoupled:
+### Service pattern
+Each app has a single service class that owns all DB operations and business logic:
 
 ```python
-# logic/ports.py
-class BlogPostStore(Protocol):
-    def create(self, payload: BlogPostCreatePayload) -> BlogPostFullPayload: ...
-
-
-# infra/store.py  — satisfies the Protocol structurally
 @final
 @attrs.define(slots=True, frozen=True)
-class BlogPostWriteStoreImpl:
-    _repository: BlogPostRepo
-    _mapper: BlogPostMapper
+class BlogPostService:
+    _events: EventBus  # injected by punq
 
     def create(self, payload: BlogPostCreatePayload) -> BlogPostFullPayload:
-        return self._mapper(self._repository.create(payload))
-```
+        post = BlogPost.objects.create(title=payload.title, body=payload.body)
+        result = BlogPostFullPayload(
+            id=post.pk, title=post.title, body=post.body
+        )
+        self._events.emit(BlogPostCreated(blog_post_id=result.id))
+        return result
 
-Register the Protocol → concrete mapping in `implemented.py`:
-```python
-container.register(
-    ports.BlogPostStore,
-    factory=store.BlogPostWriteStoreImpl,
-    scope=Scope.singleton,
-)
-```
+    def get_by_id(self, post_id: int) -> BlogPostFullPayload:
+        post = BlogPost.objects.get(pk=post_id)
+        return BlogPostFullPayload(id=post.pk, title=post.title, body=post.body)
 
-### CQRS — separate write usecases from read queries
-- **Write side**: `logic/usecases/` — callable `@attrs.define` classes that take a Port and an EventBus.
-- **Read side**: `infra/queries.py` — callable `@attrs.define` classes that hit the DB directly (via ORM `.values()` calls) and return lightweight value objects.
-
-Read query example:
-```python
-@final
-@attrs.define(slots=True, frozen=True)
-class BlogPostListQuery:
-    def __call__(self) -> list[BlogPostSummaryPayload]:
+    def list_all(self) -> list[BlogPostSummaryPayload]:
         return [
-            BlogPostSummaryPayload(id=row['id'], title=row['title'])
-            for row in BlogPost.objects.values('id', 'title').order_by('-id')
+            BlogPostSummaryPayload(id=r['id'], title=r['title'])
+            for r in BlogPost.objects.values('id', 'title').order_by('-id')
         ]
 ```
 
-### Domain events — EventBus
-`server/common/events.py` defines the `EventBus` Protocol and an `InProcessEventBus` implementation. Domain event dataclasses live in `apps/<app>/logic/events.py`.
+Write methods emit domain events. Read methods (list/get) return lightweight value objects
+directly from ORM `.values()` calls — no separate mapper needed.
 
-Emit in a usecase:
+### Domain events — EventBus
+`server/common/events.py` has `EventBus` Protocol + `InProcessEventBus` (registered as
+singleton in `implemented.py`). App events live in `logic/events.py`.
+
+Emit in a service method:
 ```python
 self._events.emit(BlogPostCreated(blog_post_id=result.id))
 ```
 
-Subscribe a handler (e.g., in `implemented.py` or `apps.py`):
+Subscribe a handler (e.g. in `AppConfig.ready()` after `populate_dependencies()`):
 ```python
 bus = container.resolve(EventBus)
-bus.subscribe(BlogPostCreated, send_welcome_email)
+bus.subscribe(BlogPostCreated, some_handler_function)
 ```
 
 ### API layer — django-modern-rest (DMR)
-Controllers inherit from `Controller[MsgspecSerializer]` and `HasContainer`. Payloads are `msgspec.Struct` subclasses defined in `logic/value_objects.py`.
-
-```python
-@final
-class BlogPostCreate(HasContainer, Controller[MsgspecSerializer]):
-    def post(
-        self, parsed_body: Body[BlogPostCreatePayload]
-    ) -> BlogPostFullPayload:
-        return self.resolve(blogpost_create.CreateBlogPost)(parsed_body)
-```
+Controllers inherit from `Controller[MsgspecSerializer]` and `HasContainer`. Payloads are
+`msgspec.Struct` subclasses defined in `logic/value_objects.py`. Controllers are thin —
+they only parse input, call `self.resolve(MyService).method()`, and return the result.
 
 ### Application Services layer
-`server/services/` holds orchestrators that coordinate multiple apps. Import freely from any `server.apps.*` package here, but apps must never import back into services. Enforced by import-linter contract `apps-cannot-import-services`.
+`server/services/` is for orchestrators that coordinate multiple apps. Import freely from
+any `server.apps.*` package here, but apps must never import back into services. Enforced
+by import-linter contract `apps-cannot-import-services`.
 
 ### Class conventions
 - `@final` on every concrete class (mypy-enforced, prevents subclassing).
-- `@attrs.define(slots=True, frozen=True)` for all immutable service objects.
-- `__call__` makes usecases and queries callable objects (no extra method naming).
-- No `from __future__ import annotations` in files resolved by punq — punq needs live type objects at registration time.
+- `@attrs.define(slots=True, frozen=True)` for all service objects (stateless, thread-safe).
+- Value objects use `msgspec.Struct` (fast serialisation, strict typing).
+- Domain events use `@attrs.define(frozen=True)` (immutable, no slots needed).
 
 ### Settings
-`DJANGO_SETTINGS_MODULE = "server.settings"` — composes components then overlays the active environment. `server/settings/environments/local.py` (gitignored) for local overrides.
+`DJANGO_SETTINGS_MODULE = "server.settings"` — composes components then overlays the
+active environment. `server/settings/environments/local.py` (gitignored) for local overrides.
 
 ### Testing patterns
 - `@pytest.mark.django_db` for any test that touches the ORM.
@@ -197,7 +190,7 @@ class BlogPostCreate(HasContainer, Controller[MsgspecSerializer]):
 - Factories use `polyfactory` with `MsgspecFactory` for value objects.
 - 100% coverage required — `--cov-fail-under=100` in `pyproject.toml`.
 - `--doctest-modules` is active — docstring code examples must be valid.
-- No invalid `from __future__ import annotations` in files used by punq.
+- No `from __future__ import annotations` in files used by punq.
 
 ## Key constraints
 - Python 3.13.x.
