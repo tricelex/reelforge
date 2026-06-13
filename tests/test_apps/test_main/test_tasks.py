@@ -7,6 +7,7 @@ from server.apps.main.models import BlogPost
 from server.apps.main.tasks import (
     add,
     handle_blog_post_created,
+    hourly_cleanup,
     notify_blog_post_created,
 )
 
@@ -20,6 +21,10 @@ def test_add() -> None:
 def test_notify_blog_post_created(blog_post: BlogPost) -> None:
     """Calls the notification task directly against a persisted BlogPost."""
     notify_blog_post_created.original_func(blog_post.pk)
+
+
+def test_hourly_cleanup() -> None:
+    hourly_cleanup.original_func()  # type: ignore[attr-defined]
 
 
 def test_handle_blog_post_created() -> None:

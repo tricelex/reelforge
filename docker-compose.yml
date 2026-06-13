@@ -101,6 +101,21 @@ services:
     command: python -m taskiq worker server.common.broker:broker server.apps.main.tasks
     healthcheck:
       disable: true
+      test: []
+
+  scheduler:
+    <<: *web
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: python -m taskiq scheduler server.common.scheduler:scheduler
+    healthcheck:
+      disable: true
+      test: []
 
 networks:
   backend-net:

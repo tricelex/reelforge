@@ -23,7 +23,19 @@ services:
         - UID=${UID:-1000}
         - GID=${GID:-1000}
 
+  rabbitmq:
+    ports:
+      - "15672:15672"
+
   worker:
+    volumes:
+      - .:/code
+    build:
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+
+  scheduler:
     volumes:
       - .:/code
     build:

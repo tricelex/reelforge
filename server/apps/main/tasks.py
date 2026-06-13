@@ -33,3 +33,9 @@ def notify_blog_post_created(blog_post_id: int) -> None:
 def handle_blog_post_created(event: BlogPostCreated) -> None:
     """EventBus handler — enqueues the notification task."""
     async_to_sync(notify_blog_post_created.kiq)(event.blog_post_id)
+
+
+@broker.task(schedule=[{'cron': '0 * * * *'}])
+def hourly_cleanup() -> None:
+    """Sample scheduled task — runs at the top of every hour."""
+    logger.info('hourly_cleanup_run')
