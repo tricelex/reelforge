@@ -56,12 +56,13 @@ def test_init_logfire_configures_and_instruments_all_integrations(
         patch('logfire.LogfireLoggingHandler') as mock_handler,
         patch('logging.getLogger') as mock_get_logger,
     ):
+        mock_get_logger.return_value.handlers = []
         init_logfire()
     mock_configure.assert_called_once_with(
         token='test-logfire-token',  # noqa: S106
         service_name='reelforge-test',
     )
-    mock_django.assert_called_once_with(capture_headers=True)
+    mock_django.assert_called_once_with(capture_headers=False)
     mock_psycopg2.assert_called_once_with('psycopg2')
     mock_redis.assert_called_once_with()
     mock_httpx.assert_called_once_with()

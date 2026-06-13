@@ -39,9 +39,15 @@ def init_logfire() -> None:
         token=settings.LOGFIRE_TOKEN,
         service_name=settings.LOGFIRE_SERVICE_NAME,
     )
-    logfire.instrument_django(capture_headers=True)
+    logfire.instrument_django(capture_headers=False)
     logfire.instrument_psycopg('psycopg2')
     logfire.instrument_redis()
     logfire.instrument_httpx()
     logfire.instrument_pydantic_ai()
-    logging.getLogger().addHandler(logfire.LogfireLoggingHandler())
+    root_logger = logging.getLogger()
+    already_added = any(
+        isinstance(h, logfire.LogfireLoggingHandler)
+        for h in root_logger.handlers
+    )
+    if not already_added:
+        root_logger.addHandler(logfire.LogfireLoggingHandler())
