@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from server.common.observability import init_logfire, init_sentry
 
 
@@ -25,8 +27,8 @@ def test_init_sentry_calls_sdk_init_with_correct_config(settings) -> None:
     kwargs = mock_init.call_args.kwargs
     assert kwargs['dsn'] == 'https://key@o123.ingest.sentry.io/456'
     assert kwargs['environment'] == 'test'
-    assert kwargs['traces_sample_rate'] == 0.5
-    assert kwargs['profiles_sample_rate'] == 0.05
+    assert kwargs['traces_sample_rate'] == pytest.approx(0.5)
+    assert kwargs['profiles_sample_rate'] == pytest.approx(0.05)
     assert kwargs['send_default_pii'] is False
 
 
@@ -42,7 +44,7 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     settings,
 ) -> None:
     """init_logfire calls configure then all instrument_* functions."""
-    settings.LOGFIRE_TOKEN = 'pylf_v1_test_abc123'
+    settings.LOGFIRE_TOKEN = 'test-logfire-token'  # noqa: S105
     settings.LOGFIRE_SERVICE_NAME = 'reelforge-test'
     with (
         patch('logfire.configure') as mock_configure,
@@ -56,7 +58,7 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     ):
         init_logfire()
     mock_configure.assert_called_once_with(
-        token='pylf_v1_test_abc123',
+        token='test-logfire-token',  # noqa: S106
         service_name='reelforge-test',
     )
     mock_django.assert_called_once_with(capture_headers=True)
