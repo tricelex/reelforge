@@ -1,6 +1,8 @@
+from os import environ
+
 from server.settings.components import config
 
-DJANGO_ENV: str = config('DJANGO_ENV', default='development')
+DJANGO_ENV: str = environ.get('DJANGO_ENV', 'development')
 
 SENTRY_DSN: str = config('SENTRY_DSN', default='')
 SENTRY_TRACES_SAMPLE_RATE: float = config(
