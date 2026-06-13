@@ -35,7 +35,7 @@ def handle_blog_post_created(event: BlogPostCreated) -> None:
     async_to_sync(notify_blog_post_created.kiq)(event.blog_post_id)
 
 
-@broker.task(schedule=[{'cron': '0 * * * *'}])
+@broker.task(schedule=[{'cron': '*/2 * * * *'}])
 def hourly_cleanup() -> None:
     """Sample scheduled task — runs at the top of every hour."""
     logger.info('hourly_cleanup_run')
