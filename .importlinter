@@ -57,6 +57,17 @@ forbidden_modules =
   tests
 
 
+[importlinter:contract:apps-cannot-import-services]
+name = Apps must not import from the services layer
+type = forbidden
+
+source_modules =
+  server.apps
+
+forbidden_modules =
+  server.services
+
+
 [importlinter:contract:server-can-import-settings-directly]
 name = Settings can be directly imported only in settings, use `django.conf`
 type = protected
