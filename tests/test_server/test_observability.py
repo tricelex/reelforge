@@ -72,3 +72,24 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     mock_get_logger.return_value.addHandler.assert_called_once_with(
         mock_handler.return_value,
     )
+
+
+def test_init_logfire_skips_handler_when_already_present(settings) -> None:
+    """init_logfire does not add a second LogfireLoggingHandler if one exists."""
+    import logfire  # noqa: PLC0415
+
+    settings.LOGFIRE_TOKEN = 'test-logfire-token'  # noqa: S105
+    settings.LOGFIRE_SERVICE_NAME = 'reelforge-test'
+    existing_handler = logfire.LogfireLoggingHandler()
+    with (
+        patch('logfire.configure'),
+        patch('logfire.instrument_django'),
+        patch('logfire.instrument_psycopg'),
+        patch('logfire.instrument_redis'),
+        patch('logfire.instrument_httpx'),
+        patch('logfire.instrument_pydantic_ai'),
+        patch('logging.getLogger') as mock_get_logger,
+    ):
+        mock_get_logger.return_value.handlers = [existing_handler]
+        init_logfire()
+    mock_get_logger.return_value.addHandler.assert_not_called()
