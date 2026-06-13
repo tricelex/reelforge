@@ -34,6 +34,10 @@ INSTALLED_APPS: tuple[str, ...] = (
     'django.contrib.staticfiles',
     # Security — must also precede our apps for the same admin reason:
     'axes',
+    # Our apps come after auth/axes (so their admin.py loads first, allowing
+    # us to call admin.site.unregister) but before unfold (so our templates
+    # take precedence over Unfold's built-in admin/index.html):
+    'server.apps.main',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
@@ -42,8 +46,6 @@ INSTALLED_APPS: tuple[str, ...] = (
     # django-admin:
     'django.contrib.admin',
     'django.contrib.admindocs',
-    # Our apps:
-    'server.apps.main',
     # django-modern-rest:
     'dmr',
     'corsheaders',

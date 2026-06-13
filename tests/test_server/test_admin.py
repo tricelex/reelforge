@@ -8,6 +8,8 @@ from django.db.models import Model
 from django.test import Client
 from django.urls import reverse
 
+from server.apps.main.models import BlogPost
+
 # Models that should have restricted (FORBIDDEN) admin add pages
 _RESTRICTED_ADMIN_ADD_MODELS = frozenset((
     AccessAttempt,
@@ -71,3 +73,22 @@ def test_admin_add(
     )
 
     assert response.status_code == expected_status
+
+
+@pytest.mark.django_db
+def test_admin_dashboard_empty(admin_client: Client) -> None:
+    """Admin dashboard renders with no data (exercises the empty branch)."""
+    response = admin_client.get(reverse('admin:index'))
+
+    assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
+def test_admin_dashboard_with_posts(admin_client: Client) -> None:
+    """Admin dashboard renders with blog post data (exercises the list branch)."""
+    BlogPost.objects.create(title='Hello', body='World')
+
+    response = admin_client.get(reverse('admin:index'))
+
+    assert response.status_code == HTTPStatus.OK
+    assert b'Hello' in response.content
