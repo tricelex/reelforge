@@ -18,10 +18,14 @@ def _inject_main(container: Container) -> None:
     from server.apps.main.infra import store as write_store
     from server.apps.main.logic import ports
     from server.apps.main.logic.usecases import blogpost_create, blogpost_get
+    from server.common.events import EventBus, InProcessEventBus
 
     # Internal infra components
     container.register(repository.BlogPostRepo, scope=Scope.singleton)
     container.register(mappers.BlogPostMapper, scope=Scope.singleton)
+
+    # Event bus — singleton so handlers registered at startup are retained
+    container.register(EventBus, instance=InProcessEventBus())
 
     # Register BlogPostStore Protocol → concrete implementation
     container.register(
@@ -30,7 +34,7 @@ def _inject_main(container: Container) -> None:
         scope=Scope.singleton,
     )
 
-    # Use cases — punq resolves BlogPostStore from registry automatically
+    # Use cases
     container.register(blogpost_create.CreateBlogPost, scope=Scope.singleton)
     container.register(blogpost_get.GetBlogPost, scope=Scope.singleton)
 
