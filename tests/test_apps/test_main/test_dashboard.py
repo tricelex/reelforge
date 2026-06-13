@@ -5,14 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from server.apps.main.dashboard import dashboard_callback
 from server.apps.main.models import BlogPost
 
 
 @pytest.mark.django_db
 def test_dashboard_callback_context_keys_no_data() -> None:
     """Callback injects all required keys even with empty DB."""
-    from server.apps.main.dashboard import dashboard_callback
-
     request = MagicMock()
     result: dict[str, Any] = dashboard_callback(request, {})
 
@@ -26,8 +25,6 @@ def test_dashboard_callback_context_keys_no_data() -> None:
 @pytest.mark.django_db
 def test_dashboard_callback_context_values_with_data() -> None:
     """Callback returns accurate counts and at most 5 recent posts."""
-    from server.apps.main.dashboard import dashboard_callback
-
     BlogPost.objects.create(title='Post A', body='body a')
     BlogPost.objects.create(title='Post B', body='body b')
 

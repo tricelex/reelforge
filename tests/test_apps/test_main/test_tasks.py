@@ -24,6 +24,7 @@ def test_notify_blog_post_created(blog_post: BlogPost) -> None:
 
 
 def test_hourly_cleanup() -> None:
+    """Smoke-tests the hourly_cleanup task by calling its unwrapped function."""
     hourly_cleanup.original_func()  # type: ignore[attr-defined]
 
 

@@ -85,7 +85,7 @@ def test_admin_dashboard_empty(admin_client: Client) -> None:
 
 @pytest.mark.django_db
 def test_admin_dashboard_with_posts(admin_client: Client) -> None:
-    """Admin dashboard renders with blog post data (exercises the list branch)."""
+    """Admin dashboard with posts exercises the list branch of the template."""
     BlogPost.objects.create(title='Hello', body='World')
 
     response = admin_client.get(reverse('admin:index'))

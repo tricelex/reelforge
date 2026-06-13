@@ -214,11 +214,11 @@ UNFOLD: dict[str, Any] = {
     'SITE_HEADER': 'ReelForge Admin',
     'SITE_URL': '/',
     'SITE_ICON': {
-        'light': lambda request: staticfiles_storage.url(  # type: ignore[misc]
-            'main/images/favicon-32x32.png'
+        'light': lambda request: staticfiles_storage.url(
+            'main/images/favicon-32x32.png',
         ),
-        'dark': lambda request: staticfiles_storage.url(  # type: ignore[misc]
-            'main/images/favicon-32x32.png'
+        'dark': lambda request: staticfiles_storage.url(
+            'main/images/favicon-32x32.png',
         ),
     },
     'DASHBOARD_CALLBACK': 'server.apps.main.dashboard.dashboard_callback',
@@ -261,7 +261,7 @@ UNFOLD: dict[str, Any] = {
                         'title': 'Login Attempts',
                         'icon': 'lock',
                         'link': reverse_lazy(
-                            'admin:axes_accessattempt_changelist'
+                            'admin:axes_accessattempt_changelist',
                         ),
                     },
                 ],

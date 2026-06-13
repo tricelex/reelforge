@@ -26,7 +26,7 @@ def _remove_debug_toolbar_middleware(settings: LazySettings) -> None:
     """Remove debug_toolbar middleware for admin view tests.
 
     development.py adds DebugToolbarMiddleware to MIDDLEWARE. The toolbar's
-    show callback checks a module-level DEBUG=True variable (not settings.DEBUG),
+    show callback checks a module-level DEBUG=True variable (not settings.DEBUG)
     so it fires for superusers regardless. When tests set settings.DEBUG=False,
     the djdt URL namespace is not registered, causing NoReverseMatch when the
     toolbar attempts to render. Removing the middleware from tests avoids this.
