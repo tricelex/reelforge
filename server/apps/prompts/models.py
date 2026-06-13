@@ -17,6 +17,14 @@ class PromptTemplate(UUIDModel, TimeStampedModel):
     scope = models.CharField(max_length=10, choices=PromptScope.choices)
     description = models.TextField(blank=True)
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name='prompts_prompttemplate_scope_valid',
+                condition=models.Q(scope__in=PromptScope.values),
+            ),
+        ]
+
     def __str__(self) -> str:
         return self.key
 
@@ -25,7 +33,7 @@ class PromptVersion(UUIDModel, TimeStampedModel):
     """One version of a prompt template. Only one should be active at a time."""
 
     template = models.ForeignKey(
-        PromptTemplate, on_delete=models.CASCADE, related_name='versions'
+        PromptTemplate, on_delete=models.CASCADE, related_name='versions', db_index=True
     )
     version = models.PositiveIntegerField()
     system_prompt = models.TextField()

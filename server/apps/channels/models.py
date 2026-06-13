@@ -57,6 +57,22 @@ class Channel(UUIDModel, TimeStampedModel):
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            models.CheckConstraint(
+                name='channels_channel_kind_valid',
+                condition=models.Q(kind__in=ChannelKind.values),
+            ),
+            models.CheckConstraint(
+                name='channels_channel_publish_mode_valid',
+                condition=models.Q(publish_mode__in=PublishMode.values),
+            ),
+            models.CheckConstraint(
+                name='channels_channel_character_design_mode_valid',
+                condition=models.Q(
+                    character_design_mode__in=CharacterDesignMode.values
+                ),
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -179,6 +195,18 @@ class Character(UUIDModel, TimeStampedModel):
         max_length=10, choices=CharacterOrigin.choices, default=CharacterOrigin.RUN
     )
     # source_run FK to pipelines.PipelineRun added in Phase 2 migration
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name='channels_character_status_valid',
+                condition=models.Q(status__in=CharacterStatus.values),
+            ),
+            models.CheckConstraint(
+                name='channels_character_origin_valid',
+                condition=models.Q(origin__in=CharacterOrigin.values),
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name

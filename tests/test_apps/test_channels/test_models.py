@@ -40,7 +40,6 @@ def test_channel_wpm_default() -> None:
 
 
 # DB tests — activated in Task 5 after migrations are applied
-@pytest.mark.skip(reason='Migration applied in Task 5')
 @pytest.mark.django_db
 def test_channel_creation_persists() -> None:
     ch = Channel.objects.create(name='Test Channel', kind=ChannelKind.LONGFORM)
@@ -50,7 +49,6 @@ def test_channel_creation_persists() -> None:
     assert ch.character_design_mode == CharacterDesignMode.INTERACTIVE
 
 
-@pytest.mark.skip(reason='Migration applied in Task 5')
 @pytest.mark.django_db
 def test_character_defaults_persisted() -> None:
     from decimal import Decimal
@@ -62,7 +60,6 @@ def test_character_defaults_persisted() -> None:
     assert char.total_creation_cost_usd == Decimal('0')
 
 
-@pytest.mark.skip(reason='Migration applied in Task 5')
 @pytest.mark.django_db
 def test_niche_config_links_to_channel() -> None:
     from server.apps.channels.models import NicheConfig
@@ -72,7 +69,6 @@ def test_niche_config_links_to_channel() -> None:
     assert nc.banned_topics == []
 
 
-@pytest.mark.skip(reason='Migration applied in Task 5')
 @pytest.mark.django_db
 def test_channel_branding_defaults() -> None:
     from server.apps.channels.models import ChannelBranding
@@ -84,7 +80,6 @@ def test_channel_branding_defaults() -> None:
     assert branding.thumbnail_palette == {}
 
 
-@pytest.mark.skip(reason='Migration applied in Task 5')
 @pytest.mark.django_db
 def test_character_generation_session_rounds_default_empty() -> None:
     from server.apps.channels.models import CharacterGenerationSession
