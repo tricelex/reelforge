@@ -22,6 +22,7 @@ class _ContentSecurityPolicy(TypedDict):
 # These values might and will be redefined in `development.py` env:
 CONTENT_SECURITY_POLICY: _ContentSecurityPolicy = {
     'EXCLUDE_URL_PREFIXES': [
+        '/admin/',
         '/docs/stoplight/',
         '/docs/swagger/',
         '/docs/scalar/',

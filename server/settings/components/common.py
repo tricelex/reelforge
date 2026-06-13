@@ -8,6 +8,10 @@ For the full list of settings and their config, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+from typing import Any
+
+from django.contrib.staticfiles.storage import staticfiles_storage
+from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
 from server.settings.components import BASE_DIR, config
@@ -20,22 +24,29 @@ SECRET_KEY = config('DJANGO_SECRET_KEY')
 # Application definition:
 
 INSTALLED_APPS: tuple[str, ...] = (
-    # Your apps go here:
-    'server.apps.main',
-    # Default django apps:
+    # Standard Django apps must come before our apps.
+    # Their admin.py files are loaded first by autodiscover(), which lets
+    # our admin.py safely call admin.site.unregister() on their models.
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Security — must also precede our apps for the same admin reason:
+    'axes',
+    # Unfold must come before django.contrib.admin:
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
+    'unfold.contrib.inlines',
     # django-admin:
     'django.contrib.admin',
     'django.contrib.admindocs',
+    # Our apps:
+    'server.apps.main',
     # django-modern-rest:
     'dmr',
     'corsheaders',
-    # Security:
-    'axes',
     # Health checks:
     # You may want to enable other checks as well,
     # see: https://github.com/KristianOellegaard/django-health-check
@@ -192,6 +203,70 @@ SECURE_REFERRER_POLICY = 'same-origin'
 
 # https://github.com/adamchainz/django-permissions-policy#setting
 PERMISSIONS_POLICY: dict[str, str | list[str]] = {}
+
+
+# Django Unfold admin configuration:
+# https://unfoldadmin.com/docs/configuration/
+UNFOLD: dict[str, Any] = {
+    'SITE_TITLE': 'ReelForge',
+    'SITE_HEADER': 'ReelForge Admin',
+    'SITE_URL': '/',
+    'SITE_ICON': {
+        'light': lambda request: staticfiles_storage.url(  # type: ignore[misc]
+            'main/images/favicon-32x32.png'
+        ),
+        'dark': lambda request: staticfiles_storage.url(  # type: ignore[misc]
+            'main/images/favicon-32x32.png'
+        ),
+    },
+    'DASHBOARD_CALLBACK': 'server.apps.main.dashboard.dashboard_callback',
+    'SIDEBAR': {
+        'show_search': True,
+        'show_all_applications': False,
+        'navigation': [
+            {
+                'title': 'Content',
+                'separator': False,
+                'items': [
+                    {
+                        'title': 'Blog Posts',
+                        'icon': 'article',
+                        'link': reverse_lazy('admin:main_blogpost_changelist'),
+                    },
+                ],
+            },
+            {
+                'title': 'Auth',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Users',
+                        'icon': 'person',
+                        'link': reverse_lazy('admin:auth_user_changelist'),
+                    },
+                    {
+                        'title': 'Groups',
+                        'icon': 'group',
+                        'link': reverse_lazy('admin:auth_group_changelist'),
+                    },
+                ],
+            },
+            {
+                'title': 'Security',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Login Attempts',
+                        'icon': 'lock',
+                        'link': reverse_lazy(
+                            'admin:axes_accessattempt_changelist'
+                        ),
+                    },
+                ],
+            },
+        ],
+    },
+}
 
 
 # Timeouts
