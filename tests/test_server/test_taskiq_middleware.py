@@ -127,5 +127,6 @@ def test_on_error_captures_exception_to_sentry_with_task_tags() -> None:
     mock_scope.capture_exception.assert_called_once_with(error)
     mock_span.record_exception.assert_called_once_with(error)
     mock_span.set_status.assert_called_once_with(
-        StatusCode.ERROR, 'task failed',
+        StatusCode.ERROR,
+        'task failed',
     )
