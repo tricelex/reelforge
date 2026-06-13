@@ -1,16 +1,14 @@
-from __future__ import annotations
+"""Use case: create a new blog post."""
 
-from typing import TYPE_CHECKING, final
+from typing import final
 
 import attrs
 
+from server.apps.main.logic.ports import BlogPostStore
 from server.apps.main.logic.value_objects import (
     BlogPostCreatePayload,
     BlogPostFullPayload,
 )
-
-if TYPE_CHECKING:
-    from server.apps.main.infra import mappers, repository
 
 
 @final
@@ -18,17 +16,16 @@ if TYPE_CHECKING:
 class CreateBlogPost:
     """Creates ``BlogPost`` instances."""
 
-    _repository: repository.BlogPostRepo
-    _mapper: mappers.BlogPostMapper
+    _store: BlogPostStore
 
     def __call__(
         self,
         parsed_body: BlogPostCreatePayload,
     ) -> BlogPostFullPayload:
         """
-        There's no real story to tell about this example.
+        Validate and persist a new blog post.
 
-        But here you need to put a text description of what business
-        needs to be done in this usecase.
+        Business logic (credits, quotas, etc.) belongs here before
+        the ``self._store.create()`` call.
         """
-        return self._mapper(self._repository.create(parsed_body))
+        return self._store.create(parsed_body)

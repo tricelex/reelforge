@@ -1,28 +1,20 @@
-from __future__ import annotations
+"""Use case: retrieve a blog post by primary key."""
 
-from typing import TYPE_CHECKING, final
+from typing import final
 
 import attrs
 
+from server.apps.main.logic.ports import BlogPostStore
 from server.apps.main.logic.value_objects import BlogPostFullPayload
-
-if TYPE_CHECKING:
-    from server.apps.main.infra import mappers, repository
 
 
 @final
 @attrs.define(slots=True, frozen=True)
 class GetBlogPost:
-    """Get ``BlogPost`` models by primary key."""
+    """Retrieve ``BlogPost`` models by primary key."""
 
-    _repository: repository.BlogPostRepo
-    _mapper: mappers.BlogPostMapper
+    _store: BlogPostStore
 
     def __call__(self, blog_post_id: int) -> BlogPostFullPayload:
-        """
-        There's no real story to tell about this example.
-
-        But here you need to put a text description of what business
-        needs to be done in this usecase.
-        """
-        return self._mapper(self._repository.get_by_id(blog_post_id))
+        """Fetch and return the blog post, or raise DoesNotExist."""
+        return self._store.get_by_id(blog_post_id)
