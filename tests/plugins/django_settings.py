@@ -12,6 +12,24 @@ def _media_root(
 
 
 @pytest.fixture(autouse=True)
+def _file_storage(settings: LazySettings) -> None:
+    """Replace S3 storage with local FileSystemStorage in tests.
+
+    No MinIO service runs in the test environment, so S3 calls would time
+    out. FileSystemStorage combined with the _media_root tmpdir gives the
+    same semantics for everything tests need to verify.
+    """
+    settings.STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
 def _password_hashers(settings: LazySettings) -> None:
     """Forces django to use fast password hashers for tests."""
     settings.PASSWORD_HASHERS = [

@@ -21,8 +21,15 @@ def _inject_main(container: Container) -> None:
     container.register(BlogPostService, scope=Scope.singleton)
 
 
+def _inject_assets(container: Container) -> None:
+    from server.apps.assets.services import LibraryAssetService  # noqa: PLC0415
+
+    container.register(LibraryAssetService, scope=Scope.singleton)
+
+
 def populate_dependencies(container: Container) -> Container:
     """Populate the container with all application dependencies."""
     _inject_django(container)
     _inject_main(container)
+    _inject_assets(container)
     return container

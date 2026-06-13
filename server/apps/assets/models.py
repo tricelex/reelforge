@@ -4,9 +4,6 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 from server.apps.core.models import TimeStampedModel, UUIDModel
-from server.common.s3 import AssetStorage
-
-_s3 = AssetStorage()
 
 
 def _asset_upload_path(instance: 'Asset', filename: str) -> str:
@@ -44,7 +41,8 @@ class Asset(UUIDModel, TimeStampedModel):
 
     # FKs to pipelines.PipelineRun / StageExecution added in Phase 2 migration.
     kind = models.CharField(max_length=20, choices=AssetKind.choices)
-    file = models.FileField(storage=_s3, upload_to=_asset_upload_path)
+    # Uses default storage (AssetStorage in prod, FileSystemStorage in tests).
+    file = models.FileField(upload_to=_asset_upload_path)
     mime = models.CharField(max_length=64)
     checksum = models.CharField(max_length=64, db_index=True)
     meta = models.JSONField(default=dict)
@@ -66,7 +64,7 @@ class LibraryAsset(UUIDModel, TimeStampedModel):
 
     kind = models.CharField(max_length=20, choices=LibraryAssetKind.choices)
     name = models.CharField(max_length=120)
-    file = models.FileField(storage=_s3, upload_to='library/')
+    file = models.FileField(upload_to='library/')
     tags = ArrayField(models.CharField(max_length=40), default=list)
     channel = models.ForeignKey(
         'channels.Channel',
@@ -98,7 +96,7 @@ class AssetRendition(UUIDModel, TimeStampedModel):
         LibraryAsset, on_delete=models.CASCADE, related_name='renditions'
     )
     profile = models.CharField(max_length=40)
-    file = models.FileField(storage=_s3, upload_to='renditions/')
+    file = models.FileField(upload_to='renditions/')
 
     def __str__(self) -> str:
         return f'{self.source.name} [{self.profile}]'
