@@ -32,6 +32,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',
     # Security — must also precede our apps for the same admin reason:
     'axes',
     # Our apps come after auth/axes (so their admin.py loads first, allowing
@@ -39,6 +40,9 @@ INSTALLED_APPS: tuple[str, ...] = (
     # take precedence over Unfold's built-in admin/index.html):
     'server.apps.core',
     'server.apps.main',
+    'server.apps.channels',
+    'server.apps.prompts',
+    'server.apps.assets',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
