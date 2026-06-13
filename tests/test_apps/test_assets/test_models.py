@@ -102,3 +102,11 @@ def test_asset_creation() -> None:
     )
     assert a.id is not None
     assert a.meta == {}
+
+
+def test_asset_upload_path_contains_kind_and_filename() -> None:
+    from server.apps.assets.models import asset_upload_path
+    asset = Asset(kind=AssetKind.IMAGE)
+    path = asset_upload_path(asset, 'photo.jpg')
+    assert path.startswith('generated/IMAGE/')
+    assert path.endswith('/photo.jpg')

@@ -1,4 +1,4 @@
-from server.apps.core.exceptions import FatalProviderError, RetryableProviderError
+from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 
 def test_retryable_error_stores_provider_and_status() -> None:

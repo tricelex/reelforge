@@ -62,3 +62,9 @@ def test_specials_txt(client: Client, page: str) -> None:
 
     assert response.status_code == HTTPStatus.OK
     assert response.get('Content-Type') == 'text/plain'
+
+
+def test_sentry_debug_raises_zero_division(client: Client) -> None:
+    """Ensures that the Sentry debug endpoint deliberately errors."""
+    with pytest.raises(ZeroDivisionError):
+        client.get('/sentry-debug/')

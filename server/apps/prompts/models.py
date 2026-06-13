@@ -1,9 +1,15 @@
+"""ORM models for the prompts app."""
+
+from typing import ClassVar, override
+
 from django.db import models
 
-from server.apps.core.models import TimeStampedModel, UUIDModel
+from server.common.models import TimeStampedModel, UUIDModel
 
 
 class PromptScope(models.TextChoices):
+    """Scope at which a prompt template applies."""
+
     GLOBAL = 'GLOBAL', 'Global'
     NICHE = 'NICHE', 'Niche'
     CHANNEL = 'CHANNEL', 'Channel'
@@ -18,14 +24,18 @@ class PromptTemplate(UUIDModel, TimeStampedModel):
     description = models.TextField(blank=True)
 
     class Meta:
-        constraints = [
+        """Meta options for PromptTemplate."""
+
+        constraints: ClassVar = [
             models.CheckConstraint(
                 name='prompts_prompttemplate_scope_valid',
                 condition=models.Q(scope__in=PromptScope.values),
             ),
         ]
 
+    @override
     def __str__(self) -> str:
+        """Return the prompt key."""
         return self.key
 
 
@@ -33,7 +43,10 @@ class PromptVersion(UUIDModel, TimeStampedModel):
     """One version of a prompt template. Only one should be active at a time."""
 
     template = models.ForeignKey(
-        PromptTemplate, on_delete=models.CASCADE, related_name='versions', db_index=True
+        PromptTemplate,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        db_index=True,
     )
     version = models.PositiveIntegerField()
     system_prompt = models.TextField()
@@ -44,21 +57,26 @@ class PromptVersion(UUIDModel, TimeStampedModel):
     is_active = models.BooleanField(default=False)
 
     class Meta:
-        constraints = [
+        """Meta options for PromptVersion."""
+
+        constraints: ClassVar = [
             models.UniqueConstraint(
-                fields=['template', 'version'], name='uq_prompt_template_version'
-            )
+                fields=['template', 'version'],
+                name='uq_prompt_template_version',
+            ),
         ]
 
+    @override
     def __str__(self) -> str:
+        """Return template key and version number."""
         return f'{self.template.key} v{self.version}'
 
 
 class StoryFormat(UUIDModel, TimeStampedModel):
-    """Narrative architecture definition: beats, pacing, music moods.
+    """Narrative architecture: beats, pacing, music moods per niche format.
 
     Rows represent formats like 'true_crime_case', 'fantasy_story', 'listicle'.
-    Adding a new niche format is an admin task — no code change needed.
+    Adding a new format is an admin task — no code change required.
     """
 
     key = models.CharField(max_length=60, unique=True)
@@ -71,5 +89,7 @@ class StoryFormat(UUIDModel, TimeStampedModel):
     music_mood_map = models.JSONField(default=dict)
     is_active = models.BooleanField(default=True)
 
+    @override
     def __str__(self) -> str:
+        """Return format name."""
         return self.name

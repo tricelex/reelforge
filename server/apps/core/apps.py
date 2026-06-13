@@ -1,4 +1,4 @@
-"""Django application configuration for core infrastructure."""
+"""Django application configuration for the core app."""
 
 from typing import override
 
@@ -6,14 +6,15 @@ from django.apps import AppConfig
 
 
 class CoreConfig(AppConfig):
-    """Permanent infrastructure app — initialises observability at startup."""
+    """Configuration for the core application."""
 
+    default_auto_field = 'django.db.models.BigAutoField'
     name = 'server.apps.core'
-    default = True
+    verbose_name = 'Core'
 
     @override
     def ready(self) -> None:
-        """Initialise Sentry and Logfire once at Django startup."""
+        """Initialise Sentry error tracking and Logfire observability."""
         from server.common.observability import init_logfire, init_sentry
 
         init_sentry()

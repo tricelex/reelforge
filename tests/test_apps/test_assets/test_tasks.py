@@ -13,7 +13,7 @@ from server.apps.assets.tasks import (
     handle_library_asset_ingested,
     ingest_library_asset,
 )
-from server.apps.core.exceptions import FatalProviderError, RetryableProviderError
+from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 _AUDIO_PROBE = {
     'streams': [{'codec_type': 'audio', 'codec_name': 'mp3', 'channels': 2, 'channel_layout': 'stereo', 'pix_fmt': None, 'width': None, 'height': None, 'r_frame_rate': None}],
@@ -203,3 +203,34 @@ def test_handle_library_asset_ingested_enqueues_task() -> None:
         mock_task.kiq = AsyncMock(return_value=None)
         handle_library_asset_ingested(LibraryAssetIngested(asset_id='abc-123'))
         mock_task.kiq.assert_called_once_with('abc-123')
+
+
+def test_ffprobe_calls_subprocess_and_parses_json() -> None:
+    import json
+    mock_result = MagicMock()
+    mock_result.stdout = json.dumps({'streams': [], 'format': {}})
+    with patch('subprocess.run', return_value=mock_result):
+        result = _ffprobe('/tmp/test.mp4')  # noqa: S108
+    assert result == {'streams': [], 'format': {}}
+
+
+def test_run_loudness_parses_integrated_lufs() -> None:
+    mock_result = MagicMock()
+    mock_result.stderr = 'ignored\n  I:         -16.3 LUFS\n'
+    with patch('subprocess.run', return_value=mock_result):
+        result = _run_loudness('/tmp/test.mp3')  # noqa: S108
+    assert result == -16.3
+
+
+def test_run_loudness_raises_on_missing_output() -> None:
+    mock_result = MagicMock()
+    mock_result.stderr = 'no loudness here'
+    with patch('subprocess.run', return_value=mock_result):
+        with pytest.raises(ValueError, match='Could not parse'):
+            _run_loudness('/tmp/test.mp3')  # noqa: S108
+
+
+def test_transcode_calls_ffmpeg_with_args() -> None:
+    with patch('subprocess.run') as mock_run:
+        _transcode('/tmp/in.mp4', '/tmp/out.mp4', ['-vf', 'scale=1920:1080'])  # noqa: S108
+    mock_run.assert_called_once()

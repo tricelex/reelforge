@@ -1,10 +1,14 @@
+"""Async Redis client helpers."""
+
 import redis.asyncio as aioredis
 from django.conf import settings
 
 
-def get_redis() -> aioredis.Redis:  # type: ignore[type-arg]
-    """Return a configured async Redis client (one per call; callers close it)."""
-    return aioredis.from_url(settings.REDIS_URL, decode_responses=False)
+def get_redis() -> aioredis.Redis:
+    """Return a configured async Redis client; callers must close it."""
+    return aioredis.from_url(  # type: ignore[no-untyped-call, no-any-return]
+        settings.REDIS_URL, decode_responses=False,
+    )
 
 
 async def publish_pipeline_event(run_id: str, data: bytes) -> None:

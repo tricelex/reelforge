@@ -3,14 +3,14 @@ import uuid
 import pytest
 from django.db import models
 
-from server.apps.core.models import TimeStampedModel, UUIDModel
+from server.common.models import TimeStampedModel, UUIDModel
 
 
 class _SampleModel(UUIDModel, TimeStampedModel):
     name = models.CharField(max_length=10)
 
     class Meta:
-        app_label = 'core'
+        app_label = 'main'
 
 
 def test_uuid_model_uses_uuid_primary_key() -> None:

@@ -12,6 +12,7 @@ files serving technique in development.
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.admindocs import urls as admindocs_urls
+from django.http import HttpRequest, HttpResponse
 from django.urls import include
 from django.views.generic import TemplateView
 from dmr.openapi import build_schema
@@ -34,8 +35,10 @@ from server.apps.main.views import index
 admin.autodiscover()
 
 
-def trigger_error(request):
-    division_by_zero = 1 / 0
+def trigger_error(request: HttpRequest) -> HttpResponse:
+    """Trigger a deliberate division-by-zero error for Sentry testing."""
+    raise ZeroDivisionError
+
 
 router = Router(
     'api/',

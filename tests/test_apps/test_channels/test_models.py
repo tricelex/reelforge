@@ -87,3 +87,38 @@ def test_character_generation_session_rounds_default_empty() -> None:
     char = Character.objects.create(channel=ch, name='K', appearance_prompt='p')
     session = CharacterGenerationSession.objects.create(character=char)
     assert session.rounds == []
+
+
+@pytest.mark.django_db
+def test_str_methods_for_channel_related_models() -> None:
+    from server.apps.channels.models import (
+        ChannelBranding,
+        CharacterGenerationSession,
+        CharacterSheetItem,
+        NicheConfig,
+        YouTubeCredential,
+    )
+    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
+
+    ch = Channel.objects.create(name='Doc Hub', kind=ChannelKind.LONGFORM)
+    nc = NicheConfig.objects.create(channel=ch, audience='adults', angle='historical')
+    assert 'Doc Hub' in str(nc)
+
+    yt = YouTubeCredential.objects.create(
+        channel=ch, access_token='tok', refresh_token='ref',
+    )
+    assert 'Doc Hub' in str(yt)
+
+    branding = ChannelBranding.objects.create(channel=ch)
+    assert 'Doc Hub' in str(branding)
+
+    char = Character.objects.create(channel=ch, name='Hero', appearance_prompt='tall')
+    assert str(char) == 'Hero'
+
+    asset = LibraryAsset.objects.create(kind=LibraryAssetKind.CHARACTER_REF, name='ref.png')
+    sheet_item = CharacterSheetItem.objects.create(character=char, asset=asset, label='front')
+    assert 'Hero' in str(sheet_item)
+    assert 'front' in str(sheet_item)
+
+    session = CharacterGenerationSession.objects.create(character=char)
+    assert 'Hero' in str(session)
