@@ -10,6 +10,11 @@ from server.common.taskiq_middleware import ObservabilityMiddleware
 broker = (
     AioPikaBroker(
         config('RABBITMQ_URL', default='amqp://guest:guest@localhost:5672/'),
+        declare_exchange_kwargs={'durable': True},
+        declare_queues_kwargs={
+            'durable': True,
+            'arguments': {'x-queue-type': 'quorum'},
+        },
     )
     .with_result_backend(
         RedisAsyncResultBackend(

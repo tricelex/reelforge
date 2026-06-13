@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, final
 
 import structlog
 
+import logfire
+
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
 
@@ -103,6 +105,7 @@ if not structlog.is_configured():
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
+            logfire.StructlogProcessor(),
             structlog.processors.ExceptionPrettyPrinter(),
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],

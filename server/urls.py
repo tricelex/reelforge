@@ -33,6 +33,10 @@ from server.apps.main.views import index
 
 admin.autodiscover()
 
+
+def trigger_error(request):
+    division_by_zero = 1 / 0
+
 router = Router(
     'api/',
     [
@@ -64,6 +68,7 @@ urlpatterns = [
     path('docs/swagger/', SwaggerView.as_view(schema), name='swagger'),
     path('docs/scalar/', ScalarView.as_view(schema), name='scalar'),
     path('docs/redoc/', RedocView.as_view(schema), name='redoc'),
+    path('sentry-debug/', trigger_error),
     # Health checks:
     path(
         'health/',
