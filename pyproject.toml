@@ -39,6 +39,8 @@ punq = "^0.7"
 taskiq = "^0.11"
 taskiq-aio-pika = "^0.4"
 taskiq-redis = "^1.0"
+sentry-sdk = { version = "^2.62", extras = ["django"] }
+logfire = { version = "^4.37", extras = ["django", "httpx", "redis", "psycopg2", "system-metrics"] }
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"
