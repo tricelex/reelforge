@@ -1,3 +1,4 @@
+import pathlib
 import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -169,8 +170,7 @@ def test_ingest_video_creates_renditions() -> None:
     fake_mp4 = b'\x00' * 16
 
     def fake_transcode(inp: str, out: str, args: list) -> None:
-        with open(out, 'wb') as f:
-            f.write(fake_mp4)
+        pathlib.Path(out).write_bytes(fake_mp4)
 
     with (
         patch('server.apps.assets.tasks._ffprobe', return_value=_VIDEO_PROBE),

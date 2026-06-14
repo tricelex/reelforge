@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError
 
 from server.apps.pipelines.models import (
     CastDesignStatus,
@@ -17,24 +18,36 @@ from server.apps.pipelines.models import (
 
 @pytest.fixture
 def blueprint() -> PipelineBlueprint:
+    """Test blueprint with two stages."""
     return PipelineBlueprint.objects.create(
         name='test_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [
-            {'key': 'stage_a', 'depends_on': [], 'queue': 'api'},
-            {'key': 'stage_b', 'depends_on': ['stage_a'], 'queue': 'api'},
-        ]},
+        graph={
+            'stages': [
+                {'key': 'stage_a', 'depends_on': [], 'queue': 'api'},
+                {'key': 'stage_b', 'depends_on': ['stage_a'], 'queue': 'api'},
+            ],
+        },
     )
 
 
 @pytest.fixture
 def channel():
-    from server.apps.channels.models import Channel, ChannelKind
-    return Channel.objects.create(name='Test Channel', kind=ChannelKind.LONGFORM)
+    """Test channel."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+
+    return Channel.objects.create(
+        name='Test Channel',
+        kind=ChannelKind.LONGFORM,
+    )
 
 
 @pytest.fixture
 def run(blueprint, channel) -> PipelineRun:
+    """Test pipeline run."""
     return PipelineRun.objects.create(
         channel=channel,
         blueprint=blueprint,
@@ -45,8 +58,11 @@ def run(blueprint, channel) -> PipelineRun:
 
 @pytest.mark.django_db
 def test_blueprint_defaults() -> None:
+    """PipelineBlueprint defaults: is_active=True, version=1, str format."""
     bp = PipelineBlueprint.objects.create(
-        name='my_bp', kind=PipelineKind.LONGFORM, graph={'stages': []}
+        name='my_bp',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
     )
     assert bp.is_active is True
     assert bp.version == 1
@@ -55,16 +71,20 @@ def test_blueprint_defaults() -> None:
 
 @pytest.mark.django_db
 def test_run_defaults(run: PipelineRun) -> None:
+    """PipelineRun defaults: PENDING status, zero cost, no timestamps."""
     assert run.status == RunStatus.PENDING
-    assert run.total_cost_usd == Decimal('0')
+    assert run.total_cost_usd == Decimal(0)
     assert run.started_at is None
     assert 'Run' in str(run)
 
 
 @pytest.mark.django_db
 def test_stage_execution_defaults(run: PipelineRun) -> None:
+    """StageExecution defaults: PENDING, attempt=0, max_retries=3, queue=api."""
     exec_ = StageExecution.objects.create(
-        run=run, stage_key='research', input_hash='abc123'
+        run=run,
+        stage_key='research',
+        input_hash='abc123',
     )
     assert exec_.status == StageStatus.PENDING
     assert exec_.attempt == 0
@@ -76,25 +96,37 @@ def test_stage_execution_defaults(run: PipelineRun) -> None:
 
 @pytest.mark.django_db
 def test_stage_execution_unique_constraint(run: PipelineRun) -> None:
+    """uq_stage_attempt violation raises IntegrityError."""
     StageExecution.objects.create(
-        run=run, stage_key='research', shard_index=None, attempt=0, input_hash=''
+        run=run,
+        stage_key='research',
+        shard_index=None,
+        attempt=0,
+        input_hash='',
     )
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         StageExecution.objects.create(
-            run=run, stage_key='research', shard_index=None, attempt=0, input_hash=''
+            run=run,
+            stage_key='research',
+            shard_index=None,
+            attempt=0,
+            input_hash='',
         )
 
 
 @pytest.mark.django_db
 def test_cost_record_str(run: PipelineRun) -> None:
+    """CostRecord.__str__ includes provider name."""
     exec_ = StageExecution.objects.create(
-        run=run, stage_key='image_gen', input_hash=''
+        run=run,
+        stage_key='image_gen',
+        input_hash='',
     )
     cost = CostRecord.objects.create(
         stage_execution=exec_,
         provider='fal_flux',
         operation='image_gen',
-        units=Decimal('1'),
+        units=Decimal(1),
         unit_cost_usd=Decimal('0.025'),
         total_usd=Decimal('0.025'),
     )
@@ -103,9 +135,13 @@ def test_cost_record_str(run: PipelineRun) -> None:
 
 @pytest.mark.django_db
 def test_run_cast_defaults(run: PipelineRun, channel) -> None:
-    from server.apps.channels.models import Character
+    """RunCast defaults: PROPOSED design_status, is_ephemeral=False."""
+    from server.apps.channels.models import Character  # noqa: PLC0415
+
     char = Character.objects.create(
-        channel=channel, name='Alaric', appearance_prompt='tall king'
+        channel=channel,
+        name='Alaric',
+        appearance_prompt='tall king',
     )
     cast = RunCast.objects.create(run=run, character=char, role='protagonist')
     assert cast.design_status == CastDesignStatus.PROPOSED

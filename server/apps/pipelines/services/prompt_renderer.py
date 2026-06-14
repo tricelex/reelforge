@@ -17,7 +17,9 @@ class PromptRenderer:
         return self._snapshot.get(stage_key)
 
     async def render(
-        self, stage_key: str, variables: dict[str, Any],
+        self,
+        stage_key: str,
+        variables: dict[str, Any],
     ) -> tuple[str, str]:
         """Return (system_prompt, user_prompt) for stage_key.
 
@@ -27,14 +29,14 @@ class PromptRenderer:
         from server.apps.prompts.models import PromptVersion  # noqa: PLC0415
 
         version_id = self._snapshot.get(stage_key)
+        pv: PromptVersion | None
         if version_id:
             pv = await PromptVersion.objects.aget(id=version_id)
         else:
-            pv = await (
-                PromptVersion.objects
-                .filter(template__key=stage_key, is_active=True)
-                .afirst()
-            )
+            pv = await PromptVersion.objects.filter(
+                template__key=stage_key,
+                is_active=True,
+            ).afirst()
         if pv is None:
             return '', ''
         return pv.system_prompt, pv.user_prompt

@@ -1,6 +1,5 @@
 import uuid
 
-import pytest
 from django.db import models
 
 from server.common.models import TimeStampedModel, UUIDModel

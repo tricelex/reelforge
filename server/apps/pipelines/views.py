@@ -9,7 +9,7 @@ from django.http import HttpRequest, StreamingHttpResponse
 
 async def event_stream(run_id: str) -> AsyncIterator[str]:
     """Yield SSE-formatted lines from the pipeline Redis pub/sub channel."""
-    client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)  # type: ignore[no-untyped-call]
     pubsub = client.pubsub()
     await pubsub.subscribe(f'pipeline:{run_id}')
     try:
@@ -22,11 +22,13 @@ async def event_stream(run_id: str) -> AsyncIterator[str]:
 
 
 async def pipeline_events(  # noqa: RUF029
-    request: HttpRequest, run_id: str,
+    request: HttpRequest,
+    run_id: str,
 ) -> StreamingHttpResponse:
     """Stream server-sent events for a pipeline run from Redis pub/sub."""
     response = StreamingHttpResponse(
-        event_stream(run_id), content_type='text/event-stream',
+        event_stream(run_id),
+        content_type='text/event-stream',
     )
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'

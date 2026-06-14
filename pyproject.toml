@@ -43,7 +43,7 @@ sentry-sdk = { version = "^2.62", extras = ["django"] }
 logfire = { version = "^4.37", extras = ["django", "httpx", "redis", "psycopg2",
   "system-metrics", "requests"] }
 pydantic-ai = "^1.107.0"
-django-storages = { version = "^1.15", extras = ["boto3"] }
+django-storages = { version = "^1.14.6", extras = ["boto3"] }
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"

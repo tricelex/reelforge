@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -84,7 +83,9 @@ class Migration(migrations.Migration):
                 (
                     'total_cost_usd',
                     models.DecimalField(
-                        decimal_places=4, default=0, max_digits=10
+                        decimal_places=4,
+                        default=0,
+                        max_digits=10,
                     ),
                 ),
                 (
@@ -168,7 +169,9 @@ class Migration(migrations.Migration):
                 (
                     'cost_usd',
                     models.DecimalField(
-                        decimal_places=4, default=0, max_digits=10
+                        decimal_places=4,
+                        default=0,
+                        max_digits=10,
                     ),
                 ),
                 ('queue', models.CharField(default='api', max_length=32)),
@@ -205,7 +208,7 @@ class Migration(migrations.Migration):
                         fields=['run', 'stage_key', 'shard_index', 'attempt'],
                         name='uq_stage_attempt',
                         nulls_distinct=False,
-                    )
+                    ),
                 ],
             },
         ),

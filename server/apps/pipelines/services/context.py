@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from server.apps.pipelines.models import StageExecution
@@ -32,14 +32,15 @@ async def build_context(execution: 'StageExecution') -> 'StageContext':
     )
     channel = run.channel
 
-    graph: list[dict] = run.blueprint_snapshot.get('stages', [])
-    stage_node = next(
-        (n for n in graph if n['key'] == execution.stage_key), {},
+    graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
+    stage_node: dict[str, Any] = next(
+        (n for n in graph if n['key'] == execution.stage_key),
+        {},
     )
-    config: dict = stage_node.get('config', {})
+    config: dict[str, Any] = stage_node.get('config', {})
 
     deps: list[str] = stage_node.get('depends_on', [])
-    upstream: dict = {}
+    upstream: dict[str, Any] = {}
     for dep_key in deps:
         dep_exec = await (
             StageExecution.objects

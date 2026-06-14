@@ -49,7 +49,8 @@ class Stage(ABC):
         ...
 
     def fan_out(
-        self, ctx: StageContext,
+        self,
+        ctx: StageContext,
     ) -> list[dict[str, Any]] | None:
         """Return per-shard input dicts to spawn child executions, or None."""
         return None

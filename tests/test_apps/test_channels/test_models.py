@@ -52,12 +52,13 @@ def test_channel_creation_persists() -> None:
 @pytest.mark.django_db
 def test_character_defaults_persisted() -> None:
     from decimal import Decimal
+
     from server.apps.channels.models import CharacterOrigin
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     char = Character.objects.create(channel=ch, name='King Alaric', appearance_prompt='tall')
     assert char.status == CharacterStatus.DRAFT
     assert char.origin == CharacterOrigin.RUN
-    assert char.total_creation_cost_usd == Decimal('0')
+    assert char.total_creation_cost_usd == Decimal(0)
 
 
 @pytest.mark.django_db
@@ -91,6 +92,7 @@ def test_character_generation_session_rounds_default_empty() -> None:
 
 @pytest.mark.django_db
 def test_str_methods_for_channel_related_models() -> None:
+    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
     from server.apps.channels.models import (
         ChannelBranding,
         CharacterGenerationSession,
@@ -98,7 +100,6 @@ def test_str_methods_for_channel_related_models() -> None:
         NicheConfig,
         YouTubeCredential,
     )
-    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 
     ch = Channel.objects.create(name='Doc Hub', kind=ChannelKind.LONGFORM)
     nc = NicheConfig.objects.create(channel=ch, audience='adults', angle='historical')

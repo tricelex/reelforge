@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import django.utils.timezone as tz
 
@@ -11,7 +11,7 @@ from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 if TYPE_CHECKING:
     from server.apps.pipelines.models import StageExecution
-    from server.apps.pipelines.stages.base import StageContext
+    from server.apps.pipelines.stages.base import Stage, StageContext
 
 
 async def kick_advance(execution: 'StageExecution') -> None:
@@ -36,7 +36,7 @@ async def _mark_running(execution: 'StageExecution') -> None:
 
 async def _complete(
     execution: 'StageExecution',
-    output: dict,
+    output: dict[str, Any],
     cost: Decimal = Decimal(0),
 ) -> None:
     execution.status = 'SUCCEEDED'
@@ -60,7 +60,8 @@ async def _fail(execution: 'StageExecution', error: Exception) -> None:
 
 
 async def _mark_needs_input(
-    execution: 'StageExecution', error: FatalProviderError,
+    execution: 'StageExecution',
+    error: FatalProviderError,
 ) -> None:
     execution.status = 'NEEDS_INPUT'
     execution.error = {
@@ -73,7 +74,8 @@ async def _mark_needs_input(
 
 
 async def _schedule_retry(
-    execution: 'StageExecution', error: Exception,
+    execution: 'StageExecution',
+    error: Exception,
 ) -> None:
     """Mark this attempt FAILED and enqueue the next attempt."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
@@ -99,7 +101,7 @@ async def _schedule_retry(
 
 async def _run_stage(
     execution: 'StageExecution',
-    stage_cls: type,
+    stage_cls: 'type[Stage]',
     ctx: 'StageContext',
 ) -> None:
     """Run the stage and handle retryable/fatal/unexpected errors."""

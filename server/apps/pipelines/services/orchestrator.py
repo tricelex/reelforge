@@ -72,7 +72,8 @@ def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
 
 
 def _create_queued_stage_sync(
-    run: 'PipelineRun', node: dict[str, Any],
+    run: 'PipelineRun',
+    node: dict[str, Any],
 ) -> str:
     """Create a QUEUED StageExecution; return its string ID."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
@@ -98,8 +99,8 @@ def _create_queued_stage_sync(
 def _apply_terminal_status(
     run: 'PipelineRun',
     values: set[str],
-    run_status: type,
-    stage_status: type,
+    run_status: Any,
+    stage_status: Any,
 ) -> None:
     """Apply FAILED, COMPLETED, or RUNNING to the run based on stage values."""
     terminal = {stage_status.SUCCEEDED, stage_status.SKIPPED}
@@ -116,7 +117,8 @@ def _apply_terminal_status(
 
 
 def _update_run_status_sync(
-    run: 'PipelineRun', states: dict[str, str | None],
+    run: 'PipelineRun',
+    states: dict[str, str | None],
 ) -> None:
     """Transition run status based on current stage states (sync ORM)."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
@@ -135,7 +137,9 @@ def _update_run_status_sync(
 
 
 def _node_should_skip(
-    node: dict[str, Any], run: 'PipelineRun', armed_gates: list[str],
+    node: dict[str, Any],
+    run: 'PipelineRun',
+    armed_gates: list[str],
 ) -> bool:
     """Return True if this node should be skipped."""
     if node.get('gate') and node['key'] not in armed_gates:
@@ -201,7 +205,9 @@ def _advance_in_transaction(
             .get(id=uuid.UUID(run_id))
         )
         if run.status in {
-            RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+            RunStatus.COMPLETED,
         }:
             return to_enqueue, states
 
@@ -213,7 +219,11 @@ def _advance_in_transaction(
 
         for node in graph:
             _process_node_sync(
-                node, run, states, armed_gates, to_enqueue,
+                node,
+                run,
+                states,
+                armed_gates,
+                to_enqueue,
             )
 
         _update_run_status_sync(run, states)

@@ -32,6 +32,9 @@ modules =
 ignore_imports =
   # This is hack we have to use due to models relations
   server.apps.*.admin -> server.apps.*.models
+  # Pipeline services need prompts/assets models; deferred runtime imports
+  server.apps.pipelines.services.prompt_renderer -> server.apps.prompts.models
+  server.apps.pipelines.services.asset_writer -> server.apps.assets.models
 
 
 [importlinter:contract:common-module-is-independent]

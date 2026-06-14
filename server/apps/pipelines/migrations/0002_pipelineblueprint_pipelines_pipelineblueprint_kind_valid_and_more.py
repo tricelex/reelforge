@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('channels', '0001_initial'),
         ('pipelines', '0001_initial'),
@@ -13,18 +12,61 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddConstraint(
             model_name='pipelineblueprint',
-            constraint=models.CheckConstraint(condition=models.Q(('kind__in', ['LONGFORM', 'SHORTS', 'CLIPPING'])), name='pipelines_pipelineblueprint_kind_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'kind__in',
+                    ['LONGFORM', 'SHORTS', 'CLIPPING'],
+                )),
+                name='pipelines_pipelineblueprint_kind_valid',
+            ),
         ),
         migrations.AddConstraint(
             model_name='pipelinerun',
-            constraint=models.CheckConstraint(condition=models.Q(('status__in', ['PENDING', 'RUNNING', 'AWAITING_REVIEW', 'BUDGET_HOLD', 'PUBLISHING', 'COMPLETED', 'FAILED', 'CANCELLED'])), name='pipelines_pipelinerun_status_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'status__in',
+                    [
+                        'PENDING',
+                        'RUNNING',
+                        'AWAITING_REVIEW',
+                        'BUDGET_HOLD',
+                        'PUBLISHING',
+                        'COMPLETED',
+                        'FAILED',
+                        'CANCELLED',
+                    ],
+                )),
+                name='pipelines_pipelinerun_status_valid',
+            ),
         ),
         migrations.AddConstraint(
             model_name='runcast',
-            constraint=models.CheckConstraint(condition=models.Q(('design_status__in', ['PROPOSED', 'APPROVED', 'DEMOTED'])), name='pipelines_runcast_design_status_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'design_status__in',
+                    ['PROPOSED', 'APPROVED', 'DEMOTED'],
+                )),
+                name='pipelines_runcast_design_status_valid',
+            ),
         ),
         migrations.AddConstraint(
             model_name='stageexecution',
-            constraint=models.CheckConstraint(condition=models.Q(('status__in', ['PENDING', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'NEEDS_INPUT', 'SKIPPED', 'STALE', 'CANCELLED'])), name='pipelines_stageexecution_status_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'status__in',
+                    [
+                        'PENDING',
+                        'QUEUED',
+                        'RUNNING',
+                        'SUCCEEDED',
+                        'FAILED',
+                        'NEEDS_INPUT',
+                        'SKIPPED',
+                        'STALE',
+                        'CANCELLED',
+                    ],
+                )),
+                name='pipelines_stageexecution_status_valid',
+            ),
         ),
     ]

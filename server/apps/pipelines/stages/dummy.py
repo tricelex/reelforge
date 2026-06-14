@@ -1,3 +1,5 @@
+from typing import Any, override
+
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -14,7 +16,8 @@ class DummyStageA(Stage):
     max_retries = 1
     timeout_s = 30
 
-    async def run(self, ctx: StageContext) -> dict:
+    @override
+    async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Return a fixed output for testing."""
         return {'result': 'a_done'}
 
@@ -28,7 +31,8 @@ class DummyStageB(Stage):
     max_retries = 1
     timeout_s = 30
 
-    async def run(self, ctx: StageContext) -> dict:
+    @override
+    async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Return output including upstream dummy_a result."""
         upstream_a = ctx.upstream.get('dummy_a', {})
         return {'result': 'b_done', 'saw_a': upstream_a.get('result')}
@@ -43,6 +47,7 @@ class DummyStageC(Stage):
     max_retries = 1
     timeout_s = 30
 
-    async def run(self, ctx: StageContext) -> dict:
+    @override
+    async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Return a fixed output for testing."""
         return {'result': 'c_done'}

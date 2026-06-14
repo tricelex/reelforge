@@ -84,10 +84,10 @@ def test_library_asset_creation() -> None:
 @pytest.mark.django_db
 def test_asset_rendition_links_to_library_asset() -> None:
     la = LibraryAsset.objects.create(
-        kind=LibraryAssetKind.INTRO, name='Intro Clip'
+        kind=LibraryAssetKind.INTRO, name='Intro Clip',
     )
     rendition = AssetRendition.objects.create(
-        source=la, profile='1080p30_h264'
+        source=la, profile='1080p30_h264',
     )
     assert rendition.source_id == la.id
     assert '1080p30_h264' in str(rendition)

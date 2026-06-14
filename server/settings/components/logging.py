@@ -10,9 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, final
 
-import structlog
-
 import logfire
+import structlog
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse

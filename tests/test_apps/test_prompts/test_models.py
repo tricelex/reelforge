@@ -52,25 +52,25 @@ def test_story_format_str() -> None:
 @pytest.mark.django_db
 def test_prompt_template_key_is_unique() -> None:
     PromptTemplate.objects.create(
-        name='Scene Breakdown', key='scene_breakdown', scope=PromptScope.GLOBAL
+        name='Scene Breakdown', key='scene_breakdown', scope=PromptScope.GLOBAL,
     )
     with pytest.raises(Exception):
         PromptTemplate.objects.create(
-            name='Dupe', key='scene_breakdown', scope=PromptScope.GLOBAL
+            name='Dupe', key='scene_breakdown', scope=PromptScope.GLOBAL,
         )
 
 
 @pytest.mark.django_db
 def test_prompt_version_unique_constraint() -> None:
     tmpl = PromptTemplate.objects.create(
-        name='Script', key='script', scope=PromptScope.CHANNEL
+        name='Script', key='script', scope=PromptScope.CHANNEL,
     )
     PromptVersion.objects.create(
-        template=tmpl, version=1, system_prompt='sys', user_prompt='usr'
+        template=tmpl, version=1, system_prompt='sys', user_prompt='usr',
     )
     with pytest.raises(Exception):
         PromptVersion.objects.create(
-            template=tmpl, version=1, system_prompt='dup', user_prompt='.'
+            template=tmpl, version=1, system_prompt='dup', user_prompt='.',
         )
 
 

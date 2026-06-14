@@ -1,11 +1,12 @@
-from unittest.mock import MagicMock
-from uuid import UUID
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from server.apps.assets.logic.events import LibraryAssetIngested
-from server.apps.assets.logic.value_objects import LibraryAssetPayload, LibraryAssetRegisterPayload
+from server.apps.assets.logic.value_objects import (
+    LibraryAssetPayload,
+    LibraryAssetRegisterPayload,
+)
 from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 from server.apps.assets.services import LibraryAssetService
 from server.common.events import InProcessEventBus
@@ -20,7 +21,7 @@ def test_register_creates_library_asset() -> None:
     service = _make_service()
     file = SimpleUploadedFile('epic.mp3', b'audio data', content_type='audio/mpeg')
     payload = LibraryAssetRegisterPayload(
-        kind=LibraryAssetKind.MUSIC, name='Epic Strings', tags=['tense']
+        kind=LibraryAssetKind.MUSIC, name='Epic Strings', tags=['tense'],
     )
 
     result = service.register(payload, file)
@@ -40,7 +41,7 @@ def test_register_emits_library_asset_ingested() -> None:
     service = LibraryAssetService(events=bus)
     file = SimpleUploadedFile('logo.png', b'\x89PNG', content_type='image/png')
     payload = LibraryAssetRegisterPayload(
-        kind=LibraryAssetKind.WATERMARK, name='Logo'
+        kind=LibraryAssetKind.WATERMARK, name='Logo',
     )
 
     result = service.register(payload, file)

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
@@ -10,7 +12,9 @@ from server.apps.pipelines.models import (
 )
 
 
-class StageExecutionInline(TabularInline):
+class StageExecutionInline(TabularInline):  # type: ignore[misc]
+    """Inline for stage executions on a PipelineRun."""
+
     model = StageExecution
     extra = 0
     fields = (
@@ -33,7 +37,9 @@ class StageExecutionInline(TabularInline):
     )
 
 
-class CostRecordInline(TabularInline):
+class CostRecordInline(TabularInline):  # type: ignore[misc]
+    """Inline for cost records on a StageExecution."""
+
     model = CostRecord
     extra = 0
     fields = ('provider', 'operation', 'units', 'unit_cost_usd', 'total_usd')
@@ -46,21 +52,27 @@ class CostRecordInline(TabularInline):
     )
 
 
-class RunCastInline(TabularInline):
+class RunCastInline(TabularInline):  # type: ignore[misc]
+    """Inline for character cast on a PipelineRun."""
+
     model = RunCast
     extra = 0
     fields = ('character', 'role', 'is_ephemeral', 'design_status')
 
 
 @admin.register(PipelineBlueprint)
-class PipelineBlueprintAdmin(ModelAdmin):
+class PipelineBlueprintAdmin(ModelAdmin):  # type: ignore[misc]
+    """Admin for PipelineBlueprint."""
+
     list_display = ('name', 'kind', 'version', 'is_active')
     list_filter = ('kind', 'is_active')
     search_fields = ('name',)
 
 
 @admin.register(PipelineRun)
-class PipelineRunAdmin(ModelAdmin):
+class PipelineRunAdmin(ModelAdmin):  # type: ignore[misc]
+    """Admin for PipelineRun — track runs with stages and costs."""
+
     list_display = ('id', 'channel', 'status', 'total_cost_usd', 'created_at')
     list_filter = ('status',)
     search_fields = ('topic', 'channel__name')
@@ -69,11 +81,13 @@ class PipelineRunAdmin(ModelAdmin):
         'prompt_snapshot',
         'total_cost_usd',
     )
-    inlines = [RunCastInline, StageExecutionInline]
+    inlines: ClassVar = [RunCastInline, StageExecutionInline]
 
 
 @admin.register(CostRecord)
-class CostRecordAdmin(ModelAdmin):
+class CostRecordAdmin(ModelAdmin):  # type: ignore[misc]
+    """Admin for CostRecord — view provider cost breakdowns."""
+
     list_display = ('stage_execution', 'provider', 'operation', 'total_usd')
     list_filter = ('provider',)
     search_fields = ('provider', 'operation')

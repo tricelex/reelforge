@@ -6,12 +6,16 @@ from server.common.models import TimeStampedModel, UUIDModel
 
 
 class PipelineKind(models.TextChoices):
+    """Blueprint kind — determines which stage graph to use."""
+
     LONGFORM = 'LONGFORM', 'Long-form'
     SHORTS = 'SHORTS', 'Shorts'
     CLIPPING = 'CLIPPING', 'Clipping'
 
 
 class RunStatus(models.TextChoices):
+    """Lifecycle status of a PipelineRun."""
+
     PENDING = 'PENDING', 'Pending'
     RUNNING = 'RUNNING', 'Running'
     AWAITING_REVIEW = 'AWAITING_REVIEW', 'Awaiting review'
@@ -23,6 +27,8 @@ class RunStatus(models.TextChoices):
 
 
 class StageStatus(models.TextChoices):
+    """Lifecycle status of a StageExecution."""
+
     PENDING = 'PENDING', 'Pending'
     QUEUED = 'QUEUED', 'Queued'
     RUNNING = 'RUNNING', 'Running'
@@ -35,12 +41,16 @@ class StageStatus(models.TextChoices):
 
 
 class CastDesignStatus(models.TextChoices):
+    """Review state of a RunCast character assignment."""
+
     PROPOSED = 'PROPOSED', 'Proposed'
     APPROVED = 'APPROVED', 'Approved'
     DEMOTED = 'DEMOTED', 'Demoted'
 
 
 class PipelineBlueprint(UUIDModel, TimeStampedModel):
+    """Versioned DAG definition that drives pipeline execution."""
+
     name = models.CharField(max_length=100)
     kind = models.CharField(max_length=10, choices=PipelineKind.choices)
     graph = models.JSONField()
@@ -62,20 +72,30 @@ class PipelineBlueprint(UUIDModel, TimeStampedModel):
 
 
 class PipelineRun(UUIDModel, TimeStampedModel):
+    """One execution of a PipelineBlueprint for a given channel and topic."""
+
     channel = models.ForeignKey(
-        'channels.Channel', on_delete=models.PROTECT, related_name='runs'
+        'channels.Channel',
+        on_delete=models.PROTECT,
+        related_name='runs',
     )
     blueprint = models.ForeignKey(
-        PipelineBlueprint, on_delete=models.PROTECT, related_name='runs'
+        PipelineBlueprint,
+        on_delete=models.PROTECT,
+        related_name='runs',
     )
     blueprint_snapshot = models.JSONField()
     prompt_snapshot = models.JSONField(default=dict)
     topic = models.TextField()
     status = models.CharField(
-        max_length=20, choices=RunStatus.choices, default=RunStatus.PENDING
+        max_length=20,
+        choices=RunStatus.choices,
+        default=RunStatus.PENDING,
     )
     total_cost_usd = models.DecimalField(
-        max_digits=10, decimal_places=4, default=0
+        max_digits=10,
+        decimal_places=4,
+        default=0,
     )
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -95,8 +115,12 @@ class PipelineRun(UUIDModel, TimeStampedModel):
 
 
 class StageExecution(UUIDModel, TimeStampedModel):
+    """One attempt at executing a single stage within a PipelineRun."""
+
     run = models.ForeignKey(
-        PipelineRun, on_delete=models.CASCADE, related_name='stages',
+        PipelineRun,
+        on_delete=models.CASCADE,
+        related_name='stages',
         db_index=True,
     )
     stage_key = models.CharField(max_length=64, db_index=True)
@@ -109,7 +133,9 @@ class StageExecution(UUIDModel, TimeStampedModel):
     )
     shard_index = models.PositiveIntegerField(null=True, blank=True)
     status = models.CharField(
-        max_length=15, choices=StageStatus.choices, default=StageStatus.PENDING
+        max_length=15,
+        choices=StageStatus.choices,
+        default=StageStatus.PENDING,
     )
     attempt = models.PositiveIntegerField(default=0)
     max_retries = models.PositiveIntegerField(default=3)
@@ -137,15 +163,17 @@ class StageExecution(UUIDModel, TimeStampedModel):
 
     @override
     def __str__(self) -> str:
-        shard = (
-            f'[{self.shard_index}]' if self.shard_index is not None else ''
-        )
+        shard = f'[{self.shard_index}]' if self.shard_index is not None else ''
         return f'{self.stage_key}{shard} attempt={self.attempt} ({self.status})'
 
 
 class CostRecord(UUIDModel, TimeStampedModel):
+    """Provider billing record attached to a StageExecution."""
+
     stage_execution = models.ForeignKey(
-        StageExecution, on_delete=models.CASCADE, related_name='costs'
+        StageExecution,
+        on_delete=models.CASCADE,
+        related_name='costs',
     )
     provider = models.CharField(max_length=32)
     operation = models.CharField(max_length=64)
@@ -159,11 +187,17 @@ class CostRecord(UUIDModel, TimeStampedModel):
 
 
 class RunCast(UUIDModel):
+    """Character cast assignment for a PipelineRun."""
+
     run = models.ForeignKey(
-        PipelineRun, on_delete=models.CASCADE, related_name='cast'
+        PipelineRun,
+        on_delete=models.CASCADE,
+        related_name='cast',
     )
     character = models.ForeignKey(
-        'channels.Character', on_delete=models.PROTECT, related_name='+'
+        'channels.Character',
+        on_delete=models.PROTECT,
+        related_name='+',
     )
     role = models.CharField(max_length=60)
     is_ephemeral = models.BooleanField(default=False)

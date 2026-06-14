@@ -11,6 +11,7 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     @sync_to_async
     def _close_connections() -> None:
         from django.db import connections  # noqa: PLC0415
+
         connections.close_all()
 
     async def _wrapped() -> Any:
@@ -23,7 +24,8 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
 
 
 def test_register_stage_adds_to_registry() -> None:
-    from server.apps.pipelines.stages.base import (
+    """Decorated stage class appears in STAGE_REGISTRY under its key."""
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
         STAGE_REGISTRY,
         Stage,
         register_stage,
@@ -39,10 +41,14 @@ def test_register_stage_adds_to_registry() -> None:
 
     assert '_test_register_stage' in STAGE_REGISTRY
     assert STAGE_REGISTRY['_test_register_stage'] is _TestStage
+    assert asyncio.run(_TestStage().run(None)) == {}
 
 
 def test_compute_input_hash_is_deterministic() -> None:
-    from server.apps.pipelines.stages.base import compute_input_hash
+    """Input hash is stable regardless of key insertion order."""
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        compute_input_hash,
+    )
 
     h1 = compute_input_hash({'a': 1, 'b': [2, 3]})
     h2 = compute_input_hash({'b': [2, 3], 'a': 1})
@@ -51,9 +57,12 @@ def test_compute_input_hash_is_deterministic() -> None:
 
 
 def test_cost_recorder_accumulates_total() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+    """CostRecorder sums multiple record() calls into total_usd."""
+    from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
 
-    from server.apps.pipelines.services.cost_recorder import CostRecorder
+    from server.apps.pipelines.services.cost_recorder import (  # noqa: PLC0415
+        CostRecorder,
+    )
 
     mock_exec = MagicMock()
     mock_exec.id = 'test-id'
@@ -62,12 +71,13 @@ def test_cost_recorder_accumulates_total() -> None:
     async def _inner():
         with patch(
             'server.apps.pipelines.models.CostRecord',
-        ) as MockCostRecord:
-            MockCostRecord.objects.acreate = AsyncMock()
+        ) as mock_cost_record_cls:
+            mock_cost_record_cls.objects.acreate = AsyncMock()
             await recorder.record('fal_flux', 'image_gen', 1, 0.025)
             await recorder.record('fal_flux', 'image_gen', 2, 0.025)
 
-        from decimal import Decimal
+        from decimal import Decimal  # noqa: PLC0415
+
         assert recorder.total_usd == Decimal('0.075')
 
     _run(_inner())
@@ -75,15 +85,18 @@ def test_cost_recorder_accumulates_total() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_dummy_stages_registered() -> None:
-    import server.apps.pipelines.stages.dummy  # noqa: F401
-    from server.apps.pipelines.stages.base import STAGE_REGISTRY
+    """Importing dummy module populates STAGE_REGISTRY with a/b/c keys."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
 
     assert 'dummy_a' in STAGE_REGISTRY
     assert 'dummy_b' in STAGE_REGISTRY
     assert 'dummy_c' in STAGE_REGISTRY
 
 
-from server.apps.pipelines.models import (
+from server.apps.pipelines.models import (  # noqa: E402
     PipelineBlueprint,
     PipelineKind,
     PipelineRun,
@@ -92,25 +105,35 @@ from server.apps.pipelines.models import (
 
 @pytest.fixture
 def blueprint() -> PipelineBlueprint:
+    """Blueprint with a single outline stage for idempotency tests."""
     return PipelineBlueprint.objects.create(
         name='idempotency_test_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [
-            {'key': 'outline', 'depends_on': [], 'queue': 'api'},
-        ]},
+        graph={
+            'stages': [
+                {'key': 'outline', 'depends_on': [], 'queue': 'api'},
+            ],
+        },
     )
 
 
 @pytest.fixture
 def channel():
-    from server.apps.channels.models import Channel, ChannelKind
+    """Test channel for idempotency tests."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+
     return Channel.objects.create(
-        name='Idempotency Channel', kind=ChannelKind.LONGFORM,
+        name='Idempotency Channel',
+        kind=ChannelKind.LONGFORM,
     )
 
 
 @pytest.fixture
 def run(blueprint: PipelineBlueprint, channel) -> PipelineRun:
+    """Pipeline run for idempotency tests."""
     return PipelineRun.objects.create(
         channel=channel,
         blueprint=blueprint,
@@ -123,7 +146,10 @@ def run(blueprint: PipelineBlueprint, channel) -> PipelineRun:
 def test_find_cached_output_returns_none_when_no_match(
     run: PipelineRun,
 ) -> None:
-    from server.apps.pipelines.services.idempotency import find_cached_output
+    """find_cached_output returns None when no SUCCEEDED exec matches."""
+    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+        find_cached_output,
+    )
 
     async def _inner() -> None:
         result = await find_cached_output(
@@ -140,8 +166,14 @@ def test_find_cached_output_returns_none_when_no_match(
 def test_find_cached_output_returns_succeeded_execution(
     run: PipelineRun,
 ) -> None:
-    from server.apps.pipelines.models import StageExecution, StageStatus
-    from server.apps.pipelines.services.idempotency import find_cached_output
+    """find_cached_output returns a SUCCEEDED execution with matching hash."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+        find_cached_output,
+    )
 
     async def _inner() -> None:
         exec_ = await StageExecution.objects.acreate(
@@ -166,8 +198,14 @@ def test_find_cached_output_returns_succeeded_execution(
 def test_find_cached_output_ignores_failed_executions(
     run: PipelineRun,
 ) -> None:
-    from server.apps.pipelines.models import StageExecution, StageStatus
-    from server.apps.pipelines.services.idempotency import find_cached_output
+    """find_cached_output does not return FAILED executions."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+        find_cached_output,
+    )
 
     async def _inner() -> None:
         await StageExecution.objects.acreate(
@@ -189,32 +227,40 @@ def test_find_cached_output_ignores_failed_executions(
 
 @pytest.mark.django_db(transaction=True)
 def test_build_context_resolves_upstream(run: PipelineRun) -> None:
-    # Use a blueprint with a dependency
-    from server.apps.channels.models import Channel, ChannelKind
-    from server.apps.pipelines.models import (
+    """build_context gives empty upstream when dep has no SUCCEEDED exec."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineBlueprint,
         PipelineRun,
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.context import build_context
+    from server.apps.pipelines.services.context import (  # noqa: PLC0415
+        build_context,
+    )
 
     async def _inner() -> None:
         bp = await PipelineBlueprint.objects.acreate(
             name='ctx_test_v1',
             kind=PipelineKind.LONGFORM,
-            graph={'stages': [
-                {'key': 'step_a', 'depends_on': [], 'queue': 'api'},
-                {
-                    'key': 'step_b',
-                    'depends_on': ['step_a'],
-                    'queue': 'api',
-                    'config': {'foo': 'bar'},
-                },
-            ]},
+            graph={
+                'stages': [
+                    {'key': 'step_a', 'depends_on': [], 'queue': 'api'},
+                    {
+                        'key': 'step_b',
+                        'depends_on': ['step_a'],
+                        'queue': 'api',
+                        'config': {'foo': 'bar'},
+                    },
+                ],
+            },
         )
         ch = await Channel.objects.acreate(
-            name='ctx_ch', kind=ChannelKind.LONGFORM,
+            name='ctx_ch',
+            kind=ChannelKind.LONGFORM,
         )
         ctx_run = await PipelineRun.objects.acreate(
             channel=ch,
@@ -222,7 +268,6 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
             blueprint_snapshot=bp.graph,
             topic='ctx test',
         )
-        # Create a SUCCEEDED step_a
         await StageExecution.objects.acreate(
             run=ctx_run,
             stage_key='step_a',
@@ -244,7 +289,7 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
     _run(_inner())
 
 
-from server.apps.pipelines.models import (  # noqa: E402 — after module imports
+from server.apps.pipelines.models import (  # noqa: E402
     RunStatus,
 )
 
@@ -255,20 +300,26 @@ def dummy_blueprint() -> PipelineBlueprint:
     return PipelineBlueprint.objects.create(
         name='dummy_orch_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [
-            {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
-            {'key': 'dummy_b', 'depends_on': ['dummy_a'], 'queue': 'api'},
-        ]},
+        graph={
+            'stages': [
+                {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+                {'key': 'dummy_b', 'depends_on': ['dummy_a'], 'queue': 'api'},
+            ],
+        },
     )
 
 
 @pytest.fixture
 def orch_channel():
     """A test channel for orchestrator tests."""
-    from server.apps.channels.models import Channel, ChannelKind  # noqa: PLC0415
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
 
     return Channel.objects.create(
-        name='Orch Channel', kind=ChannelKind.LONGFORM
+        name='Orch Channel',
+        kind=ChannelKind.LONGFORM,
     )
 
 
@@ -286,11 +337,16 @@ def orch_run(dummy_blueprint: PipelineBlueprint, orch_channel) -> PipelineRun:
 @pytest.mark.django_db(transaction=True)
 def test_advance_enqueues_first_stage(orch_run: PipelineRun) -> None:
     """advance_pipeline_impl enqueues dummy_a but NOT dummy_b initially."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401
     from unittest.mock import AsyncMock, patch  # noqa: PLC0415
 
-    from server.apps.pipelines.models import StageExecution, StageStatus
-    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
 
     async def _inner() -> None:
         with (
@@ -305,7 +361,9 @@ def test_advance_enqueues_first_stage(orch_run: PipelineRun) -> None:
         ):
             await advance_pipeline_impl(str(orch_run.id))
 
-        executions = [e async for e in StageExecution.objects.filter(run=orch_run)]
+        executions = [
+            e async for e in StageExecution.objects.filter(run=orch_run)
+        ]
         keys = {e.stage_key for e in executions}
         assert 'dummy_a' in keys
         assert 'dummy_b' not in keys
@@ -322,8 +380,13 @@ def test_advance_marks_run_completed_when_all_stages_succeed(
     """When all stages SUCCEEDED, run transitions to COMPLETED."""
     from unittest.mock import AsyncMock, patch  # noqa: PLC0415
 
-    from server.apps.pipelines.models import StageExecution, StageStatus
-    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
 
     async def _inner() -> None:
         for key in ('dummy_a', 'dummy_b'):
@@ -357,28 +420,40 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
     """A gate stage not in channel.gates is skipped."""
     from unittest.mock import AsyncMock, patch  # noqa: PLC0415
 
-    from server.apps.channels.models import Channel, ChannelKind
-    from server.apps.pipelines.models import (
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
 
     async def _inner() -> None:
         bp = await PipelineBlueprint.objects.acreate(
             name='gated_v1',
             kind=PipelineKind.LONGFORM,
-            graph={'stages': [
-                {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
-                {'key': 'my_gate', 'depends_on': ['dummy_a'], 'gate': True},
-                {'key': 'dummy_b', 'depends_on': ['my_gate'], 'queue': 'api'},
-            ]},
+            graph={
+                'stages': [
+                    {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+                    {'key': 'my_gate', 'depends_on': ['dummy_a'], 'gate': True},
+                    {
+                        'key': 'dummy_b',
+                        'depends_on': ['my_gate'],
+                        'queue': 'api',
+                    },
+                ],
+            },
         )
         ch = await Channel.objects.acreate(
-            name='gated_ch', kind=ChannelKind.LONGFORM
+            name='gated_ch',
+            kind=ChannelKind.LONGFORM,
         )
         gated_run = await PipelineRun.objects.acreate(
             channel=ch,
@@ -405,7 +480,8 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
             await advance_pipeline_impl(str(gated_run.id))
 
         gate_exec = await StageExecution.objects.filter(
-            run=gated_run, stage_key='my_gate'
+            run=gated_run,
+            stage_key='my_gate',
         ).afirst()
         assert gate_exec is not None
         assert gate_exec.status == StageStatus.SKIPPED

@@ -17,7 +17,7 @@ from server.apps.pipelines.models import (
 
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
-    """Run an async coroutine synchronously, closing async DB connections after."""
+    """Run a coroutine synchronously, closing DB connections on exit."""
     from asgiref.sync import sync_to_async  # noqa: PLC0415
 
     @sync_to_async
@@ -41,19 +41,25 @@ def blueprint() -> PipelineBlueprint:
     return PipelineBlueprint.objects.create(
         name='exec_test_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [
-            {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
-        ]},
+        graph={
+            'stages': [
+                {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+            ],
+        },
     )
 
 
 @pytest.fixture
 def channel():
     """A test channel."""
-    from server.apps.channels.models import Channel, ChannelKind  # noqa: PLC0415
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
 
     return Channel.objects.create(
-        name='Exec Channel', kind=ChannelKind.LONGFORM
+        name='Exec Channel',
+        kind=ChannelKind.LONGFORM,
     )
 
 
@@ -71,9 +77,10 @@ def run(blueprint: PipelineBlueprint, channel) -> PipelineRun:
 @pytest.mark.django_db(transaction=True)
 def test_execute_stage_succeeds_for_dummy_a(run: PipelineRun) -> None:
     """dummy_a stage should run successfully and store output."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401
-
-    from server.apps.pipelines.services.executor import execute_stage_impl
+    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        execute_stage_impl,
+    )
 
     async def _inner() -> None:
         exec_ = await StageExecution.objects.acreate(
@@ -101,10 +108,11 @@ def test_execute_stage_succeeds_for_dummy_a(run: PipelineRun) -> None:
 def test_execute_stage_uses_cache_on_matching_input_hash(
     run: PipelineRun,
 ) -> None:
-    """Cache hit: execution with matching input_hash copies output, zero cost."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401
-
-    from server.apps.pipelines.services.executor import execute_stage_impl
+    """Cache hit: matching input_hash copies output at zero cost."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        execute_stage_impl,
+    )
 
     async def _inner() -> None:
         await StageExecution.objects.acreate(
@@ -140,10 +148,16 @@ def test_execute_stage_uses_cache_on_matching_input_hash(
 def test_execute_stage_fails_after_exhausting_retries(
     run: PipelineRun,
 ) -> None:
-    """After max_retries exceeded, stage is marked FAILED with retryable=True."""
-    from server.apps.pipelines.services.executor import execute_stage_impl
-    from server.apps.pipelines.stages.base import Stage, StageContext, register_stage
-    from server.common.exceptions import RetryableProviderError
+    """After max_retries exceeded, stage is marked FAILED retryable=True."""
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        execute_stage_impl,
+    )
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        Stage,
+        StageContext,
+        register_stage,
+    )
+    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
 
     async def _inner() -> None:
         @register_stage
