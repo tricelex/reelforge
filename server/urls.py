@@ -31,6 +31,7 @@ from health_check.views import HealthCheckView
 from server.apps.main import urls as main_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
+from server.apps.pipelines import urls as pipelines_urls
 
 admin.autodiscover()
 
@@ -56,6 +57,7 @@ urlpatterns = [
     path('main/', include(main_urls, namespace='main')),
     # Apis:
     path(router.prefix, include((router.urls, 'server'), namespace='api')),
+    path('api/', include(pipelines_urls, namespace='pipelines')),
     # OpenAPI:
     path(
         'docs/openapi.json/',
