@@ -43,6 +43,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'server.apps.channels',
     'server.apps.prompts',
     'server.apps.assets',
+    'server.apps.pipelines',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
@@ -312,6 +313,26 @@ UNFOLD: dict[str, Any] = {
                         'icon': 'storage',
                         'link': reverse_lazy(
                             'admin:assets_asset_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'Pipelines',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Blueprints',
+                        'icon': 'schema',
+                        'link': reverse_lazy(
+                            'admin:pipelines_pipelineblueprint_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Runs',
+                        'icon': 'play_circle',
+                        'link': reverse_lazy(
+                            'admin:pipelines_pipelinerun_changelist',
                         ),
                     },
                 ],
