@@ -55,6 +55,24 @@ class Asset(UUIDModel, TimeStampedModel):
     checksum = models.CharField(max_length=64, db_index=True)
     meta = models.JSONField(default=dict)
 
+    # Added in Phase 2 — nullable so Phase 1 rows are unaffected
+    run = models.ForeignKey(
+        'pipelines.PipelineRun',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assets',
+        db_index=True,
+    )
+    stage_execution = models.ForeignKey(
+        'pipelines.StageExecution',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assets',
+        db_index=True,
+    )
+
     class Meta:
         """Meta options for Asset."""
 

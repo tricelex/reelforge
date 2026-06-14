@@ -232,7 +232,15 @@ class Character(UUIDModel, TimeStampedModel):
         choices=CharacterOrigin.choices,
         default=CharacterOrigin.RUN,
     )
-    # source_run FK to pipelines.PipelineRun added in Phase 2 migration
+    # Added in Phase 2 — nullable so Phase 1 rows are unaffected
+    source_run = models.ForeignKey(
+        'pipelines.PipelineRun',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        db_index=True,
+    )
 
     class Meta:
         """Meta options for Character."""
