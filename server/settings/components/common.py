@@ -243,6 +243,80 @@ UNFOLD: dict[str, Any] = {
                 ],
             },
             {
+                'title': 'Channels',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Channels',
+                        'icon': 'tv',
+                        'link': reverse_lazy(
+                            'admin:channels_channel_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Characters',
+                        'icon': 'face',
+                        'link': reverse_lazy(
+                            'admin:channels_character_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Niche Configs',
+                        'icon': 'tune',
+                        'link': reverse_lazy(
+                            'admin:channels_nicheconfig_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'YouTube Credentials',
+                        'icon': 'key',
+                        'link': reverse_lazy(
+                            'admin:channels_youtubecredential_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'Prompts',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Prompt Templates',
+                        'icon': 'psychology',
+                        'link': reverse_lazy(
+                            'admin:prompts_prompttemplate_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Story Formats',
+                        'icon': 'auto_stories',
+                        'link': reverse_lazy(
+                            'admin:prompts_storyformat_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'Assets',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Library Assets',
+                        'icon': 'photo_library',
+                        'link': reverse_lazy(
+                            'admin:assets_libraryasset_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Pipeline Assets',
+                        'icon': 'storage',
+                        'link': reverse_lazy(
+                            'admin:assets_asset_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
                 'title': 'Auth',
                 'separator': True,
                 'items': [
