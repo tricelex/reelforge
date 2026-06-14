@@ -1,0 +1,238 @@
+"""DAG orchestrator: re-evaluate the graph and enqueue ready stages."""
+
+import json
+import uuid
+from typing import TYPE_CHECKING, Any
+
+import django.utils.timezone as tz
+from asgiref.sync import sync_to_async
+from django.db import transaction
+
+from server.common.redis_client import publish_pipeline_event
+
+if TYPE_CHECKING:
+    from server.apps.pipelines.models import PipelineRun
+
+
+async def publish_sse(run_id: str, data: dict[str, Any]) -> None:
+    """Publish a JSON event to the pipeline Redis channel."""
+    await publish_pipeline_event(run_id, json.dumps(data).encode())
+
+
+async def execute_stage_kiq(execution_id: str) -> None:
+    """Enqueue execute_stage (separate function for mockability in tests)."""
+    from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
+
+    await execute_stage.kiq(execution_id)
+
+
+def _get_stage_states(run: 'PipelineRun') -> dict[str, str | None]:
+    """Return the most-recent-attempt status per stage_key (top-level only)."""
+    from server.apps.pipelines.models import StageExecution  # noqa: PLC0415
+
+    result: dict[str, str | None] = {}
+    qs = (
+        StageExecution.objects
+        .filter(run=run, parent=None)
+        .order_by('stage_key', '-attempt')
+        .only('stage_key', 'status', 'attempt')
+    )
+    for exec_ in qs:
+        if exec_.stage_key not in result:
+            result[exec_.stage_key] = exec_.status
+    return result
+
+
+def _eval_condition(node: dict[str, Any], run: 'PipelineRun') -> bool:
+    """Evaluate a blueprint conditional string against run/channel state."""
+    condition: str = node.get('conditional', '')
+    if not condition:
+        return True
+    publish_mode = getattr(run.channel, 'publish_mode', None)
+    if condition == "channel.publish_mode == 'review'":
+        return publish_mode == 'review'
+    if condition == "channel.publish_mode == 'auto'":
+        return publish_mode == 'auto'
+    return False
+
+
+def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
+    """Create a SKIPPED StageExecution for a gate or disabled conditional."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key=stage_key,
+        status=StageStatus.SKIPPED,
+        input_hash='',
+    )
+
+
+def _create_queued_stage_sync(
+    run: 'PipelineRun', node: dict[str, Any],
+) -> str:
+    """Create a QUEUED StageExecution; return its string ID."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
+
+    stage_cls = STAGE_REGISTRY[node['key']]
+    exec_ = StageExecution.objects.create(
+        run=run,
+        stage_key=node['key'],
+        status=StageStatus.QUEUED,
+        queue=node.get('queue', stage_cls.queue),
+        max_retries=stage_cls.max_retries,
+        input_hash='',
+    )
+    return str(exec_.id)
+
+
+def _apply_terminal_status(
+    run: 'PipelineRun',
+    values: set[str],
+    run_status: type,
+    stage_status: type,
+) -> None:
+    """Apply FAILED, COMPLETED, or RUNNING to the run based on stage values."""
+    terminal = {stage_status.SUCCEEDED, stage_status.SKIPPED}
+    if stage_status.FAILED in values:
+        run.status = run_status.FAILED
+        run.finished_at = tz.now()
+    elif all(s in terminal for s in values):
+        run.status = run_status.COMPLETED
+        run.finished_at = tz.now()
+    elif stage_status.QUEUED in values or stage_status.RUNNING in values:
+        if run.status == run_status.PENDING:
+            run.status = run_status.RUNNING
+            run.started_at = tz.now()
+
+
+def _update_run_status_sync(
+    run: 'PipelineRun', states: dict[str, str | None],
+) -> None:
+    """Transition run status based on current stage states (sync ORM)."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        RunStatus,
+        StageStatus,
+    )
+
+    values = {s for s in states.values() if s is not None}
+    if not values:
+        return
+
+    old_status = run.status
+    _apply_terminal_status(run, values, RunStatus, StageStatus)
+    if run.status != old_status or run.started_at is not None:
+        run.save(update_fields=['status', 'started_at', 'finished_at'])
+
+
+def _node_should_skip(
+    node: dict[str, Any], run: 'PipelineRun', armed_gates: list[str],
+) -> bool:
+    """Return True if this node should be skipped."""
+    if node.get('gate') and node['key'] not in armed_gates:
+        return True
+    return bool(node.get('conditional')) and not _eval_condition(node, run)
+
+
+def _process_node_sync(
+    node: dict[str, Any],
+    run: 'PipelineRun',
+    states: dict[str, str | None],
+    armed_gates: list[str],
+    to_enqueue: list[str],
+) -> None:
+    """Evaluate one blueprint node; enqueue, skip, or ignore (sync)."""
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
+
+    key = node['key']
+    current = states.get(key)
+    if current not in {None, StageStatus.PENDING}:
+        return
+
+    if _node_should_skip(node, run, armed_gates):
+        _mark_skipped_sync(run, key)
+        states[key] = StageStatus.SKIPPED
+        return
+
+    if key not in STAGE_REGISTRY:
+        return
+
+    deps: list[str] = node.get('depends_on', [])
+    terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
+    deps_ok = all(states.get(d) in terminal for d in deps)
+    if deps_ok:
+        exec_id = _create_queued_stage_sync(run, node)
+        to_enqueue.append(exec_id)
+        states[key] = StageStatus.QUEUED
+
+
+def _advance_in_transaction(
+    run_id: str,
+) -> tuple[list[str], dict[str, str | None]]:
+    """Run DAG evaluation inside a transaction with SELECT FOR UPDATE (sync).
+
+    Returns (to_enqueue, states) to be processed after the transaction.
+    """
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+    )
+
+    to_enqueue: list[str] = []
+    states: dict[str, str | None] = {}
+
+    with transaction.atomic():
+        run = (
+            PipelineRun.objects
+            .select_for_update()
+            .select_related('channel')
+            .get(id=uuid.UUID(run_id))
+        )
+        if run.status in {
+            RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.COMPLETED,
+        }:
+            return to_enqueue, states
+
+        graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
+        states = _get_stage_states(run)
+        armed_gates: list[str] = list(
+            getattr(run.channel, 'gates', None) or [],
+        )
+
+        for node in graph:
+            _process_node_sync(
+                node, run, states, armed_gates, to_enqueue,
+            )
+
+        _update_run_status_sync(run, states)
+
+    return to_enqueue, states
+
+
+_advance_in_transaction_async = sync_to_async(_advance_in_transaction)
+
+
+async def advance_pipeline_impl(run_id: str) -> None:
+    """Re-evaluate the DAG and enqueue any newly-ready stages.
+
+    Called at run start and after every stage terminal event.
+    The inner DAG evaluation runs in a sync thread with SELECT FOR UPDATE.
+    """
+    to_enqueue, states = await _advance_in_transaction_async(run_id)
+
+    for exec_id in to_enqueue:
+        await execute_stage_kiq(exec_id)
+
+    await publish_sse(run_id, {'type': 'run.advanced', 'states': dict(states)})

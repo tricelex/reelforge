@@ -242,3 +242,172 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
         assert ctx.channel.name == 'ctx_ch'
 
     _run(_inner())
+
+
+from server.apps.pipelines.models import (  # noqa: E402 — after module imports
+    RunStatus,
+)
+
+
+@pytest.fixture
+def dummy_blueprint() -> PipelineBlueprint:
+    """A 2-stage blueprint: dummy_a -> dummy_b."""
+    return PipelineBlueprint.objects.create(
+        name='dummy_orch_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': [
+            {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+            {'key': 'dummy_b', 'depends_on': ['dummy_a'], 'queue': 'api'},
+        ]},
+    )
+
+
+@pytest.fixture
+def orch_channel():
+    """A test channel for orchestrator tests."""
+    from server.apps.channels.models import Channel, ChannelKind  # noqa: PLC0415
+
+    return Channel.objects.create(
+        name='Orch Channel', kind=ChannelKind.LONGFORM
+    )
+
+
+@pytest.fixture
+def orch_run(dummy_blueprint: PipelineBlueprint, orch_channel) -> PipelineRun:
+    """A pipeline run using the dummy orchestrator blueprint."""
+    return PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=dummy_blueprint,
+        blueprint_snapshot=dummy_blueprint.graph,
+        topic='Orchestrator test',
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_enqueues_first_stage(orch_run: PipelineRun) -> None:
+    """advance_pipeline_impl enqueues dummy_a but NOT dummy_b initially."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.pipelines.models import StageExecution, StageStatus
+    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(orch_run.id))
+
+        executions = [e async for e in StageExecution.objects.filter(run=orch_run)]
+        keys = {e.stage_key for e in executions}
+        assert 'dummy_a' in keys
+        assert 'dummy_b' not in keys
+        a_exec = next(e for e in executions if e.stage_key == 'dummy_a')
+        assert a_exec.status == StageStatus.QUEUED
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_marks_run_completed_when_all_stages_succeed(
+    orch_run: PipelineRun,
+) -> None:
+    """When all stages SUCCEEDED, run transitions to COMPLETED."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.pipelines.models import StageExecution, StageStatus
+    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+
+    async def _inner() -> None:
+        for key in ('dummy_a', 'dummy_b'):
+            await StageExecution.objects.acreate(
+                run=orch_run,
+                stage_key=key,
+                status=StageStatus.SUCCEEDED,
+                input_hash='',
+            )
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(orch_run.id))
+
+        refreshed = await PipelineRun.objects.aget(id=orch_run.id)
+        assert refreshed.status == RunStatus.COMPLETED
+        assert refreshed.finished_at is not None
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_skips_unarmed_gate(orch_channel) -> None:
+    """A gate stage not in channel.gates is skipped."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='gated_v1',
+            kind=PipelineKind.LONGFORM,
+            graph={'stages': [
+                {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+                {'key': 'my_gate', 'depends_on': ['dummy_a'], 'gate': True},
+                {'key': 'dummy_b', 'depends_on': ['my_gate'], 'queue': 'api'},
+            ]},
+        )
+        ch = await Channel.objects.acreate(
+            name='gated_ch', kind=ChannelKind.LONGFORM
+        )
+        gated_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='Gate test',
+        )
+        await StageExecution.objects.acreate(
+            run=gated_run,
+            stage_key='dummy_a',
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+        )
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(gated_run.id))
+
+        gate_exec = await StageExecution.objects.filter(
+            run=gated_run, stage_key='my_gate'
+        ).afirst()
+        assert gate_exec is not None
+        assert gate_exec.status == StageStatus.SKIPPED
+
+    _run(_inner())
