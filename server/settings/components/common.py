@@ -45,6 +45,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'server.apps.assets',
     'server.apps.pipelines',
     'server.apps.generation',
+    'server.apps.rendering',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
