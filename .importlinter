@@ -68,6 +68,8 @@ ignore_imports =
   server.apps.pipelines.stages.publish -> server.apps.channels.models
   server.apps.pipelines.stages.publish -> server.apps.generation.clients.youtube
   server.apps.pipelines.stages.publish -> server.apps.publishing.models
+  # Analytics selectors aggregate live cost data from pipelines CostRecord
+  server.apps.analytics.selectors -> server.apps.pipelines.models
 
 
 [importlinter:contract:common-module-is-independent]

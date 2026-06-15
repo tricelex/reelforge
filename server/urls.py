@@ -28,6 +28,7 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from dmr.routing import Router, build_404_handler, build_500_handler, path
 from health_check.views import HealthCheckView
 
+from server.apps.analytics import urls as analytics_urls
 from server.apps.main import urls as main_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
@@ -58,6 +59,7 @@ urlpatterns = [
     # Apis:
     path(router.prefix, include((router.urls, 'server'), namespace='api')),
     path('api/', include(pipelines_urls, namespace='pipelines')),
+    path('api/analytics/', include(analytics_urls, namespace='analytics')),
     # OpenAPI:
     path(
         'docs/openapi.json/',

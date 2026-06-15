@@ -11,7 +11,8 @@ def get_run_cost_breakdown(run_id: str) -> dict[str, object]:
     from server.apps.pipelines.models import CostRecord  # noqa: PLC0415
 
     records = (
-        CostRecord.objects.filter(
+        CostRecord.objects
+        .filter(
             stage_execution__run_id=UUID(run_id),
             stage_execution__parent=None,
         )
