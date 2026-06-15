@@ -378,3 +378,7 @@ UNFOLD: dict[str, Any] = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#std:setting-EMAIL_TIMEOUT
 
 EMAIL_TIMEOUT = 5
+
+# YouTube Data API v3 OAuth credentials
+YOUTUBE_CLIENT_ID: str = config('YOUTUBE_CLIENT_ID', default='')
+YOUTUBE_CLIENT_SECRET: str = config('YOUTUBE_CLIENT_SECRET', default='')
