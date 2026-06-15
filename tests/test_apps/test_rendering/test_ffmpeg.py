@@ -365,6 +365,118 @@ def test_final_pass_includes_amix_when_music_provided() -> None:
     assert 'amix' in cmd
 
 
+def test_mux_scene_fallback_when_motion_dur_zero() -> None:
+    """When probe returns duration 0, motion_dur falls back to narration_dur."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    # Probe returns 0 duration — triggers line 63
+    fake_probe = {'format': {'duration': '0'}, 'streams': []}
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+        ):
+            await mux_scene(
+                video_path='/tmp/seg.mp4',  # noqa: S108
+                audio_path='/tmp/ch.mp3',  # noqa: S108
+                start_s=0.0,
+                end_s=5.0,
+                out_path='/tmp/out.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'ffmpeg' in captured[0]
+    assert '/tmp/out.mp4' in cmd  # noqa: S108
+
+
+def test_final_pass_with_watermark_and_no_music() -> None:
+    """final_pass applies overlay complex filter with watermark and no music."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=[],
+                music_gains_db=[],
+                ass_path=None,
+                watermark_path='/tmp/wm.png',  # noqa: S108
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'overlay' in cmd
+    assert '/tmp/wm.png' in cmd  # noqa: S108
+
+
+def test_final_pass_with_watermark_and_subtitles_no_music() -> None:
+    """final_pass with watermark+subtitles applies overlay then burns subs."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=[],
+                music_gains_db=[],
+                ass_path='/tmp/subs.ass',  # noqa: S108
+                watermark_path='/tmp/wm.png',  # noqa: S108
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'overlay' in cmd
+    assert 'subtitles=' in cmd
+
+
 def test_final_pass_raises_on_ffmpeg_failure() -> None:
     mock_proc = MagicMock()
     mock_proc.returncode = 1

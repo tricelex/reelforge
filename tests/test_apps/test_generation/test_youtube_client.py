@@ -1,7 +1,7 @@
 """Tests for the YouTube Data API v3 client."""
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import django.utils.timezone as tz
@@ -149,3 +149,58 @@ def test_set_thumbnail_success() -> None:
             await set_thumbnail('tok', 'yt_abc123', b'thumb bytes')
 
     asyncio.run(_run())  # no exception
+
+
+def test_classify_response_400_with_malformed_json_raises_fatal() -> None:
+    """_classify_response raises FatalProviderError when JSON is malformed."""
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 400
+    # json() raises ValueError — reason defaults to ''
+    resp.json.side_effect = ValueError('bad json')
+    with pytest.raises(FatalProviderError) as exc_info:
+        _classify_response(resp)
+    assert exc_info.value.provider == 'youtube'
+
+
+def test_classify_response_400_missing_reason_raises_fatal() -> None:
+    """_classify_response raises FatalProviderError for 400 without reason."""
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 400
+    # json() returns dict without 'error' key → KeyError → reason = ''
+    resp.json.return_value = {}
+    with pytest.raises(FatalProviderError):
+        _classify_response(resp)
+
+
+def test_upload_video_with_schedule_at_sets_publish_at() -> None:
+    """upload_video sets publishAt in status when schedule_at is provided."""
+    from datetime import datetime  # noqa: PLC0415
+
+    init_resp = MagicMock(spec=httpx.Response)
+    init_resp.status_code = 200
+    init_resp.headers = {'Location': 'https://upload.example.com/resumable/2'}
+
+    upload_resp = MagicMock(spec=httpx.Response)
+    upload_resp.status_code = 200
+    upload_resp.json.return_value = {'id': 'yt_sched01'}
+
+    schedule = datetime(2026, 7, 1, 18, 0, 0, tzinfo=UTC)
+
+    async def _run() -> str:
+        with patch(
+            'server.apps.generation.clients.youtube.httpx.AsyncClient',
+        ) as mock_client:
+            instance = mock_client.return_value.__aenter__.return_value
+            instance.post = AsyncMock(return_value=init_resp)
+            instance.put = AsyncMock(return_value=upload_resp)
+            return await upload_video(
+                access_token='tok',  # noqa: S106
+                video_bytes=b'video data',
+                title='Scheduled Video',
+                description='Desc',
+                tags=[],
+                schedule_at=schedule,
+            )
+
+    result = asyncio.run(_run())
+    assert result == 'yt_sched01'

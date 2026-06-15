@@ -5,7 +5,11 @@ import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, override
 
-from server.apps.pipelines.stages.base import Stage, StageContext, register_stage
+from server.apps.pipelines.stages.base import (
+    Stage,
+    StageContext,
+    register_stage,
+)
 
 
 def _group_scenes_by_chapter(
@@ -75,7 +79,7 @@ async def _fetch_asset_bytes(asset_id: str) -> bytes:
     from server.apps.assets.models import Asset  # noqa: PLC0415
 
     asset = await Asset.objects.aget(id=asset_id)
-    return await asyncio.to_thread(asset.file.read)  # type: ignore[no-any-return]
+    return await asyncio.to_thread(asset.file.read)
 
 
 async def _fetch_library_bytes(library_asset_id: str) -> bytes:
@@ -83,7 +87,7 @@ async def _fetch_library_bytes(library_asset_id: str) -> bytes:
     from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
 
     asset = await LibraryAsset.objects.aget(id=library_asset_id)
-    return await asyncio.to_thread(asset.file.read)  # type: ignore[no-any-return]
+    return await asyncio.to_thread(asset.file.read)
 
 
 @register_stage
@@ -119,7 +123,7 @@ class AssemblyStage(Stage):
             if wm:
                 watermark_asset_id = str(wm.id)
             watermark_opacity = float(
-                getattr(branding, 'watermark_opacity', 0.6)
+                getattr(branding, 'watermark_opacity', 0.6),
             )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -151,7 +155,7 @@ class AssemblyStage(Stage):
                 scene_mezz_files: list[str] = []
                 audio_path = chapter_audio_files.get(ch_idx, '')
                 for scene in sorted(
-                    ch_scenes, key=lambda s: s['segment_idx']
+                    ch_scenes, key=lambda s: s['segment_idx'],
                 ):
                     scene_idx = scene.get(
                         'scene_idx',
@@ -182,7 +186,7 @@ class AssemblyStage(Stage):
                 entry = music_map.get(ch_idx)
                 if entry:
                     music_bytes = await _fetch_library_bytes(
-                        entry['library_asset_id']
+                        entry['library_asset_id'],
                     )
                     music_file = tmp / f'music_{ch_idx:03d}.mp3'
                     await asyncio.to_thread(music_file.write_bytes, music_bytes)

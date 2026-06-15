@@ -697,3 +697,81 @@ def test_approve_gate_marks_succeeded_and_resumes():
     exec_ = StageExecution.objects.get(run=run, stage_key='final_gate')
     assert exec_.status == StageStatus.SUCCEEDED
     assert exec_.output == output
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_pipeline_armed_gate_with_unfinished_deps_is_not_parked():
+    """An armed gate with unfinished deps is not parked (branch 195->198)."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    channel = Channel.objects.create(
+        name='Gate Pending Channel',
+        kind=ChannelKind.LONGFORM,
+        gates=['final_gate'],  # gate is armed
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='gate_pending_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                # dep_stage is not yet succeeded
+                {'key': 'dep_stage', 'depends_on': [], 'queue': 'api'},
+                {
+                    'key': 'final_gate',
+                    'depends_on': ['dep_stage'],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='gate pending test',
+    )
+    # Mark dep_stage as RUNNING (not terminal) so the gate dep check fails
+    StageExecution.objects.create(
+        run=run,
+        stage_key='dep_stage',
+        status=StageStatus.RUNNING,
+        output={},
+    )
+
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    # Run should not be parked at AWAITING_REVIEW since dep is still running
+    assert run.status != RunStatus.AWAITING_REVIEW
+    # The gate execution should not be created
+    assert not StageExecution.objects.filter(
+        run=run, stage_key='final_gate',
+    ).exists()

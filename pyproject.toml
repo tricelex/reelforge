@@ -256,6 +256,13 @@ omit = [
   "server/asgi.py",
   # Production settings — only active in production deployments:
   "server/settings/environments/production.py",
+  # Django management entry point — runs only as a CLI command, not via tests:
+  "manage.py",
+  # Third-party package metadata (dist-info text files picked up by template plugin):
+  "**/*.dist-info/*",
+  ".local/**",
+  # Sphinx docs templates — not testable Django templates:
+  "docs/*",
 ]
 
 

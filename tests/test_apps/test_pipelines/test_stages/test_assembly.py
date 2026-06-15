@@ -15,10 +15,12 @@ from server.apps.pipelines.models import (
 )
 from server.apps.pipelines.stages.assembly import (
     AssemblyStage,
-    _build_chapter_audio_map,
-    _build_music_map,
-    _build_scene_asset_map,
-    _group_scenes_by_chapter,
+    _build_chapter_audio_map,  # noqa: PLC2701
+    _build_music_map,  # noqa: PLC2701
+    _build_scene_asset_map,  # noqa: PLC2701
+    _fetch_asset_bytes,  # noqa: PLC2701
+    _fetch_library_bytes,  # noqa: PLC2701
+    _group_scenes_by_chapter,  # noqa: PLC2701
 )
 
 
@@ -81,7 +83,7 @@ def _make_ctx() -> MagicMock:
                     'chapter_idx': 0,
                     'library_asset_id': 'music-uuid',
                     'gain_db': -3.0,
-                }
+                },
             ],
         },
     }
@@ -196,9 +198,9 @@ def test_assembly_run_calls_final_pass_with_watermark_when_branding_set() -> Non
 
 def _run_async(coro: object) -> object:
     """Run a coroutine, closing Django DB connections on exit."""
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
-    from collections.abc import Coroutine  # noqa: PLC0415
     from typing import Any  # noqa: PLC0415
+
+    from asgiref.sync import sync_to_async  # noqa: PLC0415
 
     @sync_to_async
     def _close() -> None:
@@ -219,15 +221,15 @@ def _run_async(coro: object) -> object:
 def test_build_scene_asset_map_queries_motion_children() -> None:
     """_build_scene_asset_map reads scene_idx+asset_id from motion children."""
     channel = Channel.objects.create(
-        name='Asm DB Ch', kind=ChannelKind.LONGFORM
+        name='Asm DB Ch', kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_db_v1',
         kind=PipelineKind.LONGFORM,
         graph={
             'stages': [
-                {'key': 'assembly', 'depends_on': [], 'queue': 'render'}
-            ]
+                {'key': 'assembly', 'depends_on': [], 'queue': 'render'},
+            ],
         },
     )
     run = PipelineRun.objects.create(
@@ -263,15 +265,15 @@ def test_build_scene_asset_map_queries_motion_children() -> None:
 def test_build_chapter_audio_map_queries_tts_children() -> None:
     """_build_chapter_audio_map reads chapter_idx+asset_id from tts children."""
     channel = Channel.objects.create(
-        name='Asm DB Ch2', kind=ChannelKind.LONGFORM
+        name='Asm DB Ch2', kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_db_v2',
         kind=PipelineKind.LONGFORM,
         graph={
             'stages': [
-                {'key': 'assembly', 'depends_on': [], 'queue': 'render'}
-            ]
+                {'key': 'assembly', 'depends_on': [], 'queue': 'render'},
+            ],
         },
     )
     run = PipelineRun.objects.create(
@@ -300,3 +302,305 @@ def test_build_chapter_audio_map_queries_tts_children() -> None:
 
     result = _run_async(_build_chapter_audio_map(ctx))
     assert result == {0: 'audio-ch0'}
+
+
+# ---------------------------------------------------------------------------
+# _fetch_asset_bytes / _fetch_library_bytes
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_asset_bytes_reads_file() -> None:
+    """_fetch_asset_bytes returns bytes from asset.file.read via to_thread."""
+    fake_asset = MagicMock()
+
+    async def _run() -> bytes:
+        with (
+            patch(
+                'server.apps.assets.models.Asset.objects.aget',
+                new=AsyncMock(return_value=fake_asset),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'video-bytes'),
+            ),
+        ):
+            return await _fetch_asset_bytes('asset-uuid')
+
+    result = asyncio.run(_run())
+    assert result == b'video-bytes'
+
+
+def test_fetch_library_bytes_reads_file() -> None:
+    """_fetch_library_bytes returns bytes from LibraryAsset via to_thread."""
+    fake_asset = MagicMock()
+
+    async def _run() -> bytes:
+        with (
+            patch(
+                'server.apps.assets.models.LibraryAsset.objects.aget',
+                new=AsyncMock(return_value=fake_asset),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'library-bytes'),
+            ),
+        ):
+            return await _fetch_library_bytes('lib-uuid')
+
+    result = asyncio.run(_run())
+    assert result == b'library-bytes'
+
+
+# ---------------------------------------------------------------------------
+# _build_scene_asset_map / _build_chapter_audio_map — missing output fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_scene_asset_map_skips_child_with_missing_fields() -> None:
+    """Children missing scene_idx or asset_id are ignored (branch 50->41)."""
+    channel = Channel.objects.create(
+        name='Asm Skip Ch', kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='asm_skip_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {'key': 'assembly', 'depends_on': [], 'queue': 'render'},
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='test',
+    )
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='motion',
+        status=StageStatus.SUCCEEDED,
+        output={},
+    )
+    # Child with no asset_id — should be skipped
+    StageExecution.objects.create(
+        run=run,
+        stage_key='motion',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        output={'scene_idx': 0},  # no asset_id
+    )
+    # Child with no scene_idx — should also be skipped
+    StageExecution.objects.create(
+        run=run,
+        stage_key='motion',
+        parent=parent,
+        shard_index=1,
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': 'vid-0'},  # no scene_idx
+    )
+
+    ctx = MagicMock()
+    ctx.run = run
+
+    result = _run_async(_build_scene_asset_map(ctx))
+    assert result == {}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_chapter_audio_map_skips_child_with_missing_fields() -> None:
+    """Children missing chapter_idx or asset_id are ignored (branch 72->63)."""
+    channel = Channel.objects.create(
+        name='Asm Skip Ch2', kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='asm_skip_v2',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {'key': 'assembly', 'depends_on': [], 'queue': 'render'},
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='test',
+    )
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='tts',
+        status=StageStatus.SUCCEEDED,
+        output={},
+    )
+    # Child with no asset_id
+    StageExecution.objects.create(
+        run=run,
+        stage_key='tts',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        output={'chapter_idx': 0},  # no asset_id
+    )
+    # Child with no chapter_idx
+    StageExecution.objects.create(
+        run=run,
+        stage_key='tts',
+        parent=parent,
+        shard_index=1,
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': 'audio-0'},  # no chapter_idx
+    )
+
+    ctx = MagicMock()
+    ctx.run = run
+
+    result = _run_async(_build_chapter_audio_map(ctx))
+    assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# AssemblyStage.run — uncovered branches
+# ---------------------------------------------------------------------------
+
+
+def test_assembly_run_with_branding_but_no_watermark() -> None:
+    """Branch 123->125: branding exists but watermark attribute is None."""
+    ctx = _make_ctx()
+    branding = MagicMock()
+    branding.watermark = None  # watermark attribute is falsy
+    branding.watermark_opacity = 0.5
+    ctx.channel.branding = branding
+    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with (
+            patch(
+                'server.apps.pipelines.stages.assembly._build_scene_asset_map',
+                new=AsyncMock(return_value={0: 'vid-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
+                new=AsyncMock(return_value={0: 'audio-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'fake-bytes'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+                new=AsyncMock(return_value=b'fake-music'),
+            ),
+            patch('server.apps.rendering.ffmpeg.mux_scene', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+            patch('server.apps.rendering.ffmpeg.final_pass', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'final-video'),
+            ),
+        ):
+            return await AssemblyStage().run(ctx)
+
+    result = asyncio.run(_run())
+    assert result['asset_id'] == 'final-uuid'
+
+
+def test_assembly_run_without_ass_and_no_music_for_chapter() -> None:
+    """No ass_asset_id (branch 123->125), no music entry (branch 187->185)."""
+    ctx = _make_ctx()
+    ctx.upstream['alignment']['ass_asset_id'] = None  # no captions
+    ctx.upstream['music_plan']['entries'] = []  # no music entries
+    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with (
+            patch(
+                'server.apps.pipelines.stages.assembly._build_scene_asset_map',
+                new=AsyncMock(return_value={0: 'vid-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
+                new=AsyncMock(return_value={0: 'audio-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'fake-bytes'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+                new=AsyncMock(return_value=b'fake-music'),
+            ),
+            patch('server.apps.rendering.ffmpeg.mux_scene', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+            patch('server.apps.rendering.ffmpeg.final_pass', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'final-video'),
+            ),
+        ):
+            return await AssemblyStage().run(ctx)
+
+    result = asyncio.run(_run())
+    assert result['asset_id'] == 'final-uuid'
+
+
+def test_assembly_run_skips_scene_with_no_vid_asset() -> None:
+    """Covers line 166: continue when scene_idx not in scene_asset_map."""
+    ctx = _make_ctx()
+    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with (
+            patch(
+                'server.apps.pipelines.stages.assembly._build_scene_asset_map',
+                # scene_idx 0 has no asset — triggers the continue at line 166
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
+                new=AsyncMock(return_value={0: 'audio-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'fake-bytes'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+                new=AsyncMock(return_value=b'fake-music'),
+            ),
+            patch('server.apps.rendering.ffmpeg.mux_scene', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+            patch('server.apps.rendering.ffmpeg.final_pass', new=AsyncMock()),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'final-video'),
+            ),
+        ):
+            return await AssemblyStage().run(ctx)
+
+    result = asyncio.run(_run())
+    assert result['asset_id'] == 'final-uuid'
