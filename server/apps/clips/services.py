@@ -1,31 +1,31 @@
 """ClipCandidateService — all read/write operations on ClipCandidate."""
 
 import uuid
-from typing import final
+from typing import TYPE_CHECKING, final
 
 import attrs
 
 from server.apps.clips.logic.constants import CandidateStatus
 from server.apps.clips.logic.value_objects import ClipCandidatePayload
 
+if TYPE_CHECKING:
+    from server.apps.clips.models import ClipCandidate
 
-def _to_payload(candidate: object) -> ClipCandidatePayload:
-    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-    c: ClipCandidate = candidate  # type: ignore[assignment]
+def _to_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
     return ClipCandidatePayload(
-        id=str(c.id),
-        run_id=str(c.run_id),
-        title=c.title,
-        hook_text=c.hook_text,
-        start_sec=c.start_sec,
-        end_sec=c.end_sec,
-        duration_sec=c.duration_sec,
-        relevance_score=c.relevance_score,
-        status=c.status,
-        reason=c.reason,
-        transcript_excerpt=c.transcript_excerpt,
-        rejection_reason=c.rejection_reason,
+        id=str(candidate.id),
+        run_id=str(candidate.run_id),
+        title=candidate.title,
+        hook_text=candidate.hook_text,
+        start_sec=candidate.start_sec,
+        end_sec=candidate.end_sec,
+        duration_sec=candidate.duration_sec,
+        relevance_score=candidate.relevance_score,
+        status=candidate.status,
+        reason=candidate.reason,
+        transcript_excerpt=candidate.transcript_excerpt,
+        rejection_reason=candidate.rejection_reason,
     )
 
 
@@ -54,7 +54,7 @@ class ClipCandidateService:
             for c in ClipCandidate.objects.filter(
                 run_id=uuid.UUID(run_id),
                 status=CandidateStatus.APPROVED,
-            )
+            ).order_by('-relevance_score')
         ]
 
     def get_by_id(self, candidate_id: str) -> ClipCandidatePayload:
