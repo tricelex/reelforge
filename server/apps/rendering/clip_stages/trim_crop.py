@@ -33,6 +33,9 @@ class TrimAndCropStage(RenderStage):
     preset: str = 'slow'
     audio_bitrate: str = '192k'
     last_speaker_crop_result: Any = field(default=None, init=False)
+    _speaker_svc: SpeakerDetectionService = field(
+        default_factory=SpeakerDetectionService, init=False, repr=False,
+    )
 
     @property
     @override
@@ -89,8 +92,7 @@ class TrimAndCropStage(RenderStage):
 
     def _smart_crop_cmd(self, input_path: Path) -> list[str]:
         lc = self.layout_config
-        service = SpeakerDetectionService()
-        result = service.detect(
+        result = self._speaker_svc.detect(
             video_path=input_path,
             start_sec=self.start_sec,
             end_sec=self.end_sec,

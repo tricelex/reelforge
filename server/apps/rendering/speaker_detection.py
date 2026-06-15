@@ -1,7 +1,5 @@
 """SpeakerDetectionService — face detection + diarization for smart crop."""
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +26,10 @@ class SpeakerDetectionService:
 
     Falls back to center crop when face detection fails or is unavailable.
     """
+
+    def __init__(self) -> None:
+        """Initialise with an empty detector cache."""
+        self._detector_cache: Any = None
 
     def detect(
         self,
@@ -134,6 +136,9 @@ class SpeakerDetectionService:
 
     def _get_detector(self) -> Any:
         """Load MediaPipe face detector, downloading model on first use."""
+        if self._detector_cache is not None:
+            return self._detector_cache
+
         import urllib.request  # noqa: PLC0415
         from pathlib import Path as ModelPath  # noqa: PLC0415
 
@@ -158,7 +163,8 @@ class SpeakerDetectionService:
             model_asset_path=str(model_path),
         )
         options = vision.FaceDetectorOptions(base_options=base_options)
-        return vision.FaceDetector.create_from_options(options)
+        self._detector_cache = vision.FaceDetector.create_from_options(options)
+        return self._detector_cache
 
     def diarize(self, video_path: Path) -> list[dict[str, Any]]:
         """Run PyAnnote speaker diarization.

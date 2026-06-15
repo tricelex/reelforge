@@ -115,18 +115,9 @@ def test_spatial_stack_with_regions(mock_run: MagicMock) -> None:
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
-@patch(
-    'server.apps.rendering.clip_stages.trim_crop.SpeakerDetectionService',
-)
-def test_smart_crop_uses_speaker_detection(
-    mock_sds_class: MagicMock, mock_run: MagicMock,
-) -> None:
+def test_smart_crop_calls_speaker_detection(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0, stderr='')
-    mock_result = MagicMock()
-    mock_result.crop_x = 200
-    mock_result.crop_w = 540
-    mock_result.crop_h = 960
-    mock_sds_class.return_value.detect.return_value = mock_result
+    mock_result = MagicMock(crop_x=100, crop_w=600, crop_h=1000)
     lc = _make_layout('SMART_CROP')
     stage = TrimAndCropStage(
         source_path=Path('/src.mp4'),
@@ -135,7 +126,10 @@ def test_smart_crop_uses_speaker_detection(
         output_path=Path('/out.mp4'),
         layout_config=lc,
     )
+    stage._speaker_svc = MagicMock()
+    stage._speaker_svc.detect.return_value = mock_result
     with patch('server.apps.rendering.clip_stages.trim_crop.Path.mkdir'):
-        stage.run(Path('/src.mp4'))
-    assert mock_sds_class.return_value.detect.called
+        result = stage.run(Path('/src.mp4'))
+    assert result == Path('/out.mp4')
     assert stage.last_speaker_crop_result is mock_result
+    assert stage._speaker_svc.detect.called
