@@ -63,6 +63,11 @@ ignore_imports =
   # Assembly and QC fetch Asset rows from the assets app
   server.apps.pipelines.stages.assembly -> server.apps.assets.models
   server.apps.pipelines.stages.qc -> server.apps.assets.models
+  # Publish stage uploads to YouTube, needs assets, channels, generation, publishing
+  server.apps.pipelines.stages.publish -> server.apps.assets.models
+  server.apps.pipelines.stages.publish -> server.apps.channels.models
+  server.apps.pipelines.stages.publish -> server.apps.generation.clients.youtube
+  server.apps.pipelines.stages.publish -> server.apps.publishing.models
 
 
 [importlinter:contract:common-module-is-independent]

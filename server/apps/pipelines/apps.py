@@ -21,6 +21,7 @@ class PipelinesConfig(AppConfig):
         import server.apps.pipelines.stages.motion  # noqa: F401
         import server.apps.pipelines.stages.music_plan  # noqa: F401
         import server.apps.pipelines.stages.outline  # noqa: F401
+        import server.apps.pipelines.stages.publish  # noqa: F401
         import server.apps.pipelines.stages.qc  # noqa: F401
         import server.apps.pipelines.stages.research  # noqa: F401
         import server.apps.pipelines.stages.review_gate  # noqa: F401
