@@ -100,3 +100,10 @@ class PostStatus(models.TextChoices):
     POSTING = 'POSTING', 'Posting'
     POSTED = 'POSTED', 'Posted'
     FAILED = 'FAILED', 'Failed'
+
+
+class OverlayType(models.TextChoices):
+    """Type of a timed overlay on a clip."""
+
+    TEXT = 'TEXT', 'Text'
+    IMAGE = 'IMAGE', 'Image'

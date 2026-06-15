@@ -1,5 +1,6 @@
 import pytest
 
+from server.apps.channels.models import Channel, ChannelKind, PublishMode
 from server.apps.clips.logic.constants import (
     CandidateStatus,
     CaptionStyle,
@@ -9,20 +10,19 @@ from server.apps.clips.logic.constants import (
 from server.apps.clips.models import (
     ClipCandidate,
     ClipLayoutConfig,
+    ClipPost,
     ClipStyleConfig,
     ClipTimedOverlay,
+)
+from server.apps.pipelines.models import (
+    PipelineBlueprint,
+    PipelineKind,
+    PipelineRun,
 )
 
 
 @pytest.fixture()
-def pipeline_run(db):  # type: ignore[no-untyped-def]
-    from server.apps.channels.models import Channel, ChannelKind, PublishMode
-    from server.apps.pipelines.models import (
-        PipelineBlueprint,
-        PipelineKind,
-        PipelineRun,
-    )
-
+def pipeline_run(db: None) -> PipelineRun:
     channel = Channel.objects.create(
         name='Test Channel',
         kind=ChannelKind.CLIPPING,
@@ -42,7 +42,7 @@ def pipeline_run(db):  # type: ignore[no-untyped-def]
 
 
 @pytest.mark.django_db
-def test_clip_candidate_creates_configs_on_save(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_candidate_creates_configs_on_save(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run,
         start_sec=10.0,
@@ -56,7 +56,7 @@ def test_clip_candidate_creates_configs_on_save(pipeline_run) -> None:  # type: 
 
 
 @pytest.mark.django_db
-def test_clip_candidate_status_default(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_candidate_status_default(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run,
         start_sec=10.0,
@@ -67,7 +67,7 @@ def test_clip_candidate_status_default(pipeline_run) -> None:  # type: ignore[no
 
 
 @pytest.mark.django_db
-def test_clip_candidate_duration_property(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_candidate_duration_property(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -75,7 +75,7 @@ def test_clip_candidate_duration_property(pipeline_run) -> None:  # type: ignore
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_defaults(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_defaults(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -86,7 +86,7 @@ def test_clip_layout_config_defaults(pipeline_run) -> None:  # type: ignore[no-u
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_manual_smart_crop_false(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_has_manual_smart_crop_false(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -94,7 +94,7 @@ def test_clip_layout_config_has_manual_smart_crop_false(pipeline_run) -> None:  
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_manual_smart_crop_true(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_has_manual_smart_crop_true(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -107,7 +107,7 @@ def test_clip_layout_config_has_manual_smart_crop_true(pipeline_run) -> None:  #
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_spatial_regions_false(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_has_spatial_regions_false(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -115,7 +115,7 @@ def test_clip_layout_config_has_spatial_regions_false(pipeline_run) -> None:  # 
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_spatial_regions_true(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_has_spatial_regions_true(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -132,7 +132,7 @@ def test_clip_layout_config_has_spatial_regions_true(pipeline_run) -> None:  # t
 
 
 @pytest.mark.django_db
-def test_clip_style_config_defaults(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_style_config_defaults(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -144,7 +144,7 @@ def test_clip_style_config_defaults(pipeline_run) -> None:  # type: ignore[no-un
 
 
 @pytest.mark.django_db
-def test_clip_timed_overlay_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_timed_overlay_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -158,7 +158,7 @@ def test_clip_timed_overlay_str(pipeline_run) -> None:  # type: ignore[no-untype
 
 
 @pytest.mark.django_db
-def test_clip_candidate_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_candidate_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='Test Clip',
     )
@@ -166,7 +166,7 @@ def test_clip_candidate_str(pipeline_run) -> None:  # type: ignore[no-untyped-de
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_layout_config_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -174,7 +174,7 @@ def test_clip_layout_config_str(pipeline_run) -> None:  # type: ignore[no-untype
 
 
 @pytest.mark.django_db
-def test_clip_style_config_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_clip_style_config_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -182,9 +182,7 @@ def test_clip_style_config_str(pipeline_run) -> None:  # type: ignore[no-untyped
 
 
 @pytest.mark.django_db
-def test_clip_post_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
-    from server.apps.clips.models import ClipPost
-
+def test_clip_post_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
@@ -196,7 +194,7 @@ def test_clip_post_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
 
 
 @pytest.mark.django_db
-def test_signal_does_not_duplicate_configs_on_update(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+def test_signal_does_not_duplicate_configs_on_update(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )

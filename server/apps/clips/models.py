@@ -13,6 +13,7 @@ from server.apps.clips.logic.constants import (
     CaptionPosition,
     CaptionStyle,
     HookStyle,
+    OverlayType,
     PostStatus,
     ProgressBarPosition,
     RenderFormat,
@@ -108,7 +109,7 @@ class ClipLayoutConfig(UUIDModel, TimeStampedModel):
     class Meta:
         constraints: ClassVar = [
             models.CheckConstraint(
-                name='clips_clipcandidate_render_mode_valid',
+                name='clips_cliplayoutconfig_render_mode_valid',
                 condition=models.Q(render_mode__in=RenderMode.values),
             ),
             models.CheckConstraint(
@@ -321,10 +322,6 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
 class ClipTimedOverlay(UUIDModel, TimeStampedModel):
     """A text or image overlay active during a time range on a clip."""
 
-    class OverlayType(models.TextChoices):
-        TEXT = 'TEXT', 'Text'
-        IMAGE = 'IMAGE', 'Image'
-
     candidate = models.ForeignKey(
         ClipCandidate,
         on_delete=models.CASCADE,
@@ -355,7 +352,7 @@ class ClipTimedOverlay(UUIDModel, TimeStampedModel):
         constraints: ClassVar = [
             models.CheckConstraint(
                 name='clips_cliptimedoverlay_overlay_type_valid',
-                condition=models.Q(overlay_type__in=['TEXT', 'IMAGE']),
+                condition=models.Q(overlay_type__in=OverlayType.values),
             ),
         ]
 
