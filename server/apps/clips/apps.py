@@ -1,3 +1,5 @@
+from typing import override
+
 from django.apps import AppConfig
 
 
@@ -7,6 +9,7 @@ class ClipsConfig(AppConfig):
     name = 'server.apps.clips'
     default_auto_field = 'django.db.models.BigAutoField'
 
+    @override
     def ready(self) -> None:
         """Wire DI services for clips."""
         from server import implemented
