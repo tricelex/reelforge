@@ -6,7 +6,17 @@ It may be also used for extending doctest's context:
 2. https://docs.pytest.org/en/latest/doctest.html
 """
 
+import os
+
 import pytest
+
+# Set provider API keys before any test constructs a PydanticAI Agent.
+# With @lru_cache lazy init, agents are only created on first _agent() call
+# (inside test bodies), so setting these here is sufficient.
+os.environ.setdefault('ANTHROPIC_API_KEY', 'test-dummy-key')
+os.environ.setdefault('FAL_KEY', 'test-dummy-key')
+os.environ.setdefault('EXA_API_KEY', 'test-dummy-key')
+os.environ.setdefault('ELEVENLABS_API_KEY', 'test-dummy-key')
 from django.conf import LazySettings
 
 pytest_plugins = [

@@ -5,10 +5,12 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('channels', '0001_initial'),
-        ('pipelines', '0002_pipelineblueprint_pipelines_pipelineblueprint_kind_valid_and_more'),
+        (
+            'pipelines',
+            '0002_pipelineblueprint_pipelines_pipelineblueprint_kind_valid_and_more',
+        ),
     ]
 
     operations = [

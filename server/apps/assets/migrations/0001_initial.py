@@ -10,23 +10,53 @@ import server.apps.assets.models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
             name='LibraryAsset',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('kind', models.CharField(choices=[('WATERMARK', 'Watermark'), ('INTRO', 'Intro'), ('OUTRO', 'Outro'), ('OVERLAY', 'Overlay'), ('TRANSITION', 'Transition'), ('MUSIC', 'Music'), ('SFX', 'SFX'), ('FONT', 'Font'), ('BACKGROUND', 'Background'), ('CHARACTER_REF', 'Character Ref'), ('CAPTION_STYLE', 'Caption Style'), ('LUT', 'LUT')], max_length=20)),
+                (
+                    'kind',
+                    models.CharField(
+                        choices=[
+                            ('WATERMARK', 'Watermark'),
+                            ('INTRO', 'Intro'),
+                            ('OUTRO', 'Outro'),
+                            ('OVERLAY', 'Overlay'),
+                            ('TRANSITION', 'Transition'),
+                            ('MUSIC', 'Music'),
+                            ('SFX', 'SFX'),
+                            ('FONT', 'Font'),
+                            ('BACKGROUND', 'Background'),
+                            ('CHARACTER_REF', 'Character Ref'),
+                            ('CAPTION_STYLE', 'Caption Style'),
+                            ('LUT', 'LUT'),
+                        ],
+                        max_length=20,
+                    ),
+                ),
                 ('name', models.CharField(max_length=120)),
                 ('file', models.FileField(upload_to='library/')),
-                ('tags', django.contrib.postgres.fields.ArrayField(base_field=models.CharField(max_length=40), default=list)),
+                (
+                    'tags',
+                    django.contrib.postgres.fields.ArrayField(
+                        base_field=models.CharField(max_length=40), default=list,
+                    ),
+                ),
                 ('is_active', models.BooleanField(default=True)),
                 ('version', models.PositiveIntegerField(default=1)),
                 ('meta', models.JSONField(default=dict)),
@@ -35,17 +65,62 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Asset',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('kind', models.CharField(choices=[('IMAGE', 'Image'), ('VIDEO_SEGMENT', 'Video Segment'), ('AUDIO_VO', 'Audio VO'), ('SUBTITLE', 'Subtitle'), ('FINAL_VIDEO', 'Final Video'), ('THUMBNAIL', 'Thumbnail'), ('TRANSCRIPT', 'Transcript'), ('DOC', 'Document')], max_length=20)),
-                ('file', models.FileField(upload_to=server.apps.assets.models.asset_upload_path)),
+                (
+                    'kind',
+                    models.CharField(
+                        choices=[
+                            ('IMAGE', 'Image'),
+                            ('VIDEO_SEGMENT', 'Video Segment'),
+                            ('AUDIO_VO', 'Audio VO'),
+                            ('SUBTITLE', 'Subtitle'),
+                            ('FINAL_VIDEO', 'Final Video'),
+                            ('THUMBNAIL', 'Thumbnail'),
+                            ('TRANSCRIPT', 'Transcript'),
+                            ('DOC', 'Document'),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    'file',
+                    models.FileField(
+                        upload_to=server.apps.assets.models.asset_upload_path,
+                    ),
+                ),
                 ('mime', models.CharField(max_length=64)),
                 ('checksum', models.CharField(db_index=True, max_length=64)),
                 ('meta', models.JSONField(default=dict)),
             ],
             options={
-                'constraints': [models.CheckConstraint(condition=models.Q(('kind__in', ['IMAGE', 'VIDEO_SEGMENT', 'AUDIO_VO', 'SUBTITLE', 'FINAL_VIDEO', 'THUMBNAIL', 'TRANSCRIPT', 'DOC'])), name='assets_asset_kind_valid')],
+                'constraints': [
+                    models.CheckConstraint(
+                        condition=models.Q((
+                            'kind__in',
+                            [
+                                'IMAGE',
+                                'VIDEO_SEGMENT',
+                                'AUDIO_VO',
+                                'SUBTITLE',
+                                'FINAL_VIDEO',
+                                'THUMBNAIL',
+                                'TRANSCRIPT',
+                                'DOC',
+                            ],
+                        )),
+                        name='assets_asset_kind_valid',
+                    ),
+                ],
             },
         ),
     ]

@@ -17,25 +17,67 @@ from server.apps.assets.tasks import (
 from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 _AUDIO_PROBE = {
-    'streams': [{'codec_type': 'audio', 'codec_name': 'mp3', 'channels': 2, 'channel_layout': 'stereo', 'pix_fmt': None, 'width': None, 'height': None, 'r_frame_rate': None}],
+    'streams': [
+        {
+            'codec_type': 'audio',
+            'codec_name': 'mp3',
+            'channels': 2,
+            'channel_layout': 'stereo',
+            'pix_fmt': None,
+            'width': None,
+            'height': None,
+            'r_frame_rate': None,
+        },
+    ],
     'format': {'duration': '180.5', 'format_name': 'mp3'},
 }
 
 _VIDEO_PROBE = {
     'streams': [
-        {'codec_type': 'video', 'codec_name': 'h264', 'width': 1920, 'height': 1080, 'r_frame_rate': '30/1', 'pix_fmt': 'yuv420p', 'channels': None, 'channel_layout': None},
-        {'codec_type': 'audio', 'codec_name': 'aac', 'channels': 2, 'channel_layout': 'stereo', 'pix_fmt': None, 'width': None, 'height': None, 'r_frame_rate': None},
+        {
+            'codec_type': 'video',
+            'codec_name': 'h264',
+            'width': 1920,
+            'height': 1080,
+            'r_frame_rate': '30/1',
+            'pix_fmt': 'yuv420p',
+            'channels': None,
+            'channel_layout': None,
+        },
+        {
+            'codec_type': 'audio',
+            'codec_name': 'aac',
+            'channels': 2,
+            'channel_layout': 'stereo',
+            'pix_fmt': None,
+            'width': None,
+            'height': None,
+            'r_frame_rate': None,
+        },
     ],
     'format': {'duration': '30.0', 'format_name': 'mp4'},
 }
 
 _PNG_ALPHA_PROBE = {
-    'streams': [{'codec_type': 'video', 'codec_name': 'png', 'pix_fmt': 'yuva8p', 'width': 200, 'height': 200, 'r_frame_rate': None, 'channels': None, 'channel_layout': None}],
+    'streams': [
+        {
+            'codec_type': 'video',
+            'codec_name': 'png',
+            'pix_fmt': 'yuva8p',
+            'width': 200,
+            'height': 200,
+            'r_frame_rate': None,
+            'channels': None,
+            'channel_layout': None,
+        },
+    ],
     'format': {'duration': '0', 'format_name': 'png'},
 }
 
 
-def _make_asset(kind: str = LibraryAssetKind.MUSIC, name: str = 'Track') -> LibraryAsset:
+def _make_asset(
+    kind: str = LibraryAssetKind.MUSIC, name: str = 'Track',
+) -> LibraryAsset:
     file = SimpleUploadedFile('file.mp3', b'data', content_type='audio/mpeg')
     return LibraryAsset.objects.create(kind=kind, name=name, file=file)
 
@@ -72,7 +114,10 @@ def test_ingest_loudness_failure_warns_and_continues() -> None:
     asset = _make_asset(LibraryAssetKind.MUSIC)
     with (
         patch('server.apps.assets.tasks._ffprobe', return_value=_AUDIO_PROBE),
-        patch('server.apps.assets.tasks._run_loudness', side_effect=ValueError('parse error')),
+        patch(
+            'server.apps.assets.tasks._run_loudness',
+            side_effect=ValueError('parse error'),
+        ),
     ):
         ingest_library_asset.original_func(str(asset.id))
 
@@ -84,7 +129,9 @@ def test_ingest_loudness_failure_warns_and_continues() -> None:
 def test_ingest_watermark_valid_png_with_alpha() -> None:
     asset = _make_asset(LibraryAssetKind.WATERMARK, 'Logo')
     with (
-        patch('server.apps.assets.tasks._ffprobe', return_value=_PNG_ALPHA_PROBE),
+        patch(
+            'server.apps.assets.tasks._ffprobe', return_value=_PNG_ALPHA_PROBE,
+        ),
         patch('server.apps.assets.tasks._transcode'),
     ):
         ingest_library_asset.original_func(str(asset.id))
@@ -97,7 +144,18 @@ def test_ingest_watermark_valid_png_with_alpha() -> None:
 def test_ingest_watermark_not_png_raises_fatal() -> None:
     asset = _make_asset(LibraryAssetKind.WATERMARK, 'Logo')
     probe = {
-        'streams': [{'codec_type': 'video', 'codec_name': 'jpeg', 'pix_fmt': 'yuvj420p', 'width': 200, 'height': 200, 'r_frame_rate': None, 'channels': None, 'channel_layout': None}],
+        'streams': [
+            {
+                'codec_type': 'video',
+                'codec_name': 'jpeg',
+                'pix_fmt': 'yuvj420p',
+                'width': 200,
+                'height': 200,
+                'r_frame_rate': None,
+                'channels': None,
+                'channel_layout': None,
+            },
+        ],
         'format': {'duration': '0', 'format_name': 'jpeg'},
     }
     with (
@@ -111,7 +169,18 @@ def test_ingest_watermark_not_png_raises_fatal() -> None:
 def test_ingest_watermark_no_alpha_raises_fatal() -> None:
     asset = _make_asset(LibraryAssetKind.WATERMARK, 'Logo')
     probe = {
-        'streams': [{'codec_type': 'video', 'codec_name': 'png', 'pix_fmt': 'rgb24', 'width': 200, 'height': 200, 'r_frame_rate': None, 'channels': None, 'channel_layout': None}],
+        'streams': [
+            {
+                'codec_type': 'video',
+                'codec_name': 'png',
+                'pix_fmt': 'rgb24',
+                'width': 200,
+                'height': 200,
+                'r_frame_rate': None,
+                'channels': None,
+                'channel_layout': None,
+            },
+        ],
         'format': {'duration': '0', 'format_name': 'png'},
     }
     with (
@@ -125,7 +194,18 @@ def test_ingest_watermark_no_alpha_raises_fatal() -> None:
 def test_ingest_intro_no_audio_raises_fatal() -> None:
     asset = _make_asset(LibraryAssetKind.INTRO, 'Opener')
     probe = {
-        'streams': [{'codec_type': 'video', 'codec_name': 'h264', 'pix_fmt': 'yuv420p', 'width': 1920, 'height': 1080, 'r_frame_rate': '30/1', 'channels': None, 'channel_layout': None}],
+        'streams': [
+            {
+                'codec_type': 'video',
+                'codec_name': 'h264',
+                'pix_fmt': 'yuv420p',
+                'width': 1920,
+                'height': 1080,
+                'r_frame_rate': '30/1',
+                'channels': None,
+                'channel_layout': None,
+            },
+        ],
         'format': {'duration': '5.0', 'format_name': 'mp4'},
     }
     with (
@@ -139,7 +219,18 @@ def test_ingest_intro_no_audio_raises_fatal() -> None:
 def test_ingest_outro_no_audio_raises_fatal() -> None:
     asset = _make_asset(LibraryAssetKind.OUTRO, 'Closer')
     probe = {
-        'streams': [{'codec_type': 'video', 'codec_name': 'h264', 'pix_fmt': 'yuv420p', 'width': 1920, 'height': 1080, 'r_frame_rate': '30/1', 'channels': None, 'channel_layout': None}],
+        'streams': [
+            {
+                'codec_type': 'video',
+                'codec_name': 'h264',
+                'pix_fmt': 'yuv420p',
+                'width': 1920,
+                'height': 1080,
+                'r_frame_rate': '30/1',
+                'channels': None,
+                'channel_layout': None,
+            },
+        ],
         'format': {'duration': '5.0', 'format_name': 'mp4'},
     }
     with (
@@ -174,7 +265,9 @@ def test_ingest_video_creates_renditions() -> None:
 
     with (
         patch('server.apps.assets.tasks._ffprobe', return_value=_VIDEO_PROBE),
-        patch('server.apps.assets.tasks._transcode', side_effect=fake_transcode),
+        patch(
+            'server.apps.assets.tasks._transcode', side_effect=fake_transcode,
+        ),
     ):
         ingest_library_asset.original_func(str(asset.id))
 
@@ -207,6 +300,7 @@ def test_handle_library_asset_ingested_enqueues_task() -> None:
 
 def test_ffprobe_calls_subprocess_and_parses_json() -> None:
     import json
+
     mock_result = MagicMock()
     mock_result.stdout = json.dumps({'streams': [], 'format': {}})
     with patch('subprocess.run', return_value=mock_result):

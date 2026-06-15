@@ -1,4 +1,3 @@
-
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -19,9 +18,13 @@ def _make_service() -> LibraryAssetService:
 @pytest.mark.django_db
 def test_register_creates_library_asset() -> None:
     service = _make_service()
-    file = SimpleUploadedFile('epic.mp3', b'audio data', content_type='audio/mpeg')
+    file = SimpleUploadedFile(
+        'epic.mp3', b'audio data', content_type='audio/mpeg',
+    )
     payload = LibraryAssetRegisterPayload(
-        kind=LibraryAssetKind.MUSIC, name='Epic Strings', tags=['tense'],
+        kind=LibraryAssetKind.MUSIC,
+        name='Epic Strings',
+        tags=['tense'],
     )
 
     result = service.register(payload, file)
@@ -41,7 +44,8 @@ def test_register_emits_library_asset_ingested() -> None:
     service = LibraryAssetService(events=bus)
     file = SimpleUploadedFile('logo.png', b'\x89PNG', content_type='image/png')
     payload = LibraryAssetRegisterPayload(
-        kind=LibraryAssetKind.WATERMARK, name='Logo',
+        kind=LibraryAssetKind.WATERMARK,
+        name='Logo',
     )
 
     result = service.register(payload, file)

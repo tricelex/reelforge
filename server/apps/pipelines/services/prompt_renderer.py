@@ -1,11 +1,14 @@
 from typing import Any
 
+from jinja2.sandbox import SandboxedEnvironment
+
+_jinja_env = SandboxedEnvironment(autoescape=False)
+
 
 class PromptRenderer:
-    """Resolves versioned prompt templates for a run.
+    """Resolves and renders versioned prompt templates for a run.
 
-    Phase 2: minimal -- returns templates by ID from run.prompt_snapshot.
-    Phase 3 generation stages use render() for full Jinja2 rendering.
+    Phase 3: full Jinja2 rendering via SandboxedEnvironment.
     """
 
     def __init__(self, prompt_snapshot: dict[str, Any]) -> None:
@@ -21,7 +24,7 @@ class PromptRenderer:
         stage_key: str,
         variables: dict[str, Any],
     ) -> tuple[str, str]:
-        """Return (system_prompt, user_prompt) for stage_key.
+        """Return (system_prompt, user_prompt) with Jinja2 variables substituted.
 
         Looks up via prompt_snapshot -> PromptVersion.id, or falls back to
         the active version for this template key.
@@ -39,4 +42,6 @@ class PromptRenderer:
             ).afirst()
         if pv is None:
             return '', ''
-        return pv.system_prompt, pv.user_prompt
+        sys = _jinja_env.from_string(pv.system_prompt).render(**variables)
+        usr = _jinja_env.from_string(pv.user_prompt).render(**variables)
+        return sys, usr

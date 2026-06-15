@@ -22,7 +22,8 @@ class AssetsConfig(AppConfig):
         from server.common.events import EventBus
 
         container_module.container.register(
-            LibraryAssetService, scope=Scope.singleton,
+            LibraryAssetService,
+            scope=Scope.singleton,
         )
         bus = container_module.container.resolve(EventBus)
         bus.subscribe(LibraryAssetIngested, handle_library_asset_ingested)

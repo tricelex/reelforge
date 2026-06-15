@@ -22,10 +22,24 @@ logger = structlog.get_logger(__name__)
 
 _RENDITION_PROFILES: dict[str, list[str]] = {
     '1080p30_h264': [
-        '-vf', 'scale=1920:1080', '-r', '30', '-c:v', 'libx264', '-c:a', 'aac',
+        '-vf',
+        'scale=1920:1080',
+        '-r',
+        '30',
+        '-c:v',
+        'libx264',
+        '-c:a',
+        'aac',
     ],
     '9x16_1080': [
-        '-vf', 'scale=1080:1920', '-r', '30', '-c:v', 'libx264', '-c:a', 'aac',
+        '-vf',
+        'scale=1080:1920',
+        '-r',
+        '30',
+        '-c:v',
+        'libx264',
+        '-c:a',
+        'aac',
     ],
 }
 
@@ -34,8 +48,14 @@ def _ffprobe(path: str) -> dict[str, Any]:
     """Run ffprobe and return JSON stream/format info."""
     result = subprocess.run(  # noqa: S603
         [  # noqa: S607
-            'ffprobe', '-v', 'quiet', '-print_format', 'json',
-            '-show_streams', '-show_format', path,
+            'ffprobe',
+            '-v',
+            'quiet',
+            '-print_format',
+            'json',
+            '-show_streams',
+            '-show_format',
+            path,
         ],
         capture_output=True,
         text=True,
@@ -48,8 +68,14 @@ def _run_loudness(path: str) -> float:
     """Return EBU R128 integrated loudness in LUFS."""
     result = subprocess.run(  # noqa: S603
         [  # noqa: S607
-            'ffmpeg', '-i', path, '-filter_complex',
-            'ebur128=framelog=verbose', '-f', 'null', '-',
+            'ffmpeg',
+            '-i',
+            path,
+            '-filter_complex',
+            'ebur128=framelog=verbose',
+            '-f',
+            'null',
+            '-',
         ],
         capture_output=True,
         text=True,
@@ -62,7 +88,9 @@ def _run_loudness(path: str) -> float:
 
 
 def _transcode(
-    input_path: str, output_path: str, extra_args: list[str],
+    input_path: str,
+    output_path: str,
+    extra_args: list[str],
 ) -> None:
     """Transcode input to output using ffmpeg with the given extra arguments."""
     subprocess.run(  # noqa: S603
@@ -107,7 +135,9 @@ def _validate_kind(
 
 
 def _save_rendition(
-    asset: 'LibraryAsset', profile_name: str, out_path: str,
+    asset: 'LibraryAsset',
+    profile_name: str,
+    out_path: str,
 ) -> None:
     """Persist a transcoded rendition file to storage."""
     from django.core.files import File  # noqa: PLC0415

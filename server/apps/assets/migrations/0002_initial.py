@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -20,17 +19,38 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='libraryasset',
             name='channel',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='library_assets', to='channels.channel'),
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name='library_assets',
+                to='channels.channel',
+            ),
         ),
         migrations.CreateModel(
             name='AssetRendition',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('profile', models.CharField(max_length=40)),
                 ('file', models.FileField(upload_to='renditions/')),
-                ('source', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='renditions', to='assets.libraryasset')),
+                (
+                    'source',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='renditions',
+                        to='assets.libraryasset',
+                    ),
+                ),
             ],
             options={
                 'abstract': False,
@@ -38,6 +58,25 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='libraryasset',
-            constraint=models.CheckConstraint(condition=models.Q(('kind__in', ['WATERMARK', 'INTRO', 'OUTRO', 'OVERLAY', 'TRANSITION', 'MUSIC', 'SFX', 'FONT', 'BACKGROUND', 'CHARACTER_REF', 'CAPTION_STYLE', 'LUT'])), name='assets_libraryasset_kind_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'kind__in',
+                    [
+                        'WATERMARK',
+                        'INTRO',
+                        'OUTRO',
+                        'OVERLAY',
+                        'TRANSITION',
+                        'MUSIC',
+                        'SFX',
+                        'FONT',
+                        'BACKGROUND',
+                        'CHARACTER_REF',
+                        'CAPTION_STYLE',
+                        'LUT',
+                    ],
+                )),
+                name='assets_libraryasset_kind_valid',
+            ),
         ),
     ]

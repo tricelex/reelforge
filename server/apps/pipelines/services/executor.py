@@ -14,11 +14,19 @@ if TYPE_CHECKING:
     from server.apps.pipelines.stages.base import Stage, StageContext
 
 
-async def kick_advance(execution: 'StageExecution') -> None:
-    """Enqueue advance_pipeline for the run owning this execution."""
+async def advance_pipeline_kiq(run_id: str) -> None:
+    """Enqueue advance_pipeline task."""
     from server.apps.pipelines.tasks import advance_pipeline  # noqa: PLC0415
 
-    await advance_pipeline.kiq(str(execution.run_id))
+    await advance_pipeline.kiq(run_id)
+
+
+async def kick_advance(execution: 'StageExecution') -> None:
+    """Re-evaluate the DAG. For child shards, update parent first."""
+    if execution.parent_id is not None:
+        await _maybe_complete_fan_out_parent(execution)
+    else:
+        await advance_pipeline_kiq(str(execution.run_id))
 
 
 async def execute_stage_kiq(execution_id: str) -> None:
@@ -99,6 +107,87 @@ async def _schedule_retry(
     await execute_stage_kiq(str(next_exec.id))
 
 
+async def _handle_fan_out(
+    parent: 'StageExecution',
+    shard_inputs: list[dict[str, Any]],
+) -> None:
+    """Mark parent RUNNING, create QUEUED child executions, kick them."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    await _mark_running(parent)
+    for i, shard_input in enumerate(shard_inputs):
+        child = await StageExecution.objects.acreate(
+            run_id=parent.run_id,
+            stage_key=parent.stage_key,
+            parent=parent,
+            shard_index=i,
+            status=StageStatus.QUEUED,
+            queue=parent.queue,
+            max_retries=parent.max_retries,
+            input_snapshot=shard_input,
+            input_hash='',
+        )
+        await execute_stage_kiq(str(child.id))
+
+
+async def _maybe_complete_fan_out_parent(  # noqa: C901
+    child: 'StageExecution',
+) -> None:
+    """After a child terminal event, update parent status if all shards done."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    parent_id = child.parent_id
+    assert parent_id is not None
+    parent = await StageExecution.objects.aget(id=parent_id)
+    if parent.status in {StageStatus.SUCCEEDED, StageStatus.FAILED}:
+        return
+
+    shard_statuses: dict[int, str] = {}
+    async for sib in StageExecution.objects.filter(parent=parent).order_by(
+        'shard_index',
+        '-attempt',
+    ):
+        if (
+            sib.shard_index is not None
+            and sib.shard_index not in shard_statuses
+        ):
+            shard_statuses[sib.shard_index] = sib.status
+
+    terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
+    values = set(shard_statuses.values())
+
+    if all(s in terminal for s in values):
+        parent.status = StageStatus.SUCCEEDED
+        parent.output = {
+            'shards': [
+                {'shard_index': idx, 'status': st}
+                for idx, st in sorted(shard_statuses.items())
+            ],
+        }
+        parent.finished_at = tz.now()
+        await parent.asave(update_fields=['status', 'output', 'finished_at'])
+        await advance_pipeline_kiq(str(parent.run_id))
+    elif StageStatus.FAILED in values:
+        in_flight = await StageExecution.objects.filter(
+            parent=parent,
+            status__in=[StageStatus.QUEUED, StageStatus.RUNNING],
+        ).aexists()
+        if not in_flight:
+            parent.status = StageStatus.FAILED
+            parent.error = {'message': 'one or more shards failed'}
+            parent.finished_at = tz.now()
+            await parent.asave(
+                update_fields=['status', 'error', 'finished_at'],
+            )
+            await advance_pipeline_kiq(str(parent.run_id))
+
+
 async def _run_stage(
     execution: 'StageExecution',
     stage_cls: 'type[Stage]',
@@ -123,8 +212,8 @@ async def _run_stage(
         await kick_advance(execution)
 
 
-async def execute_stage_impl(execution_id: str) -> None:
-    """Core executor: idempotency check -> run -> retry/fatal/complete."""
+async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
+    """Core executor: idempotency check, fan-out, run, retry/fatal handling."""
     from server.apps.pipelines.models import StageExecution  # noqa: PLC0415
     from server.apps.pipelines.services.context import (  # noqa: PLC0415
         build_context,
@@ -158,6 +247,7 @@ async def execute_stage_impl(execution_id: str) -> None:
             'upstream': ctx.upstream,
             'config': ctx.config,
             'prompt_snapshot': ctx.run.prompt_snapshot,
+            'input_snapshot': execution.input_snapshot,
         })
         await execution.asave(update_fields=['input_hash'])
 
@@ -170,5 +260,16 @@ async def execute_stage_impl(execution_id: str) -> None:
         await _complete(execution, cached.output, cost=Decimal(0))
         await kick_advance(execution)
         return
+
+    # Fan-out: only for top-level (non-child) executions
+    if execution.parent_id is None:
+        shard_inputs = stage_cls().fan_out(ctx)
+        if shard_inputs is not None:
+            already_fanned = await StageExecution.objects.filter(
+                parent=execution,
+            ).aexists()
+            if not already_fanned:
+                await _handle_fan_out(execution, shard_inputs)
+            return
 
     await _run_stage(execution, stage_cls, ctx)

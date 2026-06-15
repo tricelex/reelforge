@@ -35,6 +35,28 @@ ignore_imports =
   # Pipeline services need prompts/assets models; deferred runtime imports
   server.apps.pipelines.services.prompt_renderer -> server.apps.prompts.models
   server.apps.pipelines.services.asset_writer -> server.apps.assets.models
+  # Pipeline stages use generation provider clients (generation is a client
+  # library whose sole consumer is pipeline stages — cross-app by design)
+  server.apps.pipelines.stages.research -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.research -> server.apps.generation.clients.search
+  server.apps.pipelines.stages.outline -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.visual_prompts -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.image_gen -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.tts -> server.apps.generation.clients.elevenlabs
+  server.apps.pipelines.stages.motion -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.alignment -> server.apps.generation.clients.whisperx
+  server.apps.pipelines.stages.music_plan -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.thumbnail -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.metadata -> server.apps.generation.clients.llm
+  # Pipeline stages save assets and reference AssetKind from the assets app
+  server.apps.pipelines.stages.image_gen -> server.apps.assets.models
+  server.apps.pipelines.stages.tts -> server.apps.assets.models
+  server.apps.pipelines.stages.motion -> server.apps.assets.models
+  server.apps.pipelines.stages.alignment -> server.apps.assets.models
+  server.apps.pipelines.stages.thumbnail -> server.apps.assets.models
+  server.apps.pipelines.stages.music_plan -> server.apps.assets.models
 
 
 [importlinter:contract:common-module-is-independent]

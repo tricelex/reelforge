@@ -58,7 +58,9 @@ class Channel(UUIDModel, TimeStampedModel):
     )
     # Gate keys that are armed for this channel (e.g. ['storyboard_gate'])
     gates = ArrayField(
-        models.CharField(max_length=40), default=list, blank=True,
+        models.CharField(max_length=40),
+        default=list,
+        blank=True,
     )
     character_design_mode = models.CharField(
         max_length=15,
@@ -66,7 +68,10 @@ class Channel(UUIDModel, TimeStampedModel):
         default=CharacterDesignMode.INTERACTIVE,
     )
     default_budget_usd = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True,
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
     )
     voice_id = models.CharField(max_length=100, blank=True)
     stability = models.FloatField(default=0.5)
@@ -105,7 +110,9 @@ class NicheConfig(UUIDModel, TimeStampedModel):
     """Content configuration for one channel: audience, angle, format, lore."""
 
     channel = models.OneToOneField(
-        Channel, on_delete=models.CASCADE, related_name='niche_config',
+        Channel,
+        on_delete=models.CASCADE,
+        related_name='niche_config',
     )
     format = models.ForeignKey(
         'prompts.StoryFormat',
@@ -117,7 +124,9 @@ class NicheConfig(UUIDModel, TimeStampedModel):
     audience = models.TextField(blank=True)
     angle = models.TextField(blank=True)
     banned_topics = ArrayField(
-        models.CharField(max_length=200), default=list, blank=True,
+        models.CharField(max_length=200),
+        default=list,
+        blank=True,
     )
     lore_document = models.TextField(blank=True)
 
@@ -136,7 +145,9 @@ class YouTubeCredential(UUIDModel, TimeStampedModel):
     """OAuth2 tokens for the YouTube Data API for one channel."""
 
     channel = models.OneToOneField(
-        Channel, on_delete=models.CASCADE, related_name='youtube_credential',
+        Channel,
+        on_delete=models.CASCADE,
+        related_name='youtube_credential',
     )
     access_token = models.TextField()
     refresh_token = models.TextField()
@@ -153,7 +164,9 @@ class ChannelBranding(UUIDModel):
     """Branding assets and style config attached to a channel."""
 
     channel = models.OneToOneField(
-        Channel, on_delete=models.CASCADE, related_name='branding',
+        Channel,
+        on_delete=models.CASCADE,
+        related_name='branding',
     )
     intro = models.ForeignKey(
         'assets.LibraryAsset',
@@ -186,10 +199,14 @@ class ChannelBranding(UUIDModel):
         related_name='+',
     )
     fonts = models.ManyToManyField(
-        'assets.LibraryAsset', related_name='+', blank=True,
+        'assets.LibraryAsset',
+        related_name='+',
+        blank=True,
     )
     music_pool_tags = ArrayField(
-        models.CharField(max_length=40), default=list, blank=True,
+        models.CharField(max_length=40),
+        default=list,
+        blank=True,
     )
     thumbnail_palette = models.JSONField(default=dict)
 
@@ -225,7 +242,9 @@ class Character(UUIDModel, TimeStampedModel):
         related_name='+',
     )
     total_creation_cost_usd = models.DecimalField(
-        max_digits=8, decimal_places=4, default=0,
+        max_digits=8,
+        decimal_places=4,
+        default=0,
     )
     origin = models.CharField(
         max_length=10,
@@ -266,10 +285,14 @@ class CharacterSheetItem(UUIDModel):
     """Angle/expression/outfit variant for a character."""
 
     character = models.ForeignKey(
-        Character, on_delete=models.CASCADE, related_name='sheet',
+        Character,
+        on_delete=models.CASCADE,
+        related_name='sheet',
     )
     asset = models.ForeignKey(
-        'assets.LibraryAsset', on_delete=models.PROTECT, related_name='+',
+        'assets.LibraryAsset',
+        on_delete=models.PROTECT,
+        related_name='+',
     )
     label = models.CharField(max_length=60)
 
@@ -283,7 +306,9 @@ class CharacterGenerationSession(UUIDModel, TimeStampedModel):
     """One Studio iteration: prompt, refs, candidates, cost per round."""
 
     character = models.ForeignKey(
-        Character, on_delete=models.CASCADE, related_name='sessions',
+        Character,
+        on_delete=models.CASCADE,
+        related_name='sessions',
     )
     # run FK to pipelines.PipelineRun added in Phase 2 migration
     rounds = models.JSONField(default=list)

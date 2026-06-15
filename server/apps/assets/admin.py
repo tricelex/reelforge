@@ -35,7 +35,11 @@ class AssetAdmin(ModelAdmin):  # type: ignore[misc]
     list_filter = ('kind',)
     search_fields = ('checksum',)
     readonly_fields: ClassVar = (
-        'checksum', 'mime', 'meta', 'created_at', 'updated_at',
+        'checksum',
+        'mime',
+        'meta',
+        'created_at',
+        'updated_at',
     )
 
 

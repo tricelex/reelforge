@@ -7,7 +7,8 @@ from django.conf import settings
 def get_redis() -> aioredis.Redis:
     """Return a configured async Redis client; callers must close it."""
     return aioredis.from_url(  # type: ignore[no-untyped-call, no-any-return]
-        settings.REDIS_URL, decode_responses=False,
+        settings.REDIS_URL,
+        decode_responses=False,
     )
 
 

@@ -68,7 +68,11 @@ class CharacterAdmin(ModelAdmin):  # type: ignore[misc]
     """Admin panel for Character."""
 
     list_display = (
-        'name', 'channel', 'status', 'origin', 'total_creation_cost_usd',
+        'name',
+        'channel',
+        'status',
+        'origin',
+        'total_creation_cost_usd',
     )
     list_filter = ('status', 'origin')
     search_fields = ('name',)

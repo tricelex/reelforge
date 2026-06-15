@@ -183,6 +183,7 @@ def test_kick_advance_sends_advance_pipeline_kiq() -> None:
 
         mock_exec = MagicMock()
         mock_exec.run_id = 'run-abc'
+        mock_exec.parent_id = None
         with patch('server.apps.pipelines.tasks.advance_pipeline') as mock_task:
             mock_task.kiq = AsyncMock()
             await kick_advance(mock_exec)
@@ -364,6 +365,31 @@ def test_prompt_renderer_render_returns_prompts_with_version_id() -> None:
                 'Research this topic: {topic}',
             )
             mock_pv_cls.objects.aget.assert_called_once_with(id='uuid-456')
+
+    asyncio.run(_inner())
+
+
+def test_prompt_renderer_render_applies_jinja2_variables() -> None:
+    """render() substitutes Jinja2 {{ var }} expressions from the variables dict."""
+    from server.apps.pipelines.services.prompt_renderer import (  # noqa: PLC0415
+        PromptRenderer,
+    )
+
+    renderer = PromptRenderer({})
+    mock_pv = MagicMock()
+    mock_pv.system_prompt = 'You are a {{ role }}.'
+    mock_pv.user_prompt = 'Research {{ topic }}.'
+
+    async def _inner() -> None:
+        with patch('server.apps.prompts.models.PromptVersion') as mock_pv_cls:
+            mock_pv_cls.objects.filter.return_value.afirst = AsyncMock(
+                return_value=mock_pv,
+            )
+            sys, usr = await renderer.render(
+                'test_key', {'role': 'expert', 'topic': 'Rome'},
+            )
+            assert sys == 'You are a expert.'
+            assert usr == 'Research Rome.'
 
     asyncio.run(_inner())
 
@@ -919,3 +945,282 @@ def test_advance_skips_unknown_stage_key_silently(channel: Channel) -> None:
         assert count == 0
 
     _run(_inner())
+
+
+# ---------------------------------------------------------------------------
+# executor.py: _maybe_complete_fan_out_parent edge-cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_no_op_when_parent_already_succeeded(
+    run: PipelineRun,
+) -> None:
+    """_maybe_complete_fan_out_parent returns early if parent is already SUCCEEDED."""
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+        )
+        child = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+        )
+        await _maybe_complete_fan_out_parent(child)
+
+        # Early return: parent's finished_at was never set (no asave called)
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.SUCCEEDED
+        assert refreshed.finished_at is None
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_uses_latest_attempt_per_shard(
+    run: PipelineRun,
+) -> None:
+    """With multiple attempts for a shard, only the latest (highest attempt) status counts."""
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        # attempt 0 FAILED, attempt 1 SUCCEEDED — latest wins (branch 153->148 covered)
+        await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            attempt=0,
+            status=StageStatus.FAILED,
+            input_hash='',
+        )
+        child_latest = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            attempt=1,
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+        )
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            new=AsyncMock(),
+        ):
+            await _maybe_complete_fan_out_parent(child_latest)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.SUCCEEDED
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_fails_parent_when_shard_failed_and_no_in_flight(
+    run: PipelineRun,
+) -> None:
+    """Parent is marked FAILED when a shard is FAILED and no siblings remain in-flight."""
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        child_failed = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.FAILED,
+            input_hash='',
+        )
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            new=AsyncMock(),
+        ) as mock_advance:
+            await _maybe_complete_fan_out_parent(child_failed)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.FAILED
+        assert refreshed.error == {'message': 'one or more shards failed'}
+        mock_advance.assert_called_once()
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_waits_when_in_flight_shards_remain(
+    run: PipelineRun,
+) -> None:
+    """Parent stays RUNNING when a shard fails but other siblings are still in-flight."""
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        child_failed = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.FAILED,
+            input_hash='',
+        )
+        # Shard 1 is still QUEUED → in_flight=True → parent must NOT be marked FAILED yet
+        await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=1,
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        await _maybe_complete_fan_out_parent(child_failed)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.RUNNING
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_stage_already_fanned_returns_without_creating_new_children(
+    run: PipelineRun,
+) -> None:
+    """execute_stage_impl on a fan-out parent with existing children is a no-op."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
+    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        execute_stage_impl,
+    )
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        Stage,
+        StageContext,
+        register_stage,
+    )
+
+    async def _inner() -> None:
+        @register_stage
+        class _FanIdempotentCovStage(Stage):
+            """Fan-out stage for idempotency guard coverage."""
+
+            key = '_fan_idempotent_cov'
+            queue = 'api'
+            max_retries = 0
+            timeout_s = 10
+
+            def fan_out(
+                self, ctx: StageContext,
+            ) -> list[dict[str, object]] | None:
+                """Return two shards."""
+                return [{'shard': 0}, {'shard': 1}]
+
+            async def run(
+                self, ctx: StageContext,
+            ) -> dict[str, object]:  # pragma: no cover
+                """Return empty dict."""
+                return {}
+
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='_fan_idempotent_cov',
+            status=StageStatus.RUNNING,
+            input_hash='precomputed-hash',
+        )
+        # Child already exists → already_fanned=True
+        await StageExecution.objects.acreate(
+            run=run,
+            stage_key='_fan_idempotent_cov',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+
+        mock_kiq = AsyncMock()
+        with (
+            patch(
+                'server.apps.pipelines.services.executor.execute_stage_kiq',
+                new=mock_kiq,
+            ),
+            patch(
+                'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+                new=AsyncMock(),
+            ),
+        ):
+            await execute_stage_impl(str(parent.id))
+
+        # No new child executions kicked — guard returned early
+        mock_kiq.assert_not_called()
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.RUNNING
+
+    _run(_inner())
+
+
+# ---------------------------------------------------------------------------
+# Stage registration
+# ---------------------------------------------------------------------------
+
+
+def test_all_production_stages_registered() -> None:
+    """All 12 production stages appear in STAGE_REGISTRY after importing them."""
+    import server.apps.pipelines.stages.alignment  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.image_gen  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.metadata  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.motion  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.music_plan  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.outline  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.research  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.scene_breakdown  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.script  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.thumbnail  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.tts  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.visual_prompts  # noqa: F401, PLC0415
+    from server.apps.pipelines.stages.base import (
+        STAGE_REGISTRY,
+    )
+
+    expected = {
+        'research',
+        'outline',
+        'script',
+        'scene_breakdown',
+        'visual_prompts',
+        'image_gen',
+        'tts',
+        'motion',
+        'alignment',
+        'music_plan',
+        'thumbnail',
+        'metadata',
+    }
+    assert expected.issubset(set(STAGE_REGISTRY.keys()))

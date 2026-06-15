@@ -84,10 +84,12 @@ def test_library_asset_creation() -> None:
 @pytest.mark.django_db
 def test_asset_rendition_links_to_library_asset() -> None:
     la = LibraryAsset.objects.create(
-        kind=LibraryAssetKind.INTRO, name='Intro Clip',
+        kind=LibraryAssetKind.INTRO,
+        name='Intro Clip',
     )
     rendition = AssetRendition.objects.create(
-        source=la, profile='1080p30_h264',
+        source=la,
+        profile='1080p30_h264',
     )
     assert rendition.source_id == la.id
     assert '1080p30_h264' in str(rendition)
@@ -106,6 +108,7 @@ def test_asset_creation() -> None:
 
 def test_asset_upload_path_contains_kind_and_filename() -> None:
     from server.apps.assets.models import asset_upload_path
+
     asset = Asset(kind=AssetKind.IMAGE)
     path = asset_upload_path(asset, 'photo.jpg')
     assert path.startswith('generated/IMAGE/')

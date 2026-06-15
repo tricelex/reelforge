@@ -54,8 +54,11 @@ def test_character_defaults_persisted() -> None:
     from decimal import Decimal
 
     from server.apps.channels.models import CharacterOrigin
+
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
-    char = Character.objects.create(channel=ch, name='King Alaric', appearance_prompt='tall')
+    char = Character.objects.create(
+        channel=ch, name='King Alaric', appearance_prompt='tall',
+    )
     assert char.status == CharacterStatus.DRAFT
     assert char.origin == CharacterOrigin.RUN
     assert char.total_creation_cost_usd == Decimal(0)
@@ -64,8 +67,11 @@ def test_character_defaults_persisted() -> None:
 @pytest.mark.django_db
 def test_niche_config_links_to_channel() -> None:
     from server.apps.channels.models import NicheConfig
+
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
-    nc = NicheConfig.objects.create(channel=ch, audience='adults', angle='historical')
+    nc = NicheConfig.objects.create(
+        channel=ch, audience='adults', angle='historical',
+    )
     assert nc.channel_id == ch.id
     assert nc.banned_topics == []
 
@@ -73,6 +79,7 @@ def test_niche_config_links_to_channel() -> None:
 @pytest.mark.django_db
 def test_channel_branding_defaults() -> None:
     from server.apps.channels.models import ChannelBranding
+
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     branding = ChannelBranding.objects.create(channel=ch)
     assert branding.fonts.count() == 0
@@ -84,6 +91,7 @@ def test_channel_branding_defaults() -> None:
 @pytest.mark.django_db
 def test_character_generation_session_rounds_default_empty() -> None:
     from server.apps.channels.models import CharacterGenerationSession
+
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     char = Character.objects.create(channel=ch, name='K', appearance_prompt='p')
     session = CharacterGenerationSession.objects.create(character=char)
@@ -102,22 +110,32 @@ def test_str_methods_for_channel_related_models() -> None:
     )
 
     ch = Channel.objects.create(name='Doc Hub', kind=ChannelKind.LONGFORM)
-    nc = NicheConfig.objects.create(channel=ch, audience='adults', angle='historical')
+    nc = NicheConfig.objects.create(
+        channel=ch, audience='adults', angle='historical',
+    )
     assert 'Doc Hub' in str(nc)
 
     yt = YouTubeCredential.objects.create(
-        channel=ch, access_token='tok', refresh_token='ref',
+        channel=ch,
+        access_token='tok',
+        refresh_token='ref',
     )
     assert 'Doc Hub' in str(yt)
 
     branding = ChannelBranding.objects.create(channel=ch)
     assert 'Doc Hub' in str(branding)
 
-    char = Character.objects.create(channel=ch, name='Hero', appearance_prompt='tall')
+    char = Character.objects.create(
+        channel=ch, name='Hero', appearance_prompt='tall',
+    )
     assert str(char) == 'Hero'
 
-    asset = LibraryAsset.objects.create(kind=LibraryAssetKind.CHARACTER_REF, name='ref.png')
-    sheet_item = CharacterSheetItem.objects.create(character=char, asset=asset, label='front')
+    asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.CHARACTER_REF, name='ref.png',
+    )
+    sheet_item = CharacterSheetItem.objects.create(
+        character=char, asset=asset, label='front',
+    )
     assert 'Hero' in str(sheet_item)
     assert 'front' in str(sheet_item)
 

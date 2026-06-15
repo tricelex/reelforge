@@ -1,3 +1,5 @@
+from typing import override
+
 from django.apps import AppConfig
 
 
@@ -7,3 +9,20 @@ class PipelinesConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'server.apps.pipelines'
     verbose_name = 'Pipelines'
+
+    @override
+    def ready(self) -> None:
+        """Register all pipeline stage classes."""
+        import server.apps.pipelines.stages.alignment  # noqa: F401
+        import server.apps.pipelines.stages.dummy  # noqa: F401
+        import server.apps.pipelines.stages.image_gen  # noqa: F401
+        import server.apps.pipelines.stages.metadata  # noqa: F401
+        import server.apps.pipelines.stages.motion  # noqa: F401
+        import server.apps.pipelines.stages.music_plan  # noqa: F401
+        import server.apps.pipelines.stages.outline  # noqa: F401
+        import server.apps.pipelines.stages.research  # noqa: F401
+        import server.apps.pipelines.stages.scene_breakdown  # noqa: F401
+        import server.apps.pipelines.stages.script  # noqa: F401
+        import server.apps.pipelines.stages.thumbnail  # noqa: F401
+        import server.apps.pipelines.stages.tts  # noqa: F401
+        import server.apps.pipelines.stages.visual_prompts  # noqa: F401
