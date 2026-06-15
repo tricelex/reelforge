@@ -21,8 +21,15 @@ def _inject_main(container: Container) -> None:
     container.register(BlogPostService, scope=Scope.singleton)
 
 
+def _inject_clips(container: Container) -> None:
+    from server.apps.clips.services import ClipCandidateService
+
+    container.register(ClipCandidateService, scope=Scope.singleton)
+
+
 def populate_dependencies(container: Container) -> Container:
     """Populate the container with all application dependencies."""
     _inject_django(container)
     _inject_main(container)
+    _inject_clips(container)
     return container
