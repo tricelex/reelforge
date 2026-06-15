@@ -32,3 +32,13 @@ def test_seed_blueprints_is_idempotent() -> None:
     call_command('seed_blueprints')
 
     assert PipelineBlueprint.objects.filter(name='longform_v1').count() == 1
+
+
+@pytest.mark.django_db
+def test_seed_blueprints_includes_assembly_and_qc() -> None:
+    """Seeded blueprint contains assembly and qc stages."""
+    call_command('seed_blueprints')
+    bp = PipelineBlueprint.objects.get(name='longform_v1')
+    stage_keys = {s['key'] for s in bp.graph['stages']}
+    assert 'assembly' in stage_keys
+    assert 'qc' in stage_keys

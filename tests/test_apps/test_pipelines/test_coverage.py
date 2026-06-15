@@ -1192,13 +1192,15 @@ def test_execute_stage_already_fanned_returns_without_creating_new_children(
 
 
 def test_all_production_stages_registered() -> None:
-    """All 12 production stages appear in STAGE_REGISTRY after importing them."""
+    """All 14 production stages appear in STAGE_REGISTRY after importing them."""
     import server.apps.pipelines.stages.alignment  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.assembly  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.image_gen  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.metadata  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.motion  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.music_plan  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.outline  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.qc  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.research  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.scene_breakdown  # noqa: F401, PLC0415
     import server.apps.pipelines.stages.script  # noqa: F401, PLC0415
@@ -1222,5 +1224,7 @@ def test_all_production_stages_registered() -> None:
         'music_plan',
         'thumbnail',
         'metadata',
+        'assembly',
+        'qc',
     }
     assert expected.issubset(set(STAGE_REGISTRY.keys()))

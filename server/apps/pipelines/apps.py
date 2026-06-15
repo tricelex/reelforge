@@ -26,3 +26,5 @@ class PipelinesConfig(AppConfig):
         import server.apps.pipelines.stages.thumbnail  # noqa: F401
         import server.apps.pipelines.stages.tts  # noqa: F401
         import server.apps.pipelines.stages.visual_prompts  # noqa: F401
+        import server.apps.pipelines.stages.assembly  # noqa: F401
+        import server.apps.pipelines.stages.qc  # noqa: F401

@@ -59,6 +59,16 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'depends_on': ['script', 'alignment'],
             'queue': 'api',
         },
+        {
+            'key': 'assembly',
+            'depends_on': ['motion', 'tts', 'alignment', 'music_plan'],
+            'queue': 'render',
+        },
+        {
+            'key': 'qc',
+            'depends_on': ['assembly'],
+            'queue': 'render',
+        },
     ],
 }
 
