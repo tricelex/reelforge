@@ -71,6 +71,24 @@ def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
     )
 
 
+def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
+    """Create a RUNNING StageExecution for a gate; park run at AWAITING_REVIEW."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key=stage_key,
+        status=StageStatus.RUNNING,
+        input_hash='',
+    )
+    run.status = RunStatus.AWAITING_REVIEW
+    run.save(update_fields=['status'])
+
+
 def _create_queued_stage_sync(
     run: 'PipelineRun',
     node: dict[str, Any],
@@ -170,12 +188,21 @@ def _process_node_sync(
         states[key] = StageStatus.SKIPPED
         return
 
+    # Armed gate: park run at AWAITING_REVIEW (no executor call).
+    if node.get('gate'):
+        deps: list[str] = node.get('depends_on', [])
+        terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
+        if all(states.get(d) in terminal for d in deps):
+            _park_gate_sync(run, key)
+            states[key] = StageStatus.RUNNING
+        return
+
     if key not in STAGE_REGISTRY:
         return
 
-    deps: list[str] = node.get('depends_on', [])
-    terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
-    deps_ok = all(states.get(d) in terminal for d in deps)
+    stage_deps: list[str] = node.get('depends_on', [])
+    stage_terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
+    deps_ok = all(states.get(d) in stage_terminal for d in stage_deps)
     if deps_ok:
         exec_id = _create_queued_stage_sync(run, node)
         to_enqueue.append(exec_id)
@@ -232,6 +259,54 @@ def _advance_in_transaction(
 
 
 _advance_in_transaction_async = sync_to_async(_advance_in_transaction)
+
+
+def _approve_gate_sync(
+    run_id: str,
+    gate_key: str,
+    output: dict[str, Any],
+) -> None:
+    """Mark gate SUCCEEDED and resume the run (sync, called from sync_to_async)."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    with transaction.atomic():
+        run = (
+            PipelineRun.objects
+            .select_for_update()
+            .select_related('channel')
+            .get(id=uuid.UUID(run_id))
+        )
+        execution = StageExecution.objects.select_for_update().get(
+            run=run,
+            stage_key=gate_key,
+            parent=None,
+            status=StageStatus.RUNNING,
+        )
+        execution.status = StageStatus.SUCCEEDED
+        execution.output = output
+        execution.finished_at = tz.now()
+        execution.save(update_fields=['status', 'output', 'finished_at'])
+
+        run.status = RunStatus.RUNNING
+        run.save(update_fields=['status'])
+
+
+_approve_gate_sync_async = sync_to_async(_approve_gate_sync)
+
+
+async def approve_gate_impl(
+    run_id: str,
+    gate_key: str,
+    output: dict[str, Any],
+) -> None:
+    """Public async entry point: approve a gate and re-evaluate the DAG."""
+    await _approve_gate_sync_async(run_id, gate_key, output)
+    await advance_pipeline_impl(run_id)
 
 
 async def advance_pipeline_impl(run_id: str) -> None:

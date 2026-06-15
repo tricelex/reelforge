@@ -487,3 +487,213 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
         assert gate_exec.status == StageStatus.SKIPPED
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
+    """An armed gate sets run.status=AWAITING_REVIEW and creates a RUNNING execution."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    channel = Channel.objects.create(
+        name='Gate Channel',
+        kind=ChannelKind.LONGFORM,
+        gates=['final_gate'],  # gate is armed
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='gate_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {
+                    'key': 'final_gate',
+                    'depends_on': [],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='gate test',
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.AWAITING_REVIEW
+    exec_ = StageExecution.objects.get(run=run, stage_key='final_gate')
+    assert exec_.status == StageStatus.RUNNING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_pipeline_skips_unarmed_gate():
+    """A gate NOT in channel.gates is auto-skipped."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+
+    channel = Channel.objects.create(
+        name='No Gate Channel',
+        kind=ChannelKind.LONGFORM,
+        gates=[],  # gate NOT armed
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='gate_skip_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {
+                    'key': 'final_gate',
+                    'depends_on': [],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='skip gate test',
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    exec_ = StageExecution.objects.get(run=run, stage_key='final_gate')
+    assert exec_.status == StageStatus.SKIPPED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_approve_gate_marks_succeeded_and_resumes():
+    """approve_gate_impl marks the gate SUCCEEDED and sets run back to RUNNING."""
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    from server.apps.channels.models import (  # noqa: PLC0415
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    channel = Channel.objects.create(
+        name='Approve Channel',
+        kind=ChannelKind.LONGFORM,
+        gates=['final_gate'],
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='approve_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {
+                    'key': 'final_gate',
+                    'depends_on': [],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='approve test',
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        advance_pipeline_impl,
+        approve_gate_impl,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.AWAITING_REVIEW
+
+    output = {'approved': True, 'thumbnail_asset_id': None}
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(approve_gate_impl(str(run.id), 'final_gate', output))
+
+    run.refresh_from_db()
+    assert run.status in {RunStatus.RUNNING, RunStatus.COMPLETED}
+    exec_ = StageExecution.objects.get(run=run, stage_key='final_gate')
+    assert exec_.status == StageStatus.SUCCEEDED
+    assert exec_.output == output
