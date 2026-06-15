@@ -2,7 +2,11 @@
 
 from typing import Any, override
 
-from server.apps.pipelines.stages.base import Stage, StageContext, register_stage
+from server.apps.pipelines.stages.base import (
+    Stage,
+    StageContext,
+    register_stage,
+)
 
 
 @register_stage

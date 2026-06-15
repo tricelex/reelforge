@@ -10,7 +10,11 @@ import httpx
 from server.apps.assets.models import Asset
 from server.apps.channels.models import YouTubeCredential
 from server.apps.generation.clients import youtube as yt_client
-from server.apps.pipelines.stages.base import Stage, StageContext, register_stage
+from server.apps.pipelines.stages.base import (
+    Stage,
+    StageContext,
+    register_stage,
+)
 from server.apps.publishing.models import PublishJob, PublishStatus
 
 
@@ -77,7 +81,7 @@ class PublishStage(Stage):
             thumb_asset = await Asset.objects.aget(id=thumbnail_asset_id)
             thumbnail_bytes = await _download_asset(thumb_asset)
             await yt_client.set_thumbnail(
-                access_token, youtube_video_id, thumbnail_bytes
+                access_token, youtube_video_id, thumbnail_bytes,
             )
 
         job.youtube_video_id = youtube_video_id

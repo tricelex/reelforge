@@ -1,6 +1,5 @@
 from django.db import migrations
 
-
 _UP = """
 CREATE MATERIALIZED VIEW analytics_run_cost_summary AS
 SELECT

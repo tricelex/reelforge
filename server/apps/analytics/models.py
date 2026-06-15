@@ -35,7 +35,9 @@ class ChannelRoi(models.Model):
     completed_count = models.IntegerField()
     total_spend_usd = models.DecimalField(max_digits=12, decimal_places=4)
     avg_cost_usd = models.DecimalField(
-        max_digits=10, decimal_places=4, null=True
+        max_digits=10,
+        decimal_places=4,
+        null=True,
     )
 
     class Meta:
@@ -53,7 +55,9 @@ class StagePerformance(models.Model):
     avg_duration_s = models.FloatField(null=True)
     total_cost_usd = models.DecimalField(max_digits=12, decimal_places=4)
     avg_cost_per_execution_usd = models.DecimalField(
-        max_digits=10, decimal_places=4, null=True
+        max_digits=10,
+        decimal_places=4,
+        null=True,
     )
 
     class Meta:

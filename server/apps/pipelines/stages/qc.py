@@ -6,7 +6,11 @@ import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, override
 
-from server.apps.pipelines.stages.base import Stage, StageContext, register_stage
+from server.apps.pipelines.stages.base import (
+    Stage,
+    StageContext,
+    register_stage,
+)
 from server.common.exceptions import FatalProviderError
 
 _DURATION_DRIFT_MAX = 0.03
@@ -30,7 +34,7 @@ async def _fetch_asset_to_tempfile(asset_id: str) -> str:
 
 
 def _check_duration_drift(
-    actual_s: float, expected_s: float
+    actual_s: float, expected_s: float,
 ) -> dict[str, Any] | None:
     """Return failure dict if drift > 3%, else None."""
     if expected_s <= 0:
@@ -129,7 +133,7 @@ async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
     text = stderr.decode()
     events: list[dict[str, float]] = []
     for m in re.finditer(
-        r'freeze_start: ([\d.]+).*?freeze_end: ([\d.]+)', text, re.DOTALL
+        r'freeze_start: ([\d.]+).*?freeze_end: ([\d.]+)', text, re.DOTALL,
     ):
         duration = float(m.group(2)) - float(m.group(1))
         if duration > _BLACK_FREEZE_MAX_S:
@@ -164,14 +168,14 @@ async def _run_loudness_check(path: str) -> dict[str, float]:
         if 'I:' in line and 'LUFS' in line:
             try:
                 integrated = float(
-                    line.split('I:')[1].split('LUFS')[0].strip()
+                    line.split('I:')[1].split('LUFS')[0].strip(),
                 )
             except (IndexError, ValueError):
                 pass
         if 'True peak:' in line:
             try:
                 tp = float(
-                    line.split('True peak:')[1].split('dBFS')[0].strip()
+                    line.split('True peak:')[1].split('dBFS')[0].strip(),
                 )
             except (IndexError, ValueError):
                 pass
@@ -204,7 +208,7 @@ class QCStage(Stage):
 
             probe = await ffmpeg.async_ffprobe(video_path)
             actual_duration = float(
-                probe.get('format', {}).get('duration', 0.0)
+                probe.get('format', {}).get('duration', 0.0),
             )
             streams = probe.get('streams', [])
             video_streams = [
@@ -224,7 +228,7 @@ class QCStage(Stage):
                 failures.append({'check': 'av_sync', 'reason': 'no_video_stream'})
             else:
                 fps = _parse_fps(
-                    video_streams[0].get('r_frame_rate', '0/1')
+                    video_streams[0].get('r_frame_rate', '0/1'),
                 )
                 if abs(fps - _FPS_EXPECTED) > 0.1:
                     failures.append({
