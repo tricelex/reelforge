@@ -98,4 +98,116 @@ class AssemblyStage(Stage):
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Assemble final video from all upstream stage outputs."""
-        raise NotImplementedError
+        from server.apps.assets.models import AssetKind  # noqa: PLC0415
+        from server.apps.rendering import ffmpeg  # noqa: PLC0415
+
+        scene_asset_map = await _build_scene_asset_map(ctx)
+        chapter_audio_map = await _build_chapter_audio_map(ctx)
+
+        alignment = ctx.upstream.get('alignment', {})
+        scenes = alignment.get('scenes', [])
+        ass_asset_id: str | None = alignment.get('ass_asset_id')
+        music_entries = ctx.upstream.get('music_plan', {}).get('entries', [])
+        music_map = _build_music_map(music_entries)
+        scene_groups = _group_scenes_by_chapter(scenes)
+
+        branding = getattr(ctx.channel, 'branding', None)
+        watermark_asset_id: str | None = None
+        watermark_opacity = 0.6
+        if branding:
+            wm = getattr(branding, 'watermark', None)
+            if wm:
+                watermark_asset_id = str(wm.id)
+            watermark_opacity = float(
+                getattr(branding, 'watermark_opacity', 0.6)
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+
+            ass_path: str | None = None
+            if ass_asset_id:
+                ass_bytes = await _fetch_asset_bytes(ass_asset_id)
+                ass_file = tmp / 'captions.ass'
+                await asyncio.to_thread(ass_file.write_bytes, ass_bytes)
+                ass_path = str(ass_file)
+
+            watermark_path: str | None = None
+            if watermark_asset_id:
+                wm_bytes = await _fetch_library_bytes(watermark_asset_id)
+                wm_file = tmp / 'watermark.png'
+                await asyncio.to_thread(wm_file.write_bytes, wm_bytes)
+                watermark_path = str(wm_file)
+
+            chapter_audio_files: dict[int, str] = {}
+            for ch_idx, audio_asset_id in chapter_audio_map.items():
+                audio_bytes = await _fetch_asset_bytes(audio_asset_id)
+                audio_file = tmp / f'ch_{ch_idx:03d}.mp3'
+                await asyncio.to_thread(audio_file.write_bytes, audio_bytes)
+                chapter_audio_files[ch_idx] = str(audio_file)
+
+            chapter_files: list[str] = []
+            for ch_idx, ch_scenes in scene_groups.items():
+                scene_mezz_files: list[str] = []
+                audio_path = chapter_audio_files.get(ch_idx, '')
+                for scene in sorted(
+                    ch_scenes, key=lambda s: s['segment_idx']
+                ):
+                    scene_idx = scene.get(
+                        'scene_idx',
+                        ch_idx * 1000 + scene['segment_idx'],
+                    )
+                    vid_asset_id = scene_asset_map.get(int(scene_idx))
+                    if not vid_asset_id:
+                        continue
+                    vid_bytes = await _fetch_asset_bytes(vid_asset_id)
+                    vid_file = tmp / f'vid_{int(scene_idx):04d}.mp4'
+                    await asyncio.to_thread(vid_file.write_bytes, vid_bytes)
+                    mezz_file = tmp / f'mezz_{int(scene_idx):04d}.mp4'
+                    await ffmpeg.mux_scene(
+                        video_path=str(vid_file),
+                        audio_path=audio_path,
+                        start_s=scene['start_s'],
+                        end_s=scene['end_s'],
+                        out_path=str(mezz_file),
+                    )
+                    scene_mezz_files.append(str(mezz_file))
+                chapter_file = tmp / f'ch_{ch_idx:03d}_concat.mp4'
+                await ffmpeg.concat_chapter(scene_mezz_files, str(chapter_file))
+                chapter_files.append(str(chapter_file))
+
+            music_paths: list[str] = []
+            music_gains: list[float] = []
+            for ch_idx in sorted(scene_groups.keys()):
+                entry = music_map.get(ch_idx)
+                if entry:
+                    music_bytes = await _fetch_library_bytes(
+                        entry['library_asset_id']
+                    )
+                    music_file = tmp / f'music_{ch_idx:03d}.mp3'
+                    await asyncio.to_thread(music_file.write_bytes, music_bytes)
+                    music_paths.append(str(music_file))
+                    music_gains.append(float(entry.get('gain_db', 0.0)))
+
+            final_file = tmp / 'final.mp4'
+            await ffmpeg.final_pass(
+                chapter_paths=chapter_files,
+                music_paths=music_paths,
+                music_gains_db=music_gains,
+                ass_path=ass_path,
+                watermark_path=watermark_path,
+                out_path=str(final_file),
+                watermark_opacity=watermark_opacity,
+            )
+
+            probe = await ffmpeg.async_ffprobe(str(final_file))
+            duration_s = float(probe.get('format', {}).get('duration', 0.0))
+            video_bytes = await asyncio.to_thread(Path(final_file).read_bytes)
+
+        asset = await ctx.assets.save(
+            kind=AssetKind.FINAL_VIDEO,
+            content=video_bytes,
+            filename='final.mp4',
+            mime='video/mp4',
+        )
+        return {'asset_id': str(asset.id), 'duration_s': duration_s}
