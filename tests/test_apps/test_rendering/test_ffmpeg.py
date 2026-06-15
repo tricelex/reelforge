@@ -151,3 +151,52 @@ def test_mux_scene_raises_on_ffmpeg_failure() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'mux_scene failed' in str(e)
+
+
+from server.apps.rendering.ffmpeg import concat_chapter
+
+
+def test_concat_chapter_calls_ffmpeg_concat_demuxer() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with patch('asyncio.create_subprocess_exec', side_effect=fake_exec):
+            await concat_chapter(
+                ['/tmp/s0.mp4', '/tmp/s1.mp4'],  # noqa: S108
+                '/tmp/chapter.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert '-f' in cmd and 'concat' in cmd
+    assert '-c' in cmd and 'copy' in cmd
+    assert '/tmp/chapter.mp4' in cmd  # noqa: S108
+
+
+def test_concat_chapter_raises_on_failure() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 2
+    mock_proc.communicate = AsyncMock(return_value=(b'', b'fail'))
+
+    async def _run() -> None:
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            await concat_chapter(
+                ['/tmp/a.mp4'],  # noqa: S108
+                '/tmp/out.mp4',  # noqa: S108
+            )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected RuntimeError')
+    except RuntimeError as e:
+        assert 'concat_chapter failed' in str(e)

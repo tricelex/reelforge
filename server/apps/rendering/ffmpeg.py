@@ -151,3 +151,44 @@ async def mux_scene(
         raise RuntimeError(
             f'mux_scene failed ({proc.returncode}): {stderr.decode()[:300]}'
         )
+
+
+async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
+    """Concatenate mezzanine segments using FFmpeg concat demuxer (stream copy).
+
+    All segments must conform to mezzanine spec so -c copy is safe and fast.
+
+    Raises:
+        RuntimeError: If FFmpeg exits with non-zero return code.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode='w', suffix='.txt', delete=False
+    ) as f:
+        for seg in segment_paths:
+            f.write(f"file '{seg}'\n")
+        list_path = f.name
+
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        list_path,
+        '-c',
+        'copy',
+        out_path,
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    Path(list_path).unlink(missing_ok=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f'concat_chapter failed ({proc.returncode}): {stderr.decode()[:300]}'
+        )
