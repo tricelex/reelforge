@@ -84,7 +84,13 @@ DROP MATERIALIZED VIEW IF EXISTS analytics_run_cost_summary;
 class Migration(migrations.Migration):
     """Create three PostgreSQL materialized views for analytics."""
 
-    dependencies: list[tuple[str, str]] = []
+    dependencies: list[tuple[str, str]] = [
+        (
+            'pipelines',
+            '0002_pipelineblueprint_pipelines_pipelineblueprint_kind_valid_and_more',
+        ),
+        ('channels', '0002_character_source_run'),
+    ]
 
     operations = [
         migrations.RunSQL(sql=_UP, reverse_sql=_DOWN),
