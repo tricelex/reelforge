@@ -68,6 +68,10 @@ class SpeakerDetectionService:
         try:
             return self._mediapipe_detect(video_path, start_sec, end_sec)
         except Exception:
+            logger.warning(
+                'Face detection failed, falling back to center crop',
+                exc_info=True,
+            )
             return self._center_fallback()
 
     def _mediapipe_detect(
