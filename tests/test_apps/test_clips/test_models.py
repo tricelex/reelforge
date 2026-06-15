@@ -179,3 +179,29 @@ def test_clip_style_config_str(pipeline_run) -> None:  # type: ignore[no-untyped
         run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
     )
     assert 'Style' in str(candidate.style_config)
+
+
+@pytest.mark.django_db
+def test_clip_post_str(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+    from server.apps.clips.models import ClipPost
+
+    candidate = ClipCandidate.objects.create(
+        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+    )
+    post = ClipPost.objects.create(
+        candidate=candidate,
+        platform='youtube',
+    )
+    assert 'youtube' in str(post)
+
+
+@pytest.mark.django_db
+def test_signal_does_not_duplicate_configs_on_update(pipeline_run) -> None:  # type: ignore[no-untyped-def]
+    candidate = ClipCandidate.objects.create(
+        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+    )
+    # Save again (update, not create) — should not raise or duplicate configs
+    candidate.title = 'Updated'
+    candidate.save(update_fields=['title'])
+    assert ClipLayoutConfig.objects.filter(candidate=candidate).count() == 1
+    assert ClipStyleConfig.objects.filter(candidate=candidate).count() == 1
