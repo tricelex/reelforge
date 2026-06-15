@@ -46,3 +46,108 @@ def test_async_ffprobe_raises_on_nonzero_exit() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'ffprobe failed' in str(e)
+
+
+from server.apps.rendering.ffmpeg import mux_scene
+
+
+def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
+    """mux_scene invokes ffmpeg with -ss/-to audio trim and output path."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    fake_probe = {'format': {'duration': '8.0'}, 'streams': []}
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+        ):
+            await mux_scene(
+                video_path='/tmp/seg.mp4',  # noqa: S108
+                audio_path='/tmp/ch.mp3',  # noqa: S108
+                start_s=2.0,
+                end_s=9.5,
+                out_path='/tmp/scene.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'ffmpeg' in captured[0]
+    assert '/tmp/scene.mp4' in cmd  # noqa: S108
+
+
+def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:
+    """When motion vs narration drifts >5%, tpad is used to hold last frame."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+        ):
+            # narration=8.5s, motion=5s → drift=70% >> 5%
+            await mux_scene(
+                video_path='/tmp/seg.mp4',  # noqa: S108
+                audio_path='/tmp/ch.mp3',  # noqa: S108
+                start_s=0.0,
+                end_s=8.5,
+                out_path='/tmp/out.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'tpad' in cmd
+
+
+def test_mux_scene_raises_on_ffmpeg_failure() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+    mock_proc.communicate = AsyncMock(return_value=(b'', b'error'))
+    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+
+    async def _run() -> None:
+        with (
+            patch(
+                'asyncio.create_subprocess_exec',
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=fake_probe),
+            ),
+        ):
+            await mux_scene(
+                '/tmp/s.mp4',  # noqa: S108
+                '/tmp/a.mp3',  # noqa: S108
+                0.0,
+                5.0,
+                '/tmp/o.mp4',  # noqa: S108
+            )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected RuntimeError')
+    except RuntimeError as e:
+        assert 'mux_scene failed' in str(e)
