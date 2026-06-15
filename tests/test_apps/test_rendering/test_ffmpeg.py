@@ -200,3 +200,202 @@ def test_concat_chapter_raises_on_failure() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'concat_chapter failed' in str(e)
+
+
+import json as _json
+
+from server.apps.rendering.ffmpeg import final_pass, loudnorm_pass1
+
+_FAKE_STATS = {
+    'input_i': '-23.5',
+    'input_tp': '-2.1',
+    'input_lra': '6.2',
+    'input_thresh': '-33.5',
+    'target_offset': '0.7',
+}
+
+
+def test_loudnorm_pass1_parses_json_from_stderr() -> None:
+    stderr_output = (
+        b'[Parsed_loudnorm]\n' + _json.dumps(_FAKE_STATS).encode() + b'\n'
+    )
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', stderr_output))
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            return await loudnorm_pass1('/tmp/video.mp4')  # noqa: S108
+
+    result = asyncio.run(_run())
+    assert result['input_i'] == '-23.5'
+    assert result['input_tp'] == '-2.1'
+
+
+def test_loudnorm_pass1_raises_when_json_absent() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b'no json here'))
+
+    async def _run() -> None:
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            await loudnorm_pass1('/tmp/video.mp4')  # noqa: S108
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected ValueError')
+    except ValueError as e:
+        assert 'loudnorm JSON' in str(e)
+
+
+def test_final_pass_calls_ffmpeg_with_subtitle_filter() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=[],
+                music_gains_db=[],
+                ass_path='/tmp/subs.ass',  # noqa: S108
+                watermark_path=None,
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'subtitles=' in cmd
+    assert 'libx264' in cmd
+    assert '/tmp/final.mp4' in cmd  # noqa: S108
+
+
+def test_final_pass_omits_overlay_when_no_watermark() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=[],
+                music_gains_db=[],
+                ass_path=None,
+                watermark_path=None,
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'overlay' not in cmd
+    assert 'movie=' not in cmd
+
+
+def test_final_pass_includes_amix_when_music_provided() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=['/tmp/music.mp3'],  # noqa: S108
+                music_gains_db=[-3.0],
+                ass_path=None,
+                watermark_path=None,
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'amix' in cmd
+
+
+def test_final_pass_raises_on_ffmpeg_failure() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+    mock_proc.communicate = AsyncMock(return_value=(b'', b'encode failed'))
+
+    async def _run() -> None:
+        with (
+            patch(
+                'asyncio.create_subprocess_exec',
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                music_paths=[],
+                music_gains_db=[],
+                ass_path=None,
+                watermark_path=None,
+                out_path='/tmp/final.mp4',  # noqa: S108
+            )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected RuntimeError')
+    except RuntimeError as e:
+        assert 'final_pass failed' in str(e)
