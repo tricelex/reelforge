@@ -6,9 +6,12 @@ import logging
 import subprocess  # noqa: S404
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, final, override
+from typing import TYPE_CHECKING, final, override
 
 from server.apps.rendering.clip_stages.base import RenderStage
+
+if TYPE_CHECKING:
+    from server.apps.clips.models import ClipTimedOverlay
 
 logger = logging.getLogger('reelforge.rendering.clip_stages')
 
@@ -19,7 +22,7 @@ class TimedOverlayStage(RenderStage):
     """Stage 7: Apply timed text/image overlays."""
 
     output_path: Path
-    timed_overlays: list[Any] = field(default_factory=list)
+    timed_overlays: list[ClipTimedOverlay] = field(default_factory=list)
     crf: int = 18
     preset: str = 'slow'
 

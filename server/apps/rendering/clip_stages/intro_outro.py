@@ -17,6 +17,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger('reelforge.rendering.clip_stages')
 
 
+def _run_ffmpeg(cmd: list[str], label: str) -> None:
+    result = subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f'{label} ffmpeg failed: {result.stderr}')
+
+
 @final
 @dataclass
 class IntroConcatStage(RenderStage):
@@ -65,7 +73,6 @@ class IntroConcatStage(RenderStage):
             intro_path = tmp.name
         Path(intro_path).write_bytes(intro_bytes)
 
-        # Scale intro to target resolution
         scaled_intro = intro_path + '_scaled.mp4'
         scale_cmd = [
             'ffmpeg', '-y', '-i', intro_path,
@@ -75,9 +82,8 @@ class IntroConcatStage(RenderStage):
             '-c:a', 'aac', '-b:a', self.audio_bitrate,
             scaled_intro,
         ]
-        self._run_ffmpeg(scale_cmd, 'IntroConcatStage scale')
+        _run_ffmpeg(scale_cmd, 'IntroConcatStage scale')
 
-        # Concat intro + main
         with tempfile.NamedTemporaryFile(
             mode='w', suffix='.txt', delete=False, encoding='utf-8',
         ) as f:
@@ -90,21 +96,12 @@ class IntroConcatStage(RenderStage):
             '-f', 'concat', '-safe', '0', '-i', list_path,
             '-c', 'copy', str(self.output_path),
         ]
-        self._run_ffmpeg(concat_cmd, 'IntroConcatStage concat')
+        _run_ffmpeg(concat_cmd, 'IntroConcatStage concat')
 
         Path(intro_path).unlink(missing_ok=True)
         Path(scaled_intro).unlink(missing_ok=True)
         Path(list_path).unlink(missing_ok=True)
         return self.output_path
-
-    def _run_ffmpeg(self, cmd: list[str], label: str) -> None:
-        result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f'{label} ffmpeg failed: {result.stderr}',
-            )
 
 
 @final
@@ -164,13 +161,7 @@ class OutroConcatStage(RenderStage):
             '-c:a', 'aac', '-b:a', self.audio_bitrate,
             scaled_outro,
         ]
-        result = subprocess.run(  # noqa: S603
-            scale_cmd, capture_output=True, text=True, check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f'OutroConcatStage ffmpeg scale failed: {result.stderr}',
-            )
+        _run_ffmpeg(scale_cmd, 'OutroConcatStage scale')
 
         with tempfile.NamedTemporaryFile(
             mode='w', suffix='.txt', delete=False, encoding='utf-8',
@@ -184,13 +175,7 @@ class OutroConcatStage(RenderStage):
             '-f', 'concat', '-safe', '0', '-i', list_path,
             '-c', 'copy', str(self.output_path),
         ]
-        r2 = subprocess.run(  # noqa: S603
-            concat_cmd, capture_output=True, text=True, check=False,
-        )
-        if r2.returncode != 0:
-            raise RuntimeError(
-                f'OutroConcatStage ffmpeg concat failed: {r2.stderr}',
-            )
+        _run_ffmpeg(concat_cmd, 'OutroConcatStage concat')
 
         Path(outro_path).unlink(missing_ok=True)
         Path(scaled_outro).unlink(missing_ok=True)
