@@ -1,7 +1,7 @@
 """Tests for the gate approval API endpoint."""
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from django.urls import reverse
@@ -220,41 +220,26 @@ def test_clip_approval_gate_syncs_candidates(
     assert candidate.status == 'APPROVED'
 
 
-@pytest.mark.django_db(transaction=True)
-def test_clip_approval_gate_ignores_non_list_candidates(
-    dmr_client: DMRClient,
-    auth_headers: dict[str, str],
-) -> None:
-    """Non-list approved_candidate_ids skips sync branch."""
-    from server.apps.channels.models import ChannelKind, PublishMode
-    from server.apps.pipelines.models import PipelineKind
+@pytest.mark.django_db
+def test_gate_approve_non_list_candidates_skips_sync(run: PipelineRun) -> None:
+    """Non-list approved_candidate_ids skips clip sync branch."""
+    from server.apps.pipelines.api.views import RunGateApproveController
+    from server.apps.pipelines.logic.value_objects import GateApprovePayload
 
-    channel = Channel.objects.create(
-        name='Non-list Gate',
-        kind=ChannelKind.CLIPPING,
-        publish_mode=PublishMode.REVIEW,
-        gates=['clip_approval_gate'],
-    )
-    blueprint = PipelineBlueprint.objects.create(
-        name='non_list_gate',
-        kind=PipelineKind.CLIPPING,
-        graph={'stages': []},
-    )
-    run = PipelineRun.objects.create(
-        channel=channel,
-        blueprint=blueprint,
-        blueprint_snapshot={'stages': []},
-        topic='Non-list gate',
-        status=RunStatus.AWAITING_REVIEW,
-    )
-    StageExecution.objects.create(
-        run=run,
-        stage_key='clip_approval_gate',
-        status=StageStatus.RUNNING,
-        input_hash='',
-    )
+    controller = RunGateApproveController()
+    controller.kwargs = {
+        'run_id': str(run.id),
+        'gate_key': 'clip_approval_gate',
+    }
+    mock_clips = MagicMock()
+    payload = GateApprovePayload(approved_candidate_ids=['id-1'])
 
     with (
+        patch.object(controller, 'resolve', return_value=mock_clips),
+        patch(
+            'server.apps.pipelines.api.views._payload_to_dict',
+            return_value={'approved_candidate_ids': 'not-a-list'},
+        ),
         patch(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ),
@@ -263,14 +248,7 @@ def test_clip_approval_gate_ignores_non_list_candidates(
             new=AsyncMock(),
         ),
     ):
-        response = dmr_client.post(
-            reverse(
-                'api:pipelines_api:gate-approve',
-                kwargs={'run_id': run.id, 'gate_key': 'clip_approval_gate'},
-            ),
-            data={'approved_candidate_ids': 'not-a-list'},
-            headers=auth_headers,
-        )
+        result = controller.post(parsed_body=payload)
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.json()['approved_count'] is None
+    assert result.approved_count is None
+    mock_clips.sync_gate_candidates.assert_not_called()

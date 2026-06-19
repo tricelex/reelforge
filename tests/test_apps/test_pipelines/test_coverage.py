@@ -954,6 +954,27 @@ def test_advance_skips_unknown_stage_key_silently(channel: Channel) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_no_op_without_parent(
+    run: PipelineRun,
+) -> None:
+    """Child rows without parent_id return immediately."""
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
+    )
+
+    async def _inner() -> None:
+        child = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+        )
+        await _maybe_complete_fan_out_parent(child)
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
 def test_maybe_complete_fan_out_parent_no_op_when_parent_already_succeeded(
     run: PipelineRun,
 ) -> None:

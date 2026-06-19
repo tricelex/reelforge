@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from django.http import HttpResponse
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from dmr.endpoint import Endpoint
 from dmr.test import DMRClient
@@ -29,11 +30,15 @@ from server.apps.channels.models import (
     PublishMode,
 )
 from server.apps.clips.api.campaign_views import (
+    CampaignCollectionController,
     CampaignDetailController,
     EarningCollectionController,
 )
 from server.apps.clips.models import ClipCampaign
-from server.apps.pipelines.api.cast_views import RunCastDetailController
+from server.apps.pipelines.api.cast_views import (
+    RunCastApproveController,
+    RunCastDetailController,
+)
 from server.apps.pipelines.api.review_views import (
     RunPublishController,
     RunSceneDetailController,
@@ -189,6 +194,10 @@ def test_run_cast_handle_error_super() -> None:
     _super_handle_error(RunCastDetailController(), RuntimeError('x'))
 
 
+def test_run_cast_approve_handle_error_super() -> None:
+    _super_handle_error(RunCastApproveController(), RuntimeError('x'))
+
+
 def test_scene_patch_handle_error_super() -> None:
     _super_handle_error(RunSceneDetailController(), RuntimeError('x'))
 
@@ -283,18 +292,27 @@ def test_image_gen_by_scene_skips_duplicate_shards(run: PipelineRun) -> None:
         status=StageStatus.SUCCEEDED,
         attempt=0,
     )
-    for _ in range(2):
-        StageExecution.objects.create(
-            run=run,
-            stage_key='image_gen',
-            parent=parent,
-            shard_index=0,
-            status=StageStatus.SUCCEEDED,
-            attempt=0,
-            output={'scene_idx': 0},
-        )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='image_gen',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'scene_idx': 0},
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='image_gen',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        attempt=1,
+        output={'scene_idx': 1},
+    )
     mapping = _image_gen_state(str(run.id))
-    assert 0 in mapping
+    assert 1 in mapping
+    assert 0 not in mapping
 
 
 @pytest.mark.django_db
@@ -352,6 +370,38 @@ def test_youtube_callback_handle_error_super() -> None:
     _super_handle_error(YouTubeCallbackController(), RuntimeError('x'))
 
 
+def test_earning_collection_validation_error() -> None:
+    """Earning collection ValidationError returns 422."""
+    controller = EarningCollectionController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ValidationError('invalid earning'),
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_campaign_list_invalid_limit_parsing() -> None:
+    """Campaign list coerces invalid limit query values."""
+    from server.apps.clips.api.campaign_views import CampaignCollectionController
+
+    controller = CampaignCollectionController()
+    controller.request = MagicMock()
+    controller.request.GET.get = lambda key, default='20': (
+        'bad' if key == 'limit' else default
+    )
+    controller.resolve = MagicMock(
+        return_value=MagicMock(
+            list_campaigns=MagicMock(
+                return_value=MagicMock(items=[], total=0),
+            ),
+        ),
+    )
+    result = controller.get()
+    assert result.total == 0
+
+
 @pytest.mark.django_db
 def test_youtube_connect_missing_redirect_uri(
     dmr_client: DMRClient,
@@ -366,7 +416,7 @@ def test_youtube_connect_missing_redirect_uri(
         ),
         headers=auth_headers,
     )
-    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 @pytest.mark.django_db

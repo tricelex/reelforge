@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -219,6 +220,29 @@ def run(channel: Channel) -> PipelineRun:
         blueprint=bp,
         blueprint_snapshot={'stages': []},
         topic='cov run',
+    )
+
+
+@pytest.fixture
+def scene_breakdown_stage(run: PipelineRun) -> StageExecution:
+    return StageExecution.objects.create(
+        run=run,
+        stage_key='scene_breakdown',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'scenes': [
+                {
+                    'idx': 0,
+                    'chapter_idx': 0,
+                    'beat': 'hook',
+                    'narration_text': 'Original narration text here.',
+                    'visual_concept': 'dark alley',
+                    'word_count': 5,
+                    'est_seconds': 4.0,
+                },
+            ],
+        },
     )
 
 
@@ -617,6 +641,84 @@ def test_list_characters_status_filter(channel: Channel, character: Character) -
 
 
 @pytest.mark.django_db
+def test_list_characters_channel_filter_only(channel: Channel, character: Character) -> None:
+    """Cover character list channel_id-only filter branch."""
+    from server.apps.channels.character_selectors import list_characters
+
+    result = list_characters(channel_id=str(channel.id))
+    assert result.total == 1
+
+
+@pytest.mark.django_db
+def test_niche_patch_audience_only(channel: Channel) -> None:
+    """Cover niche patch single-field branch."""
+    from server.apps.channels.logic.value_objects import NicheConfigPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch_niche(
+        str(channel.id),
+        NicheConfigPatchPayload(audience='solo audience'),
+    )
+    assert result.audience == 'solo audience'
+
+
+@pytest.mark.django_db
+def test_run_review_update_prompt_wrong_scene_idx() -> None:
+    """Cover _update_prompt_row early return for mismatched scene_idx."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import _update_prompt_row
+
+    prompt: dict[str, object] = {'scene_idx': 1, 'prompt': 'keep'}
+    _update_prompt_row(
+        prompt,
+        0,
+        ScenePatchPayload(visual_prompt='ignored'),
+    )
+    assert prompt['prompt'] == 'keep'
+
+
+@pytest.mark.django_db
+def test_run_review_patch_scene_missing_after_board(
+    run,
+    scene_breakdown_stage,
+) -> None:
+    """Cover patch_scene when storyboard row disappears after save."""
+    from unittest.mock import patch
+
+    from server.apps.pipelines.logic.value_objects import (
+        ScenePatchPayload,
+        StoryboardPayload,
+        StoryboardRunSummaryPayload,
+    )
+    from server.apps.pipelines.services.run_review import RunReviewService
+    from server.common.storage import PresignUrlHelper
+
+    service = RunReviewService(presign=MagicMock(spec=PresignUrlHelper))
+    empty_board = StoryboardPayload(
+        run=StoryboardRunSummaryPayload(
+            id=str(run.id),
+            status=run.status,
+            gate=None,
+            spent_usd='0',
+            projected_next_usd='0',
+            budget_usd=None,
+        ),
+        scenes=[],
+    )
+    with patch(
+        'server.apps.pipelines.services.run_review.get_storyboard',
+        return_value=empty_board,
+    ):
+        with pytest.raises(ValidationError, match='not found after patch'):
+            service.patch_scene(
+                str(run.id),
+                0,
+                ScenePatchPayload(narration_text='updated narration here'),
+            )
+
+
+@pytest.mark.django_db
 def test_channel_patch_budget_only(channel: Channel) -> None:
     """Cover channel patch default_budget_usd-only branch."""
     from server.apps.channels.logic.value_objects import ChannelPatchPayload
@@ -633,7 +735,9 @@ def test_channel_patch_budget_only(channel: Channel) -> None:
 @pytest.mark.django_db
 def test_channel_branding_thumbnail_palette_only(channel: Channel) -> None:
     """Cover branding patch thumbnail_palette-only branch."""
-    from server.apps.channels.logic.value_objects import ChannelBrandingPatchPayload
+    from server.apps.channels.logic.value_objects import (
+        ChannelBrandingPatchPayload,
+    )
     from server.apps.channels.services import ChannelService
 
     service = ChannelService()
@@ -661,7 +765,9 @@ def test_campaign_patch_notes_only(channel: Channel) -> None:
 @pytest.mark.django_db
 def test_prompt_template_empty_patch(db) -> None:  # type: ignore[no-untyped-def]
     """Cover prompt template patch with no mutable fields."""
-    from server.apps.prompts.logic.value_objects import PromptTemplatePatchPayload
+    from server.apps.prompts.logic.value_objects import (
+        PromptTemplatePatchPayload,
+    )
 
     template = PromptTemplate.objects.create(
         key='empty_patch',
@@ -742,3 +848,472 @@ def test_image_gen_state_skips_missing_scene_idx(run) -> None:
         output={},
     )
     assert _image_gen_state(str(run.id)) == {}
+
+
+@pytest.mark.django_db
+def test_visual_prompts_map_skips_invalid_items(run) -> None:
+    """Cover visual prompts map when entries are not scene dicts."""
+    from server.apps.pipelines.storyboard_selectors import _visual_prompts_map
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key='visual_prompts',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'prompts': [
+                'skip-me',
+                {'scene_idx': None, 'prompt': 'skip-too'},
+                {'scene_idx': 0, 'prompt': 'keep'},
+            ],
+        },
+    )
+    assert _visual_prompts_map(str(run.id)) == {0: {'scene_idx': 0, 'prompt': 'keep'}}
+
+
+@pytest.mark.django_db
+def test_presign_asset_empty_file(run) -> None:
+    """Cover _presign_asset when asset file is empty."""
+    from server.apps.assets.models import Asset, AssetKind
+    from server.apps.pipelines.storyboard_selectors import _presign_asset
+    from server.common.storage import PresignUrlHelper
+
+    asset = Asset.objects.create(
+        kind=AssetKind.IMAGE,
+        mime='image/png',
+        checksum='empty',
+        run=run,
+    )
+    asset.file = ''
+    asset.save(update_fields=['file'])
+    presign = MagicMock(spec=PresignUrlHelper)
+    assert _presign_asset(str(asset.id), presign) == ''
+    presign.presign_get.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_presign_asset_with_stored_file(run) -> None:
+    """Cover _presign_asset presign_get path."""
+    from django.core.files.base import ContentFile
+
+    from server.apps.assets.models import Asset, AssetKind
+    from server.apps.pipelines.storyboard_selectors import _presign_asset
+    from server.common.storage import PresignUrlHelper
+
+    asset = Asset.objects.create(
+        kind=AssetKind.IMAGE,
+        mime='image/png',
+        checksum='has-file',
+        run=run,
+    )
+    asset.file.save('image.png', ContentFile(b'png'), save=True)
+    presign = MagicMock(spec=PresignUrlHelper)
+    presign.presign_get.return_value = 'https://example.com/image.png'
+    assert _presign_asset(str(asset.id), presign) == 'https://example.com/image.png'
+    presign.presign_get.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_sync_visual_prompts_without_stage(run) -> None:
+    """Cover visual prompt sync when visual_prompts stage is missing."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import _sync_visual_prompts
+
+    assert _sync_visual_prompts(
+        str(run.id),
+        0,
+        ScenePatchPayload(visual_prompt='x'),
+    ) == 'scene_breakdown'
+
+
+@pytest.mark.django_db
+def test_patch_scene_returns_matching_storyboard_row(
+    run,
+    scene_breakdown_stage,
+) -> None:
+    """Cover patch_scene loop that finds the updated scene row."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import RunReviewService
+    from server.common.storage import PresignUrlHelper
+
+    scene_breakdown_stage.output = {
+        'scenes': [
+            {
+                'idx': 0,
+                'chapter_idx': 0,
+                'beat': 'a',
+                'narration_text': 'First scene narration text.',
+                'visual_concept': 'a',
+                'word_count': 4,
+                'est_seconds': 3.0,
+            },
+            {
+                'idx': 1,
+                'chapter_idx': 0,
+                'beat': 'b',
+                'narration_text': 'Second scene narration text.',
+                'visual_concept': 'b',
+                'word_count': 4,
+                'est_seconds': 3.0,
+            },
+        ],
+    }
+    scene_breakdown_stage.save(update_fields=['output'])
+
+    service = RunReviewService(presign=MagicMock(spec=PresignUrlHelper))
+    row = service.patch_scene(
+        str(run.id),
+        1,
+        ScenePatchPayload(narration_text='Updated second scene narration.'),
+    )
+    assert row.idx == 1
+
+
+@pytest.mark.django_db
+def test_storyboard_skips_non_dict_scenes(run) -> None:
+    """Cover storyboard when scenes list contains non-dict entries."""
+    from server.apps.pipelines.storyboard_selectors import get_storyboard
+    from server.common.storage import PresignUrlHelper
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key='scene_breakdown',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'scenes': ['bad', {'idx': 0, 'narration_text': 'hi'}]},
+    )
+    presign = MagicMock(spec=PresignUrlHelper)
+    board = get_storyboard(str(run.id), presign)
+    assert len(board.scenes) == 1
+
+
+@pytest.mark.django_db
+def test_resume_pending_run_sets_running(run: PipelineRun) -> None:
+    """Cover resume branch that promotes PENDING runs to RUNNING."""
+    from server.apps.pipelines.models import RunStatus
+    from server.apps.pipelines.services.orchestrator import _resume_run_sync
+
+    run.status = RunStatus.PENDING
+    run.is_paused = True
+    run.save(update_fields=['status', 'is_paused'])
+    _resume_run_sync(str(run.id))
+    run.refresh_from_db()
+    assert run.status == RunStatus.RUNNING
+    assert run.is_paused is False
+
+
+@pytest.mark.django_db
+def test_run_cast_patch_no_fields(run, character: Character) -> None:
+    """Cover cast patch when no fields are supplied."""
+    from server.apps.channels.character_studio import CharacterStudioService
+    from server.apps.pipelines.logic.value_objects import RunCastPatchPayload
+    from server.apps.pipelines.models import RunCast
+    from server.apps.pipelines.services.run_cast import RunCastService
+
+    cast = RunCast.objects.create(
+        run=run,
+        character=character,
+        role='lead',
+    )
+    service = RunCastService(studio=CharacterStudioService())
+    result = service.patch(str(run.id), str(cast.id), RunCastPatchPayload())
+    assert result.id == str(cast.id)
+
+
+@pytest.mark.django_db
+def test_earning_create_missing_campaign(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """Cover earning collection ValidationError handler."""
+    response = dmr_client.post(
+        reverse('api:clips:earning-collection'),
+        data={
+            'campaign_id': str(uuid.uuid4()),
+            'platform': 'youtube',
+            'revenue_est_usd': '1.00',
+            'recorded_at': '2026-06-19T12:00:00',
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_list_characters_no_filters(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover character list with no filters."""
+    from server.apps.channels.character_selectors import list_characters
+
+    assert list_characters().total == 0
+
+
+@pytest.mark.django_db
+def test_list_characters_status_only_filter(character: Character) -> None:
+    """Cover character list status filter without channel_id."""
+    from server.apps.channels.character_selectors import list_characters
+
+    character.status = CharacterStatus.APPROVED
+    character.save(update_fields=['status'])
+    result = list_characters(status=CharacterStatus.APPROVED)
+    assert result.total == 1
+
+
+@pytest.mark.django_db
+def test_list_story_formats_without_active_filter(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover story format list without active_only filter."""
+    StoryFormat.objects.create(key='all_fmt', name='All', beats=[])
+    assert list_story_formats(active_only=False).total == 1
+
+
+@pytest.mark.django_db
+def test_channel_patch_empty_payload(channel: Channel) -> None:
+    """Cover channel patch when no fields change."""
+    from server.apps.channels.logic.value_objects import ChannelPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch(str(channel.id), ChannelPatchPayload())
+    assert result.id == str(channel.id)
+
+
+@pytest.mark.django_db
+def test_channel_branding_empty_patch(channel: Channel) -> None:
+    """Cover branding patch when no fields change."""
+    from server.apps.channels.logic.value_objects import ChannelBrandingPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch_branding(
+        str(channel.id),
+        ChannelBrandingPatchPayload(),
+    )
+    assert result.channel_id == str(channel.id)
+
+
+@pytest.mark.django_db
+def test_niche_patch_empty_payload(channel: Channel) -> None:
+    """Cover niche patch when no fields change."""
+    from server.apps.channels.logic.value_objects import NicheConfigPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch_niche(
+        str(channel.id),
+        NicheConfigPatchPayload(),
+    )
+    assert result.channel_id == str(channel.id)
+
+
+@pytest.mark.django_db
+def test_campaign_patch_empty_payload(channel: Channel) -> None:
+    """Cover campaign patch when no fields change."""
+    from server.apps.clips.models import ClipCampaign
+
+    campaign = ClipCampaign.objects.create(channel=channel, name='Empty')
+    service = ClipCampaignService()
+    result = service.patch_campaign(
+        str(campaign.id),
+        ClipCampaignPatchPayload(),
+    )
+    assert result.name == 'Empty'
+
+
+@pytest.mark.django_db
+def test_list_earnings_without_campaign_filter(channel: Channel) -> None:
+    """Cover earning list without campaign_id filter."""
+    from server.apps.clips.models import ClipCampaign, Earning
+
+    campaign = ClipCampaign.objects.create(channel=channel, name='Earn')
+    Earning.objects.create(
+        campaign=campaign,
+        platform='youtube',
+        revenue_est_usd='1.00',
+        recorded_at=datetime(2026, 6, 19, tzinfo=UTC),
+    )
+    result = ClipCampaignService().list_earnings()
+    assert result.total == 1
+
+
+@pytest.mark.django_db
+def test_clips_empty_candidate_patch(candidate) -> None:
+    """Cover candidate patch with no mutable fields."""
+    from server.apps.clips.logic.value_objects import ClipCandidatePatchPayload
+
+    svc = _clips()
+    result = svc.patch(
+        str(candidate.id),
+        ClipCandidatePatchPayload(),
+    )
+    assert result.id == str(candidate.id)
+
+
+@pytest.mark.django_db
+def test_clips_empty_layout_patch(candidate) -> None:
+    """Cover layout patch with no mutable fields."""
+    from server.apps.clips.logic.value_objects import ClipLayoutConfigPatchPayload
+    from server.apps.clips.models import ClipLayoutConfig
+
+    ClipLayoutConfig.objects.get_or_create(candidate=candidate)
+    svc = _clips()
+    result = svc.patch_layout(
+        str(candidate.id),
+        ClipLayoutConfigPatchPayload(),
+    )
+    assert result.candidate_id == str(candidate.id)
+
+
+@pytest.mark.django_db
+def test_clips_empty_style_patch(candidate) -> None:
+    """Cover style patch with no mutable fields."""
+    from server.apps.clips.logic.value_objects import ClipStyleConfigPatchPayload
+    from server.apps.clips.models import ClipStyleConfig
+
+    ClipStyleConfig.objects.get_or_create(candidate=candidate)
+    svc = _clips()
+    result = svc.patch_style(
+        str(candidate.id),
+        ClipStyleConfigPatchPayload(),
+    )
+    assert result.candidate_id == str(candidate.id)
+
+
+@pytest.mark.django_db
+def test_clips_empty_post_patch(candidate) -> None:
+    """Cover post patch with no mutable fields."""
+    from server.apps.clips.logic.value_objects import (
+        ClipPostCreatePayload,
+        ClipPostPatchPayload,
+    )
+
+    svc = _clips()
+    post = svc.create_post(
+        str(candidate.id),
+        ClipPostCreatePayload(
+            platform='tiktok',
+            caption='c',
+            title='t',
+        ),
+    )
+    result = svc.patch_post(
+        str(candidate.id),
+        post.id,
+        ClipPostPatchPayload(),
+    )
+    assert result.id == post.id
+
+
+@pytest.mark.django_db
+def test_resume_completed_run_only_clears_pause(run: PipelineRun) -> None:
+    """Cover resume when status should remain COMPLETED."""
+    from server.apps.pipelines.models import RunStatus
+    from server.apps.pipelines.services.orchestrator import _resume_run_sync
+
+    run.status = RunStatus.COMPLETED
+    run.is_paused = True
+    run.save(update_fields=['status', 'is_paused'])
+    _resume_run_sync(str(run.id))
+    run.refresh_from_db()
+    assert run.status == RunStatus.COMPLETED
+    assert run.is_paused is False
+
+
+@pytest.mark.django_db
+def test_sync_visual_prompts_skips_non_dict_prompts(run) -> None:
+    """Cover visual prompt sync loop when prompt rows are not dicts."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import _sync_visual_prompts
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key='visual_prompts',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'prompts': ['bad', {'scene_idx': 0, 'prompt': 'old'}]},
+    )
+    assert _sync_visual_prompts(
+        str(run.id),
+        0,
+        ScenePatchPayload(visual_prompt='new'),
+    ) == 'visual_prompts'
+
+
+@pytest.mark.django_db
+def test_sync_visual_prompts_when_stage_not_succeeded(run) -> None:
+    """Cover visual prompt sync when stage is not succeeded."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import _sync_visual_prompts
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key='visual_prompts',
+        status=StageStatus.RUNNING,
+        attempt=0,
+        output={'prompts': []},
+    )
+    assert _sync_visual_prompts(
+        str(run.id),
+        0,
+        ScenePatchPayload(visual_prompt='x'),
+    ) == 'scene_breakdown'
+
+
+@pytest.mark.django_db
+def test_publish_metadata_patch_without_metadata_stage(
+    run,
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """Cover publish metadata_patch when metadata stage is absent."""
+    from unittest.mock import AsyncMock, patch
+
+    run.channel.gates = ['final_gate']
+    run.channel.save(update_fields=['gates'])
+    StageExecution.objects.create(
+        run=run,
+        stage_key='final_gate',
+        status=StageStatus.RUNNING,
+        attempt=0,
+    )
+    with patch(
+        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+        new=AsyncMock(),
+    ):
+        response = dmr_client.post(
+            reverse(
+                'api:pipelines_api:run-publish',
+                kwargs={'run_id': run.id},
+            ),
+            data={
+                'metadata_patch': {'title': 'No metadata stage'},
+            },
+            headers=auth_headers,
+        )
+    assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
+def test_storyboard_scenes_not_list(run) -> None:
+    """Cover storyboard when scenes output is not a list."""
+    from server.apps.pipelines.storyboard_selectors import get_storyboard
+    from server.common.storage import PresignUrlHelper
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key='scene_breakdown',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'scenes': 'invalid'},
+    )
+    board = get_storyboard(str(run.id), MagicMock(spec=PresignUrlHelper))
+    assert board.scenes == []
+
+
+@pytest.mark.django_db
+def test_story_format_empty_patch(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover story format patch with no mutable fields."""
+    from server.apps.prompts.logic.value_objects import StoryFormatPatchPayload
+
+    fmt = StoryFormat.objects.create(key='empty_fmt', name='Empty', beats=[])
+    service = StoryFormatService()
+    result = service.patch(str(fmt.id), StoryFormatPatchPayload())
+    assert result.id == str(fmt.id)
