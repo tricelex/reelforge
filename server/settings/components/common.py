@@ -284,6 +284,19 @@ UNFOLD: dict[str, Any] = {
                 ],
             },
             {
+                'title': 'Ideation',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Topic Ideas',
+                        'icon': 'lightbulb',
+                        'link': reverse_lazy(
+                            'admin:ideas_topicidea_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
                 'title': 'Prompts',
                 'separator': True,
                 'items': [
@@ -341,6 +354,47 @@ UNFOLD: dict[str, Any] = {
                             'admin:pipelines_pipelinerun_changelist',
                         ),
                     },
+                    {
+                        'title': 'Cost Records',
+                        'icon': 'payments',
+                        'link': reverse_lazy(
+                            'admin:pipelines_costrecord_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'Clips',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Candidates',
+                        'icon': 'movie',
+                        'link': reverse_lazy(
+                            'admin:clips_clipcandidate_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Campaigns',
+                        'icon': 'campaign',
+                        'link': reverse_lazy(
+                            'admin:clips_clipcampaign_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Posts',
+                        'icon': 'send',
+                        'link': reverse_lazy(
+                            'admin:clips_clippost_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Earnings',
+                        'icon': 'paid',
+                        'link': reverse_lazy(
+                            'admin:clips_earning_changelist',
+                        ),
+                    },
                 ],
             },
             {
@@ -356,6 +410,13 @@ UNFOLD: dict[str, Any] = {
                         'title': 'Groups',
                         'icon': 'group',
                         'link': reverse_lazy('admin:auth_group_changelist'),
+                    },
+                    {
+                        'title': 'User Profiles',
+                        'icon': 'badge',
+                        'link': reverse_lazy(
+                            'admin:core_userprofile_changelist',
+                        ),
                     },
                 ],
             },

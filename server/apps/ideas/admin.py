@@ -1,12 +1,13 @@
 """Admin registrations for the ideas app."""
 
-from django.contrib.admin import ModelAdmin, register
+from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from server.apps.ideas.models import TopicIdea
 
 
-@register(TopicIdea)
-class TopicIdeaAdmin(ModelAdmin):  # type: ignore[type-arg]
+@admin.register(TopicIdea)
+class TopicIdeaAdmin(ModelAdmin):  # type: ignore[misc]
     """Admin for topic backlog items."""
 
     list_display = ('title', 'channel', 'status', 'score', 'created_at')
