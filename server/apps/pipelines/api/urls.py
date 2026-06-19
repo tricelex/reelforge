@@ -2,7 +2,7 @@
 
 from dmr.routing import path
 
-from server.apps.pipelines.api import views
+from server.apps.pipelines.api import cast_views, review_views, views
 
 app_name = 'pipelines_api'
 
@@ -46,5 +46,70 @@ urlpatterns = [
         'runs/<uuid:run_id>/stages/<str:stage_key>/rerun/',
         views.RunStageRerunController.as_view(),
         name='stage-rerun',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/',
+        cast_views.RunCastCollectionController.as_view(),
+        name='run-cast-collection',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/<uuid:cast_id>/',
+        cast_views.RunCastDetailController.as_view(),
+        name='run-cast-detail',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/<uuid:cast_id>/sessions/',
+        cast_views.RunCastSessionController.as_view(),
+        name='run-cast-session',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/<uuid:cast_id>/sessions/<uuid:session_id>/rounds/',
+        cast_views.RunCastRoundController.as_view(),
+        name='run-cast-round',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/<uuid:cast_id>/approve/',
+        cast_views.RunCastApproveController.as_view(),
+        name='run-cast-approve',
+    ),
+    path(
+        'runs/<uuid:run_id>/storyboard/',
+        review_views.RunStoryboardController.as_view(),
+        name='run-storyboard',
+    ),
+    path(
+        'runs/<uuid:run_id>/scene-breakdown/',
+        review_views.RunSceneBreakdownController.as_view(),
+        name='run-scene-breakdown',
+    ),
+    path(
+        'runs/<uuid:run_id>/scenes/<int:scene_idx>/',
+        review_views.RunSceneDetailController.as_view(),
+        name='run-scene-detail',
+    ),
+    path(
+        'runs/<uuid:run_id>/preview/',
+        review_views.RunPreviewController.as_view(),
+        name='run-preview',
+    ),
+    path(
+        'runs/<uuid:run_id>/publish/',
+        review_views.RunPublishController.as_view(),
+        name='run-publish',
+    ),
+    path(
+        'runs/<uuid:run_id>/transcript/',
+        views.RunTranscriptController.as_view(),
+        name='run-transcript',
+    ),
+    path(
+        'runs/<uuid:run_id>/assets/',
+        views.RunAssetsController.as_view(),
+        name='run-assets',
+    ),
+    path(
+        'blueprints/',
+        views.BlueprintCollectionController.as_view(),
+        name='blueprint-collection',
     ),
 ]

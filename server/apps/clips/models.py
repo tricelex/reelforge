@@ -8,6 +8,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from server.apps.clips.logic.constants import (
+    CampaignStatus,
     CandidateStatus,
     CaptionAnimation,
     CaptionPosition,
@@ -407,6 +408,64 @@ class ClipPost(UUIDModel, TimeStampedModel):
     @override
     def __str__(self) -> str:
         return f'{self.platform} post — {self.candidate}'
+
+
+class ClipCampaign(UUIDModel, TimeStampedModel):
+    """Batch export / earnings grouping for clip distribution."""
+
+    channel = models.ForeignKey(
+        'channels.Channel',
+        on_delete=models.CASCADE,
+        related_name='clip_campaigns',
+    )
+    name = models.CharField(max_length=120)
+    status = models.CharField(
+        max_length=10,
+        choices=CampaignStatus.choices,
+        default=CampaignStatus.DRAFT,
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                name='clips_clipcampaign_status_valid',
+                condition=models.Q(status__in=CampaignStatus.values),
+            ),
+        ]
+
+    @override
+    def __str__(self) -> str:
+        return self.name
+
+
+class Earning(UUIDModel, TimeStampedModel):
+    """Manual revenue entry tied to a clip campaign."""
+
+    campaign = models.ForeignKey(
+        ClipCampaign,
+        on_delete=models.CASCADE,
+        related_name='earnings',
+    )
+    candidate = models.ForeignKey(
+        ClipCandidate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='earnings',
+    )
+    platform = models.CharField(max_length=30)
+    revenue_est_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal(0),
+    )
+    recorded_at = models.DateTimeField()
+    notes = models.TextField(blank=True)
+
+    @override
+    def __str__(self) -> str:
+        return f'{self.platform} earning — {self.campaign}'
 
 
 @receiver(post_save, sender=ClipCandidate)

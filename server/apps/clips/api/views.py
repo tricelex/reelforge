@@ -1,6 +1,5 @@
-"""DMR controllers for clip candidates and gate approval."""
+"""DMR controllers for clip candidates and related resources."""
 
-import asyncio
 from http import HTTPStatus
 from typing import final, override
 
@@ -13,22 +12,39 @@ from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.clips.logic.value_objects import (
-    ApproveGatePayload,
+    ApproveAllResultPayload,
+    ClipCandidateListPayload,
+    ClipCandidatePatchPayload,
     ClipCandidatePayload,
+    ClipLayoutConfigPatchPayload,
+    ClipLayoutConfigPayload,
+    ClipOverlayListPayload,
+    ClipPostCreatePayload,
+    ClipPostListPayload,
+    ClipPostPatchPayload,
+    ClipPostPayload,
+    ClipPreviewStatusPayload,
+    ClipRenderPayload,
+    ClipStyleConfigPatchPayload,
+    ClipStyleConfigPayload,
+    ClipTimedOverlayCreatePayload,
+    ClipTimedOverlayPatchPayload,
+    ClipTimedOverlayPayload,
 )
-from server.apps.clips.models import ClipCandidate
-from server.apps.clips.services import ClipCandidateService
-from server.apps.core.auth import JWTAuthenticatedMixin, jwt_sync_auth
+from server.apps.clips.models import (
+    ClipCandidate,
+    ClipLayoutConfig,
+    ClipPost,
+    ClipStyleConfig,
+    ClipTimedOverlay,
+)
+from server.apps.clips.services import ClipsService
+from server.common.auth import JWTAuthenticatedMixin, jwt_sync_auth
 from server.common.di import HasContainer
 
 
 class _RejectPayload(msgspec.Struct, frozen=True):
     reason: str = ''
-
-
-class _GateApprovalResult(msgspec.Struct, frozen=True):
-    status: str
-    approved_count: int
 
 
 @final
@@ -41,9 +57,34 @@ class ClipCandidateListView(
 
     auth = (jwt_sync_auth,)
 
-    def get(self) -> list[ClipCandidatePayload]:
-        """Return all candidates for the given run_id."""
-        return self.resolve(ClipCandidateService).list_for_run(
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> ClipCandidateListPayload:
+        """Return paginated candidates for the given run_id."""
+        return self.resolve(ClipsService).list_for_run(
+            str(self.kwargs['run_id']),
+            cursor=cursor,
+            limit=limit,
+        )
+
+
+@final
+class ClipCandidateApproveAllView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Bulk-approve all proposed candidates on a run."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(status_code=HTTPStatus.OK)
+    def post(self) -> ApproveAllResultPayload:
+        """Approve every PROPOSED candidate."""
+        return self.resolve(ClipsService).approve_all(
             str(self.kwargs['run_id']),
         )
 
@@ -54,7 +95,7 @@ class ClipCandidateDetailView(
     HasContainer,
     Controller[MsgspecSerializer],
 ):
-    """Get a single clip candidate by ID."""
+    """Get or patch a single clip candidate."""
 
     auth = (jwt_sync_auth,)
 
@@ -68,8 +109,27 @@ class ClipCandidateDetailView(
     )
     def get(self) -> ClipCandidatePayload:
         """Return one candidate by candidate_id."""
-        return self.resolve(ClipCandidateService).get_by_id(
+        return self.resolve(ClipsService).get_by_id(
             str(self.kwargs['candidate_id']),
+        )
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def patch(
+        self,
+        parsed_body: Body[ClipCandidatePatchPayload],
+    ) -> ClipCandidatePayload:
+        """Update editable candidate fields."""
+        return self.resolve(ClipsService).patch(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
         )
 
     @override
@@ -106,7 +166,7 @@ class ClipCandidateApproveView(
     @modify(status_code=HTTPStatus.OK)
     def post(self) -> ClipCandidatePayload:
         """Mark the candidate APPROVED."""
-        return self.resolve(ClipCandidateService).approve(
+        return self.resolve(ClipsService).approve(
             str(self.kwargs['candidate_id']),
         )
 
@@ -127,42 +187,361 @@ class ClipCandidateRejectView(
         parsed_body: Body[_RejectPayload],
     ) -> ClipCandidatePayload:
         """Mark the candidate REJECTED."""
-        return self.resolve(ClipCandidateService).reject(
+        return self.resolve(ClipsService).reject(
             str(self.kwargs['candidate_id']),
             reason=parsed_body.reason,
         )
 
 
 @final
-class ClipApproveGateView(
+class ClipCandidateRenderView(
     JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
-    """Approve the clip_approval_gate and resume rendering."""
+    """Return presigned URL for a rendered clip."""
 
     auth = (jwt_sync_auth,)
 
-    @modify(status_code=HTTPStatus.OK)
-    def post(
-        self,
-        parsed_body: Body[ApproveGatePayload],
-    ) -> _GateApprovalResult:
-        """Record gate output and re-advance the pipeline DAG."""
-        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
-            approve_gate_impl,
+    def get(self) -> ClipRenderPayload:
+        """Return render asset URL."""
+        return self.resolve(ClipsService).get_render(
+            str(self.kwargs['candidate_id']),
         )
 
-        run_id = str(self.kwargs['run_id'])
-        approved_ids = list(parsed_body.approved_candidate_ids)
-        asyncio.run(
-            approve_gate_impl(
-                run_id,
-                'clip_approval_gate',
-                {'approved_candidate_ids': approved_ids},
-            ),
+
+@final
+class ClipCandidatePreviewView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Trigger a lightweight preview render."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(status_code=HTTPStatus.ACCEPTED)
+    def post(self) -> ClipPreviewStatusPayload:
+        """Queue preview render."""
+        return self.resolve(ClipsService).trigger_preview(
+            str(self.kwargs['candidate_id']),
         )
-        return _GateApprovalResult(
-            status='approved',
-            approved_count=len(approved_ids),
+
+
+@final
+class ClipCandidatePreviewStatusView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Poll preview render status."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> ClipPreviewStatusPayload:
+        """Return preview status."""
+        return self.resolve(ClipsService).get_preview_status(
+            str(self.kwargs['candidate_id']),
+        )
+
+
+@final
+class ClipLayoutConfigView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get or patch layout config for a candidate."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> ClipLayoutConfigPayload:
+        """Return layout config."""
+        return self.resolve(ClipsService).get_layout(
+            str(self.kwargs['candidate_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[ClipLayoutConfigPatchPayload],
+    ) -> ClipLayoutConfigPayload:
+        """Update layout config."""
+        return self.resolve(ClipsService).patch_layout(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipLayoutConfig.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Layout config not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint, controller, exc,
+        )
+
+
+@final
+class ClipStyleConfigView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get or patch style config for a candidate."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> ClipStyleConfigPayload:
+        """Return style config."""
+        return self.resolve(ClipsService).get_style(
+            str(self.kwargs['candidate_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[ClipStyleConfigPatchPayload],
+    ) -> ClipStyleConfigPayload:
+        """Update style config."""
+        return self.resolve(ClipsService).patch_style(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipStyleConfig.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Style config not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint, controller, exc,
+        )
+
+
+@final
+class ClipTimedOverlayCollectionView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List or create timed overlays."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> ClipOverlayListPayload:
+        """Return paginated overlays for a candidate."""
+        return self.resolve(ClipsService).list_overlays(
+            str(self.kwargs['candidate_id']),
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[ClipTimedOverlayCreatePayload],
+    ) -> ClipTimedOverlayPayload:
+        """Create a timed overlay."""
+        return self.resolve(ClipsService).create_overlay(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
+        )
+
+
+@final
+class ClipTimedOverlayDetailView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get, patch, or delete one timed overlay."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> ClipTimedOverlayPayload:
+        """Return one overlay."""
+        return self.resolve(ClipsService).get_overlay(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['overlay_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[ClipTimedOverlayPatchPayload],
+    ) -> ClipTimedOverlayPayload:
+        """Update one overlay."""
+        return self.resolve(ClipsService).patch_overlay(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['overlay_id']),
+            parsed_body,
+        )
+
+    @modify(status_code=HTTPStatus.NO_CONTENT)
+    def delete(self) -> None:
+        """Delete one overlay."""
+        self.resolve(ClipsService).delete_overlay(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['overlay_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipTimedOverlay.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Overlay not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint, controller, exc,
+        )
+
+
+@final
+class ClipPostCollectionView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List or create distribution posts."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> ClipPostListPayload:
+        """Return paginated posts for a candidate."""
+        return self.resolve(ClipsService).list_posts(
+            str(self.kwargs['candidate_id']),
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[ClipPostCreatePayload],
+    ) -> ClipPostPayload:
+        """Create a distribution post."""
+        return self.resolve(ClipsService).create_post(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
+        )
+
+
+@final
+class ClipPostDetailView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get or patch one distribution post."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> ClipPostPayload:
+        """Return one post."""
+        return self.resolve(ClipsService).get_post(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['post_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[ClipPostPatchPayload],
+    ) -> ClipPostPayload:
+        """Update one post."""
+        return self.resolve(ClipsService).patch_post(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['post_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipPost.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Post not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint, controller, exc,
         )

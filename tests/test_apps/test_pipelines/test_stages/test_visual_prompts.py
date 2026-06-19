@@ -49,7 +49,7 @@ def test_visual_prompts_fan_out_none() -> None:
 
 def test_visual_prompts_run_returns_prompts() -> None:
     """run() returns dict with 'prompts' list."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         VisualPrompt,
         VisualPromptsOutput,
     )

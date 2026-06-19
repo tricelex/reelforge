@@ -42,9 +42,9 @@ def test_thumbnail_fan_out_none() -> None:
 
 def test_composite_text_returns_bytes() -> None:
     """_composite_text returns JPEG bytes with text overlay."""
-    import io  # noqa: PLC0415
+    import io
 
-    from PIL import Image  # noqa: PLC0415
+    from PIL import Image
 
     img = Image.new('RGB', (100, 80), color=(0, 0, 0))
     buf = io.BytesIO()
@@ -56,7 +56,7 @@ def test_composite_text_returns_bytes() -> None:
 
 def test_thumbnail_run_returns_candidates() -> None:
     """run() generates N thumbnail candidates and returns their asset IDs."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     ctx = _make_ctx()
 
@@ -97,7 +97,7 @@ def test_thumbnail_run_returns_candidates() -> None:
 
 def test_thumbnail_run_with_no_branding_uses_empty_palette() -> None:
     """run() uses empty palette when ctx.channel.branding is None."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     ctx = _make_ctx()
     ctx.channel.branding = None

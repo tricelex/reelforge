@@ -102,6 +102,14 @@ class PostStatus(models.TextChoices):
     FAILED = 'FAILED', 'Failed'
 
 
+class CampaignStatus(models.TextChoices):
+    """Lifecycle status of a clip export campaign."""
+
+    DRAFT = 'DRAFT', 'Draft'
+    ACTIVE = 'ACTIVE', 'Active'
+    COMPLETED = 'COMPLETED', 'Completed'
+
+
 class OverlayType(models.TextChoices):
     """Type of a timed overlay on a clip."""
 

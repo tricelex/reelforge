@@ -148,4 +148,7 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
         started_at=_iso(run.started_at),
         finished_at=_iso(run.finished_at),
         stages=[_stage_to_summary(s) for s in latest.values()],
+        source_idea_id=(
+            str(run.source_idea_id) if run.source_idea_id else None
+        ),
     )

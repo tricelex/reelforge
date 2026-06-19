@@ -44,7 +44,7 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     settings,
 ) -> None:
     """init_logfire calls configure then all instrument_* functions."""
-    settings.LOGFIRE_TOKEN = 'test-logfire-token'  # noqa: S105
+    settings.LOGFIRE_TOKEN = 'test-logfire-token'
     settings.LOGFIRE_SERVICE_NAME = 'reelforge-test'
     with (
         patch('logfire.configure') as mock_configure,
@@ -59,7 +59,7 @@ def test_init_logfire_configures_and_instruments_all_integrations(
         mock_get_logger.return_value.handlers = []
         init_logfire()
     mock_configure.assert_called_once_with(
-        token='test-logfire-token',  # noqa: S106
+        token='test-logfire-token',
         service_name='reelforge-test',
     )
     mock_django.assert_called_once_with(capture_headers=False)
@@ -76,9 +76,9 @@ def test_init_logfire_configures_and_instruments_all_integrations(
 
 def test_init_logfire_skips_handler_when_already_present(settings) -> None:
     """init_logfire does not add a second LogfireLoggingHandler if one exists."""
-    import logfire  # noqa: PLC0415
+    import logfire
 
-    settings.LOGFIRE_TOKEN = 'test-logfire-token'  # noqa: S105
+    settings.LOGFIRE_TOKEN = 'test-logfire-token'
     settings.LOGFIRE_SERVICE_NAME = 'reelforge-test'
     existing_handler = logfire.LogfireLoggingHandler()
     with (

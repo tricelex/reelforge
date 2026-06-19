@@ -6,11 +6,11 @@ import pytest
 
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
+    from asgiref.sync import sync_to_async
 
     @sync_to_async
     def _close_connections() -> None:
-        from django.db import connections  # noqa: PLC0415
+        from django.db import connections
 
         connections.close_all()
 
@@ -25,7 +25,7 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
 
 def test_register_stage_adds_to_registry() -> None:
     """Decorated stage class appears in STAGE_REGISTRY under its key."""
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         STAGE_REGISTRY,
         Stage,
         register_stage,
@@ -46,7 +46,7 @@ def test_register_stage_adds_to_registry() -> None:
 
 def test_compute_input_hash_is_deterministic() -> None:
     """Input hash is stable regardless of key insertion order."""
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         compute_input_hash,
     )
 
@@ -58,9 +58,9 @@ def test_compute_input_hash_is_deterministic() -> None:
 
 def test_cost_recorder_accumulates_total() -> None:
     """CostRecorder sums multiple record() calls into total_usd."""
-    from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, MagicMock, patch
 
-    from server.apps.pipelines.services.cost_recorder import (  # noqa: PLC0415
+    from server.apps.pipelines.services.cost_recorder import (
         CostRecorder,
     )
 
@@ -76,7 +76,7 @@ def test_cost_recorder_accumulates_total() -> None:
             await recorder.record('fal_flux', 'image_gen', 1, 0.025)
             await recorder.record('fal_flux', 'image_gen', 2, 0.025)
 
-        from decimal import Decimal  # noqa: PLC0415
+        from decimal import Decimal
 
         assert recorder.total_usd == Decimal('0.075')
 
@@ -86,8 +86,8 @@ def test_cost_recorder_accumulates_total() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_dummy_stages_registered() -> None:
     """Importing dummy module populates STAGE_REGISTRY with a/b/c keys."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.stages.base import (
         STAGE_REGISTRY,
     )
 
@@ -96,7 +96,7 @@ def test_dummy_stages_registered() -> None:
     assert 'dummy_c' in STAGE_REGISTRY
 
 
-from server.apps.pipelines.models import (  # noqa: E402
+from server.apps.pipelines.models import (
     PipelineBlueprint,
     PipelineKind,
     PipelineRun,
@@ -120,7 +120,7 @@ def blueprint() -> PipelineBlueprint:
 @pytest.fixture
 def channel():
     """Test channel for idempotency tests."""
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
@@ -147,7 +147,7 @@ def test_find_cached_output_returns_none_when_no_match(
     run: PipelineRun,
 ) -> None:
     """find_cached_output returns None when no SUCCEEDED exec matches."""
-    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+    from server.apps.pipelines.services.idempotency import (
         find_cached_output,
     )
 
@@ -167,11 +167,11 @@ def test_find_cached_output_returns_succeeded_execution(
     run: PipelineRun,
 ) -> None:
     """find_cached_output returns a SUCCEEDED execution with matching hash."""
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+    from server.apps.pipelines.services.idempotency import (
         find_cached_output,
     )
 
@@ -199,11 +199,11 @@ def test_find_cached_output_ignores_failed_executions(
     run: PipelineRun,
 ) -> None:
     """find_cached_output does not return FAILED executions."""
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.idempotency import (  # noqa: PLC0415
+    from server.apps.pipelines.services.idempotency import (
         find_cached_output,
     )
 
@@ -228,17 +228,17 @@ def test_find_cached_output_ignores_failed_executions(
 @pytest.mark.django_db(transaction=True)
 def test_build_context_resolves_upstream(run: PipelineRun) -> None:
     """build_context gives empty upstream when dep has no SUCCEEDED exec."""
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineRun,
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.context import (  # noqa: PLC0415
+    from server.apps.pipelines.services.context import (
         build_context,
     )
 
@@ -289,7 +289,7 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
     _run(_inner())
 
 
-from server.apps.pipelines.models import (  # noqa: E402
+from server.apps.pipelines.models import (
     RunStatus,
 )
 
@@ -312,7 +312,7 @@ def dummy_blueprint() -> PipelineBlueprint:
 @pytest.fixture
 def orch_channel():
     """A test channel for orchestrator tests."""
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
@@ -337,14 +337,14 @@ def orch_run(dummy_blueprint: PipelineBlueprint, orch_channel) -> PipelineRun:
 @pytest.mark.django_db(transaction=True)
 def test_advance_enqueues_first_stage(orch_run: PipelineRun) -> None:
     """advance_pipeline_impl enqueues dummy_a but NOT dummy_b initially."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.models import (
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -378,13 +378,13 @@ def test_advance_marks_run_completed_when_all_stages_succeed(
     orch_run: PipelineRun,
 ) -> None:
     """When all stages SUCCEEDED, run transitions to COMPLETED."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -418,20 +418,20 @@ def test_advance_marks_run_completed_when_all_stages_succeed(
 @pytest.mark.django_db(transaction=True)
 def test_advance_skips_unarmed_gate(orch_channel) -> None:
     """A gate stage not in channel.gates is skipped."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -492,13 +492,13 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
     """An armed gate sets run.status=AWAITING_REVIEW and creates a RUNNING execution."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
@@ -532,7 +532,7 @@ def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
         blueprint_snapshot=bp.graph,
         topic='gate test',
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -557,13 +557,13 @@ def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
 @pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_skips_unarmed_gate():
     """A gate NOT in channel.gates is auto-skipped."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
@@ -596,7 +596,7 @@ def test_advance_pipeline_skips_unarmed_gate():
         blueprint_snapshot=bp.graph,
         topic='skip gate test',
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -619,13 +619,13 @@ def test_advance_pipeline_skips_unarmed_gate():
 @pytest.mark.django_db(transaction=True)
 def test_approve_gate_marks_succeeded_and_resumes():
     """approve_gate_impl marks the gate SUCCEEDED and sets run back to RUNNING."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
@@ -659,7 +659,7 @@ def test_approve_gate_marks_succeeded_and_resumes():
         blueprint_snapshot=bp.graph,
         topic='approve test',
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
         approve_gate_impl,
     )
@@ -702,13 +702,13 @@ def test_approve_gate_marks_succeeded_and_resumes():
 @pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_armed_gate_with_unfinished_deps_is_not_parked():
     """An armed gate with unfinished deps is not parked (branch 195->198)."""
-    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+    from unittest.mock import AsyncMock, patch
 
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
         PipelineRun,
@@ -752,7 +752,7 @@ def test_advance_pipeline_armed_gate_with_unfinished_deps_is_not_parked():
         output={},
     )
 
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 

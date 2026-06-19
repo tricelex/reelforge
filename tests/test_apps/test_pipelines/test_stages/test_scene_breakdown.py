@@ -53,7 +53,7 @@ def test_scene_breakdown_has_output_validator() -> None:
 
 def test_scene_breakdown_run_returns_scenes() -> None:
     """run() returns dict with 'scenes' list."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         Scene,
         SceneBreakdownOutput,
     )

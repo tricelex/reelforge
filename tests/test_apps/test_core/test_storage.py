@@ -1,6 +1,6 @@
 """Tests for PresignUrlHelper."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from server.common.storage import PresignUrlHelper
 

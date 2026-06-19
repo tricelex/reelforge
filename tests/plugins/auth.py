@@ -9,7 +9,7 @@ from server.apps.core.logic.constants import UserRole
 from server.apps.core.models import UserProfile
 
 
-@pytest.fixture()
+@pytest.fixture
 def api_user(db: None) -> User:
     """Create an operator user with profile."""
     user = User.objects.create_user(
@@ -20,7 +20,7 @@ def api_user(db: None) -> User:
     return user
 
 
-@pytest.fixture()
+@pytest.fixture
 def reviewer_user(db: None) -> User:
     """Create a reviewer user with profile."""
     user = User.objects.create_user(
@@ -31,12 +31,27 @@ def reviewer_user(db: None) -> User:
     return user
 
 
-@pytest.fixture()
+@pytest.fixture
 def auth_headers(dmr_client: DMRClient, api_user: User) -> dict[str, str]:
     """Obtain JWT access token and return Authorization header."""
     response = dmr_client.post(
         reverse('api:core:login'),
         data={'username': 'operator', 'password': 'test-pass'},
+    )
+    assert response.status_code == 200
+    token = response.json()['access_token']
+    return {'Authorization': f'Bearer {token}'}
+
+
+@pytest.fixture
+def reviewer_headers(
+    dmr_client: DMRClient,
+    reviewer_user: User,
+) -> dict[str, str]:
+    """Obtain JWT for reviewer role."""
+    response = dmr_client.post(
+        reverse('api:core:login'),
+        data={'username': 'reviewer', 'password': 'test-pass'},
     )
     assert response.status_code == 200
     token = response.json()['access_token']

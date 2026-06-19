@@ -34,12 +34,12 @@ DUMMY_BLUEPRINT_GRAPH = {
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run a coroutine synchronously, closing DB connections before exit."""
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
+    from asgiref.sync import sync_to_async
 
     @sync_to_async
     def _close_connections() -> None:
         """Close all Django DB connections to avoid teardown timeouts."""
-        from django.db import connections  # noqa: PLC0415
+        from django.db import connections
 
         connections.close_all()
 
@@ -94,17 +94,17 @@ def test_3_stage_dummy_blueprint_runs_to_completion(
     6. execute_stage_impl runs dummy_c -> SUCCEEDED, kicks advance
     7. advance -> run status = COMPLETED
     """
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
     execution_queue: list[str] = []
 
-    async def fake_execute_stage_kiq(exec_id: str) -> None:  # noqa: RUF029
+    async def fake_execute_stage_kiq(exec_id: str) -> None:
         """Capture enqueued execution IDs instead of sending to broker."""
         execution_queue.append(exec_id)
 

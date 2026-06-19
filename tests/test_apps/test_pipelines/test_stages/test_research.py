@@ -36,7 +36,7 @@ def test_research_fan_out_returns_none() -> None:
 
 def test_research_run_returns_brief_and_sources() -> None:
     """run() returns a dict with 'brief' and 'sources' keys."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         ResearchBrief,
         ResearchOutput,
     )

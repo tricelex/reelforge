@@ -6,11 +6,13 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
 from server.apps.clips.models import (
+    ClipCampaign,
     ClipCandidate,
     ClipLayoutConfig,
     ClipPost,
     ClipStyleConfig,
     ClipTimedOverlay,
+    Earning,
 )
 
 
@@ -119,3 +121,25 @@ class ClipPostAdmin(ModelAdmin):  # type: ignore[misc]
     )
     list_filter = ('platform', 'status')
     search_fields = ('platform', 'platform_post_id')
+
+
+@admin.register(ClipCampaign)
+class ClipCampaignAdmin(ModelAdmin):  # type: ignore[misc]
+    """Admin for ClipCampaign."""
+
+    list_display = ('name', 'channel', 'status', 'created_at')
+    list_filter = ('status',)
+    search_fields = ('name',)
+
+
+@admin.register(Earning)
+class EarningAdmin(ModelAdmin):  # type: ignore[misc]
+    """Admin for Earning."""
+
+    list_display = (
+        'campaign',
+        'platform',
+        'revenue_est_usd',
+        'recorded_at',
+    )
+    list_filter = ('platform',)

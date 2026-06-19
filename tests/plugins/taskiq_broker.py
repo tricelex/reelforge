@@ -27,7 +27,7 @@ class _NoOpBroker(AsyncBroker):
         return _empty_async_gen()
 
 
-async def _empty_async_gen() -> AsyncGenerator[bytes]:  # pragma: no cover  # noqa: RUF029
+async def _empty_async_gen() -> AsyncGenerator[bytes]:  # pragma: no cover
     """Yield nothing — satisfies the async generator protocol."""
     return
     yield b''  # type: ignore[unreachable]
@@ -35,8 +35,8 @@ async def _empty_async_gen() -> AsyncGenerator[bytes]:  # pragma: no cover  # no
 
 @pytest.fixture(autouse=True)
 def _taskiq_in_memory() -> Generator[None]:
-    import server.common.broker as broker_module  # noqa: PLC0415
-    from server.apps.main import tasks as tasks_module  # noqa: PLC0415
+    import server.common.broker as broker_module
+    from server.apps.main import tasks as tasks_module
 
     no_op = _NoOpBroker()
     original = broker_module.broker

@@ -2,7 +2,7 @@
 
 from dmr.routing import path
 
-from server.apps.clips.api import views
+from server.apps.clips.api import campaign_views, views
 
 app_name = 'clips'
 
@@ -13,14 +13,29 @@ urlpatterns = [
         name='candidate_list',
     ),
     path(
-        'runs/<uuid:run_id>/approve-gate/',
-        views.ClipApproveGateView.as_view(),
-        name='approve_gate',
+        'runs/<uuid:run_id>/candidates/approve-all/',
+        views.ClipCandidateApproveAllView.as_view(),
+        name='candidate_approve_all',
     ),
     path(
         'candidates/<uuid:candidate_id>/',
         views.ClipCandidateDetailView.as_view(),
         name='candidate_detail',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/render/',
+        views.ClipCandidateRenderView.as_view(),
+        name='candidate_render',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/preview/',
+        views.ClipCandidatePreviewView.as_view(),
+        name='candidate_preview',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/preview/status/',
+        views.ClipCandidatePreviewStatusView.as_view(),
+        name='candidate_preview_status',
     ),
     path(
         'candidates/<uuid:candidate_id>/approve/',
@@ -31,5 +46,50 @@ urlpatterns = [
         'candidates/<uuid:candidate_id>/reject/',
         views.ClipCandidateRejectView.as_view(),
         name='candidate_reject',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/layout-config/',
+        views.ClipLayoutConfigView.as_view(),
+        name='layout_config',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/style-config/',
+        views.ClipStyleConfigView.as_view(),
+        name='style_config',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/overlays/',
+        views.ClipTimedOverlayCollectionView.as_view(),
+        name='overlay_list',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/overlays/<uuid:overlay_id>/',
+        views.ClipTimedOverlayDetailView.as_view(),
+        name='overlay_detail',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/posts/',
+        views.ClipPostCollectionView.as_view(),
+        name='post_list',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/posts/<uuid:post_id>/',
+        views.ClipPostDetailView.as_view(),
+        name='post_detail',
+    ),
+    path(
+        'campaigns/',
+        campaign_views.CampaignCollectionController.as_view(),
+        name='campaign-collection',
+    ),
+    path(
+        'campaigns/<uuid:campaign_id>/',
+        campaign_views.CampaignDetailController.as_view(),
+        name='campaign-detail',
+    ),
+    path(
+        'earnings/',
+        campaign_views.EarningCollectionController.as_view(),
+        name='earning-collection',
     ),
 ]

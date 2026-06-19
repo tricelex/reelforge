@@ -4,7 +4,10 @@ import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from server.apps.pipelines.stages.clip_ingest import ClipIngestStage, _download_with_ytdlp
+from server.apps.pipelines.stages.clip_ingest import (
+    ClipIngestStage,
+    _download_with_ytdlp,
+)
 
 
 def test_clip_ingest_attributes() -> None:

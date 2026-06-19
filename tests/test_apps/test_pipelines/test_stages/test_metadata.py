@@ -71,7 +71,7 @@ def test_build_chapter_timestamps() -> None:
 
 def test_metadata_run_returns_title_and_tags() -> None:
     """run() returns dict with 'title', 'description', and 'tags'."""
-    from server.apps.pipelines.schemas import VideoMetadata  # noqa: PLC0415
+    from server.apps.pipelines.schemas import VideoMetadata
 
     ctx = _make_ctx()
     fake_output = VideoMetadata(

@@ -28,15 +28,20 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from dmr.routing import Router, build_404_handler, build_500_handler, path
 from health_check.views import HealthCheckView
 
+from server.apps.analytics.api import root_urls as analytics_root_urls
 from server.apps.analytics.api import urls as analytics_api_urls
+from server.apps.assets.api import urls as assets_api_urls
+from server.apps.channels.api import urls as channels_api_urls
 from server.apps.clips.api import urls as clips_api_urls
 from server.apps.core.api import enums_urls as core_enums_urls
 from server.apps.core.api import urls as core_api_urls
+from server.apps.ideas.api import urls as ideas_api_urls
 from server.apps.main import urls as main_urls
-from server.apps.pipelines import urls as pipelines_urls
-from server.apps.pipelines.api import urls as pipelines_api_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
+from server.apps.pipelines import urls as pipelines_urls
+from server.apps.pipelines.api import urls as pipelines_api_urls
+from server.apps.prompts.api import urls as prompts_api_urls
 
 admin.autodiscover()
 
@@ -52,6 +57,11 @@ router = Router(
         path('auth/', include(core_api_urls, namespace='core')),
         path('enums/', include(core_enums_urls, namespace='core_enums')),
         path('analytics/', include(analytics_api_urls, namespace='analytics_api')),
+        path('', include(analytics_root_urls, namespace='analytics_root')),
+        path('', include(channels_api_urls, namespace='channels_api')),
+        path('', include(assets_api_urls, namespace='assets_api')),
+        path('', include(prompts_api_urls, namespace='prompts_api')),
+        path('', include(ideas_api_urls, namespace='ideas_api')),
         path('', include(pipelines_api_urls, namespace='pipelines_api')),
         path('', include(clips_api_urls, namespace='clips')),
     ],

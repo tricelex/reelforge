@@ -50,7 +50,7 @@ def test_center_fallback_custom_width() -> None:
 
 
 def test_speaker_crop_result_is_frozen() -> None:
-    import pytest  # noqa: PLC0415
+    import pytest
 
     result = SpeakerCropResult(
         crop_x=0, crop_w=540, crop_h=960, confidence=1.0, face_detected=True,

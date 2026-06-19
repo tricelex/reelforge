@@ -81,3 +81,20 @@ def test_refresh_token(
     parsed = msgspec.convert(response.json(), type=TokenPairPayload)
     assert parsed.access_token
     assert parsed.refresh_token
+
+
+@pytest.mark.django_db
+def test_reviewer_cannot_create_channel(
+    dmr_client: DMRClient,
+    reviewer_headers: dict[str, str],
+) -> None:
+    """Reviewers receive 403 when creating channels."""
+    from server.apps.channels.models import ChannelKind
+
+    response = dmr_client.post(
+        reverse('api:channels_api:channel-collection'),
+        data={'name': 'Blocked', 'kind': ChannelKind.CLIPPING},
+        headers=reviewer_headers,
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN

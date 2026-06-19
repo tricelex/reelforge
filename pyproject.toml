@@ -180,7 +180,32 @@ pydocstyle.convention = "google"
 "server/common/typing/*.py" = ["F401"]
 "server/implemented.py" = ["PLC0415", "D103"]
 "server/apps/*/apps.py" = ["PLC0415"]
-"tests/*.py" = ["S101"]
+"tests/*.py" = [
+  "S101",    # asserts are expected in test code
+  "S105",    # hardcoded passwords in test fixtures are fine
+  "S106",    # hardcoded passwords in test fixtures are fine
+  "S108",    # temp file paths in tests are fine
+  "S404",    # subprocess in tests is fine
+  "D103",    # test functions don't need docstrings
+  "E402",    # module-level imports in conftest needed for fixtures
+  "E501",    # long lines in tests are OK
+  "B017",    # broad exception assertions common in tests
+  "B903",    # test dataclass style
+  "B904",    # raise from in tests
+  "FBT001",  # boolean args in test helpers are fine
+  "FBT002",  # boolean default in test helpers are fine
+  "PERF401", # list comprehensions in tests are readable
+  "PLC0415", # inline imports in pytest fixtures/hooks
+  "PLC1901", # empty string comparisons in tests
+  "PLC2701", # private imports for test access
+  "PT011",   # broad pytest.raises in tests
+  "PT017",   # exception variable assertions in tests
+  "PT018",   # compound assertions in tests
+  "RUF029",  # async test helpers without await
+  "RUF069",  # test pattern matching
+  "SIM117",  # nested with in test setup is readable
+  "SLF001",  # private member access for unit testing
+]
 
 
 [tool.pytest.ini_options]

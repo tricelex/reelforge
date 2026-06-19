@@ -2,7 +2,7 @@
 
 import datetime as dt
 from http import HTTPStatus
-from typing import final
+from typing import Any, final, override
 
 from dmr import Body, Controller, modify
 from dmr.plugins.msgspec import MsgspecSerializer
@@ -31,7 +31,7 @@ from server.apps.core.selectors import collect_enums
 from server.common.di import HasContainer
 
 
-def _make_token_pair(controller: ObtainTokensSyncController) -> TokenPairPayload:
+def _make_token_pair(controller: ObtainTokensSyncController[Any, Any, Any]) -> TokenPairPayload:
     """Create access + refresh JWT pair for the authenticated request user."""
     access = controller.create_jwt_token(
         token_type='access',
@@ -48,7 +48,7 @@ def _make_token_pair(controller: ObtainTokensSyncController) -> TokenPairPayload
 class LoginController(
     ObtainTokensSyncController[
         MsgspecSerializer,
-        LoginPayload,
+        LoginPayload,  # type: ignore[type-var]
         TokenPairPayload,
     ],
 ):
@@ -57,11 +57,13 @@ class LoginController(
     jwt_expiration = JWT_ACCESS_LIFETIME
     jwt_refresh_expiration = JWT_REFRESH_LIFETIME
 
+    @override
     @modify(status_code=HTTPStatus.OK)
     def post(self, parsed_body: Body[LoginPayload]) -> TokenPairPayload:
         """Authenticate and return token pair."""
         return self.login(parsed_body)
 
+    @override
     def convert_auth_payload(self, payload: LoginPayload) -> ObtainTokensPayload:
         """Map login body to django.contrib.auth.authenticate kwargs."""
         return {
@@ -69,6 +71,7 @@ class LoginController(
             'password': payload.password,
         }
 
+    @override
     def make_api_response(self) -> TokenPairPayload:
         """Return freshly minted JWT tokens."""
         return _make_token_pair(self)
@@ -78,7 +81,7 @@ class LoginController(
 class RefreshController(
     RefreshTokenSyncController[
         MsgspecSerializer,
-        RefreshTokenPayload,
+        RefreshTokenPayload,  # type: ignore[type-var]
         TokenPairPayload,
     ],
 ):
@@ -87,18 +90,21 @@ class RefreshController(
     jwt_expiration = JWT_ACCESS_LIFETIME
     jwt_refresh_expiration = JWT_REFRESH_LIFETIME
 
+    @override
     @modify(status_code=HTTPStatus.OK)
     def post(self, parsed_body: Body[RefreshTokenPayload]) -> TokenPairPayload:
         """Validate refresh token and return a new token pair."""
         return self.refresh(parsed_body)
 
+    @override
     def convert_refresh_payload(self, payload: RefreshTokenPayload) -> str:
         """Extract refresh token string from request body."""
         return payload.refresh_token
 
+    @override
     def make_api_response(self) -> TokenPairPayload:
         """Return freshly minted JWT tokens."""
-        return _make_token_pair(self)
+        return _make_token_pair(self)  # type: ignore[arg-type]
 
 
 @final

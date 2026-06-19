@@ -8,11 +8,13 @@ from server.apps.clips.logic.constants import (
     RenderMode,
 )
 from server.apps.clips.models import (
+    ClipCampaign,
     ClipCandidate,
     ClipLayoutConfig,
     ClipPost,
     ClipStyleConfig,
     ClipTimedOverlay,
+    Earning,
 )
 from server.apps.pipelines.models import (
     PipelineBlueprint,
@@ -21,7 +23,7 @@ from server.apps.pipelines.models import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def pipeline_run(db: None) -> PipelineRun:
     channel = Channel.objects.create(
         name='Test Channel',
@@ -203,3 +205,30 @@ def test_signal_does_not_duplicate_configs_on_update(pipeline_run: PipelineRun) 
     candidate.save(update_fields=['title'])
     assert ClipLayoutConfig.objects.filter(candidate=candidate).count() == 1
     assert ClipStyleConfig.objects.filter(candidate=candidate).count() == 1
+
+
+@pytest.mark.django_db
+def test_clip_campaign_str(pipeline_run: PipelineRun) -> None:
+    """ClipCampaign.__str__ returns the campaign name."""
+    campaign = ClipCampaign.objects.create(
+        channel=pipeline_run.channel,
+        name='Summer clips',
+    )
+    assert str(campaign) == 'Summer clips'
+
+
+@pytest.mark.django_db
+def test_earning_str(pipeline_run: PipelineRun) -> None:
+    """Earning.__str__ includes platform and campaign."""
+    campaign = ClipCampaign.objects.create(
+        channel=pipeline_run.channel,
+        name='Earnings batch',
+    )
+    earning = Earning.objects.create(
+        campaign=campaign,
+        platform='youtube',
+        recorded_at='2026-06-19T12:00:00+00:00',
+    )
+    text = str(earning)
+    assert 'youtube' in text
+    assert 'Earnings batch' in text

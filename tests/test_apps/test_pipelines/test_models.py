@@ -34,7 +34,7 @@ def blueprint() -> PipelineBlueprint:
 @pytest.fixture
 def channel():
     """Test channel."""
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
     )
@@ -136,7 +136,7 @@ def test_cost_record_str(run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_run_cast_defaults(run: PipelineRun, channel) -> None:
     """RunCast defaults: PROPOSED design_status, is_ephemeral=False."""
-    from server.apps.channels.models import Character  # noqa: PLC0415
+    from server.apps.channels.models import Character
 
     char = Character.objects.create(
         channel=channel,

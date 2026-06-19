@@ -1,7 +1,6 @@
 """Tests for the clips API controllers."""
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock, patch
 
 import msgspec
 import pytest
@@ -9,12 +8,16 @@ from django.urls import reverse
 from dmr.test import DMRClient
 
 from server.apps.clips.logic.constants import CandidateStatus
-from server.apps.clips.logic.value_objects import ClipCandidatePayload
+from server.apps.clips.logic.value_objects import (
+    ClipCandidatePayload,
+    ClipPreviewStatusPayload,
+    ClipRenderPayload,
+)
 
 
-@pytest.fixture()
+@pytest.fixture
 def channel(db):  # type: ignore[no-untyped-def]
-    from server.apps.channels.models import (  # noqa: PLC0415
+    from server.apps.channels.models import (
         Channel,
         ChannelKind,
         PublishMode,
@@ -27,9 +30,9 @@ def channel(db):  # type: ignore[no-untyped-def]
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def blueprint(db):  # type: ignore[no-untyped-def]
-    from server.apps.pipelines.models import (  # noqa: PLC0415
+    from server.apps.pipelines.models import (
         PipelineBlueprint,
         PipelineKind,
     )
@@ -41,9 +44,9 @@ def blueprint(db):  # type: ignore[no-untyped-def]
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def run(channel, blueprint):  # type: ignore[no-untyped-def]
-    from server.apps.pipelines.models import PipelineRun  # noqa: PLC0415
+    from server.apps.pipelines.models import PipelineRun
 
     return PipelineRun.objects.create(
         channel=channel,
@@ -53,9 +56,9 @@ def run(channel, blueprint):  # type: ignore[no-untyped-def]
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def candidate(run):  # type: ignore[no-untyped-def]
-    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+    from server.apps.clips.models import ClipCandidate
 
     return ClipCandidate.objects.create(
         run=run,
@@ -80,8 +83,9 @@ def test_list_candidates(
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
-    assert len(data) == 1
-    parsed = msgspec.convert(data[0], type=ClipCandidatePayload)
+    assert data['total'] == 1
+    assert len(data['items']) == 1
+    parsed = msgspec.convert(data['items'][0], type=ClipCandidatePayload)
     assert parsed.title == 'Test Clip'
 
 
@@ -111,7 +115,7 @@ def test_get_candidate_missing(
     auth_headers: dict[str, str],
 ) -> None:
     """404 is returned when candidate does not exist."""
-    import uuid  # noqa: PLC0415
+    import uuid
 
     response = dmr_client.get(
         reverse(
@@ -196,26 +200,55 @@ def test_reject_candidate_default_reason(
 
 
 @pytest.mark.django_db
-def test_approve_gate(
+def test_candidate_render_without_asset(
     dmr_client: DMRClient,
     candidate: object,
-    run: object,
     auth_headers: dict[str, str],
 ) -> None:
-    """Gate approval endpoint calls approve_gate_impl and returns approved count."""
-    approved_ids = [str(candidate.id)]  # type: ignore[attr-defined]
-
-    with patch(
-        'server.apps.pipelines.services.orchestrator.approve_gate_impl',
-        new=AsyncMock(return_value=None),
-    ):
-        response = dmr_client.post(
-            reverse('clips:approve_gate', kwargs={'run_id': run.id}),  # type: ignore[attr-defined]
-            data={'approved_candidate_ids': approved_ids},
-            headers=auth_headers,
-        )
+    """Render endpoint returns null URL when no render asset exists."""
+    response = dmr_client.get(
+        reverse(
+            'clips:candidate_render',
+            kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+        ),
+        headers=auth_headers,
+    )
 
     assert response.status_code == HTTPStatus.OK
-    data = response.json()
-    assert data['status'] == 'approved'
-    assert data['approved_count'] == 1
+    parsed = msgspec.convert(response.json(), type=ClipRenderPayload)
+    assert parsed.url is None
+    assert parsed.asset_id is None
+
+
+@pytest.mark.django_db
+def test_candidate_preview_queues_job(
+    dmr_client: DMRClient,
+    candidate: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """Preview POST queues a render job."""
+    response = dmr_client.post(
+        reverse(
+            'clips:candidate_preview',
+            kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    parsed = msgspec.convert(response.json(), type=ClipPreviewStatusPayload)
+    assert parsed.status == 'queued'
+
+    status_response = dmr_client.get(
+        reverse(
+            'clips:candidate_preview_status',
+            kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+        ),
+        headers=auth_headers,
+    )
+    assert status_response.status_code == HTTPStatus.OK
+    status = msgspec.convert(
+        status_response.json(),
+        type=ClipPreviewStatusPayload,
+    )
+    assert status.status == 'queued'

@@ -11,7 +11,7 @@ from taskiq.result import TaskiqResult
 
 from server.common.taskiq_middleware import (
     ObservabilityMiddleware,
-    _span_stack,  # noqa: PLC2701
+    _span_stack,
 )
 
 

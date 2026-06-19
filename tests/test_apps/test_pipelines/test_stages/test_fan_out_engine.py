@@ -24,11 +24,11 @@ from server.apps.pipelines.stages.base import (
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run coroutine synchronously; close DB connections on exit."""
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
+    from asgiref.sync import sync_to_async
 
     @sync_to_async
     def _close() -> None:
-        from django.db import connections  # noqa: PLC0415
+        from django.db import connections
 
         connections.close_all()
 
@@ -100,14 +100,14 @@ def run(blueprint: PipelineBlueprint, channel: Channel) -> PipelineRun:
 @pytest.mark.django_db(transaction=True)
 def test_fan_out_creates_parent_and_three_children(run: PipelineRun) -> None:
     """execute_stage_impl on a fan_out stage creates parent(RUNNING) + 3 children(QUEUED)."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
     async def _inner() -> None:
         kicked: list[str] = []
 
-        async def fake_execute_stage_kiq(eid: str) -> None:  # noqa: RUF029
+        async def fake_execute_stage_kiq(eid: str) -> None:
             kicked.append(eid)
 
         with (
@@ -125,13 +125,13 @@ def test_fan_out_creates_parent_and_three_children(run: PipelineRun) -> None:
         assert len(kicked) == 1
         parent_exec_id = kicked[0]
 
-        from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        from server.apps.pipelines.services.executor import (
             execute_stage_impl,
         )
 
         child_ids: list[str] = []
 
-        async def fake_child_kiq(eid: str) -> None:  # noqa: RUF029
+        async def fake_child_kiq(eid: str) -> None:
             child_ids.append(eid)
 
         with (
@@ -167,17 +167,17 @@ def test_fan_out_creates_parent_and_three_children(run: PipelineRun) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_all_children_succeed_completes_parent(run: PipelineRun) -> None:
     """When all 3 child shards succeed, parent transitions to SUCCEEDED."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
     async def _inner() -> None:
         kicked: list[str] = []
 
-        async def fake_orchestrator_kiq(eid: str) -> None:  # noqa: RUF029
+        async def fake_orchestrator_kiq(eid: str) -> None:
             kicked.append(eid)
 
         with (
@@ -195,7 +195,7 @@ def test_all_children_succeed_completes_parent(run: PipelineRun) -> None:
         parent_exec_id = kicked[0]
         child_ids: list[str] = []
 
-        async def fake_child_kiq(eid: str) -> None:  # noqa: RUF029
+        async def fake_child_kiq(eid: str) -> None:
             child_ids.append(eid)
 
         with (
@@ -212,7 +212,7 @@ def test_all_children_succeed_completes_parent(run: PipelineRun) -> None:
 
         advance_calls: list[str] = []
 
-        async def record_advance(rid: str) -> None:  # noqa: RUF029
+        async def record_advance(rid: str) -> None:
             advance_calls.append(rid)
 
         with patch(

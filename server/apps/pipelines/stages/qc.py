@@ -79,7 +79,7 @@ async def _run_silence_detect(path: str) -> list[dict[str, float]]:
     starts = re.findall(r'silence_start: ([\d.]+)', text)
     ends = re.findall(r'silence_end: ([\d.]+)', text)
     durations = re.findall(r'silence_duration: ([\d.]+)', text)
-    for s, e, d in zip(starts, ends, durations):
+    for s, e, d in zip(starts, ends, durations, strict=False):
         events.append({'start': float(s), 'end': float(e), 'duration': float(d)})
     return events
 

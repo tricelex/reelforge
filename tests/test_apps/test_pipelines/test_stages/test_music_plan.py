@@ -44,7 +44,7 @@ def test_music_plan_fan_out_none() -> None:
 
 def test_music_plan_run_returns_entries() -> None:
     """run() returns dict with 'entries' list from LLM output."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         MusicEntry,
         MusicPlanOutput,
     )

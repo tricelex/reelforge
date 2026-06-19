@@ -15,12 +15,12 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
 
 def test_event_stream_yields_sse_messages() -> None:
     """event_stream yields SSE-formatted lines for Redis 'message' events."""
-    from server.apps.pipelines.views import event_stream  # noqa: PLC0415
+    from server.apps.pipelines.views import event_stream
 
     async def _inner() -> None:
         event_data = json.dumps({'type': 'stage.queued', 'stage': 'research'})
 
-        async def _fake_listen():  # noqa: RUF029
+        async def _fake_listen():
             yield {'type': 'subscribe', 'data': 1}
             yield {'type': 'message', 'data': event_data}
 
@@ -50,15 +50,13 @@ def test_event_stream_yields_sse_messages() -> None:
 
 def test_pipeline_events_response_headers() -> None:
     """pipeline_events returns StreamingHttpResponse with SSE headers."""
-    from django.test import RequestFactory  # noqa: PLC0415
+    from django.core.signing import TimestampSigner
+    from django.test import RequestFactory
 
-    from django.core.signing import TimestampSigner  # noqa: PLC0415
-
-    from server.apps.pipelines.views import pipeline_events  # noqa: PLC0415
+    from server.apps.pipelines.views import pipeline_events
 
     async def _inner() -> None:
         run_id = str(uuid.uuid4())
-        from django.core.signing import TimestampSigner  # noqa: PLC0415
 
         signer = TimestampSigner(salt='pipeline-sse-token')
         signed = signer.sign(run_id)
@@ -79,9 +77,9 @@ def test_pipeline_events_response_headers() -> None:
 
 def test_pipeline_events_rejects_missing_token() -> None:
     """pipeline_events returns 401 without a valid token."""
-    from django.test import RequestFactory  # noqa: PLC0415
+    from django.test import RequestFactory
 
-    from server.apps.pipelines.views import pipeline_events  # noqa: PLC0415
+    from server.apps.pipelines.views import pipeline_events
 
     async def _inner() -> None:
         request = RequestFactory().get('/api/runs/fake-run-id/events/')

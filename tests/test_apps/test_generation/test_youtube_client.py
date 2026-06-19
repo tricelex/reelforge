@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from server.apps.generation.clients.youtube import (
-    _classify_response,  # noqa: PLC2701
+    _classify_response,
     refresh_token_if_needed,
     set_thumbnail,
     upload_video,
@@ -20,8 +20,8 @@ from server.common.exceptions import FatalProviderError, RetryableProviderError
 def _fake_credential(*, expired: bool = True) -> MagicMock:
     """Build a mock credential with access/refresh tokens."""
     cred = MagicMock()
-    cred.access_token = 'old_token'  # noqa: S105
-    cred.refresh_token = 'refresh_tok'  # noqa: S105
+    cred.access_token = 'old_token'
+    cred.refresh_token = 'refresh_tok'
     if expired:
         cred.token_expiry = tz.now() - timedelta(hours=1)
     else:
@@ -77,7 +77,7 @@ def test_refresh_token_skips_when_valid() -> None:
         return await refresh_token_if_needed(cred)
 
     token = asyncio.run(_run())
-    assert token == 'old_token'  # noqa: S105
+    assert token == 'old_token'
     cred.save.assert_not_called()
 
 
@@ -102,7 +102,7 @@ def test_refresh_token_when_expired() -> None:
             return await refresh_token_if_needed(cred)
 
     token = asyncio.run(_run())
-    assert token == 'new_token'  # noqa: S105
+    assert token == 'new_token'
 
 
 def test_upload_video_returns_video_id() -> None:
@@ -123,7 +123,7 @@ def test_upload_video_returns_video_id() -> None:
             instance.post = AsyncMock(return_value=init_resp)
             instance.put = AsyncMock(return_value=upload_resp)
             return await upload_video(
-                access_token='tok',  # noqa: S106
+                access_token='tok',
                 video_bytes=b'video data',
                 title='Test Video',
                 description='Desc',
@@ -174,7 +174,7 @@ def test_classify_response_400_missing_reason_raises_fatal() -> None:
 
 def test_upload_video_with_schedule_at_sets_publish_at() -> None:
     """upload_video sets publishAt in status when schedule_at is provided."""
-    from datetime import datetime  # noqa: PLC0415
+    from datetime import datetime
 
     init_resp = MagicMock(spec=httpx.Response)
     init_resp.status_code = 200
@@ -194,7 +194,7 @@ def test_upload_video_with_schedule_at_sets_publish_at() -> None:
             instance.post = AsyncMock(return_value=init_resp)
             instance.put = AsyncMock(return_value=upload_resp)
             return await upload_video(
-                access_token='tok',  # noqa: S106
+                access_token='tok',
                 video_bytes=b'video data',
                 title='Scheduled Video',
                 description='Desc',

@@ -738,7 +738,7 @@ def test_watermark_text_ffmpeg_failure(mock_run: MagicMock) -> None:
 
 @patch('server.apps.rendering.clip_stages.watermark.subprocess.run')
 def test_watermark_image_run(mock_run: MagicMock) -> None:
-    from server.apps.clips.logic.constants import WatermarkType  # noqa: PLC0415
+    from server.apps.clips.logic.constants import WatermarkType
 
     mock_run.return_value = MagicMock(returncode=0)
     wm_asset = MagicMock()
@@ -758,7 +758,7 @@ def test_watermark_image_run(mock_run: MagicMock) -> None:
 
 @patch('server.apps.rendering.clip_stages.watermark.subprocess.run')
 def test_watermark_image_ffmpeg_failure(mock_run: MagicMock) -> None:
-    from server.apps.clips.logic.constants import WatermarkType  # noqa: PLC0415
+    from server.apps.clips.logic.constants import WatermarkType
 
     mock_run.return_value = MagicMock(returncode=1, stderr='img fail')
     wm_asset = MagicMock()

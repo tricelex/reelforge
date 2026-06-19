@@ -12,26 +12,35 @@ from dmr.errors import ErrorType
 from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
-from server.apps.core.auth import (
-    JWTAuthenticatedMixin,
-    get_request_user,
-    jwt_sync_auth,
-    require_operator,
-)
+from server.apps.clips.services import ClipsService
+from server.apps.core.auth import require_operator
+from server.apps.pipelines.clip_selectors import get_run_transcript
 from server.apps.pipelines.logic.value_objects import (
+    BlueprintListPayload,
     GateApprovePayload,
     GateApproveResultPayload,
     RerunStagePayload,
     RunActionResultPayload,
+    RunAssetListPayload,
     RunCreatePayload,
     RunDetailPayload,
     RunListPayload,
     SseTokenPayload,
+    TranscriptPayload,
+)
+from server.apps.pipelines.run_asset_selectors import (
+    list_blueprints,
+    list_run_assets,
 )
 from server.apps.pipelines.selectors import get_run_detail, list_runs
 from server.apps.pipelines.services import PipelineRunService
-from server.apps.pipelines.services.orchestrator import approve_gate_impl
+from server.common.auth import (
+    JWTAuthenticatedMixin,
+    get_request_user,
+    jwt_sync_auth,
+)
 from server.common.di import HasContainer
+from server.common.storage import PresignUrlHelper
 
 
 def _payload_to_dict(payload: GateApprovePayload) -> dict[str, object]:
@@ -46,7 +55,6 @@ def _payload_to_dict(payload: GateApprovePayload) -> dict[str, object]:
     return result
 
 
-@final
 class RunCollectionController(
     JWTAuthenticatedMixin,
     HasContainer,
@@ -81,7 +89,10 @@ class RunCollectionController(
     def post(self, parsed_body: Body[RunCreatePayload]) -> RunDetailPayload:
         """Create run and kick orchestrator."""
         require_operator(get_request_user(self.request))
-        idempotency_key = self.request.META.get('HTTP_IDEMPOTENCY_KEY')
+        idempotency_key = (
+            self.request.headers.get('Idempotency-Key')
+            or self.request.META.get('HTTP_IDEMPOTENCY_KEY')
+        )
         return self.resolve(PipelineRunService).create(
             parsed_body,
             idempotency_key=idempotency_key,
@@ -100,7 +111,7 @@ class RunCollectionController(
             return self.to_error(
                 self.format_error(
                     '; '.join(str(m) for m in messages),
-                    error_type=ErrorType.bad_request,
+                    error_type=ErrorType.value_error,
                 ),
                 status_code=HTTPStatus.BAD_REQUEST,
             )
@@ -244,13 +255,90 @@ class RunGateApproveController(
         parsed_body: Body[GateApprovePayload],
     ) -> GateApproveResultPayload:
         """Record gate output and re-advance the pipeline."""
+        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+            _approve_gate_sync,
+            advance_pipeline_impl,
+        )
+
         run_id = str(self.kwargs['run_id'])
         gate_key = str(self.kwargs['gate_key'])
-        asyncio.run(
-            approve_gate_impl(
-                run_id,
-                gate_key,
-                _payload_to_dict(parsed_body),
-            ),
+        output = _payload_to_dict(parsed_body)
+        approved_count: int | None = None
+        if gate_key == 'clip_approval_gate':
+            approved_raw = output.get('approved_candidate_ids', [])
+            if isinstance(approved_raw, list):
+                approved_ids = [str(value) for value in approved_raw]
+                self.resolve(ClipsService).sync_gate_candidates(
+                    run_id,
+                    approved_ids,
+                )
+                approved_count = len(approved_ids)
+        _approve_gate_sync(run_id, gate_key, output)
+        asyncio.run(advance_pipeline_impl(run_id))
+        return GateApproveResultPayload(
+            status='ok',
+            approved_count=approved_count,
         )
-        return GateApproveResultPayload(status='ok')
+
+
+@final
+class RunTranscriptController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Return clip transcript for a run."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> TranscriptPayload:
+        """Return transcript words and chapters."""
+        return get_run_transcript(
+            str(self.kwargs['run_id']),
+            self.resolve(PresignUrlHelper),
+        )
+
+
+@final
+class RunAssetsController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List presigned URLs for run-owned assets."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> RunAssetListPayload:
+        """Return paginated run assets."""
+        return list_run_assets(
+            str(self.kwargs['run_id']),
+            self.resolve(PresignUrlHelper),
+            cursor=cursor,
+            limit=limit,
+        )
+
+
+@final
+class BlueprintCollectionController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List active pipeline blueprints."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> BlueprintListPayload:
+        """Return blueprint summaries."""
+        return list_blueprints(cursor=cursor, limit=limit)

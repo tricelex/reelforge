@@ -6,7 +6,7 @@ from server.apps.rendering.ffmpeg import async_ffprobe
 
 
 def test_rendering_app_importable() -> None:
-    import server.apps.rendering.ffmpeg  # noqa: F401, PLC0415
+    import server.apps.rendering.ffmpeg  # noqa: F401
 
     assert True
 
@@ -22,7 +22,7 @@ def test_async_ffprobe_returns_parsed_json() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await async_ffprobe('/tmp/test.mp4')  # noqa: S108
+            return await async_ffprobe('/tmp/test.mp4')
 
     result = asyncio.run(_run())
     assert result['format']['duration'] == '30.0'
@@ -39,7 +39,7 @@ def test_async_ffprobe_raises_on_nonzero_exit() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            await async_ffprobe('/tmp/missing.mp4')  # noqa: S108
+            await async_ffprobe('/tmp/missing.mp4')
 
     try:
         asyncio.run(_run())
@@ -73,17 +73,17 @@ def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
             ),
         ):
             await mux_scene(
-                video_path='/tmp/seg.mp4',  # noqa: S108
-                audio_path='/tmp/ch.mp3',  # noqa: S108
+                video_path='/tmp/seg.mp4',
+                audio_path='/tmp/ch.mp3',
                 start_s=2.0,
                 end_s=9.5,
-                out_path='/tmp/scene.mp4',  # noqa: S108
+                out_path='/tmp/scene.mp4',
             )
 
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert 'ffmpeg' in captured[0]
-    assert '/tmp/scene.mp4' in cmd  # noqa: S108
+    assert '/tmp/scene.mp4' in cmd
 
 
 def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:
@@ -109,11 +109,11 @@ def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:
         ):
             # narration=8.5s, motion=5s → drift=70% >> 5%
             await mux_scene(
-                video_path='/tmp/seg.mp4',  # noqa: S108
-                audio_path='/tmp/ch.mp3',  # noqa: S108
+                video_path='/tmp/seg.mp4',
+                audio_path='/tmp/ch.mp3',
                 start_s=0.0,
                 end_s=8.5,
-                out_path='/tmp/out.mp4',  # noqa: S108
+                out_path='/tmp/out.mp4',
             )
 
     asyncio.run(_run())
@@ -139,11 +139,11 @@ def test_mux_scene_raises_on_ffmpeg_failure() -> None:
             ),
         ):
             await mux_scene(
-                '/tmp/s.mp4',  # noqa: S108
-                '/tmp/a.mp3',  # noqa: S108
+                '/tmp/s.mp4',
+                '/tmp/a.mp3',
                 0.0,
                 5.0,
-                '/tmp/o.mp4',  # noqa: S108
+                '/tmp/o.mp4',
             )
 
     try:
@@ -169,15 +169,15 @@ def test_concat_chapter_calls_ffmpeg_concat_demuxer() -> None:
     async def _run() -> None:
         with patch('asyncio.create_subprocess_exec', side_effect=fake_exec):
             await concat_chapter(
-                ['/tmp/s0.mp4', '/tmp/s1.mp4'],  # noqa: S108
-                '/tmp/chapter.mp4',  # noqa: S108
+                ['/tmp/s0.mp4', '/tmp/s1.mp4'],
+                '/tmp/chapter.mp4',
             )
 
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert '-f' in cmd and 'concat' in cmd
     assert '-c' in cmd and 'copy' in cmd
-    assert '/tmp/chapter.mp4' in cmd  # noqa: S108
+    assert '/tmp/chapter.mp4' in cmd
 
 
 def test_concat_chapter_raises_on_failure() -> None:
@@ -191,8 +191,8 @@ def test_concat_chapter_raises_on_failure() -> None:
             new=AsyncMock(return_value=mock_proc),
         ):
             await concat_chapter(
-                ['/tmp/a.mp4'],  # noqa: S108
-                '/tmp/out.mp4',  # noqa: S108
+                ['/tmp/a.mp4'],
+                '/tmp/out.mp4',
             )
 
     try:
@@ -228,7 +228,7 @@ def test_loudnorm_pass1_parses_json_from_stderr() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await loudnorm_pass1('/tmp/video.mp4')  # noqa: S108
+            return await loudnorm_pass1('/tmp/video.mp4')
 
     result = asyncio.run(_run())
     assert result['input_i'] == '-23.5'
@@ -245,7 +245,7 @@ def test_loudnorm_pass1_raises_when_json_absent() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            await loudnorm_pass1('/tmp/video.mp4')  # noqa: S108
+            await loudnorm_pass1('/tmp/video.mp4')
 
     try:
         asyncio.run(_run())
@@ -277,19 +277,19 @@ def test_final_pass_calls_ffmpeg_with_subtitle_filter() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
                 music_paths=[],
                 music_gains_db=[],
-                ass_path='/tmp/subs.ass',  # noqa: S108
+                ass_path='/tmp/subs.ass',
                 watermark_path=None,
-                out_path='/tmp/final.mp4',  # noqa: S108
+                out_path='/tmp/final.mp4',
             )
 
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert 'subtitles=' in cmd
     assert 'libx264' in cmd
-    assert '/tmp/final.mp4' in cmd  # noqa: S108
+    assert '/tmp/final.mp4' in cmd
 
 
 def test_final_pass_omits_overlay_when_no_watermark() -> None:
@@ -315,12 +315,12 @@ def test_final_pass_omits_overlay_when_no_watermark() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
                 music_paths=[],
                 music_gains_db=[],
                 ass_path=None,
                 watermark_path=None,
-                out_path='/tmp/final.mp4',  # noqa: S108
+                out_path='/tmp/final.mp4',
             )
 
     asyncio.run(_run())
@@ -352,12 +352,12 @@ def test_final_pass_includes_amix_when_music_provided() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
-                music_paths=['/tmp/music.mp3'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
+                music_paths=['/tmp/music.mp3'],
                 music_gains_db=[-3.0],
                 ass_path=None,
                 watermark_path=None,
-                out_path='/tmp/final.mp4',  # noqa: S108
+                out_path='/tmp/final.mp4',
             )
 
     asyncio.run(_run())
@@ -388,17 +388,17 @@ def test_mux_scene_fallback_when_motion_dur_zero() -> None:
             ),
         ):
             await mux_scene(
-                video_path='/tmp/seg.mp4',  # noqa: S108
-                audio_path='/tmp/ch.mp3',  # noqa: S108
+                video_path='/tmp/seg.mp4',
+                audio_path='/tmp/ch.mp3',
                 start_s=0.0,
                 end_s=5.0,
-                out_path='/tmp/out.mp4',  # noqa: S108
+                out_path='/tmp/out.mp4',
             )
 
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert 'ffmpeg' in captured[0]
-    assert '/tmp/out.mp4' in cmd  # noqa: S108
+    assert '/tmp/out.mp4' in cmd
 
 
 def test_final_pass_with_watermark_and_no_music() -> None:
@@ -425,18 +425,18 @@ def test_final_pass_with_watermark_and_no_music() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
                 music_paths=[],
                 music_gains_db=[],
                 ass_path=None,
-                watermark_path='/tmp/wm.png',  # noqa: S108
-                out_path='/tmp/final.mp4',  # noqa: S108
+                watermark_path='/tmp/wm.png',
+                out_path='/tmp/final.mp4',
             )
 
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert 'overlay' in cmd
-    assert '/tmp/wm.png' in cmd  # noqa: S108
+    assert '/tmp/wm.png' in cmd
 
 
 def test_final_pass_with_watermark_and_subtitles_no_music() -> None:
@@ -463,12 +463,12 @@ def test_final_pass_with_watermark_and_subtitles_no_music() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
                 music_paths=[],
                 music_gains_db=[],
-                ass_path='/tmp/subs.ass',  # noqa: S108
-                watermark_path='/tmp/wm.png',  # noqa: S108
-                out_path='/tmp/final.mp4',  # noqa: S108
+                ass_path='/tmp/subs.ass',
+                watermark_path='/tmp/wm.png',
+                out_path='/tmp/final.mp4',
             )
 
     asyncio.run(_run())
@@ -498,12 +498,12 @@ def test_final_pass_raises_on_ffmpeg_failure() -> None:
             ),
         ):
             await final_pass(
-                chapter_paths=['/tmp/ch0.mp4'],  # noqa: S108
+                chapter_paths=['/tmp/ch0.mp4'],
                 music_paths=[],
                 music_gains_db=[],
                 ass_path=None,
                 watermark_path=None,
-                out_path='/tmp/final.mp4',  # noqa: S108
+                out_path='/tmp/final.mp4',
             )
 
     try:

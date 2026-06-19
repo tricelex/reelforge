@@ -48,7 +48,7 @@ def test_script_fan_out_none() -> None:
 
 def test_script_run_returns_chapters_and_word_count() -> None:
     """run() returns dict with 'chapters' and 'total_word_count'."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         ScriptChapter,
         ScriptOutput,
     )

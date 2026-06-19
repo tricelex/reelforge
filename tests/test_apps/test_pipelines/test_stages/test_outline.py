@@ -49,7 +49,7 @@ def test_outline_fan_out_none() -> None:
 
 def test_outline_run_returns_chapters() -> None:
     """run() returns dict with 'chapters' and 'total_target_seconds'."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         Chapter,
         OutlineOutput,
     )
@@ -90,7 +90,7 @@ def test_outline_run_returns_chapters() -> None:
 
 def test_outline_run_with_no_niche_config() -> None:
     """run() works when channel.niche_config is None (no beats)."""
-    from server.apps.pipelines.schemas import (  # noqa: PLC0415
+    from server.apps.pipelines.schemas import (
         Chapter,
         OutlineOutput,
     )

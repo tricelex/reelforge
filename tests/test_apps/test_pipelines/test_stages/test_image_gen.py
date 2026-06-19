@@ -52,7 +52,7 @@ def test_image_gen_fan_out_returns_one_dict_per_scene() -> None:
 
 def test_image_gen_run_child_returns_scene_asset() -> None:
     """A child shard execution calls fal.generate_image and saves asset."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     ctx = _make_ctx(n_scenes=3)
     ctx.execution.shard_index = 1
@@ -95,7 +95,7 @@ def test_image_gen_run_child_returns_scene_asset() -> None:
 
 def test_image_gen_safety_preflag_raises_fatal() -> None:
     """safety_flagged=True in input_snapshot raises FatalProviderError."""
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     ctx = _make_ctx()
     ctx.execution.shard_index = 0
@@ -120,7 +120,7 @@ def test_image_gen_safety_preflag_raises_fatal() -> None:
 
 def test_image_gen_content_policy_violation_after_gen_raises_fatal() -> None:
     """When fal returns content_policy_violation=True post-generation, raises FatalProviderError."""
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     ctx = _make_ctx()
     ctx.execution.shard_index = 0

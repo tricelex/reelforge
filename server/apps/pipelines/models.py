@@ -100,6 +100,13 @@ class PipelineRun(UUIDModel, TimeStampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     is_paused = models.BooleanField(default=False)
+    source_idea = models.ForeignKey(
+        'ideas.TopicIdea',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='promoted_runs',
+    )
 
     class Meta:
         ordering: ClassVar = ['-created_at']

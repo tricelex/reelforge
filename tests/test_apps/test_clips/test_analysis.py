@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from server.apps.clips.analysis import ClipAnalysisService, ClipSegment, ClipsOutput
+from server.apps.clips.analysis import (
+    ClipAnalysisService,
+    ClipSegment,
+    ClipsOutput,
+)
 
 
 def test_clip_segment_schema() -> None:
@@ -116,9 +120,17 @@ def test_extract_excerpt_empty() -> None:
 
 @pytest.mark.django_db
 def test_analyze_creates_candidates() -> None:
-    from server.apps.channels.models import Channel, ChannelKind, PublishMode  # noqa: PLC0415
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+        PublishMode,
+    )
     from server.apps.clips.models import ClipCandidate
-    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
 
     channel = Channel.objects.create(
         name='Test',
@@ -174,8 +186,16 @@ def test_analyze_creates_candidates() -> None:
 
 @pytest.mark.django_db
 def test_analyze_skips_invalid_candidates_with_warning() -> None:
-    from server.apps.channels.models import Channel, ChannelKind, PublishMode  # noqa: PLC0415
-    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+        PublishMode,
+    )
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
 
     channel = Channel.objects.create(
         name='Test',
@@ -223,9 +243,17 @@ def test_analyze_skips_invalid_candidates_with_warning() -> None:
 
 @pytest.mark.django_db
 def test_analyze_clips_requested_limits_results() -> None:
-    from server.apps.channels.models import Channel, ChannelKind, PublishMode  # noqa: PLC0415
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+        PublishMode,
+    )
     from server.apps.clips.models import ClipCandidate
-    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
 
     channel = Channel.objects.create(
         name='Limit Test',

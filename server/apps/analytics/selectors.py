@@ -90,3 +90,74 @@ def get_stage_performance(channel_id: str) -> list[dict[str, object]]:
         }
         for row in rows
     ]
+
+
+def get_dashboard() -> dict[str, object]:
+    """Return operator dashboard aggregates from live tables."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    import django.utils.timezone as tz  # noqa: PLC0415
+    from django.db.models import Sum  # noqa: PLC0415
+
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.publishing.models import PublishJob  # noqa: PLC0415
+
+    in_flight_statuses = {
+        RunStatus.PENDING,
+        RunStatus.RUNNING,
+        RunStatus.AWAITING_REVIEW,
+        RunStatus.BUDGET_HOLD,
+        RunStatus.PUBLISHING,
+    }
+    runs_in_flight = PipelineRun.objects.filter(
+        status__in=in_flight_statuses,
+    ).count()
+
+    gates_waiting = (
+        StageExecution.objects
+        .filter(parent=None, status=StageStatus.RUNNING)
+        .count()
+    )
+
+    today = tz.localdate()
+    spend_today = (
+        PipelineRun.objects
+        .filter(created_at__date=today)
+        .aggregate(total=Sum('total_cost_usd'))
+        .get('total')
+        or Decimal(0)
+    )
+
+    publish_rows = (
+        PublishJob.objects
+        .filter(schedule_at__isnull=False)
+        .select_related('channel', 'run')
+        .order_by('schedule_at')[:20]
+    )
+    publish_scheduled = [
+        {
+            'run_id': str(row.run_id),
+            'channel_id': str(row.channel_id),
+            'channel_name': row.channel.name,
+            'schedule_at': (
+                row.schedule_at.isoformat()
+                if row.schedule_at is not None  # type: ignore[comparison-overlap, redundant-expr]
+                else ''
+            ),
+            'status': row.status,
+        }
+        for row in publish_rows
+        if row.schedule_at is not None
+    ]
+
+    return {
+        'runs_in_flight': runs_in_flight,
+        'gates_waiting': gates_waiting,
+        'spend_today_usd': f'{spend_today:.4f}',
+        'publish_scheduled': publish_scheduled,
+    }

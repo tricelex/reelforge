@@ -37,3 +37,22 @@ class StagePerformanceListPayload(msgspec.Struct, frozen=True):
     """List of stage performance rows."""
 
     stage_performance: list[StagePerformancePayload]
+
+
+class PublishCalendarItemPayload(msgspec.Struct, frozen=True):
+    """Scheduled publish job for the operator dashboard."""
+
+    run_id: str
+    channel_id: str
+    channel_name: str
+    schedule_at: str
+    status: str
+
+
+class DashboardPayload(msgspec.Struct, frozen=True):
+    """Operator dashboard aggregates."""
+
+    runs_in_flight: int
+    gates_waiting: int
+    spend_today_usd: str
+    publish_scheduled: list[PublishCalendarItemPayload]

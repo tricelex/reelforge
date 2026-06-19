@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.apps.pipelines.stages.clip_approval_gate import ClipApprovalGateStage
+from server.apps.pipelines.stages.clip_approval_gate import (
+    ClipApprovalGateStage,
+)
 
 
 def test_clip_approval_gate_attributes() -> None:

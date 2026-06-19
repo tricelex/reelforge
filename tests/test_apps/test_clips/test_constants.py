@@ -1,4 +1,3 @@
-from server.apps.clips.logic.events import ClipCandidatesCreated
 from server.apps.clips.logic.constants import (
     CandidateStatus,
     CaptionStyle,
@@ -10,6 +9,7 @@ from server.apps.clips.logic.constants import (
     WatermarkPosition,
     WatermarkType,
 )
+from server.apps.clips.logic.events import ClipCandidatesCreated
 
 
 def test_render_mode_values() -> None:

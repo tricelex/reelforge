@@ -7,7 +7,7 @@ import httpx
 
 from server.apps.pipelines.stages.publish import (
     PublishStage,
-    _download_asset,  # noqa: PLC2701
+    _download_asset,
 )
 
 

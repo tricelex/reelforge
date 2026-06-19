@@ -73,7 +73,7 @@ def test_motion_fan_out_one_per_scene() -> None:
 
 def test_motion_hero_scene_calls_kling() -> None:
     """Hero scenes use Kling I2V and return method='kling'."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     ctx = _make_ctx()
     ctx.execution.shard_index = 0
@@ -146,7 +146,7 @@ def test_motion_non_hero_scene_runs_ken_burns() -> None:
 
 def test_run_ken_burns_returns_video_bytes() -> None:
     """_run_ken_burns downloads image, runs FFmpeg, returns video bytes."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.pipelines.stages.motion import (
         _run_ken_burns,
@@ -184,7 +184,7 @@ def test_run_ken_burns_returns_video_bytes() -> None:
 
 def test_run_ken_burns_raises_on_ffmpeg_failure() -> None:
     """_run_ken_burns raises RuntimeError if FFmpeg exits non-zero."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.pipelines.stages.motion import (
         _run_ken_burns,

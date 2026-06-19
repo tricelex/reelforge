@@ -1,29 +1,48 @@
-"""Pydantic value objects for the assets app."""
+"""API DTOs for the assets app."""
 
-from typing import Any, final
-from uuid import UUID
-
-from pydantic import BaseModel
+import msgspec
 
 
-@final
-class LibraryAssetRegisterPayload(BaseModel):
-    """Input for registering a new library asset."""
+class PresignUploadPayload(msgspec.Struct, frozen=True):
+    """Input for presigned upload URL generation."""
 
-    kind: str
-    name: str
-    tags: list[str] = []
-    channel_id: UUID | None = None
+    filename: str
+    mime: str
 
 
-@final
-class LibraryAssetPayload(BaseModel):
-    """Output representation of a library asset."""
+class PresignUploadResultPayload(msgspec.Struct, frozen=True):
+    """Presigned PUT URL and storage key."""
 
-    id: UUID
+    url: str
+    key: str
+
+
+class LibraryAssetPayload(msgspec.Struct, frozen=True):
+    """Read representation of a library asset."""
+
+    id: str
     kind: str
     name: str
     tags: list[str]
+    channel_id: str | None
     is_active: bool
     version: int
-    meta: dict[str, Any]
+    meta: dict[str, str | int | float | bool | None]
+
+
+class LibraryAssetCreatePayload(msgspec.Struct, frozen=True):
+    """Register an uploaded object as a library asset."""
+
+    kind: str
+    name: str
+    storage_key: str
+    tags: list[str] | None = None
+    channel_id: str | None = None
+
+
+class LibraryAssetListPayload(msgspec.Struct, frozen=True):
+    """Filtered library asset list."""
+
+    items: list[LibraryAssetPayload]
+    next_cursor: str | None
+    total: int

@@ -22,11 +22,11 @@ from server.apps.pipelines.models import (
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run a coroutine synchronously, closing DB connections on exit."""
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
+    from asgiref.sync import sync_to_async
 
     @sync_to_async
     def _close() -> None:
-        from django.db import connections  # noqa: PLC0415
+        from django.db import connections
 
         connections.close_all()
 
@@ -90,7 +90,7 @@ def test_stage_execution_str_with_shard_index(run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_run_cast_str(run: PipelineRun, channel: Channel) -> None:
     """RunCast.__str__ returns '<character_name> as <role>'."""
-    from server.apps.channels.models import Character  # noqa: PLC0415
+    from server.apps.channels.models import Character
 
     char = Character.objects.create(
         channel=channel,
@@ -108,7 +108,7 @@ def test_run_cast_str(run: PipelineRun, channel: Channel) -> None:
 
 def test_fan_out_returns_none() -> None:
     """Stage.fan_out() default returns None (no sharding)."""
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         Stage,
         StageContext,
         register_stage,
@@ -138,7 +138,7 @@ def test_execute_stage_task_body_calls_impl() -> None:
     """execute_stage task body delegates directly to execute_stage_impl."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
+        from server.apps.pipelines.tasks import execute_stage
 
         with patch(
             'server.apps.pipelines.services.executor.execute_stage_impl',
@@ -154,7 +154,7 @@ def test_advance_pipeline_task_body_calls_impl() -> None:
     """advance_pipeline task body delegates to advance_pipeline_impl."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.tasks import (  # noqa: PLC0415
+        from server.apps.pipelines.tasks import (
             advance_pipeline,
         )
 
@@ -177,7 +177,7 @@ def test_kick_advance_sends_advance_pipeline_kiq() -> None:
     """kick_advance calls advance_pipeline.kiq with the run_id string."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        from server.apps.pipelines.services.executor import (
             kick_advance,
         )
 
@@ -196,7 +196,7 @@ def test_executor_execute_stage_kiq_sends_kiq() -> None:
     """executor.execute_stage_kiq calls execute_stage.kiq."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+        from server.apps.pipelines.services.executor import (
             execute_stage_kiq,
         )
 
@@ -217,7 +217,7 @@ def test_publish_sse_sends_json_payload() -> None:
     """publish_sse encodes data as JSON bytes and publishes pipeline event."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        from server.apps.pipelines.services.orchestrator import (
             publish_sse,
         )
 
@@ -238,7 +238,7 @@ def test_orchestrator_execute_stage_kiq_sends_kiq() -> None:
     """orchestrator.execute_stage_kiq calls execute_stage.kiq."""
 
     async def _inner() -> None:
-        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        from server.apps.pipelines.services.orchestrator import (
             execute_stage_kiq,
         )
 
@@ -257,8 +257,8 @@ def test_orchestrator_execute_stage_kiq_sends_kiq() -> None:
 
 def test_eval_condition_all_branches() -> None:
     """_eval_condition covers empty, review, auto, and unknown conditions."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
-        _eval_condition,  # noqa: PLC2701
+    from server.apps.pipelines.services.orchestrator import (
+        _eval_condition,
     )
 
     mock_run = MagicMock()
@@ -313,7 +313,7 @@ def test_eval_condition_all_branches() -> None:
 
 def test_prompt_renderer_get_version_id() -> None:
     """get_version_id returns the pinned UUID or None when not in snapshot."""
-    from server.apps.pipelines.services.prompt_renderer import (  # noqa: PLC0415
+    from server.apps.pipelines.services.prompt_renderer import (
         PromptRenderer,
     )
 
@@ -328,7 +328,7 @@ def test_prompt_renderer_get_version_id() -> None:
 
 def test_prompt_renderer_render_returns_empty_when_no_version() -> None:
     """render() returns ('', '') when no PromptVersion found."""
-    from server.apps.pipelines.services.prompt_renderer import (  # noqa: PLC0415
+    from server.apps.pipelines.services.prompt_renderer import (
         PromptRenderer,
     )
 
@@ -347,7 +347,7 @@ def test_prompt_renderer_render_returns_empty_when_no_version() -> None:
 
 def test_prompt_renderer_render_returns_prompts_with_version_id() -> None:
     """render() returns (system_prompt, user_prompt) when a version is found."""
-    from server.apps.pipelines.services.prompt_renderer import (  # noqa: PLC0415
+    from server.apps.pipelines.services.prompt_renderer import (
         PromptRenderer,
     )
 
@@ -371,7 +371,7 @@ def test_prompt_renderer_render_returns_prompts_with_version_id() -> None:
 
 def test_prompt_renderer_render_applies_jinja2_variables() -> None:
     """render() substitutes Jinja2 {{ var }} expressions from the variables dict."""
-    from server.apps.pipelines.services.prompt_renderer import (  # noqa: PLC0415
+    from server.apps.pipelines.services.prompt_renderer import (
         PromptRenderer,
     )
 
@@ -401,9 +401,9 @@ def test_prompt_renderer_render_applies_jinja2_variables() -> None:
 
 def test_asset_writer_save_creates_asset_row() -> None:
     """AssetWriter.save computes checksum, saves file, and returns the Asset."""
-    import hashlib  # noqa: PLC0415
+    import hashlib
 
-    from server.apps.pipelines.services.asset_writer import (  # noqa: PLC0415
+    from server.apps.pipelines.services.asset_writer import (
         AssetWriter,
     )
 
@@ -450,7 +450,7 @@ def test_asset_writer_save_creates_asset_row() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_build_context_missing_upstream_gives_empty_dict() -> None:
     """build_context gives empty upstream when dep has no SUCCEEDED exec."""
-    from server.apps.pipelines.services.context import (  # noqa: PLC0415
+    from server.apps.pipelines.services.context import (
         build_context,
     )
 
@@ -496,7 +496,7 @@ def test_build_context_missing_upstream_gives_empty_dict() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_execute_stage_unknown_stage_key_marks_failed(run: PipelineRun) -> None:
     """Unknown stage key → execution marked FAILED with descriptive error."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
 
@@ -523,16 +523,16 @@ def test_execute_stage_unknown_stage_key_marks_failed(run: PipelineRun) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_execute_stage_fatal_error_marks_needs_input(run: PipelineRun) -> None:
     """Stage raises FatalProviderError → execution status NEEDS_INPUT."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         Stage,
         StageContext,
         register_stage,
     )
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     async def _inner() -> None:
         @register_stage
@@ -575,15 +575,15 @@ def test_execute_stage_schedules_retry_when_under_max_retries(
     run: PipelineRun,
 ) -> None:
     """RetryableProviderError → marks FAILED and enqueues next attempt."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         Stage,
         StageContext,
         register_stage,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     async def _inner() -> None:
         @register_stage
@@ -639,10 +639,10 @@ def test_execute_stage_schedules_retry_when_under_max_retries(
 @pytest.mark.django_db(transaction=True)
 def test_execute_stage_generic_exception_marks_failed(run: PipelineRun) -> None:
     """Unexpected exception in stage.run → execution marked FAILED."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         Stage,
         StageContext,
         register_stage,
@@ -690,7 +690,7 @@ def test_execute_stage_generic_exception_marks_failed(run: PipelineRun) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_advance_marks_run_failed_when_stage_fails(run: PipelineRun) -> None:
     """When a stage is FAILED, advance sets run status to FAILED."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -723,7 +723,7 @@ def test_advance_marks_run_failed_when_stage_fails(run: PipelineRun) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_advance_noop_for_completed_run(run: PipelineRun) -> None:
     """advance_pipeline_impl is a no-op when run is already COMPLETED."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -752,7 +752,7 @@ def test_advance_noop_for_completed_run(run: PipelineRun) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_advance_empty_blueprint_empty_states(channel: Channel) -> None:
     """Empty blueprint → no stages → _update_run_status_sync early-returns."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -791,7 +791,7 @@ def test_advance_running_run_with_queued_stage_no_status_change(
     run: PipelineRun,
 ) -> None:
     """RUNNING run + QUEUED stage: status unchanged, no save triggered."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -827,8 +827,8 @@ def test_advance_running_run_with_queued_stage_no_status_change(
 @pytest.mark.django_db(transaction=True)
 def test_advance_uses_latest_attempt_for_stage_state(run: PipelineRun) -> None:
     """_get_stage_states uses the highest attempt when multiple exist."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -871,7 +871,7 @@ def test_advance_pending_run_needs_input_stage_no_save(
     run: PipelineRun,
 ) -> None:
     """PENDING run + NEEDS_INPUT stage: no status change, no save."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -905,7 +905,7 @@ def test_advance_pending_run_needs_input_stage_no_save(
 @pytest.mark.django_db(transaction=True)
 def test_advance_skips_unknown_stage_key_silently(channel: Channel) -> None:
     """Stage key absent from STAGE_REGISTRY is skipped silently."""
-    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+    from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
@@ -957,8 +957,8 @@ def test_maybe_complete_fan_out_parent_no_op_when_parent_already_succeeded(
     run: PipelineRun,
 ) -> None:
     """_maybe_complete_fan_out_parent returns early if parent is already SUCCEEDED."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
-        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
     )
 
     async def _inner() -> None:
@@ -991,8 +991,8 @@ def test_maybe_complete_fan_out_parent_uses_latest_attempt_per_shard(
     run: PipelineRun,
 ) -> None:
     """With multiple attempts for a shard, only the latest (highest attempt) status counts."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
-        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
     )
 
     async def _inner() -> None:
@@ -1038,8 +1038,8 @@ def test_maybe_complete_fan_out_parent_fails_parent_when_shard_failed_and_no_in_
     run: PipelineRun,
 ) -> None:
     """Parent is marked FAILED when a shard is FAILED and no siblings remain in-flight."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
-        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
     )
 
     async def _inner() -> None:
@@ -1076,8 +1076,8 @@ def test_maybe_complete_fan_out_parent_waits_when_in_flight_shards_remain(
     run: PipelineRun,
 ) -> None:
     """Parent stays RUNNING when a shard fails but other siblings are still in-flight."""
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
-        _maybe_complete_fan_out_parent,  # noqa: PLC2701
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
     )
 
     async def _inner() -> None:
@@ -1117,11 +1117,11 @@ def test_execute_stage_already_fanned_returns_without_creating_new_children(
     run: PipelineRun,
 ) -> None:
     """execute_stage_impl on a fan-out parent with existing children is a no-op."""
-    import server.apps.pipelines.stages.dummy  # noqa: F401, PLC0415
-    from server.apps.pipelines.services.executor import (  # noqa: PLC0415
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.executor import (
         execute_stage_impl,
     )
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (
         Stage,
         StageContext,
         register_stage,
@@ -1193,20 +1193,7 @@ def test_execute_stage_already_fanned_returns_without_creating_new_children(
 
 def test_all_production_stages_registered() -> None:
     """All 14 production stages appear in STAGE_REGISTRY after importing them."""
-    import server.apps.pipelines.stages.alignment  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.assembly  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.image_gen  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.metadata  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.motion  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.music_plan  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.outline  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.qc  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.research  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.scene_breakdown  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.script  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.thumbnail  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.tts  # noqa: F401, PLC0415
-    import server.apps.pipelines.stages.visual_prompts  # noqa: F401, PLC0415
+    import server.apps.pipelines.stages.visual_prompts  # noqa: F401
     from server.apps.pipelines.stages.base import (
         STAGE_REGISTRY,
     )
@@ -1228,3 +1215,167 @@ def test_all_production_stages_registered() -> None:
         'qc',
     }
     assert expected.issubset(set(STAGE_REGISTRY.keys()))
+
+
+# ---------------------------------------------------------------------------
+# orchestrator.py: rerun stage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_unknown_stage_returns_empty(
+    run: PipelineRun,
+) -> None:
+    """_rerun_stage_sync returns no exec IDs for unknown stage keys."""
+    from server.apps.pipelines.services.orchestrator import (
+        _rerun_stage_sync,
+    )
+
+    exec_ids = _rerun_stage_sync(str(run.id), 'missing_stage', None)
+    assert exec_ids == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
+    """_rerun_stage_sync stales downstream and creates a queued execution."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.orchestrator import (
+        _rerun_stage_sync,
+    )
+
+    run.blueprint_snapshot = {
+        'stages': [
+            {'key': 'dummy_a', 'depends_on': []},
+            {'key': 'dummy_b', 'depends_on': ['dummy_a']},
+        ],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+    downstream = StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+
+    exec_ids = _rerun_stage_sync(str(run.id), 'dummy_a', None)
+
+    assert len(exec_ids) == 1
+    downstream.refresh_from_db()
+    assert downstream.status == StageStatus.STALE
+    rerun_run = PipelineRun.objects.get(id=run.id)
+    assert rerun_run.status == RunStatus.RUNNING
+    created = StageExecution.objects.get(id=exec_ids[0])
+    assert created.stage_key == 'dummy_a'
+    assert created.status == StageStatus.QUEUED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_stage_impl_enqueues_and_publishes_sse(run: PipelineRun) -> None:
+    """rerun_stage_impl enqueues executions and emits SSE."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.orchestrator import (
+        rerun_stage_impl,
+    )
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': 'dummy_a', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ) as mock_kiq,
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ) as mock_sse,
+        ):
+            await rerun_stage_impl(str(run.id), 'dummy_a')
+            mock_kiq.assert_called_once()
+            mock_sse.assert_called_once_with(
+                str(run.id),
+                {'type': 'stage.rerun', 'stage_key': 'dummy_a'},
+            )
+
+    _run(_inner())
+
+
+@pytest.mark.django_db
+def test_run_cast_service_paths(
+    run: PipelineRun,
+    channel: Channel,
+) -> None:
+    """RunCastService covers patch, session, round, and approve."""
+    from unittest.mock import MagicMock
+
+    from server.apps.channels.logic.value_objects import (
+        CharacterApprovePayload,
+        CharacterRoundCreatePayload,
+        CharacterRoundResultPayload,
+        CharacterSessionPayload,
+    )
+    from server.apps.channels.models import Character
+    from server.apps.pipelines.logic.value_objects import (
+        RunCastApprovePayload,
+        RunCastPatchPayload,
+    )
+    from server.apps.pipelines.models import CastDesignStatus, RunCast
+    from server.apps.pipelines.services.run_cast import RunCastService
+
+    character = Character.objects.create(
+        channel=channel,
+        name='Cast Service Character',
+        appearance_prompt='test',
+    )
+    cast_row = RunCast.objects.create(
+        run=run,
+        character=character,
+        role='lead',
+        design_status=CastDesignStatus.PROPOSED,
+    )
+    studio = MagicMock()
+    studio.start_session.return_value = CharacterSessionPayload(
+        id='session-1',
+        character_id=str(character.id),
+        rounds=[],
+        created_at='2026-01-01T00:00:00+00:00',
+    )
+    studio.generate_round.return_value = CharacterRoundResultPayload(
+        session_id='session-1',
+        candidate_asset_ids=['asset-1'],
+        cost_usd='0.0250',
+    )
+    studio.approve.return_value = MagicMock()
+    service = RunCastService(studio)
+
+    patched = service.patch(
+        str(run.id),
+        str(cast_row.id),
+        RunCastPatchPayload(role='support', design_status=None),
+    )
+    assert patched.role == 'support'
+
+    session = service.start_session(str(run.id), str(cast_row.id))
+    assert session.id == 'session-1'
+
+    round_result = service.generate_round(
+        str(run.id),
+        str(cast_row.id),
+        'session-1',
+        CharacterRoundCreatePayload(prompt='portrait', n=1),
+    )
+    assert round_result.candidate_asset_ids == ['asset-1']
+
+    approved = service.approve(
+        str(run.id),
+        str(cast_row.id),
+        RunCastApprovePayload(winning_asset_id='asset-1'),
+    )
+    assert approved.design_status == CastDesignStatus.APPROVED
+    studio.approve.assert_called_once_with(
+        str(character.id),
+        CharacterApprovePayload(winning_asset_id='asset-1'),
+    )

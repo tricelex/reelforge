@@ -35,8 +35,18 @@ schema = st.pytest.from_fixture('api_schema').include(
     path='/api/enums/',
 ).include(
     method='GET',
-    path='/api/runs/',
+    path='/api/dashboard/',
 )
+
+
+def _apply_auth_headers(
+    case: st.Case[Any],
+    auth_headers: dict[str, str],
+) -> None:
+    """Merge auth headers, defaulting when schemathesis omits headers."""
+    if case.headers is None:
+        case.headers = {}
+    case.headers.update(auth_headers)
 
 
 @pytest.mark.timeout(60)
@@ -47,7 +57,15 @@ def test_schemathesis(
     case: st.Case[Any],
 ) -> None:
     """Ensure core authenticated API responses match the OpenAPI schema."""
-    if case.headers is None:
-        case.headers = {}
-    case.headers.update(auth_headers)
+    _apply_auth_headers(case, auth_headers)
     case.call_and_validate()
+
+
+def test_apply_auth_headers_defaults_none() -> None:
+    """Cover header defaulting when schemathesis omits headers."""
+    from unittest.mock import MagicMock
+
+    case = MagicMock()
+    case.headers = None
+    _apply_auth_headers(case, {'Authorization': 'Bearer token'})
+    assert case.headers == {'Authorization': 'Bearer token'}

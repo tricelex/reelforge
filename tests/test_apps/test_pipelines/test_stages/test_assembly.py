@@ -15,12 +15,12 @@ from server.apps.pipelines.models import (
 )
 from server.apps.pipelines.stages.assembly import (
     AssemblyStage,
-    _build_chapter_audio_map,  # noqa: PLC2701
-    _build_music_map,  # noqa: PLC2701
-    _build_scene_asset_map,  # noqa: PLC2701
-    _fetch_asset_bytes,  # noqa: PLC2701
-    _fetch_library_bytes,  # noqa: PLC2701
-    _group_scenes_by_chapter,  # noqa: PLC2701
+    _build_chapter_audio_map,
+    _build_music_map,
+    _build_scene_asset_map,
+    _fetch_asset_bytes,
+    _fetch_library_bytes,
+    _group_scenes_by_chapter,
 )
 
 
@@ -198,13 +198,13 @@ def test_assembly_run_calls_final_pass_with_watermark_when_branding_set() -> Non
 
 def _run_async(coro: object) -> object:
     """Run a coroutine, closing Django DB connections on exit."""
-    from typing import Any  # noqa: PLC0415
+    from typing import Any
 
-    from asgiref.sync import sync_to_async  # noqa: PLC0415
+    from asgiref.sync import sync_to_async
 
     @sync_to_async
     def _close() -> None:
-        from django.db import connections  # noqa: PLC0415
+        from django.db import connections
 
         connections.close_all()
 

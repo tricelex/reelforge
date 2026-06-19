@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 def test_fal_generate_image_retryable_on_429() -> None:
     """FalClientError with status 429 raises RetryableProviderError."""
-    from fal_client import FalClientError  # noqa: PLC0415
+    from fal_client import FalClientError
 
     from server.apps.generation.clients.fal import (
         generate_image,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     exc = FalClientError('rate limited')
     exc.status = 429
@@ -29,12 +29,12 @@ def test_fal_generate_image_retryable_on_429() -> None:
 
 def test_fal_generate_image_fatal_on_safety() -> None:
     """FalClientError with 'safety' in message raises FatalProviderError."""
-    from fal_client import FalClientError  # noqa: PLC0415
+    from fal_client import FalClientError
 
     from server.apps.generation.clients.fal import (
         generate_image,
     )
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     exc = FalClientError('content safety violation')
     exc.status = 400
@@ -55,7 +55,7 @@ def test_fal_generate_image_retryable_on_no_images() -> None:
     from server.apps.generation.clients.fal import (
         generate_image,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     async def _inner() -> None:
         with patch(
@@ -72,10 +72,10 @@ def test_fal_generate_image_retryable_on_no_images() -> None:
 
 def test_exa_search_retryable_on_500() -> None:
     """Exa 500 response raises RetryableProviderError."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
-    from server.apps.generation.clients.search import search  # noqa: PLC0415
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.apps.generation.clients.search import search
+    from server.common.exceptions import RetryableProviderError
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = False
@@ -97,9 +97,9 @@ def test_exa_search_retryable_on_500() -> None:
 
 def test_exa_search_returns_results_on_success() -> None:
     """Successful Exa response returns list of result dicts."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
-    from server.apps.generation.clients.search import search  # noqa: PLC0415
+    from server.apps.generation.clients.search import search
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = True
@@ -127,7 +127,7 @@ def test_exa_search_returns_results_on_success() -> None:
 
 def test_elevenlabs_synthesize_returns_bytes_on_success() -> None:
     """Successful ElevenLabs response returns audio bytes."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.generation.clients.elevenlabs import (
         synthesize,
@@ -152,12 +152,12 @@ def test_elevenlabs_synthesize_returns_bytes_on_success() -> None:
 
 def test_elevenlabs_synthesize_retryable_on_429() -> None:
     """ElevenLabs 429 raises RetryableProviderError."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.generation.clients.elevenlabs import (
         synthesize,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = False
@@ -179,12 +179,12 @@ def test_elevenlabs_synthesize_retryable_on_429() -> None:
 
 def test_elevenlabs_synthesize_fatal_on_422() -> None:
     """ElevenLabs 422 raises FatalProviderError."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.generation.clients.elevenlabs import (
         synthesize,
     )
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = False
@@ -206,12 +206,12 @@ def test_elevenlabs_synthesize_fatal_on_422() -> None:
 
 def test_elevenlabs_synthesize_retryable_on_unknown_status() -> None:
     """ElevenLabs non-422, non-retryable failure raises RetryableProviderError."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
     from server.apps.generation.clients.elevenlabs import (
         synthesize,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = False
@@ -286,12 +286,12 @@ def test_fal_generate_image_with_image_url_arg() -> None:
 
 def test_fal_generate_image_retryable_on_other_fal_error() -> None:
     """FalClientError without retryable status and no safety message → RetryableProviderError."""
-    from fal_client import FalClientError  # noqa: PLC0415
+    from fal_client import FalClientError
 
     from server.apps.generation.clients.fal import (
         generate_image,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     exc = FalClientError('network timeout')
     exc.status = None  # not a known retryable code
@@ -335,12 +335,12 @@ def test_fal_generate_video_kling_success() -> None:
 
 def test_fal_generate_video_kling_retryable_on_429() -> None:
     """Kling FalClientError with status 429 raises RetryableProviderError."""
-    from fal_client import FalClientError  # noqa: PLC0415
+    from fal_client import FalClientError
 
     from server.apps.generation.clients.fal import (
         generate_video_kling,
     )
-    from server.common.exceptions import RetryableProviderError  # noqa: PLC0415
+    from server.common.exceptions import RetryableProviderError
 
     exc = FalClientError('rate limited')
     exc.status = 429
@@ -358,12 +358,12 @@ def test_fal_generate_video_kling_retryable_on_429() -> None:
 
 def test_fal_generate_video_kling_fatal_on_other_error() -> None:
     """Kling FalClientError without retryable status raises FatalProviderError."""
-    from fal_client import FalClientError  # noqa: PLC0415
+    from fal_client import FalClientError
 
     from server.apps.generation.clients.fal import (
         generate_video_kling,
     )
-    from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+    from server.common.exceptions import FatalProviderError
 
     exc = FalClientError('model error')
     exc.status = 400  # 400 not in _RETRYABLE_CODES → FatalProviderError
@@ -381,9 +381,9 @@ def test_fal_generate_video_kling_fatal_on_other_error() -> None:
 
 def test_exa_search_without_contents_flag() -> None:
     """search() with contents=False omits contents key from request body."""
-    import httpx  # noqa: PLC0415
+    import httpx
 
-    from server.apps.generation.clients.search import search  # noqa: PLC0415
+    from server.apps.generation.clients.search import search
 
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = True
@@ -411,9 +411,9 @@ def test_exa_search_without_contents_flag() -> None:
 
 def test_whisperx_align_returns_dict_on_success() -> None:
     """align() mocks subprocess success and returns the JSON result."""
-    import json  # noqa: PLC0415
+    import json
 
-    from server.apps.generation.clients.whisperx import align  # noqa: PLC0415
+    from server.apps.generation.clients.whisperx import align
 
     fake_result = {'segments': [{'start': 0.0, 'end': 2.0, 'text': 'hello'}]}
 
@@ -440,7 +440,7 @@ def test_whisperx_align_returns_dict_on_success() -> None:
 
 def test_whisperx_align_raises_on_nonzero_returncode() -> None:
     """align() raises RuntimeError when the subprocess exits non-zero."""
-    from server.apps.generation.clients.whisperx import align  # noqa: PLC0415
+    from server.apps.generation.clients.whisperx import align
 
     mock_proc = MagicMock()
     mock_proc.returncode = 1
@@ -464,7 +464,7 @@ def test_whisperx_align_raises_on_nonzero_returncode() -> None:
 
 def test_run_agent_skips_cost_recording_when_zero_tokens() -> None:
     """run_agent() skips ctx.costs.record when token counts are zero."""
-    from server.apps.generation.clients.llm import run_agent  # noqa: PLC0415
+    from server.apps.generation.clients.llm import run_agent
 
     mock_usage = MagicMock()
     mock_usage.input_tokens = 0
@@ -490,9 +490,9 @@ def test_run_agent_skips_cost_recording_when_zero_tokens() -> None:
 
 def test_run_agent_records_input_and_output_token_costs() -> None:
     """run_agent() calls ctx.costs.record for input and output tokens."""
-    from unittest.mock import MagicMock  # noqa: PLC0415
+    from unittest.mock import MagicMock
 
-    from server.apps.generation.clients.llm import run_agent  # noqa: PLC0415
+    from server.apps.generation.clients.llm import run_agent
 
     mock_usage = MagicMock()
     mock_usage.input_tokens = 100

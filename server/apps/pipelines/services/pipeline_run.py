@@ -1,6 +1,7 @@
 """Business logic for pipeline run lifecycle."""
 
 import asyncio
+import datetime as dt
 import uuid
 from typing import final
 
@@ -130,7 +131,7 @@ class PipelineRunService:
         PipelineRun.objects.get(id=uuid.UUID(run_id))
         signer = TimestampSigner(salt=_SSE_SIGNER_SALT)
         token = signer.sign(run_id)
-        expires_at = tz.now() + tz.timedelta(seconds=_SSE_TOKEN_MAX_AGE)
+        expires_at = tz.now() + dt.timedelta(seconds=_SSE_TOKEN_MAX_AGE)
         return SseTokenPayload(
             token=token,
             expires_at=expires_at.isoformat(),
@@ -188,6 +189,11 @@ class PipelineRunService:
             blueprint_snapshot=blueprint.graph,
             topic=payload.topic,
             status=RunStatus.PENDING,
+            source_idea_id=(
+                uuid.UUID(payload.source_idea_id)
+                if payload.source_idea_id
+                else None
+            ),
         )
         return str(run.id)
 

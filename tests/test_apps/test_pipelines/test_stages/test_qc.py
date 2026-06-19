@@ -8,13 +8,13 @@ import pytest
 
 from server.apps.pipelines.stages.qc import (
     QCStage,
-    _check_duration_drift,  # noqa: PLC2701
-    _fetch_asset_to_tempfile,  # noqa: PLC2701
-    _parse_fps,  # noqa: PLC2701
-    _run_black_detect,  # noqa: PLC2701
-    _run_freeze_detect,  # noqa: PLC2701
-    _run_loudness_check,  # noqa: PLC2701
-    _run_silence_detect,  # noqa: PLC2701
+    _check_duration_drift,
+    _fetch_asset_to_tempfile,
+    _parse_fps,
+    _run_black_detect,
+    _run_freeze_detect,
+    _run_loudness_check,
+    _run_silence_detect,
 )
 from server.common.exceptions import FatalProviderError
 
@@ -91,7 +91,7 @@ def test_run_silence_detect_parses_events() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_silence_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_silence_detect('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert len(result) == 1
@@ -108,7 +108,7 @@ def test_run_silence_detect_empty_on_no_events() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_silence_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_silence_detect('/tmp/f.mp4')
 
     assert asyncio.run(_run()) == []
 
@@ -120,7 +120,7 @@ def test_qc_run_passes_and_returns_report() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/final.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/final.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -159,7 +159,7 @@ def test_qc_raises_fatal_on_duration_drift() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -197,7 +197,7 @@ def test_qc_raises_fatal_on_dead_air() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -250,7 +250,7 @@ def test_qc_raises_fatal_on_fps_mismatch() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -287,7 +287,7 @@ def test_qc_raises_fatal_on_loudness_out_of_range() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -382,7 +382,7 @@ def test_run_black_detect_parses_events() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_black_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_black_detect('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert len(result) == 1
@@ -401,7 +401,7 @@ def test_run_black_detect_empty_on_no_events() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_black_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_black_detect('/tmp/f.mp4')
 
     assert asyncio.run(_run()) == []
 
@@ -423,7 +423,7 @@ def test_run_freeze_detect_parses_long_freeze() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_freeze_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_freeze_detect('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert len(result) == 1
@@ -443,7 +443,7 @@ def test_run_freeze_detect_excludes_short_freezes() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_freeze_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_freeze_detect('/tmp/f.mp4')
 
     assert asyncio.run(_run()) == []
 
@@ -458,7 +458,7 @@ def test_run_freeze_detect_empty_on_no_events() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_freeze_detect('/tmp/f.mp4')  # noqa: S108
+            return await _run_freeze_detect('/tmp/f.mp4')
 
     assert asyncio.run(_run()) == []
 
@@ -482,7 +482,7 @@ def test_run_loudness_check_parses_integrated_and_tp() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_loudness_check('/tmp/f.mp4')  # noqa: S108
+            return await _run_loudness_check('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert result['integrated'] == pytest.approx(-14.0)
@@ -500,7 +500,7 @@ def test_run_loudness_check_uses_defaults_when_not_found() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_loudness_check('/tmp/f.mp4')  # noqa: S108
+            return await _run_loudness_check('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert result['integrated'] == -14.0
@@ -519,7 +519,7 @@ def test_run_loudness_check_handles_malformed_integrated_line() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_loudness_check('/tmp/f.mp4')  # noqa: S108
+            return await _run_loudness_check('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert result['integrated'] == -14.0
@@ -538,7 +538,7 @@ def test_run_loudness_check_handles_malformed_tp_line() -> None:
             'asyncio.create_subprocess_exec',
             new=AsyncMock(return_value=mock_proc),
         ):
-            return await _run_loudness_check('/tmp/f.mp4')  # noqa: S108
+            return await _run_loudness_check('/tmp/f.mp4')
 
     result = asyncio.run(_run())
     assert result['tp'] == -1.0
@@ -563,7 +563,7 @@ def test_qc_raises_fatal_when_no_video_stream() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -608,7 +608,7 @@ def test_qc_raises_fatal_when_no_audio_stream() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -647,7 +647,7 @@ def test_qc_silence_below_threshold_does_not_add_failure() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -687,7 +687,7 @@ def test_qc_black_frames_below_threshold_does_not_fail() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -730,7 +730,7 @@ def test_qc_raises_fatal_on_black_frames() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -773,7 +773,7 @@ def test_qc_raises_fatal_on_frozen_frames() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
@@ -816,7 +816,7 @@ def test_qc_raises_fatal_on_true_peak_exceeded() -> None:
         with (
             patch(
                 'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
-                new=AsyncMock(return_value='/tmp/f.mp4'),  # noqa: S108
+                new=AsyncMock(return_value='/tmp/f.mp4'),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
