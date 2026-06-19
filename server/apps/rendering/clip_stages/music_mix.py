@@ -75,18 +75,31 @@ class MusicMixStage(RenderStage):
             f'[0:a][music]amix=inputs=2:duration=first[aout]'
         )
         cmd = [
-            'ffmpeg', '-y',
-            '-i', str(input_path),
-            '-i', music_path,
-            '-filter_complex', filter_complex,
-            '-map', '0:v',
-            '-map', '[aout]',
-            '-c:v', 'copy',
-            '-c:a', 'aac', '-b:a', '192k',
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-i',
+            music_path,
+            '-filter_complex',
+            filter_complex,
+            '-map',
+            '0:v',
+            '-map',
+            '[aout]',
+            '-c:v',
+            'copy',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         Path(music_path).unlink(missing_ok=True)
         if result.returncode != 0:

@@ -72,9 +72,7 @@ class HookStage(RenderStage):
             if sc.hook_style == HookStyle.OVERLAY_CENTER
             else '20'
         )
-        safe_text = (
-            self.hook_text.replace("'", "\\'").replace(':', '\\:')
-        )
+        safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
         drawtext = (
             f"drawtext=text='{safe_text}'"
             f':fontsize={sc.hook_size}'
@@ -84,13 +82,27 @@ class HookStage(RenderStage):
             f':box=1:boxcolor={sc.hook_bg_color}:boxborderw=10'
         )
         cmd = [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', drawtext,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-vf',
+            drawtext,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -99,12 +111,12 @@ class HookStage(RenderStage):
         return self.output_path
 
     def _title_card(
-        self, input_path: Path, sc: ClipStyleConfig,
+        self,
+        input_path: Path,
+        sc: ClipStyleConfig,
     ) -> Path:
         """Prepend a black title card with the hook text."""
-        safe_text = (
-            self.hook_text.replace("'", "\\'").replace(':', '\\:')
-        )
+        safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
 
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
             card_path = tmp.name
@@ -117,15 +129,27 @@ class HookStage(RenderStage):
             f':x=(w-text_w)/2:y=(h-text_h)/2'
         )
         card_cmd = [
-            'ffmpeg', '-y',
-            '-f', 'lavfi',
-            '-i', f'color=c=black:s=1080x1920:d={sc.hook_duration_sec}',
-            '-vf', drawtext,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
+            'ffmpeg',
+            '-y',
+            '-f',
+            'lavfi',
+            '-i',
+            f'color=c=black:s=1080x1920:d={sc.hook_duration_sec}',
+            '-vf',
+            drawtext,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
             card_path,
         ]
         r1 = subprocess.run(  # noqa: S603
-            card_cmd, capture_output=True, text=True, check=False,
+            card_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r1.returncode != 0:
             raise RuntimeError(
@@ -133,19 +157,33 @@ class HookStage(RenderStage):
             )
 
         with tempfile.NamedTemporaryFile(
-            mode='w', suffix='.txt', delete=False, encoding='utf-8',
+            mode='w',
+            suffix='.txt',
+            delete=False,
+            encoding='utf-8',
         ) as f:
             f.write(f"file '{card_path}'\n")
             f.write(f"file '{input_path}'\n")
             list_path = f.name
 
         concat_cmd = [
-            'ffmpeg', '-y',
-            '-f', 'concat', '-safe', '0', '-i', list_path,
-            '-c', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-f',
+            'concat',
+            '-safe',
+            '0',
+            '-i',
+            list_path,
+            '-c',
+            'copy',
+            str(self.output_path),
         ]
         r2 = subprocess.run(  # noqa: S603
-            concat_cmd, capture_output=True, text=True, check=False,
+            concat_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r2.returncode != 0:
             raise RuntimeError(

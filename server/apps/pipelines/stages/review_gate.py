@@ -1,4 +1,4 @@
-"""ReviewGate stage — sentinel; orchestrator handles gate parking, not this class."""
+"""ReviewGate stage — orchestrator parks runs; this class is a sentinel."""
 
 from typing import Any, override
 

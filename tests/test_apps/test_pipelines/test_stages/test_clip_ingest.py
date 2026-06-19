@@ -39,10 +39,12 @@ def test_clip_ingest_http_url() -> None:
     async def _inner() -> dict:
         with patch(
             'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
-            new=AsyncMock(side_effect=[
-                {'title': 'Test Video', 'duration_sec': 300.0},
-                fake_video_bytes,
-            ]),
+            new=AsyncMock(
+                side_effect=[
+                    {'title': 'Test Video', 'duration_sec': 300.0},
+                    fake_video_bytes,
+                ],
+            ),
         ):
             ctx.assets.save = AsyncMock(return_value=fake_asset)
             return await ClipIngestStage().run(ctx)
@@ -113,7 +115,10 @@ def test_download_with_ytdlp() -> None:
     mock_ydl = MagicMock()
     mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
     mock_ydl.__exit__ = MagicMock(return_value=False)
-    mock_ydl.extract_info.return_value = {'title': 'Cool Video', 'duration': 120}
+    mock_ydl.extract_info.return_value = {
+        'title': 'Cool Video',
+        'duration': 120,
+    }
 
     fake_yt_dlp = MagicMock()
     fake_yt_dlp.YoutubeDL.return_value = mock_ydl

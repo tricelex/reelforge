@@ -51,7 +51,9 @@ class ClipIngestStage(Stage):
 
             if source_url.startswith('http'):
                 info = await asyncio.to_thread(
-                    _download_with_ytdlp, source_url, out_path,
+                    _download_with_ytdlp,
+                    source_url,
+                    out_path,
                 )
                 title: str = info['title']
                 duration_sec: float = info['duration_sec']

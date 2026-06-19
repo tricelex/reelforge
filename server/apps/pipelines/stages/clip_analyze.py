@@ -28,9 +28,9 @@ class ClipAnalyzeStage(Stage):
             ClipAnalysisService,
         )
 
-        manifest_asset_id: str = (
-            ctx.upstream['clip_transcribe']['manifest_asset_id']
-        )
+        manifest_asset_id: str = ctx.upstream['clip_transcribe'][
+            'manifest_asset_id'
+        ]
         clips_requested: int = ctx.config.get('clips_requested', 5)
 
         manifest_asset = await Asset.objects.aget(id=manifest_asset_id)

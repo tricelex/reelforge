@@ -71,14 +71,19 @@ def test_pipeline_stage_names_in_order(tmp_path: Path) -> None:
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
-def test_pipeline_run_skips_disabled_stages(mock_run: MagicMock, tmp_path: Path) -> None:
+def test_pipeline_run_skips_disabled_stages(
+    mock_run: MagicMock,
+    tmp_path: Path,
+) -> None:
     mock_run.return_value = MagicMock(returncode=0, stderr='')
     config = _make_config(tmp_path)
     src = tmp_path / 'src.mp4'
     src.write_bytes(b'fake video')
 
     pipeline = ClipRenderPipeline(config)
-    with patch('server.apps.rendering.clip_render_pipeline.shutil.copy2') as mock_copy:
+    with patch(
+        'server.apps.rendering.clip_render_pipeline.shutil.copy2',
+    ) as mock_copy:
         with patch('server.apps.rendering.clip_stages.trim_crop.Path.mkdir'):
             result = pipeline.run()
 
@@ -88,7 +93,8 @@ def test_pipeline_run_skips_disabled_stages(mock_run: MagicMock, tmp_path: Path)
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
 def test_pipeline_run_start_from_stage_2_skips_trim(
-    mock_run: MagicMock, tmp_path: Path,
+    mock_run: MagicMock,
+    tmp_path: Path,
 ) -> None:
     mock_run.return_value = MagicMock(returncode=0, stderr='')
     config = _make_config(tmp_path)
@@ -105,7 +111,8 @@ def test_pipeline_run_start_from_stage_2_skips_trim(
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
 def test_pipeline_gate_raises_on_matching_stage(
-    mock_run: MagicMock, tmp_path: Path,
+    mock_run: MagicMock,
+    tmp_path: Path,
 ) -> None:
     mock_run.return_value = MagicMock(returncode=0, stderr='')
     config = _make_config(tmp_path)
@@ -129,7 +136,8 @@ def test_gate_paused_exception_message() -> None:
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
 def test_pipeline_run_stage_wraps_exception_in_render_stage_error(
-    mock_run: MagicMock, tmp_path: Path,
+    mock_run: MagicMock,
+    tmp_path: Path,
 ) -> None:
     mock_run.side_effect = RuntimeError('ffmpeg not found')
     config = _make_config(tmp_path)
@@ -149,7 +157,8 @@ def test_pipeline_run_stage_wraps_exception_in_render_stage_error(
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
 def test_pipeline_run_stage_does_not_double_wrap_render_stage_error(
-    mock_run: MagicMock, tmp_path: Path,
+    mock_run: MagicMock,
+    tmp_path: Path,
 ) -> None:
     original_error = RenderStageError('trim_and_crop', 1, ValueError('bad'))
     mock_run.side_effect = original_error

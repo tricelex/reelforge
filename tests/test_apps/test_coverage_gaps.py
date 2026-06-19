@@ -43,7 +43,10 @@ from server.apps.prompts.selectors import (
     list_prompt_templates,
     list_story_formats,
 )
-from server.apps.prompts.services import PromptTemplateService, StoryFormatService
+from server.apps.prompts.services import (
+    PromptTemplateService,
+    StoryFormatService,
+)
 from server.common.events import InProcessEventBus
 from server.common.storage import PresignUrlHelper
 
@@ -57,6 +60,15 @@ def channel(db) -> Channel:  # type: ignore[no-untyped-def]
     )
 
 
+@pytest.fixture
+def character(channel: Channel) -> Character:
+    return Character.objects.create(
+        channel=channel,
+        name='Coverage Character',
+        appearance_prompt='hero',
+    )
+
+
 def test_channels_iso_helper() -> None:
     """Cover channel selector datetime helper."""
     assert _iso(None) is None
@@ -64,7 +76,6 @@ def test_channels_iso_helper() -> None:
     assert _iso(dt) == dt.isoformat()
 
 
-@pytest.mark.django_db
 @pytest.mark.django_db
 def test_list_channels_active_only(channel: Channel) -> None:
     """Cover active_only filter branch."""
@@ -107,7 +118,9 @@ def test_prompt_selector_json_helpers() -> None:
     """Cover JSON sanitizers for invalid inputs."""
     assert _json_object('not-a-dict') == {}
     assert _json_beats('not-a-list') == []
-    assert _json_beats([{'key': 'beat', 'pct': 0.5}]) == [{'key': 'beat', 'pct': 0.5}]
+    assert _json_beats([{'key': 'beat', 'pct': 0.5}]) == [
+        {'key': 'beat', 'pct': 0.5},
+    ]
 
 
 @pytest.mark.django_db
@@ -160,7 +173,9 @@ def test_prompt_template_patch_saves(db: None) -> None:
         scope=PromptScope.GLOBAL,
     )
     service = PromptTemplateService()
-    from server.apps.prompts.logic.value_objects import PromptTemplatePatchPayload
+    from server.apps.prompts.logic.value_objects import (
+        PromptTemplatePatchPayload,
+    )
 
     result = service.patch(
         str(template.id),
@@ -172,7 +187,11 @@ def test_prompt_template_patch_saves(db: None) -> None:
 @pytest.mark.django_db
 def test_story_format_patch_json_fields(db: None) -> None:
     """Cover story format patch JSON field updates."""
-    fmt = StoryFormat.objects.create(key='patch_fmt', name='Patch Fmt', beats=[])
+    fmt = StoryFormat.objects.create(
+        key='patch_fmt',
+        name='Patch Fmt',
+        beats=[],
+    )
     service = StoryFormatService()
     from server.apps.prompts.logic.value_objects import StoryFormatPatchPayload
 
@@ -227,18 +246,15 @@ def candidate(db, channel):  # type: ignore[no-untyped-def]
 @pytest.mark.django_db
 def test_campaign_service_branches(channel) -> None:
     """Cover campaign service validation and patch fields."""
-    service = ClipCampaignService()
-    with pytest.raises(ValidationError, match='Channel not found'):
-        from server.apps.clips.logic.value_objects import ClipCampaignCreatePayload
-
-        service.create_campaign(
-            ClipCampaignCreatePayload(
-                channel_id=str(uuid.uuid4()),
-                name='Missing channel',
-            ),
-        )
-
     from server.apps.clips.logic.value_objects import ClipCampaignCreatePayload
+
+    service = ClipCampaignService()
+    missing_channel_payload = ClipCampaignCreatePayload(
+        channel_id=str(uuid.uuid4()),
+        name='Missing channel',
+    )
+    with pytest.raises(ValidationError, match='Channel not found'):
+        service.create_campaign(missing_channel_payload)
 
     created = service.create_campaign(
         ClipCampaignCreatePayload(
@@ -331,22 +347,34 @@ def test_campaign_api_invalid_query_parsing(
 def test_character_patch_individual_fields(character: Character) -> None:
     """Cover each optional patch branch independently."""
     svc = CharacterStudioService()
-    assert svc.patch(
-        str(character.id),
-        CharacterPatchPayload(name='Only Name'),
-    ).name == 'Only Name'
-    assert svc.patch(
-        str(character.id),
-        CharacterPatchPayload(appearance_prompt='Only Prompt'),
-    ).appearance_prompt == 'Only Prompt'
-    assert svc.patch(
-        str(character.id),
-        CharacterPatchPayload(persona='Only Persona'),
-    ).persona == 'Only Persona'
-    assert svc.patch(
-        str(character.id),
-        CharacterPatchPayload(status=CharacterStatus.DRAFT),
-    ).status == CharacterStatus.DRAFT
+    assert (
+        svc.patch(
+            str(character.id),
+            CharacterPatchPayload(name='Only Name'),
+        ).name
+        == 'Only Name'
+    )
+    assert (
+        svc.patch(
+            str(character.id),
+            CharacterPatchPayload(appearance_prompt='Only Prompt'),
+        ).appearance_prompt
+        == 'Only Prompt'
+    )
+    assert (
+        svc.patch(
+            str(character.id),
+            CharacterPatchPayload(persona='Only Persona'),
+        ).persona
+        == 'Only Persona'
+    )
+    assert (
+        svc.patch(
+            str(character.id),
+            CharacterPatchPayload(status=CharacterStatus.DRAFT),
+        ).status
+        == CharacterStatus.DRAFT
+    )
 
 
 @pytest.mark.django_db
@@ -464,7 +492,6 @@ def test_pipeline_run_unmapped_kind(channel: Channel) -> None:
     """Cover blueprint mapping failure."""
     from server.apps.pipelines.logic.value_objects import RunCreatePayload
     from server.apps.pipelines.services.pipeline_run import PipelineRunService
-    from server.common.events import InProcessEventBus
 
     service = PipelineRunService(events=InProcessEventBus())
     with patch(
@@ -495,12 +522,6 @@ def test_rerun_stage_with_shard_indices(run) -> None:
     import server.apps.pipelines.stages.dummy  # noqa: F401
     from server.apps.pipelines.services.orchestrator import _rerun_stage_sync
 
-    parent = StageExecution.objects.create(
-        run=run,
-        stage_key='dummy_a',
-        status=StageStatus.SUCCEEDED,
-        attempt=0,
-    )
     run.blueprint_snapshot = {
         'stages': [{'key': 'dummy_a', 'depends_on': []}],
     }
@@ -512,8 +533,8 @@ def test_rerun_stage_with_shard_indices(run) -> None:
 @pytest.mark.django_db
 def test_storyboard_presign_missing_file(run) -> None:
     """Cover storyboard presign when asset has no file."""
-    from server.apps.pipelines.storyboard_selectors import _presign_asset
     from server.apps.assets.models import Asset, AssetKind
+    from server.apps.pipelines.storyboard_selectors import _presign_asset
     from server.common.storage import PresignUrlHelper
 
     asset = Asset.objects.create(
@@ -535,11 +556,10 @@ def test_youtube_callback_missing_refresh_token(
     """Cover YouTube OAuth missing refresh token path."""
     from server.apps.channels.logic.value_objects import YouTubeCallbackPayload
     from server.apps.channels.services import ChannelService
-    from server.common.events import InProcessEventBus
 
     settings.YOUTUBE_CLIENT_ID = 'id'
     settings.YOUTUBE_CLIENT_SECRET = 'secret'
-    service = ChannelService(events=InProcessEventBus())
+    service = ChannelService()
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {'access_token': 'at', 'expires_in': 3600}
@@ -548,7 +568,10 @@ def test_youtube_callback_missing_refresh_token(
     mock_client.__exit__ = MagicMock(return_value=False)
     mock_client.post.return_value = mock_resp
 
-    with patch('server.apps.channels.services.httpx.Client', return_value=mock_client):
+    with patch(
+        'server.apps.channels.services.httpx.Client',
+        return_value=mock_client,
+    ):
         with pytest.raises(ValidationError, match='refresh token'):
             service.youtube_complete_oauth(
                 str(channel.id),
@@ -562,10 +585,9 @@ def test_niche_patch_all_fields(channel: Channel) -> None:
     from server.apps.channels.logic.value_objects import NicheConfigPatchPayload
     from server.apps.channels.services import ChannelService
     from server.apps.prompts.models import StoryFormat
-    from server.common.events import InProcessEventBus
 
     fmt = StoryFormat.objects.create(key='niche_fmt', name='Fmt', beats=[])
-    service = ChannelService(events=InProcessEventBus())
+    service = ChannelService()
     result = service.patch_niche(
         str(channel.id),
         NicheConfigPatchPayload(
@@ -578,3 +600,145 @@ def test_niche_patch_all_fields(channel: Channel) -> None:
     )
     assert result.lore_document == 'lore'
     assert result.audience == 'aud'
+
+
+@pytest.mark.django_db
+def test_list_characters_status_filter(channel: Channel, character: Character) -> None:
+    """Cover character list status filter branch."""
+    from server.apps.channels.character_selectors import list_characters
+
+    character.status = CharacterStatus.APPROVED
+    character.save(update_fields=['status'])
+    result = list_characters(
+        channel_id=str(channel.id),
+        status=CharacterStatus.APPROVED,
+    )
+    assert result.total == 1
+
+
+@pytest.mark.django_db
+def test_channel_patch_budget_only(channel: Channel) -> None:
+    """Cover channel patch default_budget_usd-only branch."""
+    from server.apps.channels.logic.value_objects import ChannelPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch(
+        str(channel.id),
+        ChannelPatchPayload(default_budget_usd='12.00'),
+    )
+    assert result.default_budget_usd == '12.00'
+
+
+@pytest.mark.django_db
+def test_channel_branding_thumbnail_palette_only(channel: Channel) -> None:
+    """Cover branding patch thumbnail_palette-only branch."""
+    from server.apps.channels.logic.value_objects import ChannelBrandingPatchPayload
+    from server.apps.channels.services import ChannelService
+
+    service = ChannelService()
+    result = service.patch_branding(
+        str(channel.id),
+        ChannelBrandingPatchPayload(thumbnail_palette={'primary': '#000'}),
+    )
+    assert result.thumbnail_palette == {'primary': '#000'}
+
+
+@pytest.mark.django_db
+def test_campaign_patch_notes_only(channel: Channel) -> None:
+    """Cover campaign patch notes-only branch."""
+    from server.apps.clips.models import ClipCampaign
+
+    campaign = ClipCampaign.objects.create(channel=channel, name='Notes')
+    service = ClipCampaignService()
+    result = service.patch_campaign(
+        str(campaign.id),
+        ClipCampaignPatchPayload(notes='updated'),
+    )
+    assert result.notes == 'updated'
+
+
+@pytest.mark.django_db
+def test_prompt_template_empty_patch(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover prompt template patch with no mutable fields."""
+    from server.apps.prompts.logic.value_objects import PromptTemplatePatchPayload
+
+    template = PromptTemplate.objects.create(
+        key='empty_patch',
+        name='Empty',
+        scope=PromptScope.GLOBAL,
+    )
+    service = PromptTemplateService()
+    result = service.patch(str(template.id), PromptTemplatePatchPayload())
+    assert result.id == str(template.id)
+
+
+@pytest.mark.django_db
+def test_story_format_music_mood_only(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover story format patch music_mood_map-only branch."""
+    from server.apps.prompts.logic.value_objects import StoryFormatPatchPayload
+
+    fmt = StoryFormat.objects.create(key='mood_fmt', name='Mood', beats=[])
+    service = StoryFormatService()
+    result = service.patch(
+        str(fmt.id),
+        StoryFormatPatchPayload(music_mood_map={'intro': 'tense'}),
+    )
+    assert result.music_mood_map == {'intro': 'tense'}
+
+
+@pytest.mark.django_db
+def test_list_story_formats_active_only(db) -> None:  # type: ignore[no-untyped-def]
+    """Cover story format active_only filter branch."""
+    StoryFormat.objects.create(
+        key='active_fmt',
+        name='Active',
+        beats=[],
+        is_active=True,
+    )
+    StoryFormat.objects.create(
+        key='inactive_fmt',
+        name='Inactive',
+        beats=[],
+        is_active=False,
+    )
+    result = list_story_formats(active_only=True)
+    assert result.total == 1
+
+
+@pytest.mark.django_db
+def test_run_review_update_prompt_visual_concept(run) -> None:
+    """Cover visual_concept fallback in _update_prompt_row."""
+    from server.apps.pipelines.logic.value_objects import ScenePatchPayload
+    from server.apps.pipelines.services.run_review import _update_prompt_row
+
+    prompt: dict[str, object] = {'scene_idx': 0, 'prompt': 'old'}
+    _update_prompt_row(
+        prompt,
+        0,
+        ScenePatchPayload(visual_concept='new concept'),
+    )
+    assert prompt['prompt'] == 'new concept'
+
+
+@pytest.mark.django_db
+def test_image_gen_state_skips_missing_scene_idx(run) -> None:
+    """Cover image_gen child rows without scene_idx."""
+    from server.apps.pipelines.storyboard_selectors import _image_gen_state
+
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='image_gen',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='image_gen',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={},
+    )
+    assert _image_gen_state(str(run.id)) == {}

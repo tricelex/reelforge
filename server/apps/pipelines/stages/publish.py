@@ -81,7 +81,9 @@ class PublishStage(Stage):
             thumb_asset = await Asset.objects.aget(id=thumbnail_asset_id)
             thumbnail_bytes = await _download_asset(thumb_asset)
             await yt_client.set_thumbnail(
-                access_token, youtube_video_id, thumbnail_bytes,
+                access_token,
+                youtube_video_id,
+                thumbnail_bytes,
             )
 
         job.youtube_video_id = youtube_video_id

@@ -58,7 +58,11 @@ def test_build_prompt_includes_duration() -> None:
     run = MagicMock()
     svc = ClipAnalysisService(run=run, clips_requested=3)
     prompt = svc._build_prompt(
-        'Hello world', None, None, None, video_duration=120.5,
+        'Hello world',
+        None,
+        None,
+        None,
+        video_duration=120.5,
     )
     assert 'VIDEO_DURATION_SECONDS: 120.500' in prompt
     assert 'Number of clips to identify: 3' in prompt
@@ -171,7 +175,12 @@ def test_analyze_creates_candidates() -> None:
         candidates = svc.analyze(
             transcript_text='Hello world',
             enriched_transcript=[
-                {'word': 'Hello', 'start': 10.0, 'end': 10.5, 'speaker_id': 'A'},
+                {
+                    'word': 'Hello',
+                    'start': 10.0,
+                    'end': 10.5,
+                    'speaker_id': 'A',
+                },
             ],
             diarization={'segments': []},
             scene_cuts=[5.0, 20.0],

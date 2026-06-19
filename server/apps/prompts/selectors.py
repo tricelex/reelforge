@@ -119,29 +119,25 @@ JsonMap = dict[str, str | int | float | bool | list[str] | None]
 
 def _scalar_json(value: object) -> bool:
     return (
-        isinstance(value, list)
-        and all(isinstance(item, str) for item in value)
-    ) or isinstance(value, (str, int, float, bool)) or value is None
+        (
+            isinstance(value, list)
+            and all(isinstance(item, str) for item in value)
+        )
+        or isinstance(value, (str, int, float, bool))
+        or value is None
+    )
 
 
 def _json_object(data: object) -> JsonMap:
     if not isinstance(data, dict):
         return {}
-    return {
-        key: value
-        for key, value in data.items()
-        if _scalar_json(value)
-    }
+    return {key: value for key, value in data.items() if _scalar_json(value)}
 
 
 def _json_beats(data: object) -> list[JsonMap]:
     if not isinstance(data, list):
         return []
-    return [
-        _json_object(item)
-        for item in data
-        if isinstance(item, dict)
-    ]
+    return [_json_object(item) for item in data if isinstance(item, dict)]
 
 
 def list_story_formats(

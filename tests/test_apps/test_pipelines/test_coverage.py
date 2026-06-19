@@ -386,7 +386,8 @@ def test_prompt_renderer_render_applies_jinja2_variables() -> None:
                 return_value=mock_pv,
             )
             sys, usr = await renderer.render(
-                'test_key', {'role': 'expert', 'topic': 'Rome'},
+                'test_key',
+                {'role': 'expert', 'topic': 'Rome'},
             )
             assert sys == 'You are a expert.'
             assert usr == 'Research Rome.'
@@ -1138,13 +1139,15 @@ def test_execute_stage_already_fanned_returns_without_creating_new_children(
             timeout_s = 10
 
             def fan_out(
-                self, ctx: StageContext,
+                self,
+                ctx: StageContext,
             ) -> list[dict[str, object]] | None:
                 """Return two shards."""
                 return [{'shard': 0}, {'shard': 1}]
 
             async def run(
-                self, ctx: StageContext,
+                self,
+                ctx: StageContext,
             ) -> dict[str, object]:  # pragma: no cover
                 """Return empty dict."""
                 return {}

@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -17,14 +16,47 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='UserProfile',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                (
+                    'id',
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name='ID',
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('role', models.CharField(choices=[('operator', 'Operator'), ('reviewer', 'Reviewer')], default='operator', max_length=10)),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile', to=settings.AUTH_USER_MODEL)),
+                (
+                    'role',
+                    models.CharField(
+                        choices=[
+                            ('operator', 'Operator'),
+                            ('reviewer', 'Reviewer'),
+                        ],
+                        default='operator',
+                        max_length=10,
+                    ),
+                ),
+                (
+                    'user',
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='profile',
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'constraints': [models.CheckConstraint(condition=models.Q(('role__in', ['operator', 'reviewer'])), name='core_userprofile_role_valid')],
+                'constraints': [
+                    models.CheckConstraint(
+                        condition=models.Q((
+                            'role__in',
+                            ['operator', 'reviewer'],
+                        )),
+                        name='core_userprofile_role_valid',
+                    ),
+                ],
             },
         ),
     ]

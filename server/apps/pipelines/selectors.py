@@ -87,10 +87,9 @@ def list_runs(
     from server.apps.pipelines.models import PipelineRun  # noqa: PLC0415
 
     page_size = min(max(limit, 1), _MAX_PAGE_SIZE)
-    qs = (
-        PipelineRun.objects
-        .select_related('channel')
-        .order_by('-created_at', '-id')
+    qs = PipelineRun.objects.select_related('channel').order_by(
+        '-created_at',
+        '-id',
     )
     qs = _apply_run_filters(qs, status=status, channel_id=channel_id)
     total = qs.count()
@@ -121,16 +120,13 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
         StageExecution,
     )
 
-    run = (
-        PipelineRun.objects
-        .select_related('channel', 'blueprint')
-        .get(id=uuid.UUID(run_id))
+    run = PipelineRun.objects.select_related('channel', 'blueprint').get(
+        id=uuid.UUID(run_id),
     )
     latest: dict[str, StageExecution] = {}
-    for stage in (
-        StageExecution.objects
-        .filter(run=run, parent=None)
-        .order_by('stage_key', '-attempt')
+    for stage in StageExecution.objects.filter(run=run, parent=None).order_by(
+        'stage_key',
+        '-attempt',
     ):
         if stage.stage_key not in latest:
             latest[stage.stage_key] = stage

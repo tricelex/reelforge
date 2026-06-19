@@ -79,8 +79,7 @@ def test_check_duration_drift_returns_error_on_large_drift() -> None:
 
 def test_run_silence_detect_parses_events() -> None:
     fake_stderr = (
-        b'silence_start: 5.0\n'
-        b'silence_end: 8.0 | silence_duration: 3.0\n'
+        b'silence_start: 5.0\nsilence_end: 8.0 | silence_duration: 3.0\n'
     )
     mock_proc = MagicMock()
     mock_proc.returncode = 0
@@ -469,10 +468,7 @@ def test_run_freeze_detect_empty_on_no_events() -> None:
 
 
 def test_run_loudness_check_parses_integrated_and_tp() -> None:
-    fake_stderr = (
-        b'  I: -14.0 LUFS\n'
-        b'  True peak: -2.0 dBFS\n'
-    )
+    fake_stderr = b'  I: -14.0 LUFS\n  True peak: -2.0 dBFS\n'
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))

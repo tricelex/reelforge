@@ -19,7 +19,11 @@ def test_presign_upload(
     """POST presign returns a PUT URL and storage key."""
     mock_presign = MagicMock()
     mock_presign.presign_put.return_value = 'https://storage.example/put'
-    with patch.object(PresignUrlHelper, 'presign_put', mock_presign.presign_put):
+    with patch.object(
+        PresignUrlHelper,
+        'presign_put',
+        mock_presign.presign_put,
+    ):
         response = dmr_client.post(
             reverse('api:assets_api:upload-presign'),
             data={'filename': 'clip.mp4', 'mime': 'video/mp4'},

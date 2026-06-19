@@ -1,6 +1,7 @@
-"""QC stage — FFmpeg/ffprobe quality checks on the final video before publish."""
+"""QC stage — FFmpeg/ffprobe quality checks on the final video."""
 
 import asyncio
+import contextlib
 import re
 import tempfile
 from pathlib import Path
@@ -34,7 +35,8 @@ async def _fetch_asset_to_tempfile(asset_id: str) -> str:
 
 
 def _check_duration_drift(
-    actual_s: float, expected_s: float,
+    actual_s: float,
+    expected_s: float,
 ) -> dict[str, Any] | None:
     """Return failure dict if drift > 3%, else None."""
     if expected_s <= 0:
@@ -54,7 +56,8 @@ def _parse_fps(r_frame_rate: str) -> float:
     """Parse 'num/den' frame rate string to float."""
     if '/' in r_frame_rate:
         num, den = r_frame_rate.split('/')
-        return float(num) / float(den) if float(den) != 0 else 0.0
+        den_f = float(den)
+        return float(num) / den_f if den_f else 0.0
     return float(r_frame_rate)
 
 
@@ -80,7 +83,11 @@ async def _run_silence_detect(path: str) -> list[dict[str, float]]:
     ends = re.findall(r'silence_end: ([\d.]+)', text)
     durations = re.findall(r'silence_duration: ([\d.]+)', text)
     for s, e, d in zip(starts, ends, durations, strict=False):
-        events.append({'start': float(s), 'end': float(e), 'duration': float(d)})
+        events.append({
+            'start': float(s),
+            'end': float(e),
+            'duration': float(d),
+        })
     return events
 
 
@@ -101,16 +108,17 @@ async def _run_black_detect(path: str) -> list[dict[str, float]]:
     )
     _, stderr = await proc.communicate()
     text = stderr.decode()
-    events: list[dict[str, float]] = []
-    for m in re.finditer(
-        r'black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)',
-        text,
-    ):
-        events.append({
+    events: list[dict[str, float]] = [
+        {
             'start': float(m.group(1)),
             'end': float(m.group(2)),
             'duration': float(m.group(3)),
-        })
+        }
+        for m in re.finditer(
+            r'black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)',
+            text,
+        )
+    ]
     return events
 
 
@@ -133,7 +141,9 @@ async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
     text = stderr.decode()
     events: list[dict[str, float]] = []
     for m in re.finditer(
-        r'freeze_start: ([\d.]+).*?freeze_end: ([\d.]+)', text, re.DOTALL,
+        r'freeze_start: ([\d.]+).*?freeze_end: ([\d.]+)',
+        text,
+        re.DOTALL,
     ):
         duration = float(m.group(2)) - float(m.group(1))
         if duration > _BLACK_FREEZE_MAX_S:
@@ -166,20 +176,88 @@ async def _run_loudness_check(path: str) -> dict[str, float]:
     tp: float = _LOUDNESS_MAX_TP
     for line in text.splitlines():
         if 'I:' in line and 'LUFS' in line:
-            try:
+            with contextlib.suppress(IndexError, ValueError):
                 integrated = float(
                     line.split('I:')[1].split('LUFS')[0].strip(),
                 )
-            except (IndexError, ValueError):
-                pass
         if 'True peak:' in line:
-            try:
+            with contextlib.suppress(IndexError, ValueError):
                 tp = float(
                     line.split('True peak:')[1].split('dBFS')[0].strip(),
                 )
-            except (IndexError, ValueError):
-                pass
     return {'integrated': integrated, 'tp': tp}
+
+
+def _probe_stream_failures(
+    probe: dict[str, Any],
+    expected_duration: float,
+) -> tuple[float, list[dict[str, Any]]]:
+    """Return duration and failures from ffprobe stream/format checks."""
+    failures: list[dict[str, Any]] = []
+    actual_duration = float(probe.get('format', {}).get('duration', 0.0))
+    streams = probe.get('streams', [])
+    video_streams = [s for s in streams if s.get('codec_type') == 'video']
+    audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
+
+    drift_fail = _check_duration_drift(actual_duration, expected_duration)
+    if drift_fail:
+        failures.append(drift_fail)
+
+    if not audio_streams:
+        failures.append({'check': 'av_sync', 'reason': 'no_audio_stream'})
+    if not video_streams:
+        failures.append({'check': 'av_sync', 'reason': 'no_video_stream'})
+    else:
+        fps = _parse_fps(video_streams[0].get('r_frame_rate', '0/1'))
+        if abs(fps - _FPS_EXPECTED) > 0.1:
+            failures.append({
+                'check': 'av_sync',
+                'reason': 'fps_mismatch',
+                'actual_fps': fps,
+                'expected_fps': _FPS_EXPECTED,
+            })
+    return actual_duration, failures
+
+
+async def _collect_media_failures(video_path: str) -> list[dict[str, Any]]:
+    """Run silence/black/freeze detectors and return QC failure dicts."""
+    failures: list[dict[str, Any]] = []
+    silences = await _run_silence_detect(video_path)
+    failures.extend(
+        {'check': 'dead_air', 'event': sil}
+        for sil in silences
+        if sil['duration'] > _SILENCE_MAX_S
+    )
+
+    blacks = await _run_black_detect(video_path)
+    failures.extend(
+        {'check': 'black_frames', 'event': blk}
+        for blk in blacks
+        if blk.get('duration', 0) > _BLACK_FREEZE_MAX_S
+    )
+
+    freezes = await _run_freeze_detect(video_path)
+    failures.extend({'check': 'frozen_frames', 'event': frz} for frz in freezes)
+    return failures
+
+
+def _loudness_failures(loudness: dict[str, float]) -> list[dict[str, Any]]:
+    """Return loudness/true-peak QC failures, if any."""
+    failures: list[dict[str, Any]] = []
+    if abs(loudness['integrated'] - _LOUDNESS_TARGET_I) > _LOUDNESS_TOLERANCE:
+        failures.append({
+            'check': 'loudness',
+            'integrated_lufs': loudness['integrated'],
+            'target_lufs': _LOUDNESS_TARGET_I,
+            'tolerance': _LOUDNESS_TOLERANCE,
+        })
+    if loudness['tp'] > _LOUDNESS_MAX_TP:
+        failures.append({
+            'check': 'true_peak',
+            'tp_dbtp': loudness['tp'],
+            'max_tp': _LOUDNESS_MAX_TP,
+        })
+    return failures
 
 
 @register_stage
@@ -203,74 +281,18 @@ class QCStage(Stage):
         video_path = await _fetch_asset_to_tempfile(final_asset_id)
         loudness: dict[str, float] = {}
         actual_duration = 0.0
+        failures: list[dict[str, Any]] = []
         try:
-            failures: list[dict[str, Any]] = []
-
             probe = await ffmpeg.async_ffprobe(video_path)
-            actual_duration = float(
-                probe.get('format', {}).get('duration', 0.0),
+            actual_duration, failures = _probe_stream_failures(
+                probe,
+                expected_duration,
             )
-            streams = probe.get('streams', [])
-            video_streams = [
-                s for s in streams if s.get('codec_type') == 'video'
-            ]
-            audio_streams = [
-                s for s in streams if s.get('codec_type') == 'audio'
-            ]
-
-            drift_fail = _check_duration_drift(actual_duration, expected_duration)
-            if drift_fail:
-                failures.append(drift_fail)
-
-            if not audio_streams:
-                failures.append({'check': 'av_sync', 'reason': 'no_audio_stream'})
-            if not video_streams:
-                failures.append({'check': 'av_sync', 'reason': 'no_video_stream'})
-            else:
-                fps = _parse_fps(
-                    video_streams[0].get('r_frame_rate', '0/1'),
-                )
-                if abs(fps - _FPS_EXPECTED) > 0.1:
-                    failures.append({
-                        'check': 'av_sync',
-                        'reason': 'fps_mismatch',
-                        'actual_fps': fps,
-                        'expected_fps': _FPS_EXPECTED,
-                    })
-
-            silences = await _run_silence_detect(video_path)
-            for sil in silences:
-                if sil['duration'] > _SILENCE_MAX_S:
-                    failures.append({'check': 'dead_air', 'event': sil})
-
-            blacks = await _run_black_detect(video_path)
-            for blk in blacks:
-                if blk.get('duration', 0) > _BLACK_FREEZE_MAX_S:
-                    failures.append({'check': 'black_frames', 'event': blk})
-
-            freezes = await _run_freeze_detect(video_path)
-            for frz in freezes:
-                failures.append({'check': 'frozen_frames', 'event': frz})
-
+            failures.extend(await _collect_media_failures(video_path))
             loudness = await _run_loudness_check(video_path)
-            if (
-                abs(loudness['integrated'] - _LOUDNESS_TARGET_I)
-                > _LOUDNESS_TOLERANCE
-            ):
-                failures.append({
-                    'check': 'loudness',
-                    'integrated_lufs': loudness['integrated'],
-                    'target_lufs': _LOUDNESS_TARGET_I,
-                    'tolerance': _LOUDNESS_TOLERANCE,
-                })
-            if loudness['tp'] > _LOUDNESS_MAX_TP:
-                failures.append({
-                    'check': 'true_peak',
-                    'tp_dbtp': loudness['tp'],
-                    'max_tp': _LOUDNESS_MAX_TP,
-                })
+            failures.extend(_loudness_failures(loudness))
         finally:
-            Path(video_path).unlink(missing_ok=True)
+            await asyncio.to_thread(Path(video_path).unlink, missing_ok=True)
 
         qc_report = {
             'actual_duration_s': actual_duration,

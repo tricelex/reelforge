@@ -70,13 +70,27 @@ class ProgressBarStage(RenderStage):
             f':h={h}:color=0x{color}:t=fill'
         )
         cmd = [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', drawbox,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-vf',
+            drawbox,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(

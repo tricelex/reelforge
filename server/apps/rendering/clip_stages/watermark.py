@@ -72,9 +72,7 @@ class WatermarkStage(RenderStage):
 
     def _text_watermark(self, input_path: Path, sc: ClipStyleConfig) -> Path:
         x, y = self._position_coords(sc.watermark_position)
-        safe_text = (
-            sc.watermark_text.replace("'", "\\'").replace(':', '\\:')
-        )
+        safe_text = sc.watermark_text.replace("'", "\\'").replace(':', '\\:')
         # ClipStyleConfig has no watermark_color; fall back to caption_color
         color = sc.caption_color
         drawtext = (
@@ -84,13 +82,27 @@ class WatermarkStage(RenderStage):
             f':x={x}:y={y}'
         )
         cmd = [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', drawtext,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-vf',
+            drawtext,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -99,7 +111,9 @@ class WatermarkStage(RenderStage):
         return self.output_path
 
     def _image_watermark(
-        self, input_path: Path, sc: ClipStyleConfig,
+        self,
+        input_path: Path,
+        sc: ClipStyleConfig,
     ) -> Path:
         wm_bytes: bytes = sc.watermark_image.file.read()  # type: ignore[union-attr]
         x, y = self._position_coords(sc.watermark_position)
@@ -113,15 +127,29 @@ class WatermarkStage(RenderStage):
             f'[0:v][wm]overlay={x}:{y}'
         )
         cmd = [
-            'ffmpeg', '-y',
-            '-i', str(input_path),
-            '-i', wm_path,
-            '-filter_complex', overlay,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-i',
+            wm_path,
+            '-filter_complex',
+            overlay,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         Path(wm_path).unlink(missing_ok=True)
         if result.returncode != 0:

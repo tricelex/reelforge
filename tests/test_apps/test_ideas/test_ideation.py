@@ -190,12 +190,15 @@ def test_filter_skips_empty_topic() -> None:
             differentiation='d1',
         ),
     ]
-    assert filter_ideation_candidates(
-        candidates,
-        count=1,
-        existing=set(),
-        banned_topics=[],
-    ) == []
+    assert (
+        filter_ideation_candidates(
+            candidates,
+            count=1,
+            existing=set(),
+            banned_topics=[],
+        )
+        == []
+    )
 
 
 def test_filter_candidates_dedupes_and_sorts() -> None:
@@ -353,10 +356,13 @@ def test_generate_raises_when_all_filtered(
         ],
     )
 
-    with patch(
-        'server.apps.ideas.services.run_ideation_agent',
-        return_value=mock_output,
-    ), pytest.raises(ValidationError, match='No unique ideas'):
+    with (
+        patch(
+            'server.apps.ideas.services.run_ideation_agent',
+            return_value=mock_output,
+        ),
+        pytest.raises(ValidationError, match='No unique ideas'),
+    ):
         service.generate(
             str(niche.id),
             IdeaGeneratePayload(count=1),

@@ -67,6 +67,7 @@ def _sc(
 
 # --- WatermarkStage ---
 
+
 def test_watermark_stage_skips_when_disabled() -> None:
     stage = WatermarkStage(output_path=Path('/out.mp4'), style_config=None)
     assert stage.should_run() is False
@@ -94,10 +95,13 @@ def test_watermark_text_cmd(mock_run: MagicMock) -> None:
 
 # --- HookStage ---
 
+
 def test_hook_stage_skips_no_text() -> None:
     sc = _sc(hook_enabled=True)
     stage = HookStage(
-        hook_text='', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     assert stage.should_run() is False
 
@@ -105,7 +109,9 @@ def test_hook_stage_skips_no_text() -> None:
 def test_hook_stage_runs_with_text() -> None:
     sc = _sc(hook_enabled=True)
     stage = HookStage(
-        hook_text='Amazing hook', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Amazing hook',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     assert stage.should_run() is True
     assert stage.order == 3
@@ -113,6 +119,7 @@ def test_hook_stage_runs_with_text() -> None:
 
 
 # --- IntroConcatStage / OutroConcatStage ---
+
 
 def test_intro_concat_stage_skips_no_asset() -> None:
     sc = _sc()
@@ -131,6 +138,7 @@ def test_outro_concat_stage_skips_no_asset() -> None:
 
 
 # --- CaptionTranslationStage ---
+
 
 def test_caption_translation_skips_no_target() -> None:
     sc = _sc(caption_translate_to='')
@@ -158,6 +166,7 @@ def test_caption_translation_runs_when_target_set() -> None:
 
 # --- CaptionStage ---
 
+
 def test_caption_stage_skips_when_disabled() -> None:
     sc = _sc(caption_enabled=False)
     stage = CaptionStage(
@@ -183,6 +192,7 @@ def test_caption_stage_runs_when_enabled() -> None:
 
 
 # --- ASSGenerator ---
+
 
 def test_ass_generator_produces_header() -> None:
     sc = _sc()
@@ -245,6 +255,7 @@ def test_ass_generator_lower_third() -> None:
 
 # --- ProgressBarStage ---
 
+
 def test_progress_bar_stage_skips_when_disabled() -> None:
     sc = _sc(progress_bar_enabled=False)
     stage = ProgressBarStage(
@@ -258,6 +269,7 @@ def test_progress_bar_stage_skips_when_disabled() -> None:
 
 
 # --- MusicMixStage ---
+
 
 def test_music_mix_stage_skips_when_disabled() -> None:
     sc = _sc(music_enabled=False)
@@ -284,9 +296,11 @@ def test_music_mix_stage_skips_no_asset() -> None:
 
 # --- TimedOverlayStage ---
 
+
 def test_timed_overlay_stage_skips_no_overlays() -> None:
     stage = TimedOverlayStage(
-        output_path=Path('/out.mp4'), timed_overlays=[],
+        output_path=Path('/out.mp4'),
+        timed_overlays=[],
     )
     assert stage.should_run() is False
     assert stage.order == 7
@@ -304,7 +318,8 @@ def test_timed_overlay_stage_runs_with_overlays() -> None:
     overlay.start_sec = 1.0
     overlay.end_sec = 3.0
     stage = TimedOverlayStage(
-        output_path=Path('/out.mp4'), timed_overlays=[overlay],
+        output_path=Path('/out.mp4'),
+        timed_overlays=[overlay],
     )
     assert stage.should_run() is True
 
@@ -313,7 +328,8 @@ def test_timed_overlay_returns_input_when_no_text() -> None:
     overlay = MagicMock()
     overlay.text = ''
     stage = TimedOverlayStage(
-        output_path=Path('/out.mp4'), timed_overlays=[overlay],
+        output_path=Path('/out.mp4'),
+        timed_overlays=[overlay],
     )
     assert stage.should_run() is True
     result = stage.run(Path('/in.mp4'))
@@ -333,7 +349,8 @@ def test_timed_overlay_run_text_ffmpeg(mock_run: MagicMock) -> None:
     overlay.start_sec = 0.0
     overlay.end_sec = 2.0
     stage = TimedOverlayStage(
-        output_path=Path('/out.mp4'), timed_overlays=[overlay],
+        output_path=Path('/out.mp4'),
+        timed_overlays=[overlay],
     )
     with patch('server.apps.rendering.clip_stages.timed_overlays.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
@@ -343,6 +360,7 @@ def test_timed_overlay_run_text_ffmpeg(mock_run: MagicMock) -> None:
 
 
 # --- ASSGenerator edge cases ---
+
 
 def test_ass_color_invalid_hex_returns_white() -> None:
     sc = _sc()
@@ -404,7 +422,8 @@ def test_timed_overlay_run_ffmpeg_failure(mock_run: MagicMock) -> None:
     overlay.start_sec = 0.0
     overlay.end_sec = 2.0
     stage = TimedOverlayStage(
-        output_path=Path('/out.mp4'), timed_overlays=[overlay],
+        output_path=Path('/out.mp4'),
+        timed_overlays=[overlay],
     )
     with patch('server.apps.rendering.clip_stages.timed_overlays.Path.mkdir'):
         with pytest.raises(RuntimeError, match='TimedOverlayStage'):
@@ -413,13 +432,16 @@ def test_timed_overlay_run_ffmpeg_failure(mock_run: MagicMock) -> None:
 
 # --- HookStage run() paths ---
 
+
 @patch('server.apps.rendering.clip_stages.hook.subprocess.run')
 def test_hook_overlay_top_run(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'OVERLAY_TOP'
     stage = HookStage(
-        hook_text='Big Hook', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Big Hook',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
@@ -434,7 +456,9 @@ def test_hook_overlay_center_run(mock_run: MagicMock) -> None:
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'OVERLAY_CENTER'
     stage = HookStage(
-        hook_text='Center Hook', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Center Hook',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
@@ -449,7 +473,9 @@ def test_hook_overlay_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'OVERLAY_TOP'
     stage = HookStage(
-        hook_text='Fail Hook', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Fail Hook',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         with pytest.raises(RuntimeError, match='HookStage ffmpeg failed'):
@@ -462,7 +488,9 @@ def test_hook_title_card_run(mock_run: MagicMock) -> None:
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'TITLE_CARD'
     stage = HookStage(
-        hook_text='Title!', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Title!',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
@@ -476,7 +504,9 @@ def test_hook_title_card_first_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'TITLE_CARD'
     stage = HookStage(
-        hook_text='Title!', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Title!',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         with pytest.raises(RuntimeError, match='HookStage title card failed'):
@@ -492,7 +522,9 @@ def test_hook_title_card_concat_failure(mock_run: MagicMock) -> None:
     sc = _sc(hook_enabled=True)
     sc.hook_style = 'TITLE_CARD'
     stage = HookStage(
-        hook_text='Title!', output_path=Path('/out.mp4'), style_config=sc,
+        hook_text='Title!',
+        output_path=Path('/out.mp4'),
+        style_config=sc,
     )
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         with pytest.raises(RuntimeError, match='HookStage concat failed'):
@@ -500,6 +532,7 @@ def test_hook_title_card_concat_failure(mock_run: MagicMock) -> None:
 
 
 # --- IntroConcatStage run() ---
+
 
 @patch('server.apps.rendering.clip_stages.intro_outro.subprocess.run')
 def test_intro_concat_run(mock_run: MagicMock) -> None:
@@ -509,9 +542,11 @@ def test_intro_concat_run(mock_run: MagicMock) -> None:
     sc = _sc()
     sc.intro_asset = intro_asset
     stage = IntroConcatStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'),
+    ):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     assert mock_run.call_count == 2
@@ -525,14 +560,20 @@ def test_intro_concat_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc = _sc()
     sc.intro_asset = intro_asset
     stage = IntroConcatStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'):
-        with pytest.raises(RuntimeError, match='IntroConcatStage scale ffmpeg failed'):
+    with (
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match='IntroConcatStage scale ffmpeg failed',
+        ):
             stage.run(Path('/in.mp4'))
 
 
 # --- OutroConcatStage run() ---
+
 
 @patch('server.apps.rendering.clip_stages.intro_outro.subprocess.run')
 def test_outro_concat_run(mock_run: MagicMock) -> None:
@@ -542,9 +583,11 @@ def test_outro_concat_run(mock_run: MagicMock) -> None:
     sc = _sc()
     sc.outro_asset = outro_asset
     stage = OutroConcatStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'),
+    ):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     assert mock_run.call_count == 2
@@ -558,10 +601,15 @@ def test_outro_concat_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc = _sc()
     sc.outro_asset = outro_asset
     stage = OutroConcatStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'):
-        with pytest.raises(RuntimeError, match='OutroConcatStage scale ffmpeg failed'):
+    with (
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match='OutroConcatStage scale ffmpeg failed',
+        ):
             stage.run(Path('/in.mp4'))
 
 
@@ -576,14 +624,20 @@ def test_outro_concat_second_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc = _sc()
     sc.outro_asset = outro_asset
     stage = OutroConcatStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'):
-        with pytest.raises(RuntimeError, match='OutroConcatStage concat ffmpeg failed'):
+    with (
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.intro_outro.Path.unlink'),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match='OutroConcatStage concat ffmpeg failed',
+        ):
             stage.run(Path('/in.mp4'))
 
 
 # --- CaptionStage run() ---
+
 
 @patch('server.apps.rendering.clip_stages.captions.subprocess.run')
 def test_caption_stage_run(mock_run: MagicMock) -> None:
@@ -595,8 +649,10 @@ def test_caption_stage_run(mock_run: MagicMock) -> None:
         ass_path=Path('/tmp/out.ass'),
         style_config=sc,
     )
-    with patch('server.apps.rendering.clip_stages.captions.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.captions.Path.write_text'):
+    with (
+        patch('server.apps.rendering.clip_stages.captions.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.captions.Path.write_text'),
+    ):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     cmd = mock_run.call_args[0][0]
@@ -613,13 +669,16 @@ def test_caption_stage_run_ffmpeg_failure(mock_run: MagicMock) -> None:
         ass_path=Path('/tmp/out.ass'),
         style_config=sc,
     )
-    with patch('server.apps.rendering.clip_stages.captions.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.captions.Path.write_text'):
+    with (
+        patch('server.apps.rendering.clip_stages.captions.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.captions.Path.write_text'),
+    ):
         with pytest.raises(RuntimeError, match='CaptionStage ffmpeg failed'):
             stage.run(Path('/in.mp4'))
 
 
 # --- ProgressBarStage run() ---
+
 
 @patch('server.apps.rendering.clip_stages.progress_bar.subprocess.run')
 def test_progress_bar_run_top(mock_run: MagicMock) -> None:
@@ -672,11 +731,15 @@ def test_progress_bar_run_ffmpeg_failure(mock_run: MagicMock) -> None:
         video_duration_sec=30.0,
     )
     with patch('server.apps.rendering.clip_stages.progress_bar.Path.mkdir'):
-        with pytest.raises(RuntimeError, match='ProgressBarStage ffmpeg failed'):
+        with pytest.raises(
+            RuntimeError,
+            match='ProgressBarStage ffmpeg failed',
+        ):
             stage.run(Path('/in.mp4'))
 
 
 # --- MusicMixStage run() ---
+
 
 @patch('server.apps.rendering.clip_stages.music_mix.subprocess.run')
 def test_music_mix_run(mock_run: MagicMock) -> None:
@@ -693,9 +756,11 @@ def test_music_mix_run(mock_run: MagicMock) -> None:
         style_config=sc,
         video_duration_sec=30.0,
     )
-    with patch('server.apps.rendering.clip_stages.music_mix.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.music_mix.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.music_mix.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.music_mix.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.music_mix.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.music_mix.Path.unlink'),
+    ):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     cmd = mock_run.call_args[0][0]
@@ -717,14 +782,17 @@ def test_music_mix_run_ffmpeg_failure(mock_run: MagicMock) -> None:
         style_config=sc,
         video_duration_sec=30.0,
     )
-    with patch('server.apps.rendering.clip_stages.music_mix.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.music_mix.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.music_mix.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.music_mix.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.music_mix.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.music_mix.Path.unlink'),
+    ):
         with pytest.raises(RuntimeError, match='MusicMixStage ffmpeg failed'):
             stage.run(Path('/in.mp4'))
 
 
 # --- WatermarkStage image path and error path ---
+
 
 @patch('server.apps.rendering.clip_stages.watermark.subprocess.run')
 def test_watermark_text_ffmpeg_failure(mock_run: MagicMock) -> None:
@@ -747,9 +815,11 @@ def test_watermark_image_run(mock_run: MagicMock) -> None:
     sc.watermark_type = WatermarkType.IMAGE
     sc.watermark_image = wm_asset
     stage = WatermarkStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.watermark.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.watermark.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.watermark.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.watermark.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.watermark.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.watermark.Path.unlink'),
+    ):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     cmd = mock_run.call_args[0][0]
@@ -767,14 +837,17 @@ def test_watermark_image_ffmpeg_failure(mock_run: MagicMock) -> None:
     sc.watermark_type = WatermarkType.IMAGE
     sc.watermark_image = wm_asset
     stage = WatermarkStage(output_path=Path('/out.mp4'), style_config=sc)
-    with patch('server.apps.rendering.clip_stages.watermark.Path.mkdir'), \
-         patch('server.apps.rendering.clip_stages.watermark.Path.write_bytes'), \
-         patch('server.apps.rendering.clip_stages.watermark.Path.unlink'):
+    with (
+        patch('server.apps.rendering.clip_stages.watermark.Path.mkdir'),
+        patch('server.apps.rendering.clip_stages.watermark.Path.write_bytes'),
+        patch('server.apps.rendering.clip_stages.watermark.Path.unlink'),
+    ):
         with pytest.raises(RuntimeError, match='WatermarkStage image failed'):
             stage.run(Path('/in.mp4'))
 
 
 # --- ASSGenerator remaining branches ---
+
 
 def test_ass_generator_emoji_accent() -> None:
     sc = _sc()

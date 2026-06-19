@@ -1,4 +1,5 @@
 """Tests for the rendering.ffmpeg service module."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -511,3 +512,103 @@ def test_final_pass_raises_on_ffmpeg_failure() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'final_pass failed' in str(e)
+
+
+from server.apps.rendering.ffmpeg import (
+    _build_complex_filter,
+    _build_final_pass_cmd,
+    _final_encode_args,
+    _loudnorm_audio_filter,
+    _run_ffmpeg_cmd,
+)
+
+
+def test_loudnorm_audio_filter_builds_string() -> None:
+    result = _loudnorm_audio_filter(_FAKE_STATS)
+    assert 'loudnorm=I=' in result
+    assert 'measured_I=-23.5' in result
+
+
+def test_build_complex_filter_watermark_and_music() -> None:
+    fc, vmap, aout = _build_complex_filter(
+        music_paths=['/tmp/music.mp3'],
+        music_gains_db=[-3.0],
+        ass_path='/tmp/subs.ass',
+        watermark_path='/tmp/wm.png',
+        wm_idx=2,
+        loudnorm_af='loudnorm=I=-14',
+    )
+    assert 'overlay' in fc
+    assert 'subtitles=' in fc
+    assert 'amix' in fc
+    assert vmap == '[vout]'
+    assert aout == '[aout]'
+
+
+def test_build_final_pass_cmd_simple_vf_path() -> None:
+    cmd = _build_final_pass_cmd(
+        inputs=['-i', '/tmp/concat.mp4'],
+        music_paths=[],
+        music_gains_db=[],
+        ass_path='/tmp/subs.ass',
+        watermark_path=None,
+        loudnorm_af='loudnorm=I=-14',
+        out_path='/tmp/final.mp4',
+    )
+    assert '-vf' in cmd
+    assert 'subtitles=' in ' '.join(cmd)
+    assert _final_encode_args('/tmp/final.mp4')[-1] == '/tmp/final.mp4'
+
+
+def test_run_ffmpeg_cmd_success() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+
+    async def _run() -> None:
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            await _run_ffmpeg_cmd(['ffmpeg', '-version'])
+
+    asyncio.run(_run())
+
+
+def test_final_pass_temp_file_cleanup() -> None:
+    """final_pass removes concat temp file in finally block."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', new=AsyncMock(
+                return_value=mock_proc,
+            )),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.asyncio.to_thread',
+                new=AsyncMock(),
+            ) as mock_unlink,
+        ):
+            from server.apps.rendering.ffmpeg import final_pass
+
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],
+                music_paths=['/tmp/music.mp3'],
+                music_gains_db=[-2.0],
+                ass_path=None,
+                watermark_path='/tmp/wm.png',
+                out_path='/tmp/final.mp4',
+            )
+        mock_unlink.assert_awaited_once()
+
+    asyncio.run(_run())

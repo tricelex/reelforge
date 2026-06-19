@@ -14,9 +14,7 @@ _AUTH_REASONS = {'authError', 'forbidden', 'insufficientPermissions'}
 
 _OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
 _UPLOAD_URL = 'https://www.googleapis.com/upload/youtube/v3/videos'
-_THUMBNAIL_URL = (
-    'https://www.googleapis.com/upload/youtube/v3/thumbnails/set'
-)
+_THUMBNAIL_URL = 'https://www.googleapis.com/upload/youtube/v3/thumbnails/set'
 
 
 @runtime_checkable

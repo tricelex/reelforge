@@ -85,16 +85,20 @@ def test_clip_render_run() -> None:
             patch(
                 'server.apps.rendering.clip_render_pipeline.ClipRenderPipeline',
             ) as mock_pipeline_cls,
-            patch('server.apps.rendering.clip_render_pipeline.PipelineRenderConfig'),
+            patch(
+                'server.apps.rendering.clip_render_pipeline.PipelineRenderConfig',
+            ),
             patch(
                 'server.apps.pipelines.stages.clip_render.asyncio.to_thread',
-                new=AsyncMock(side_effect=[
-                    b'video bytes',
-                    json.dumps(manifest).encode(),
-                    None,                  # write_bytes
-                    None,                  # pipeline.run
-                    fake_rendered_bytes,
-                ]),
+                new=AsyncMock(
+                    side_effect=[
+                        b'video bytes',
+                        json.dumps(manifest).encode(),
+                        None,  # write_bytes
+                        None,  # pipeline.run
+                        fake_rendered_bytes,
+                    ],
+                ),
             ),
         ):
             cand_qs = MagicMock()

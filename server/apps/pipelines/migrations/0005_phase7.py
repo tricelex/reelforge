@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('ideas', '0001_phase7'),
         ('pipelines', '0004_pipelinerun_is_paused'),
@@ -15,6 +14,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='pipelinerun',
             name='source_idea',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='promoted_runs', to='ideas.topicidea'),
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name='promoted_runs',
+                to='ideas.topicidea',
+            ),
         ),
     ]

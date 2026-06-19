@@ -11,7 +11,11 @@ _CLIPPING_V1_GRAPH = {
             'depends_on': ['clip_transcribe'],
             'config': {'clips_requested': 5},
         },
-        {'key': 'clip_approval_gate', 'depends_on': ['clip_analyze'], 'gate': True},
+        {
+            'key': 'clip_approval_gate',
+            'depends_on': ['clip_analyze'],
+            'gate': True,
+        },
         {'key': 'clip_render', 'depends_on': ['clip_approval_gate']},
         {'key': 'clip_distribute', 'depends_on': ['clip_render']},
     ],
@@ -37,9 +41,11 @@ def _remove_blueprint(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pipelines', '0002_pipelineblueprint_pipelines_pipelineblueprint_kind_valid_and_more'),
+        (
+            'pipelines',
+            '0002_pipelineblueprint_pipelines_pipelineblueprint_kind_valid_and_more',
+        ),
     ]
 
     operations = [

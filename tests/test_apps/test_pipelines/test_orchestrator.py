@@ -773,5 +773,6 @@ def test_advance_pipeline_armed_gate_with_unfinished_deps_is_not_parked():
     assert run.status != RunStatus.AWAITING_REVIEW
     # The gate execution should not be created
     assert not StageExecution.objects.filter(
-        run=run, stage_key='final_gate',
+        run=run,
+        stage_key='final_gate',
     ).exists()

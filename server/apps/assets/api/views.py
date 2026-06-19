@@ -123,5 +123,7 @@ class LibraryAssetDetailController(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )

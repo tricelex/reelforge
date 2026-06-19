@@ -26,8 +26,13 @@ def test_render_format_values() -> None:
 
 def test_candidate_status_values() -> None:
     expected = {
-        'PROPOSED', 'APPROVED', 'REJECTED', 'RENDERING',
-        'RENDERED', 'DISTRIBUTING', 'DISTRIBUTED',
+        'PROPOSED',
+        'APPROVED',
+        'REJECTED',
+        'RENDERING',
+        'RENDERED',
+        'DISTRIBUTING',
+        'DISTRIBUTED',
     }
     assert set(CandidateStatus.values) == expected
 

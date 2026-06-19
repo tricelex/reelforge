@@ -72,7 +72,10 @@ def test_build_enriched_transcript_empty() -> None:
 
 
 def test_run_scene_detection_returns_empty_on_exception() -> None:
-    with patch.dict('sys.modules', {'scenedetect': None, 'scenedetect.detectors': None}):
+    with patch.dict(
+        'sys.modules',
+        {'scenedetect': None, 'scenedetect.detectors': None},
+    ):
         result = _run_scene_detection('/nonexistent.mp4')
     assert result == []
 
@@ -92,10 +95,13 @@ def test_try_scene_detect_returns_cuts() -> None:
     fake_scenedetect.SceneManager.return_value = mock_scene_manager
     fake_scenedetect.detectors = MagicMock()
 
-    with patch.dict(sys.modules, {
-        'scenedetect': fake_scenedetect,
-        'scenedetect.detectors': fake_scenedetect.detectors,
-    }):
+    with patch.dict(
+        sys.modules,
+        {
+            'scenedetect': fake_scenedetect,
+            'scenedetect.detectors': fake_scenedetect.detectors,
+        },
+    ):
         result = _try_scene_detect('/video.mp4')
 
     assert result == [12.0]
@@ -129,7 +135,8 @@ def test_run_whisperx_success(mock_run: MagicMock, tmp_path: Path) -> None:
 
 @patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
 def test_run_whisperx_fallback_without_diarize(
-    mock_run: MagicMock, tmp_path: Path,
+    mock_run: MagicMock,
+    tmp_path: Path,
 ) -> None:
     transcript_data = {'segments': [{'text': 'fallback'}]}
     out_file = tmp_path / 'audio.json'
@@ -153,10 +160,15 @@ def test_run_whisperx_fallback_without_diarize(
 def test_clip_transcribe_run() -> None:
     ctx = MagicMock()
     ctx.upstream = {
-        'clip_ingest': {'asset_id': 'src-asset-id', 'source_duration_sec': 60.0},
+        'clip_ingest': {
+            'asset_id': 'src-asset-id',
+            'source_duration_sec': 60.0,
+        },
     }
 
-    transcript_data: dict = {'segments': [{'text': 'hello', 'speaker': 'A', 'words': []}]}
+    transcript_data: dict = {
+        'segments': [{'text': 'hello', 'speaker': 'A', 'words': []}],
+    }
     fake_source_asset = MagicMock()
     fake_transcript_asset = MagicMock()
     fake_transcript_asset.id = 'transcript-asset-id'
@@ -170,16 +182,20 @@ def test_clip_transcribe_run() -> None:
             ) as mock_asset_cls,
             patch(
                 'server.apps.pipelines.stages.clip_transcribe.asyncio.to_thread',
-                new=AsyncMock(side_effect=[
-                    b'video bytes',      # source_asset.file.read
-                    None,                # write_bytes
-                    None,                # extract_audio
-                    transcript_data,     # whisperx
-                    [5.0, 10.0],        # scene_detection
-                ]),
+                new=AsyncMock(
+                    side_effect=[
+                        b'video bytes',  # source_asset.file.read
+                        None,  # write_bytes
+                        None,  # extract_audio
+                        transcript_data,  # whisperx
+                        [5.0, 10.0],  # scene_detection
+                    ],
+                ),
             ),
         ):
-            mock_asset_cls.objects.aget = AsyncMock(return_value=fake_source_asset)
+            mock_asset_cls.objects.aget = AsyncMock(
+                return_value=fake_source_asset,
+            )
             ctx.assets.save = AsyncMock(
                 side_effect=[fake_transcript_asset, fake_manifest_asset],
             )

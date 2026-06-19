@@ -43,8 +43,7 @@ class SpeakerDetectionService:
     ) -> SpeakerCropResult:
         """Return optimal crop coordinates for the speaking region."""
         if all(
-            v is not None
-            for v in [manual_crop_x, manual_crop_w, manual_crop_h]
+            v is not None for v in [manual_crop_x, manual_crop_w, manual_crop_h]
         ):
             return SpeakerCropResult(
                 crop_x=manual_crop_x or 0,
@@ -103,8 +102,10 @@ class SpeakerDetectionService:
                     break
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 import mediapipe as mp  # noqa: PLC0415
+
                 image = mp.Image(
-                    image_format=mp.ImageFormat.SRGB, data=rgb,
+                    image_format=mp.ImageFormat.SRGB,
+                    data=rgb,
                 )
                 detection_result = detector.detect(image)
                 for det in detection_result.detections:
@@ -184,8 +185,16 @@ class SpeakerDetectionService:
         try:
             subprocess.run(  # noqa: S603
                 [  # noqa: S607
-                    'ffmpeg', '-y', '-i', str(video_path),
-                    '-ac', '1', '-ar', '16000', '-vn', audio_path,
+                    'ffmpeg',
+                    '-y',
+                    '-i',
+                    str(video_path),
+                    '-ac',
+                    '1',
+                    '-ar',
+                    '16000',
+                    '-vn',
+                    audio_path,
                 ],
                 check=True,
                 capture_output=True,
@@ -199,7 +208,8 @@ class SpeakerDetectionService:
                 getattr(settings, 'HUGGINGFACE_TOKEN', '') or None
             )
             diarizer = PyannotePipeline.from_pretrained(
-                'pyannote/speaker-diarization-community-1', token=token,
+                'pyannote/speaker-diarization-community-1',
+                token=token,
             )
             annotation = diarizer(audio_path).speaker_diarization
             return [

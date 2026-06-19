@@ -25,10 +25,10 @@ class ClipRenderStage(Stage):
     @override
     def fan_out(self, ctx: StageContext) -> list[dict[str, Any]] | None:
         """Return one shard per approved candidate ID."""
-        approved_ids: list[str] = (
-            ctx.upstream.get('clip_approval_gate', {})
-            .get('approved_candidate_ids', [])
-        )
+        approved_ids: list[str] = ctx.upstream.get(
+            'clip_approval_gate',
+            {},
+        ).get('approved_candidate_ids', [])
         return [{'candidate_id': cid} for cid in approved_ids]
 
     @override
@@ -43,12 +43,13 @@ class ClipRenderStage(Stage):
 
         candidate_id: str = ctx.execution.input_snapshot['candidate_id']
         source_asset_id: str = ctx.upstream['clip_ingest']['asset_id']
-        manifest_asset_id: str = (
-            ctx.upstream['clip_transcribe']['manifest_asset_id']
-        )
+        manifest_asset_id: str = ctx.upstream['clip_transcribe'][
+            'manifest_asset_id'
+        ]
 
         candidate = await ClipCandidate.objects.select_related(
-            'layout_config', 'style_config',
+            'layout_config',
+            'style_config',
         ).aget(id=candidate_id)
         timed_overlays = [o async for o in candidate.timed_overlays.all()]
 

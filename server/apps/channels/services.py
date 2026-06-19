@@ -139,7 +139,12 @@ class ChannelService:
         update_fields: list[str] = []
         _set_fk(branding, 'intro', payload.intro_asset_id, update_fields)
         _set_fk(branding, 'outro', payload.outro_asset_id, update_fields)
-        _set_fk(branding, 'watermark', payload.watermark_asset_id, update_fields)
+        _set_fk(
+            branding,
+            'watermark',
+            payload.watermark_asset_id,
+            update_fields,
+        )
         _set_fk(
             branding,
             'caption_style',
@@ -171,24 +176,16 @@ class ChannelService:
         """Update niche configuration."""
         channel = Channel.objects.get(id=uuid.UUID(channel_id))
         niche, _ = NicheConfig.objects.get_or_create(channel=channel)
-        update_fields: list[str] = []
+        update_fields = _apply_patch_fields(
+            niche,
+            payload,
+            ('audience', 'angle', 'banned_topics', 'lore_document'),
+        )
         if payload.format_id is not None:
             niche.format_id = (
                 uuid.UUID(payload.format_id) if payload.format_id else None
             )
             update_fields.append('format_id')
-        if payload.audience is not None:
-            niche.audience = payload.audience
-            update_fields.append('audience')
-        if payload.angle is not None:
-            niche.angle = payload.angle
-            update_fields.append('angle')
-        if payload.banned_topics is not None:
-            niche.banned_topics = payload.banned_topics
-            update_fields.append('banned_topics')
-        if payload.lore_document is not None:
-            niche.lore_document = payload.lore_document
-            update_fields.append('lore_document')
         if update_fields:
             niche.save(update_fields=update_fields)
         return get_niche_config(str(channel.id))
@@ -256,7 +253,8 @@ class ChannelService:
             defaults={
                 'access_token': access_token,
                 'refresh_token': refresh_token,
-                'token_expiry': tz.now() + dt.timedelta(seconds=expires_in - 60),
+                'token_expiry': tz.now()
+                + dt.timedelta(seconds=expires_in - 60),
                 'scope': scope,
             },
         )
@@ -266,7 +264,9 @@ class ChannelService:
         """Return whether YouTube is connected (no token values)."""
         Channel.objects.get(id=uuid.UUID(channel_id))
         try:
-            cred = YouTubeCredential.objects.get(channel_id=uuid.UUID(channel_id))
+            cred = YouTubeCredential.objects.get(
+                channel_id=uuid.UUID(channel_id),
+            )
         except YouTubeCredential.DoesNotExist:
             return YouTubeStatusPayload(connected=False)
         return YouTubeStatusPayload(

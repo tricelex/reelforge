@@ -96,9 +96,7 @@ class CharacterStudioService:
         character = Character.objects.create(
             name=payload.name,
             channel_id=(
-                uuid.UUID(payload.channel_id)
-                if payload.channel_id
-                else None
+                uuid.UUID(payload.channel_id) if payload.channel_id else None
             ),
             appearance_prompt=payload.appearance_prompt,
             persona=payload.persona,

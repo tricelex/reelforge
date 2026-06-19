@@ -21,8 +21,6 @@ from server.apps.channels.logic.value_objects import (
     CharacterRoundCreatePayload,
     CharacterSheetExpandPayload,
 )
-
-
 from server.apps.channels.models import (
     Channel,
     ChannelKind,
@@ -67,12 +65,18 @@ def test_download_image(service: CharacterStudioService) -> None:
     mock_client.__exit__ = MagicMock(return_value=False)
     mock_client.get.return_value = mock_response
 
-    with patch('server.apps.channels.character_studio.httpx.Client', return_value=mock_client):
+    with patch(
+        'server.apps.channels.character_studio.httpx.Client',
+        return_value=mock_client,
+    ):
         assert _download_image('https://example.com/image.png') == b'\x89PNG'
 
 
 @pytest.mark.django_db
-def test_ref_image_url(service: CharacterStudioService, channel: Channel) -> None:
+def test_ref_image_url(
+    service: CharacterStudioService,
+    channel: Channel,
+) -> None:
     """Ref helper returns None or asset file URL."""
     assert _ref_image_url(None) is None
 
@@ -182,15 +186,19 @@ def test_expand_sheet_success(
     payload = CharacterSheetExpandPayload(labels=['front view'])
 
     mock_result = {'url': 'https://example.com/sheet.png', 'seed': 1}
-    with patch(
-        'server.apps.channels.character_studio.fal_client.generate_image',
-        new=AsyncMock(return_value=mock_result),
-    ), patch(
-        'server.apps.channels.character_studio._download_image',
-        return_value=b'\x89PNG',
-    ), patch(
-        'server.apps.channels.character_studio._ref_image_url',
-        return_value='https://example.com/ref.png',
+    with (
+        patch(
+            'server.apps.channels.character_studio.fal_client.generate_image',
+            new=AsyncMock(return_value=mock_result),
+        ),
+        patch(
+            'server.apps.channels.character_studio._download_image',
+            return_value=b'\x89PNG',
+        ),
+        patch(
+            'server.apps.channels.character_studio._ref_image_url',
+            return_value='https://example.com/ref.png',
+        ),
     ):
         result = service.expand_sheet(str(character.id), payload)
 
@@ -242,15 +250,19 @@ def test_generate_round_with_ref_asset(
     )
 
     mock_result = {'url': 'https://example.com/gen.png', 'seed': 1}
-    with patch(
-        'server.apps.channels.character_studio.fal_client.generate_image',
-        new=AsyncMock(return_value=mock_result),
-    ), patch(
-        'server.apps.channels.character_studio._download_image',
-        return_value=b'\x89PNG',
-    ), patch(
-        'server.apps.channels.character_studio._ref_image_url',
-        return_value='https://example.com/ref.png',
+    with (
+        patch(
+            'server.apps.channels.character_studio.fal_client.generate_image',
+            new=AsyncMock(return_value=mock_result),
+        ),
+        patch(
+            'server.apps.channels.character_studio._download_image',
+            return_value=b'\x89PNG',
+        ),
+        patch(
+            'server.apps.channels.character_studio._ref_image_url',
+            return_value='https://example.com/ref.png',
+        ),
     ):
         result = service.generate_round(
             str(character.id),
@@ -290,15 +302,19 @@ def test_character_promote_and_expand_api(
     assert promote_resp.status_code == HTTPStatus.OK
 
     mock_result = {'url': 'https://example.com/sheet.png', 'seed': 1}
-    with patch(
-        'server.apps.channels.character_studio.fal_client.generate_image',
-        new=AsyncMock(return_value=mock_result),
-    ), patch(
-        'server.apps.channels.character_studio._download_image',
-        return_value=b'\x89PNG',
-    ), patch(
-        'server.apps.channels.character_studio._ref_image_url',
-        return_value='https://example.com/ref.png',
+    with (
+        patch(
+            'server.apps.channels.character_studio.fal_client.generate_image',
+            new=AsyncMock(return_value=mock_result),
+        ),
+        patch(
+            'server.apps.channels.character_studio._download_image',
+            return_value=b'\x89PNG',
+        ),
+        patch(
+            'server.apps.channels.character_studio._ref_image_url',
+            return_value='https://example.com/ref.png',
+        ),
     ):
         expand_resp = dmr_client.post(
             reverse(

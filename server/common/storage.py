@@ -11,6 +11,7 @@ class PresignUrlHelper:
     """Generate presigned GET/PUT URLs for RustFS / S3."""
 
     def __init__(self) -> None:
+        """Initialise the boto3 S3 client from Django storage settings."""
         self._bucket = settings.AWS_STORAGE_BUCKET_NAME
         self._client = boto3.client(
             's3',

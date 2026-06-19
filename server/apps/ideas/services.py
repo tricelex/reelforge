@@ -46,9 +46,7 @@ def _candidate_metadata(
         'remix_strategy': candidate.remix_strategy,
         'hook_pattern': candidate.hook_pattern,
         'differentiation': candidate.differentiation,
-        'source_refs': [
-            ref.model_dump() for ref in candidate.source_refs
-        ],
+        'source_refs': [ref.model_dump() for ref in candidate.source_refs],
     }
     if source is not None:
         metadata['source_snapshot'] = {
@@ -141,9 +139,7 @@ class IdeationService:
 
         context = build_ideation_context(niche)
         source = (
-            ingest_youtube(payload.source_url)
-            if payload.source_url
-            else None
+            ingest_youtube(payload.source_url) if payload.source_url else None
         )
         output = run_ideation_agent(
             context,

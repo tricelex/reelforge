@@ -140,7 +140,9 @@ def test_assembly_run_returns_asset_id_and_duration() -> None:
     assert result['duration_s'] == 15.5
 
 
-def test_assembly_run_calls_final_pass_with_watermark_when_branding_set() -> None:
+def test_assembly_run_calls_final_pass_with_watermark_when_branding_set() -> (
+    None
+):
     """AssemblyStage passes watermark_path to final_pass when branding exists."""
     ctx = _make_ctx()
     branding = MagicMock()
@@ -221,7 +223,8 @@ def _run_async(coro: object) -> object:
 def test_build_scene_asset_map_queries_motion_children() -> None:
     """_build_scene_asset_map reads scene_idx+asset_id from motion children."""
     channel = Channel.objects.create(
-        name='Asm DB Ch', kind=ChannelKind.LONGFORM,
+        name='Asm DB Ch',
+        kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_db_v1',
@@ -265,7 +268,8 @@ def test_build_scene_asset_map_queries_motion_children() -> None:
 def test_build_chapter_audio_map_queries_tts_children() -> None:
     """_build_chapter_audio_map reads chapter_idx+asset_id from tts children."""
     channel = Channel.objects.create(
-        name='Asm DB Ch2', kind=ChannelKind.LONGFORM,
+        name='Asm DB Ch2',
+        kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_db_v2',
@@ -360,7 +364,8 @@ def test_fetch_library_bytes_reads_file() -> None:
 def test_build_scene_asset_map_skips_child_with_missing_fields() -> None:
     """Children missing scene_idx or asset_id are ignored (branch 50->41)."""
     channel = Channel.objects.create(
-        name='Asm Skip Ch', kind=ChannelKind.LONGFORM,
+        name='Asm Skip Ch',
+        kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_skip_v1',
@@ -413,7 +418,8 @@ def test_build_scene_asset_map_skips_child_with_missing_fields() -> None:
 def test_build_chapter_audio_map_skips_child_with_missing_fields() -> None:
     """Children missing chapter_idx or asset_id are ignored (branch 72->63)."""
     channel = Channel.objects.create(
-        name='Asm Skip Ch2', kind=ChannelKind.LONGFORM,
+        name='Asm Skip Ch2',
+        kind=ChannelKind.LONGFORM,
     )
     bp = PipelineBlueprint.objects.create(
         name='asm_skip_v2',

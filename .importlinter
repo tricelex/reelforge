@@ -71,10 +71,10 @@ ignore_imports =
   # Analytics selectors aggregate live cost data from pipelines CostRecord
   server.apps.analytics.selectors -> server.apps.pipelines.models
   server.apps.analytics.selectors -> server.apps.publishing.models
-  # Ideation promote creates pipeline runs
+  # Ideation promote creates pipeline runs; selectors read run topics
   server.apps.ideas.services -> server.apps.pipelines.services.pipeline_run
   server.apps.ideas.services -> server.apps.pipelines.logic.value_objects
-  server.apps.ideas.services -> server.apps.pipelines.models
+  server.apps.ideas.selectors -> server.apps.pipelines.models
   server.apps.ideas.services -> server.apps.channels.models
   # Clip render stages read clip-specific enums (RenderMode, HookStyle, etc.) from
   # clips.logic.constants — rendering is a dedicated service layer for the clips app

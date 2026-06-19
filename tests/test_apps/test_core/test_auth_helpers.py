@@ -4,9 +4,10 @@ import pytest
 from django.contrib.auth.models import AnonymousUser, User
 from django.core.exceptions import PermissionDenied
 
-from server.apps.core.auth import get_request_user, require_operator
+from server.apps.core.auth import require_operator
 from server.apps.core.logic.constants import UserRole
 from server.apps.core.models import UserProfile
+from server.common.auth import get_request_user
 
 
 class _FakeRequest:

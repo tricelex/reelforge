@@ -34,7 +34,9 @@ class TrimAndCropStage(RenderStage):
     audio_bitrate: str = '192k'
     last_speaker_crop_result: Any = field(default=None, init=False)
     _speaker_svc: SpeakerDetectionService = field(
-        default_factory=SpeakerDetectionService, init=False, repr=False,
+        default_factory=SpeakerDetectionService,
+        init=False,
+        repr=False,
     )
 
     @property
@@ -52,7 +54,10 @@ class TrimAndCropStage(RenderStage):
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = self._build_command(input_path)
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -74,19 +79,32 @@ class TrimAndCropStage(RenderStage):
 
     def _center_crop_cmd(self, input_path: Path) -> list[str]:
         return [
-            'ffmpeg', '-y',
-            '-ss', str(self.start_sec), '-to', str(self.end_sec),
-            '-i', str(input_path),
+            'ffmpeg',
+            '-y',
+            '-ss',
+            str(self.start_sec),
+            '-to',
+            str(self.end_sec),
+            '-i',
+            str(input_path),
             '-vf',
             (
                 f'crop=ih*9/16:ih,'
                 f'scale={self.width}:{self.height},'
                 f'fps={self.fps}'
             ),
-            '-c:v', 'libx264', '-crf', str(self.crf),
-            '-preset', self.preset,
-            '-c:a', 'aac', '-b:a', self.audio_bitrate,
-            '-movflags', 'faststart',
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'aac',
+            '-b:a',
+            self.audio_bitrate,
+            '-movflags',
+            'faststart',
             str(self.output_path),
         ]
 
@@ -107,14 +125,28 @@ class TrimAndCropStage(RenderStage):
             f'scale={self.width}:{self.height},fps={self.fps}'
         )
         return [
-            'ffmpeg', '-y',
-            '-ss', str(self.start_sec), '-to', str(self.end_sec),
-            '-i', str(input_path),
-            '-vf', vf,
-            '-c:v', 'libx264', '-crf', str(self.crf),
-            '-preset', self.preset,
-            '-c:a', 'aac', '-b:a', self.audio_bitrate,
-            '-movflags', 'faststart',
+            'ffmpeg',
+            '-y',
+            '-ss',
+            str(self.start_sec),
+            '-to',
+            str(self.end_sec),
+            '-i',
+            str(input_path),
+            '-vf',
+            vf,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'aac',
+            '-b:a',
+            self.audio_bitrate,
+            '-movflags',
+            'faststart',
             str(self.output_path),
         ]
 
@@ -142,12 +174,27 @@ class TrimAndCropStage(RenderStage):
             f'[top][bottom]vstack=inputs=2[out]'
         )
         return [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-filter_complex', filter_complex,
-            '-map', '[out]', '-map', '0:a',
-            '-c:v', 'libx264', '-crf', str(self.crf),
-            '-preset', self.preset,
-            '-c:a', 'aac', '-b:a', self.audio_bitrate,
-            '-movflags', 'faststart',
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-filter_complex',
+            filter_complex,
+            '-map',
+            '[out]',
+            '-map',
+            '0:a',
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'aac',
+            '-b:a',
+            self.audio_bitrate,
+            '-movflags',
+            'faststart',
             str(self.output_path),
         ]

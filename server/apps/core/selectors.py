@@ -5,7 +5,9 @@ from django.db import models
 from server.apps.core.logic.value_objects import EnumOptionPayload, EnumsPayload
 
 
-def _choices_to_options(choices: type[models.Choices]) -> list[EnumOptionPayload]:
+def _choices_to_options(
+    choices: type[models.Choices],
+) -> list[EnumOptionPayload]:
     return [
         EnumOptionPayload(value=str(value), label=str(label))
         for value, label in choices.choices

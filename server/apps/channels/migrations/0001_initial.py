@@ -73,7 +73,10 @@ class Migration(migrations.Migration):
                 (
                     'default_budget_usd',
                     models.DecimalField(
-                        blank=True, decimal_places=2, max_digits=10, null=True,
+                        blank=True,
+                        decimal_places=2,
+                        max_digits=10,
+                        null=True,
                     ),
                 ),
                 ('voice_id', models.CharField(blank=True, max_length=100)),
@@ -156,7 +159,9 @@ class Migration(migrations.Migration):
                 (
                     'fonts',
                     models.ManyToManyField(
-                        blank=True, related_name='+', to='assets.libraryasset',
+                        blank=True,
+                        related_name='+',
+                        to='assets.libraryasset',
                     ),
                 ),
                 (
@@ -226,7 +231,9 @@ class Migration(migrations.Migration):
                 (
                     'total_creation_cost_usd',
                     models.DecimalField(
-                        decimal_places=4, default=0, max_digits=8,
+                        decimal_places=4,
+                        default=0,
+                        max_digits=8,
                     ),
                 ),
                 (

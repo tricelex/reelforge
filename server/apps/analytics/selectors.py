@@ -118,20 +118,15 @@ def get_dashboard() -> dict[str, object]:
         status__in=in_flight_statuses,
     ).count()
 
-    gates_waiting = (
-        StageExecution.objects
-        .filter(parent=None, status=StageStatus.RUNNING)
-        .count()
-    )
+    gates_waiting = StageExecution.objects.filter(
+        parent=None,
+        status=StageStatus.RUNNING,
+    ).count()
 
     today = tz.localdate()
-    spend_today = (
-        PipelineRun.objects
-        .filter(created_at__date=today)
-        .aggregate(total=Sum('total_cost_usd'))
-        .get('total')
-        or Decimal(0)
-    )
+    spend_today = PipelineRun.objects.filter(created_at__date=today).aggregate(
+        total=Sum('total_cost_usd'),
+    ).get('total') or Decimal(0)
 
     publish_rows = (
         PublishJob.objects

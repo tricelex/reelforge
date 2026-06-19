@@ -24,7 +24,7 @@ class PromptRenderer:
         stage_key: str,
         variables: dict[str, Any],
     ) -> tuple[str, str]:
-        """Return (system_prompt, user_prompt) with Jinja2 variables substituted.
+        """Return (system_prompt, user_prompt) with variables substituted.
 
         Looks up via prompt_snapshot -> PromptVersion.id, or falls back to
         the active version for this template key.

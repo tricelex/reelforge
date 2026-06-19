@@ -199,7 +199,7 @@ class PipelineRunService:
 
     @staticmethod
     async def _kick_advance(run_id: str) -> None:
-        from server.apps.pipelines.tasks import (
+        from server.apps.pipelines.tasks import (  # noqa: PLC0415
             advance_pipeline,
         )
 

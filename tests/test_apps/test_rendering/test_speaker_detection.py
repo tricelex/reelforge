@@ -29,7 +29,9 @@ def test_detect_with_manual_crop() -> None:
 def test_detect_falls_back_to_center_on_error() -> None:
     svc = SpeakerDetectionService()
     with patch.object(
-        svc, '_mediapipe_detect', side_effect=RuntimeError('no mediapipe'),
+        svc,
+        '_mediapipe_detect',
+        side_effect=RuntimeError('no mediapipe'),
     ):
         result = svc._detect_from_video(Path('/fake.mp4'), 0.0, 60.0)
     assert result.face_detected is False
@@ -53,7 +55,11 @@ def test_speaker_crop_result_is_frozen() -> None:
     import pytest
 
     result = SpeakerCropResult(
-        crop_x=0, crop_w=540, crop_h=960, confidence=1.0, face_detected=True,
+        crop_x=0,
+        crop_w=540,
+        crop_h=960,
+        confidence=1.0,
+        face_detected=True,
     )
     with pytest.raises(Exception):
         result.crop_x = 100  # type: ignore[misc]
@@ -61,8 +67,16 @@ def test_speaker_crop_result_is_frozen() -> None:
 
 def test_detect_without_manual_crop_falls_back_on_error() -> None:
     svc = SpeakerDetectionService()
-    with patch.object(svc, '_mediapipe_detect', side_effect=RuntimeError('no cv2')):
-        result = svc.detect(video_path=Path('/fake.mp4'), start_sec=0.0, end_sec=60.0)
+    with patch.object(
+        svc,
+        '_mediapipe_detect',
+        side_effect=RuntimeError('no cv2'),
+    ):
+        result = svc.detect(
+            video_path=Path('/fake.mp4'),
+            start_sec=0.0,
+            end_sec=60.0,
+        )
     assert result.face_detected is False
 
 
@@ -82,11 +96,14 @@ def test_mediapipe_detect_with_no_faces() -> None:
     mock_mp.Image.return_value = MagicMock()
 
     with (
-        patch.dict(sys.modules, {
-            'cv2': mock_cv2,
-            'numpy': mock_np,
-            'mediapipe': mock_mp,
-        }),
+        patch.dict(
+            sys.modules,
+            {
+                'cv2': mock_cv2,
+                'numpy': mock_np,
+                'mediapipe': mock_mp,
+            },
+        ),
         patch.object(svc, '_get_detector', return_value=MagicMock()),
     ):
         result = svc._mediapipe_detect(Path('/fake.mp4'), 0.0, 30.0)
@@ -120,11 +137,14 @@ def test_mediapipe_detect_with_faces() -> None:
     mock_mp = MagicMock()
 
     with (
-        patch.dict(sys.modules, {
-            'cv2': mock_cv2,
-            'numpy': mock_np,
-            'mediapipe': mock_mp,
-        }),
+        patch.dict(
+            sys.modules,
+            {
+                'cv2': mock_cv2,
+                'numpy': mock_np,
+                'mediapipe': mock_mp,
+            },
+        ),
         patch.object(svc, '_get_detector', return_value=mock_detector),
     ):
         result = svc._mediapipe_detect(Path('/fake.mp4'), 0.0, 1.0)
@@ -150,12 +170,15 @@ def test_get_detector_loads_model(tmp_path: Path) -> None:
     (model_dir / 'blaze_face_short_range.tflite').write_bytes(b'fake')
 
     with (
-        patch.dict(sys.modules, {
-            'mediapipe.tasks': MagicMock(),
-            'mediapipe.tasks.python': mock_mp_python,
-            'mediapipe.tasks.python.vision': mock_vision,
-            'urllib.request': MagicMock(),
-        }),
+        patch.dict(
+            sys.modules,
+            {
+                'mediapipe.tasks': MagicMock(),
+                'mediapipe.tasks.python': mock_mp_python,
+                'mediapipe.tasks.python.vision': mock_vision,
+                'urllib.request': MagicMock(),
+            },
+        ),
         patch('pathlib.Path.home', return_value=tmp_path),
     ):
         svc._get_detector()
@@ -170,11 +193,14 @@ def test_get_detector_downloads_model_when_missing(tmp_path: Path) -> None:
     # Do NOT create the model file — exists() will return False
 
     with (
-        patch.dict(sys.modules, {
-            'mediapipe.tasks': MagicMock(),
-            'mediapipe.tasks.python': mock_mp_python,
-            'mediapipe.tasks.python.vision': mock_vision,
-        }),
+        patch.dict(
+            sys.modules,
+            {
+                'mediapipe.tasks': MagicMock(),
+                'mediapipe.tasks.python': mock_mp_python,
+                'mediapipe.tasks.python.vision': mock_vision,
+            },
+        ),
         patch('pathlib.Path.home', return_value=tmp_path),
         patch('urllib.request.urlretrieve') as mock_urlretrieve,
     ):
@@ -203,10 +229,13 @@ def test_diarize_returns_segments() -> None:
     mock_pyannote_audio.Pipeline = mock_pipeline_cls
 
     with (
-        patch.dict(sys.modules, {
-            'pyannote': MagicMock(),
-            'pyannote.audio': mock_pyannote_audio,
-        }),
+        patch.dict(
+            sys.modules,
+            {
+                'pyannote': MagicMock(),
+                'pyannote.audio': mock_pyannote_audio,
+            },
+        ),
         patch('subprocess.run') as mock_run,
         patch('tempfile.NamedTemporaryFile') as mock_tmp,
     ):

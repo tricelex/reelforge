@@ -168,9 +168,15 @@ from server.settings.components import config
 
 # RustFS / MinIO / S3-compatible object storage
 AWS_ACCESS_KEY_ID: str = config('AWS_ACCESS_KEY_ID', default='minioadmin')
-AWS_SECRET_ACCESS_KEY: str = config('AWS_SECRET_ACCESS_KEY', default='minioadmin')
-AWS_STORAGE_BUCKET_NAME: str = config('AWS_STORAGE_BUCKET_NAME', default='reelforge')
-AWS_S3_ENDPOINT_URL: str = config('AWS_S3_ENDPOINT_URL', default='http://minio:9000')
+AWS_SECRET_ACCESS_KEY: str = config(
+    'AWS_SECRET_ACCESS_KEY', default='minioadmin'
+)
+AWS_STORAGE_BUCKET_NAME: str = config(
+    'AWS_STORAGE_BUCKET_NAME', default='reelforge'
+)
+AWS_S3_ENDPOINT_URL: str = config(
+    'AWS_S3_ENDPOINT_URL', default='http://minio:9000'
+)
 AWS_S3_REGION_NAME: str = config('AWS_S3_REGION_NAME', default='us-east-1')
 AWS_S3_FILE_OVERWRITE: bool = False
 AWS_DEFAULT_ACL: str | None = None
@@ -197,7 +203,7 @@ _base_settings = (
     'components/caches.py',
     'components/api.py',
     'components/observability.py',
-    'components/storage.py',   # ← add this line
+    'components/storage.py',  # ← add this line
     f'environments/{_ENV}.py',
     optional('environments/local.py'),
 )
@@ -270,18 +276,25 @@ def test_timestamped_model_has_timestamp_fields() -> None:
 
 ```python
 # tests/test_apps/test_core/test_exceptions.py
-from server.apps.core.exceptions import FatalProviderError, RetryableProviderError
+from server.apps.core.exceptions import (
+    FatalProviderError,
+    RetryableProviderError,
+)
 
 
 def test_retryable_error_stores_provider_and_status() -> None:
-    err = RetryableProviderError('rate limited', provider='fal_flux', status_code=429)
+    err = RetryableProviderError(
+        'rate limited', provider='fal_flux', status_code=429
+    )
     assert str(err) == 'rate limited'
     assert err.provider == 'fal_flux'
     assert err.status_code == 429
 
 
 def test_fatal_error_stores_provider_and_code() -> None:
-    err = FatalProviderError('content policy', provider='fal_flux', error_code='SAFETY_FILTER')
+    err = FatalProviderError(
+        'content policy', provider='fal_flux', error_code='SAFETY_FILTER'
+    )
     assert str(err) == 'content policy'
     assert err.provider == 'fal_flux'
     assert err.error_code == 'SAFETY_FILTER'
@@ -309,7 +322,9 @@ from server.apps.core.redis_client import publish_pipeline_event
 @pytest.mark.asyncio
 async def test_publish_pipeline_event_calls_redis_publish() -> None:
     mock_redis = AsyncMock()
-    with patch('server.apps.core.redis_client.get_redis', return_value=mock_redis):
+    with patch(
+        'server.apps.core.redis_client.get_redis', return_value=mock_redis
+    ):
         await publish_pipeline_event('run-abc', b'{"type":"stage.queued"}')
     mock_redis.publish.assert_awaited_once_with(
         'pipeline:run-abc', b'{"type":"stage.queued"}'
@@ -483,7 +498,9 @@ def test_channel_str() -> None:
 @pytest.mark.django_db
 def test_niche_config_links_to_channel() -> None:
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
-    nc = NicheConfig.objects.create(channel=ch, audience='adults', angle='historical')
+    nc = NicheConfig.objects.create(
+        channel=ch, audience='adults', angle='historical'
+    )
     assert nc.channel_id == ch.id
     assert nc.banned_topics == []
 
@@ -521,7 +538,9 @@ def test_character_sheet_item_links_character(library_asset_factory) -> None:
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     char = Character.objects.create(channel=ch, name='K', appearance_prompt='p')
     asset = library_asset_factory()
-    item = CharacterSheetItem.objects.create(character=char, asset=asset, label='front')
+    item = CharacterSheetItem.objects.create(
+        character=char, asset=asset, label='front'
+    )
     assert item.character_id == char.id
 
 
@@ -553,12 +572,12 @@ INSTALLED_APPS: tuple[str, ...] = (
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.postgres',   # ← add here, for ArrayField
+    'django.contrib.postgres',  # ← add here, for ArrayField
     'axes',
     'server.apps.core',
     'server.apps.main',
-    'server.apps.channels',      # ← add here
-    ...
+    'server.apps.channels',  # ← add here
+    ...,
 )
 ```
 
@@ -620,7 +639,9 @@ class Channel(UUIDModel, TimeStampedModel):
         max_length=10, choices=PublishMode.choices, default=PublishMode.REVIEW
     )
     # Gate keys that are armed for this channel (e.g. ['storyboard_gate', 'final_gate'])
-    gates = ArrayField(models.CharField(max_length=40), default=list, blank=True)
+    gates = ArrayField(
+        models.CharField(max_length=40), default=list, blank=True
+    )
     character_design_mode = models.CharField(
         max_length=15,
         choices=CharacterDesignMode.choices,
@@ -633,7 +654,9 @@ class Channel(UUIDModel, TimeStampedModel):
     voice_id = models.CharField(max_length=100, blank=True)
     stability = models.FloatField(default=0.5)
     similarity_boost = models.FloatField(default=0.75)
-    wpm = models.PositiveIntegerField(default=158)  # words per minute for script pacing
+    wpm = models.PositiveIntegerField(
+        default=158
+    )  # words per minute for script pacing
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -744,7 +767,9 @@ class Character(UUIDModel, TimeStampedModel):
     )
     name = models.CharField(max_length=100)
     status = models.CharField(
-        max_length=10, choices=CharacterStatus.choices, default=CharacterStatus.DRAFT
+        max_length=10,
+        choices=CharacterStatus.choices,
+        default=CharacterStatus.DRAFT,
     )
     appearance_prompt = models.TextField()
     persona = models.TextField(blank=True)
@@ -759,7 +784,9 @@ class Character(UUIDModel, TimeStampedModel):
         max_digits=8, decimal_places=4, default=0
     )
     origin = models.CharField(
-        max_length=10, choices=CharacterOrigin.choices, default=CharacterOrigin.RUN
+        max_length=10,
+        choices=CharacterOrigin.choices,
+        default=CharacterOrigin.RUN,
     )
     # source_run FK to pipelines.PipelineRun added in Phase 2 migration
 
@@ -849,7 +876,13 @@ class CharacterSheetItemInline(TabularInline):
 
 @admin.register(Character)
 class CharacterAdmin(ModelAdmin):
-    list_display = ('name', 'channel', 'status', 'origin', 'total_creation_cost_usd')
+    list_display = (
+        'name',
+        'channel',
+        'status',
+        'origin',
+        'total_creation_cost_usd',
+    )
     list_filter = ('status', 'origin')
     search_fields = ('name',)
     inlines = [CharacterSheetItemInline]
@@ -870,10 +903,11 @@ class CharacterGenerationSessionAdmin(ModelAdmin):
 Tests that only instantiate model objects in memory (no DB) will pass. DB tests that attempt ORM operations will fail because the table doesn't exist. Mark DB tests `skip` until Task 5's combined migration step:
 
 ```python
-@pytest.mark.skip(reason='Migration deferred to Task 5 — run after assets app added')
+@pytest.mark.skip(
+    reason='Migration deferred to Task 5 — run after assets app added'
+)
 @pytest.mark.django_db
-def test_channel_creation_defaults() -> None:
-    ...
+def test_channel_creation_defaults() -> None: ...
 ```
 
 Alternatively, run only the non-DB tests to verify imports and model class definitions:
@@ -975,9 +1009,7 @@ def test_story_format_key_is_unique() -> None:
         beats=[{'key': 'cold_open', 'pct': 0.05}],
     )
     with pytest.raises(Exception):
-        StoryFormat.objects.create(
-            key='true_crime_case', name='Dupe', beats=[]
-        )
+        StoryFormat.objects.create(key='true_crime_case', name='Dupe', beats=[])
 
 
 @pytest.mark.django_db
@@ -1002,8 +1034,8 @@ Expected: `ModuleNotFoundError: No module named 'server.apps.prompts'`
 
 In `server/settings/components/common.py`:
 ```python
-    'server.apps.channels',
-    'server.apps.prompts',   # ← add here
+('server.apps.channels',)
+('server.apps.prompts',)  # ← add here
 ```
 
 - [ ] **Step 4: Create server/apps/prompts/__init__.py (empty)**
@@ -1063,7 +1095,8 @@ class PromptVersion(UUIDModel, TimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['template', 'version'], name='uq_prompt_template_version'
+                fields=['template', 'version'],
+                name='uq_prompt_template_version',
             )
         ]
 
@@ -1098,7 +1131,11 @@ class StoryFormat(UUIDModel, TimeStampedModel):
 from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
-from server.apps.prompts.models import PromptTemplate, PromptVersion, StoryFormat
+from server.apps.prompts.models import (
+    PromptTemplate,
+    PromptVersion,
+    StoryFormat,
+)
 
 
 class PromptVersionInline(TabularInline):
@@ -1222,8 +1259,8 @@ Expected: `ImportError` on `server.apps.assets.models`
 
 In `server/settings/components/common.py`:
 ```python
-    'server.apps.prompts',
-    'server.apps.assets',   # ← add here
+('server.apps.prompts',)
+('server.apps.assets',)  # ← add here
 ```
 
 - [ ] **Step 4: Create server/apps/assets/__init__.py (empty)**
@@ -1259,7 +1296,9 @@ def _library_asset_upload_to(instance: 'LibraryAsset', filename: str) -> str:
 
 
 def _rendition_upload_to(instance: 'AssetRendition', filename: str) -> str:
-    return f'library/{instance.source_id}/renditions/{instance.profile}/{filename}'
+    return (
+        f'library/{instance.source_id}/renditions/{instance.profile}/{filename}'
+    )
 
 
 class AssetKind(models.TextChoices):
@@ -1299,7 +1338,9 @@ class Asset(UUIDModel, TimeStampedModel):
     file = models.FileField(storage=AssetStorage(), upload_to=_asset_upload_to)
     mime = models.CharField(max_length=64)
     checksum = models.CharField(max_length=64, db_index=True)
-    meta = models.JSONField(default=dict)  # ffprobe: duration, w, h, fps, codec, loudness
+    meta = models.JSONField(
+        default=dict
+    )  # ffprobe: duration, w, h, fps, codec, loudness
 
     def __str__(self) -> str:
         return f'{self.kind} {self.id}'
@@ -1323,7 +1364,9 @@ class LibraryAsset(UUIDModel, TimeStampedModel):
     )
     is_active = models.BooleanField(default=True)
     version = models.PositiveIntegerField(default=1)
-    meta = models.JSONField(default=dict)  # probe data, loudness, safe-area info
+    meta = models.JSONField(
+        default=dict
+    )  # probe data, loudness, safe-area info
 
     def __str__(self) -> str:
         return f'{self.name} ({self.kind})'
@@ -1335,7 +1378,9 @@ class AssetRendition(UUIDModel, TimeStampedModel):
     source = models.ForeignKey(
         LibraryAsset, on_delete=models.CASCADE, related_name='renditions'
     )
-    profile = models.CharField(max_length=40)  # '1080p30_h264', '9x16_1080', 'mezz'
+    profile = models.CharField(
+        max_length=40
+    )  # '1080p30_h264', '9x16_1080', 'mezz'
     file = models.FileField(
         storage=AssetStorage(), upload_to=_rendition_upload_to
     )
@@ -1363,6 +1408,7 @@ def library_asset_factory():
         defaults = {'kind': LibraryAssetKind.CHARACTER_REF, 'name': 'ref'}
         defaults.update(kwargs)
         return LibraryAsset.objects.create(**defaults)
+
     return _make
 ```
 
@@ -1518,7 +1564,9 @@ FFPROBE_JPEG_OUTPUT = json.dumps({
 })
 
 
-def _make_proc(returncode: int, stdout: bytes, stderr: bytes = b'') -> AsyncMock:
+def _make_proc(
+    returncode: int, stdout: bytes, stderr: bytes = b''
+) -> AsyncMock:
     proc = AsyncMock()
     proc.returncode = returncode
     proc.communicate = AsyncMock(return_value=(stdout, stderr))
@@ -1533,7 +1581,9 @@ def test_ingest_stores_ffprobe_meta() -> None:
         )
         proc = _make_proc(0, FFPROBE_AUDIO_OUTPUT.encode())
         # Music needs loudness too — mock both ffprobe and loudness subprocess
-        loudness_proc = _make_proc(0, b'', b'I: -18.0 LUFS\n True Peak: -1.0 dBTP')
+        loudness_proc = _make_proc(
+            0, b'', b'I: -18.0 LUFS\n True Peak: -1.0 dBTP'
+        )
         call_count = 0
 
         async def _fake_exec(*args: str, **kwargs: Any) -> AsyncMock:
@@ -1541,8 +1591,16 @@ def test_ingest_stores_ffprobe_meta() -> None:
             call_count += 1
             return proc if call_count == 1 else loudness_proc
 
-        with patch('server.apps.assets.tasks.asyncio.create_subprocess_exec', side_effect=_fake_exec), \
-             patch('server.apps.assets.tasks._get_presigned_url', return_value='https://s3/track.wav'):
+        with (
+            patch(
+                'server.apps.assets.tasks.asyncio.create_subprocess_exec',
+                side_effect=_fake_exec,
+            ),
+            patch(
+                'server.apps.assets.tasks._get_presigned_url',
+                return_value='https://s3/track.wav',
+            ),
+        ):
             await ingest_library_asset(str(asset.id))
 
         refreshed = await LibraryAsset.objects.aget(id=asset.id)
@@ -1559,9 +1617,17 @@ def test_ingest_raises_on_ffprobe_failure() -> None:
             kind=LibraryAssetKind.MUSIC, name='Bad'
         )
         proc = _make_proc(1, b'', b'error: no such file')
-        with patch('server.apps.assets.tasks.asyncio.create_subprocess_exec', return_value=proc), \
-             patch('server.apps.assets.tasks._get_presigned_url', return_value='https://s3/bad.wav'), \
-             pytest.raises(RuntimeError, match='ffprobe failed'):
+        with (
+            patch(
+                'server.apps.assets.tasks.asyncio.create_subprocess_exec',
+                return_value=proc,
+            ),
+            patch(
+                'server.apps.assets.tasks._get_presigned_url',
+                return_value='https://s3/bad.wav',
+            ),
+            pytest.raises(RuntimeError, match='ffprobe failed'),
+        ):
             await ingest_library_asset(str(asset.id))
 
     _run(_inner())
@@ -1570,14 +1636,23 @@ def test_ingest_raises_on_ffprobe_failure() -> None:
 @pytest.mark.django_db
 def test_watermark_validation_rejects_non_png() -> None:
     """Watermarks must be PNG with alpha channel (§4.3 validation)."""
+
     async def _inner() -> None:
         asset = await LibraryAsset.objects.acreate(
             kind=LibraryAssetKind.WATERMARK, name='Logo'
         )
         proc = _make_proc(0, FFPROBE_JPEG_OUTPUT.encode())
-        with patch('server.apps.assets.tasks.asyncio.create_subprocess_exec', return_value=proc), \
-             patch('server.apps.assets.tasks._get_presigned_url', return_value='https://s3/logo.jpg'), \
-             pytest.raises(ValueError, match='Watermark must be PNG'):
+        with (
+            patch(
+                'server.apps.assets.tasks.asyncio.create_subprocess_exec',
+                return_value=proc,
+            ),
+            patch(
+                'server.apps.assets.tasks._get_presigned_url',
+                return_value='https://s3/logo.jpg',
+            ),
+            pytest.raises(ValueError, match='Watermark must be PNG'),
+        ):
             await ingest_library_asset(str(asset.id))
 
     _run(_inner())
@@ -1599,9 +1674,17 @@ def test_watermark_validation_accepts_png_rgba() -> None:
             call_count += 1
             return proc if call_count == 1 else rendition_proc
 
-        with patch('server.apps.assets.tasks.asyncio.create_subprocess_exec', side_effect=_fake_exec), \
-             patch('server.apps.assets.tasks._get_presigned_url', return_value='https://s3/logo.png'), \
-             patch('builtins.open', side_effect=FileNotFoundError):
+        with (
+            patch(
+                'server.apps.assets.tasks.asyncio.create_subprocess_exec',
+                side_effect=_fake_exec,
+            ),
+            patch(
+                'server.apps.assets.tasks._get_presigned_url',
+                return_value='https://s3/logo.png',
+            ),
+            patch('builtins.open', side_effect=FileNotFoundError),
+        ):
             # Rendition upload will fail because tmp file doesn't exist in test
             # That's acceptable here — we just verify validation passes
             try:
@@ -1701,8 +1784,10 @@ async def _run_ffprobe(url: str) -> dict[str, Any]:
     """Run ffprobe on a URL and return parsed JSON output."""
     proc = await asyncio.create_subprocess_exec(
         'ffprobe',
-        '-v', 'quiet',
-        '-print_format', 'json',
+        '-v',
+        'quiet',
+        '-print_format',
+        'json',
         '-show_streams',
         '-show_format',
         url,
@@ -1728,19 +1813,28 @@ def _validate_kind(kind: str, meta: dict[str, Any]) -> None:
         if 'a' not in pix_fmt and pix_fmt != 'rgba':
             # png with rgba or yuva pix_fmt has alpha
             if pix_fmt not in ('rgba', 'yuva420p', 'yuva444p'):
-                raise ValueError('Watermark PNG must have alpha channel (rgba/yuva pix_fmt)')
+                raise ValueError(
+                    'Watermark PNG must have alpha channel (rgba/yuva pix_fmt)'
+                )
 
     elif kind in ('INTRO', 'OUTRO'):
         if not audio_streams:
-            raise ValueError(f'{kind} must contain an audio stream (inject silent track if needed)')
+            raise ValueError(
+                f'{kind} must contain an audio stream (inject silent track if needed)'
+            )
 
 
 async def _measure_loudness(url: str) -> dict[str, float]:
     """Run EBU R128 loudness measurement via ffmpeg."""
     proc = await asyncio.create_subprocess_exec(
-        'ffmpeg', '-i', url,
-        '-filter_complex', 'ebur128=framelog=verbose',
-        '-f', 'null', '-',
+        'ffmpeg',
+        '-i',
+        url,
+        '-filter_complex',
+        'ebur128=framelog=verbose',
+        '-f',
+        'null',
+        '-',
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -1752,7 +1846,9 @@ async def _measure_loudness(url: str) -> dict[str, float]:
         if 'I:' in line and 'LUFS' in line:
             parts = line.split()
             try:
-                loudness['integrated_lufs'] = float(parts[parts.index('I:') + 1])
+                loudness['integrated_lufs'] = float(
+                    parts[parts.index('I:') + 1]
+                )
             except (ValueError, IndexError):
                 pass
         if 'True Peak:' in line:
@@ -1770,12 +1866,29 @@ async def _generate_rendition(url: str, profile: str, output_path: str) -> None:
     if profile == 'mezz':
         vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2'
         args = [
-            'ffmpeg', '-i', url,
-            '-vf', vf,
-            '-c:v', 'libx264', '-crf', '16', '-preset', 'fast',
-            '-pix_fmt', 'yuv420p', '-r', '30',
-            '-c:a', 'aac', '-ar', '48000', '-ac', '2',
-            '-y', output_path,
+            'ffmpeg',
+            '-i',
+            url,
+            '-vf',
+            vf,
+            '-c:v',
+            'libx264',
+            '-crf',
+            '16',
+            '-preset',
+            'fast',
+            '-pix_fmt',
+            'yuv420p',
+            '-r',
+            '30',
+            '-c:a',
+            'aac',
+            '-ar',
+            '48000',
+            '-ac',
+            '2',
+            '-y',
+            output_path,
         ]
     else:
         return  # unsupported profile; extend as needed
@@ -1786,7 +1899,9 @@ async def _generate_rendition(url: str, profile: str, output_path: str) -> None:
     )
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError(f'ffmpeg rendition failed ({profile}): {stderr.decode()[:500]}')
+        raise RuntimeError(
+            f'ffmpeg rendition failed ({profile}): {stderr.decode()[:500]}'
+        )
 
 
 @broker.task(retry_on_error=False, queue='render')
@@ -1795,7 +1910,11 @@ async def ingest_library_asset(asset_id: str) -> None:
 
     Implements §4.3 upload normalization pipeline.
     """
-    from server.apps.assets.models import AssetRendition, LibraryAsset, LibraryAssetKind
+    from server.apps.assets.models import (
+        AssetRendition,
+        LibraryAsset,
+        LibraryAssetKind,
+    )
 
     asset = await LibraryAsset.objects.aget(id=uuid.UUID(asset_id))
     s3_key = asset.meta.get('s3_key', str(asset.file))
@@ -1828,6 +1947,7 @@ async def ingest_library_asset(asset_id: str) -> None:
     if asset.kind in rendition_kinds:
         import tempfile
         import os
+
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -1835,8 +1955,11 @@ async def ingest_library_asset(asset_id: str) -> None:
             # Upload rendition to S3 and create AssetRendition row
             with open(tmp_path, 'rb') as f:
                 from django.core.files.base import ContentFile
+
                 rendition = AssetRendition(source=asset, profile='mezz')
-                rendition.file.save(f'rendition_mezz.mp4', ContentFile(f.read()), save=False)
+                rendition.file.save(
+                    f'rendition_mezz.mp4', ContentFile(f.read()), save=False
+                )
                 await rendition.asave()
         finally:
             os.unlink(tmp_path)
@@ -1847,6 +1970,7 @@ async def ingest_library_asset(asset_id: str) -> None:
 ```python
 def _inject_assets(container: Container) -> None:
     from server.apps.assets.services import LibraryAssetService
+
     container.register(LibraryAssetService, scope=Scope.singleton)
 ```
 
@@ -2010,19 +2134,24 @@ class Migration(migrations.Migration):
             model_name='asset',
             name='run',
             field=models.ForeignKey(
-                'pipelines.PipelineRun', null=True, on_delete=models.SET_NULL,
-                related_name='assets'
+                'pipelines.PipelineRun',
+                null=True,
+                on_delete=models.SET_NULL,
+                related_name='assets',
             ),
         ),
         migrations.AddField(
             model_name='asset',
             name='stage_execution',
             field=models.ForeignKey(
-                'pipelines.StageExecution', null=True, on_delete=models.SET_NULL,
-                related_name='assets'
+                'pipelines.StageExecution',
+                null=True,
+                on_delete=models.SET_NULL,
+                related_name='assets',
             ),
         ),
     ]
+
 
 # Migration: add source_run FK to Character
 # channels/0002_character_source_run.py
@@ -2032,8 +2161,10 @@ class Migration(migrations.Migration):
             model_name='character',
             name='source_run',
             field=models.ForeignKey(
-                'pipelines.PipelineRun', null=True, blank=True,
-                on_delete=models.SET_NULL
+                'pipelines.PipelineRun',
+                null=True,
+                blank=True,
+                on_delete=models.SET_NULL,
             ),
         ),
     ]

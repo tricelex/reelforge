@@ -52,7 +52,11 @@ def test_music_plan_run_returns_entries() -> None:
     ctx = _make_ctx()
     fake_output = MusicPlanOutput(
         entries=[
-            MusicEntry(chapter_idx=0, library_asset_id='lib-uuid', gain_db=-3.0),
+            MusicEntry(
+                chapter_idx=0,
+                library_asset_id='lib-uuid',
+                gain_db=-3.0,
+            ),
         ],
     )
 

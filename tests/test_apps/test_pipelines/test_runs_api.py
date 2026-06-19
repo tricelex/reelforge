@@ -199,7 +199,9 @@ def test_issue_sse_token(
     )
 
     assert PipelineRunService.validate_sse_token(data['token'], str(run.id))
-    assert PipelineRunService.validate_sse_token('bad-token', str(run.id)) is False
+    assert (
+        PipelineRunService.validate_sse_token('bad-token', str(run.id)) is False
+    )
 
 
 @pytest.mark.django_db
@@ -423,12 +425,15 @@ def test_rerun_stage(
         attempt=0,
     )
 
-    with patch(
-        'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
-        new_callable=AsyncMock,
-    ) as mock_kiq, patch(
-        'server.apps.pipelines.services.orchestrator.publish_sse',
-        new_callable=AsyncMock,
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new_callable=AsyncMock,
+        ) as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new_callable=AsyncMock,
+        ),
     ):
         response = dmr_client.post(
             reverse(

@@ -154,7 +154,7 @@ class ASSGenerator:
     ) -> list[str]:
         lines = []
         for i in range(0, len(words), chunk_size):
-            chunk = words[i: i + chunk_size]
+            chunk = words[i : i + chunk_size]
             texts = [w.get('word', '').strip() for w in chunk]
             if emoji_map:
                 texts = self._apply_emoji(texts, emoji_map)
@@ -202,9 +202,8 @@ class CaptionTranslationStage(RenderStage):
     @override
     def should_run(self) -> bool:
         """Return True if a translation target language is configured."""
-        return (
-            self.style_config is not None
-            and bool(self.style_config.caption_translate_to)
+        return self.style_config is not None and bool(
+            self.style_config.caption_translate_to,
         )
 
     @override
@@ -264,13 +263,27 @@ class CaptionStage(RenderStage):
 
         ass_str = str(self.ass_path).replace("'", "\\'").replace(':', '\\:')
         cmd = [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', f"subtitles='{ass_str}'",
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-vf',
+            f"subtitles='{ass_str}'",
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(

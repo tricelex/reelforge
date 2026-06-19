@@ -34,7 +34,9 @@ def test_clipping_v1_blueprint_migration() -> None:
         'clip_render',
         'clip_distribute',
     ]
-    gate_node = next(s for s in bp.graph['stages'] if s['key'] == 'clip_approval_gate')
+    gate_node = next(
+        s for s in bp.graph['stages'] if s['key'] == 'clip_approval_gate'
+    )
     assert gate_node.get('gate') is True
 
     # Also verify _remove_blueprint cleans up (covers migration lines 34-36)

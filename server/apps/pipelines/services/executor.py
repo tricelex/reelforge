@@ -143,7 +143,8 @@ async def _maybe_complete_fan_out_parent(  # noqa: C901
     )
 
     parent_id = child.parent_id
-    assert parent_id is not None
+    if parent_id is None:
+        return
     parent = await StageExecution.objects.aget(id=parent_id)
     if parent.status in {StageStatus.SUCCEEDED, StageStatus.FAILED}:
         return

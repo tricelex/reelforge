@@ -66,12 +66,17 @@ def test_ffmpeg_failure_raises_runtime_error(mock_run: MagicMock) -> None:
         layout_config=lc,
     )
     with patch('server.apps.rendering.clip_stages.trim_crop.Path.mkdir'):
-        with pytest.raises(RuntimeError, match='TrimAndCropStage ffmpeg failed'):
+        with pytest.raises(
+            RuntimeError,
+            match='TrimAndCropStage ffmpeg failed',
+        ):
             stage.run(Path('/src.mp4'))
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
-def test_spatial_stack_no_regions_falls_back_to_center(mock_run: MagicMock) -> None:
+def test_spatial_stack_no_regions_falls_back_to_center(
+    mock_run: MagicMock,
+) -> None:
     mock_run.return_value = MagicMock(returncode=0, stderr='')
     lc = _make_layout('SPATIAL_STACK')
     lc.has_spatial_regions = False

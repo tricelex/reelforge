@@ -110,9 +110,7 @@ class LibraryAssetService:
             name=payload.name,
             tags=payload.tags or [],
             channel_id=(
-                uuid.UUID(payload.channel_id)
-                if payload.channel_id
-                else None
+                uuid.UUID(payload.channel_id) if payload.channel_id else None
             ),
             file=payload.storage_key,
         )

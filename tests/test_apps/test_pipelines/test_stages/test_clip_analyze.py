@@ -55,13 +55,19 @@ def test_clip_analyze_run() -> None:
             ) as mock_svc_cls,
             patch(
                 'server.apps.pipelines.stages.clip_analyze.asyncio.to_thread',
-                new=AsyncMock(side_effect=[
-                    json.dumps(manifest).encode(),  # manifest_asset.file.read
-                    [fake_candidate],               # svc.analyze
-                ]),
+                new=AsyncMock(
+                    side_effect=[
+                        json.dumps(
+                            manifest,
+                        ).encode(),  # manifest_asset.file.read
+                        [fake_candidate],  # svc.analyze
+                    ],
+                ),
             ),
         ):
-            mock_asset_cls.objects.aget = AsyncMock(return_value=fake_manifest_asset)
+            mock_asset_cls.objects.aget = AsyncMock(
+                return_value=fake_manifest_asset,
+            )
             mock_svc_cls.return_value = MagicMock()
             return await ClipAnalyzeStage().run(ctx)
 

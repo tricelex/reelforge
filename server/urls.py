@@ -56,7 +56,10 @@ router = Router(
     [
         path('auth/', include(core_api_urls, namespace='core')),
         path('enums/', include(core_enums_urls, namespace='core_enums')),
-        path('analytics/', include(analytics_api_urls, namespace='analytics_api')),
+        path(
+            'analytics/',
+            include(analytics_api_urls, namespace='analytics_api'),
+        ),
         path('', include(analytics_root_urls, namespace='analytics_root')),
         path('', include(channels_api_urls, namespace='channels_api')),
         path('', include(assets_api_urls, namespace='assets_api')),
@@ -79,7 +82,10 @@ urlpatterns = [
     # Legacy SSE (streaming — outside DMR OpenAPI):
     path('api/', include(pipelines_urls, namespace='pipelines')),
     # Demo blog API (outside unified OpenAPI router):
-    path('api/user/', include((main_api_urls, 'main_api'), namespace='main_api')),
+    path(
+        'api/user/',
+        include((main_api_urls, 'main_api'), namespace='main_api'),
+    ),
     # Legacy clip prefix (deprecated — same handlers as unified /api/):
     path('api/clips/', include(clips_api_urls, namespace='clips_legacy')),
     # OpenAPI:

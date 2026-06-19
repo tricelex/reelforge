@@ -29,13 +29,19 @@ def api_schema(
     return st.openapi.from_wsgi(reverse('openapi_json'), application)
 
 
-schema = st.pytest.from_fixture('api_schema').include(
-    path='/api/auth/me',
-).include(
-    path='/api/enums/',
-).include(
-    method='GET',
-    path='/api/dashboard/',
+schema = (
+    st.pytest
+    .from_fixture('api_schema')
+    .include(
+        path='/api/auth/me',
+    )
+    .include(
+        path='/api/enums/',
+    )
+    .include(
+        method='GET',
+        path='/api/dashboard/',
+    )
 )
 
 

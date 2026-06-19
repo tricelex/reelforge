@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('channels', '0002_character_source_run'),
         ('clips', '0002_rename_layout_config_constraint'),
@@ -18,27 +17,84 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ClipCampaign',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('name', models.CharField(max_length=120)),
-                ('status', models.CharField(choices=[('DRAFT', 'Draft'), ('ACTIVE', 'Active'), ('COMPLETED', 'Completed')], default='DRAFT', max_length=10)),
+                (
+                    'status',
+                    models.CharField(
+                        choices=[
+                            ('DRAFT', 'Draft'),
+                            ('ACTIVE', 'Active'),
+                            ('COMPLETED', 'Completed'),
+                        ],
+                        default='DRAFT',
+                        max_length=10,
+                    ),
+                ),
                 ('notes', models.TextField(blank=True)),
-                ('channel', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='clip_campaigns', to='channels.channel')),
+                (
+                    'channel',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='clip_campaigns',
+                        to='channels.channel',
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
             name='Earning',
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                (
+                    'id',
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('platform', models.CharField(max_length=30)),
-                ('revenue_est_usd', models.DecimalField(decimal_places=4, default=Decimal(0), max_digits=10)),
+                (
+                    'revenue_est_usd',
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=Decimal(0),
+                        max_digits=10,
+                    ),
+                ),
                 ('recorded_at', models.DateTimeField()),
                 ('notes', models.TextField(blank=True)),
-                ('campaign', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='earnings', to='clips.clipcampaign')),
-                ('candidate', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='earnings', to='clips.clipcandidate')),
+                (
+                    'campaign',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='earnings',
+                        to='clips.clipcampaign',
+                    ),
+                ),
+                (
+                    'candidate',
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name='earnings',
+                        to='clips.clipcandidate',
+                    ),
+                ),
             ],
             options={
                 'abstract': False,
@@ -46,6 +102,12 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='clipcampaign',
-            constraint=models.CheckConstraint(condition=models.Q(('status__in', ['DRAFT', 'ACTIVE', 'COMPLETED'])), name='clips_clipcampaign_status_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'status__in',
+                    ['DRAFT', 'ACTIVE', 'COMPLETED'],
+                )),
+                name='clips_clipcampaign_status_valid',
+            ),
         ),
     ]

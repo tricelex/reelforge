@@ -79,12 +79,8 @@ def get_channel_branding(channel_id: str) -> ChannelBrandingPayload:
     branding, _ = ChannelBranding.objects.get_or_create(channel=channel)
     return ChannelBrandingPayload(
         channel_id=str(channel.id),
-        intro_asset_id=(
-            str(branding.intro_id) if branding.intro_id else None
-        ),
-        outro_asset_id=(
-            str(branding.outro_id) if branding.outro_id else None
-        ),
+        intro_asset_id=(str(branding.intro_id) if branding.intro_id else None),
+        outro_asset_id=(str(branding.outro_id) if branding.outro_id else None),
         watermark_asset_id=(
             str(branding.watermark_id) if branding.watermark_id else None
         ),

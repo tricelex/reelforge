@@ -118,10 +118,7 @@ async def mux_scene(
             '-vf',
             f'tpad=stop_mode=clone:stop_duration={pad_s:.3f}',
             '-af',
-            (
-                f'atrim=start={start_s:.3f}:end={end_s:.3f},'
-                f'asetpts=PTS-STARTPTS'
-            ),
+            (f'atrim=start={start_s:.3f}:end={end_s:.3f},asetpts=PTS-STARTPTS'),
             '-c:v',
             'libx264',
             '-crf',
@@ -162,7 +159,10 @@ async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
         RuntimeError: If FFmpeg exits with non-zero return code.
     """
     with tempfile.NamedTemporaryFile(
-        mode='w', suffix='.txt', delete=False,
+        encoding='utf-8',
+        mode='w',
+        suffix='.txt',
+        delete=False,
     ) as f:
         for seg in segment_paths:
             f.write(f"file '{seg}'\n")
@@ -187,10 +187,11 @@ async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
         stderr=asyncio.subprocess.PIPE,
     )
     _, stderr = await proc.communicate()
-    Path(list_path).unlink(missing_ok=True)
+    await asyncio.to_thread(Path(list_path).unlink, missing_ok=True)
     if proc.returncode != 0:
         raise RuntimeError(
-            f'concat_chapter failed ({proc.returncode}): {stderr.decode()[:300]}',
+            'concat_chapter failed '
+            f'({proc.returncode}): {stderr.decode()[:300]}',
         )
 
 
@@ -231,9 +232,158 @@ async def loudnorm_pass1(path: str) -> dict[str, str]:
     end = stderr_text.rfind('}') + 1
     if start == -1 or end == 0:
         raise ValueError(
-            f'loudnorm JSON block not found in ffmpeg output: {stderr_text[:200]}',
+            'loudnorm JSON block not found in ffmpeg output: '
+            f'{stderr_text[:200]}',
         )
     return json.loads(stderr_text[start:end])  # type: ignore[no-any-return]
+
+
+def _loudnorm_audio_filter(stats: dict[str, str]) -> str:
+    """Build loudnorm filter string from pass-1 measurement stats."""
+    return (
+        f'loudnorm=I={_LOUDNORM_I}:TP={_LOUDNORM_TP}:LRA={_LOUDNORM_LRA}:'
+        f'measured_I={stats.get("input_i", str(_LOUDNORM_I))}:'
+        f'measured_TP={stats.get("input_tp", str(_LOUDNORM_TP))}:'
+        f'measured_LRA={stats.get("input_lra", str(_LOUDNORM_LRA))}:'
+        f'measured_thresh={stats.get("input_thresh", "-24.0")}:'
+        f'offset={stats.get("target_offset", "0.0")}:'
+        f'linear=true:print_format=summary'
+    )
+
+
+def _final_encode_args(out_path: str) -> list[str]:
+    """Shared libx264/AAC encode flags for the final pass."""
+    return [
+        '-c:v',
+        'libx264',
+        '-preset',
+        'slow',
+        '-crf',
+        '18',
+        '-pix_fmt',
+        'yuv420p',
+        '-r',
+        '30',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '384k',
+        '-ar',
+        '48000',
+        '-ac',
+        '2',
+        '-movflags',
+        '+faststart',
+        out_path,
+    ]
+
+
+def _build_complex_filter(
+    *,
+    music_paths: list[str],
+    music_gains_db: list[float],
+    ass_path: str | None,
+    watermark_path: str | None,
+    wm_idx: int,
+    loudnorm_af: str,
+) -> tuple[str, str, str]:
+    """Return (filter_complex, video_map, audio_map) for final_pass."""
+    filter_parts: list[str] = []
+    if watermark_path:
+        filter_parts.append(
+            f'[0:v][{wm_idx}:v]overlay=W-w-20:H-h-20:format=auto[vwm]',
+        )
+        v_out = '[vwm]'
+    else:
+        v_out = '[0:v]'
+
+    if ass_path:
+        filter_parts.append(f"{v_out}subtitles='{ass_path}'[vout]")
+        v_out = '[vout]'
+
+    if music_paths:
+        for i, gain_db in enumerate(music_gains_db, start=1):
+            gain_linear = 10 ** (gain_db / 20.0)
+            filter_parts.append(f'[{i}:a]volume={gain_linear:.4f}[m{i}]')
+        music_refs = ''.join(f'[m{i}]' for i in range(1, len(music_paths) + 1))
+        n = 1 + len(music_paths)
+        filter_parts.append(
+            f'[0:a]{music_refs}amix=inputs={n}:duration=first,'
+            f'{loudnorm_af}[aout]',
+        )
+        a_out = '[aout]'
+    else:
+        filter_parts.append(f'[0:a]{loudnorm_af}[aout]')
+        a_out = '[aout]'
+
+    vmap = v_out if v_out != '[0:v]' else '0:v'
+    return ';'.join(filter_parts), vmap, a_out
+
+
+def _build_final_pass_cmd(
+    *,
+    inputs: list[str],
+    music_paths: list[str],
+    music_gains_db: list[float],
+    ass_path: str | None,
+    watermark_path: str | None,
+    loudnorm_af: str,
+    out_path: str,
+) -> list[str]:
+    """Assemble the ffmpeg argv for the final encode pass."""
+    use_complex = bool(music_paths or watermark_path)
+    wm_idx = 1 + len(music_paths)
+
+    if use_complex:
+        fc, vmap, a_out = _build_complex_filter(
+            music_paths=music_paths,
+            music_gains_db=music_gains_db,
+            ass_path=ass_path,
+            watermark_path=watermark_path,
+            wm_idx=wm_idx,
+            loudnorm_af=loudnorm_af,
+        )
+        return [
+            'ffmpeg',
+            '-y',
+            *inputs,
+            '-filter_complex',
+            fc,
+            '-map',
+            vmap,
+            '-map',
+            a_out,
+            *_final_encode_args(out_path),
+        ]
+
+    vf_parts = []
+    if ass_path:
+        vf_parts.append(f"subtitles='{ass_path}'")
+    vf = ','.join(vf_parts) if vf_parts else 'null'
+    return [
+        'ffmpeg',
+        '-y',
+        *inputs,
+        '-vf',
+        vf,
+        '-af',
+        loudnorm_af,
+        *_final_encode_args(out_path),
+    ]
+
+
+async def _run_ffmpeg_cmd(cmd: list[str]) -> None:
+    """Run ffmpeg and raise RuntimeError on non-zero exit."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f'final_pass failed ({proc.returncode}): {stderr.decode()[:400]}',
+        )
 
 
 async def final_pass(
@@ -245,13 +395,12 @@ async def final_pass(
     out_path: str,
     watermark_opacity: float = 0.6,
 ) -> None:
-    """Produce final video: concat chapters, loudnorm, watermark, subtitles, music.
+    """Produce final video with loudnorm, watermark, subtitles, and music.
 
     Steps:
     1. Concat chapter files to a temp intermediate (stream copy).
     2. Loudnorm pass 1 to measure integrated loudness.
-    3. Build filter graph: optional watermark overlay, optional subtitle burn-in,
-       optional music amix with per-track gain.
+    3. Build filter graph for watermark, subtitles, and music mix.
     4. Encode: libx264 CRF 18 slow, AAC 384k 48kHz, +faststart, -14 LUFS.
 
     Raises:
@@ -270,132 +419,15 @@ async def final_pass(
         if watermark_path:
             inputs += ['-i', watermark_path]
 
-        use_complex = bool(music_paths or watermark_path)
-        wm_idx = 1 + len(music_paths)
-
-        loudnorm_af = (
-            f'loudnorm=I={_LOUDNORM_I}:TP={_LOUDNORM_TP}:LRA={_LOUDNORM_LRA}:'
-            f"measured_I={stats.get('input_i', str(_LOUDNORM_I))}:"
-            f"measured_TP={stats.get('input_tp', str(_LOUDNORM_TP))}:"
-            f"measured_LRA={stats.get('input_lra', str(_LOUDNORM_LRA))}:"
-            f"measured_thresh={stats.get('input_thresh', '-24.0')}:"
-            f"offset={stats.get('target_offset', '0.0')}:"
-            f'linear=true:print_format=summary'
+        cmd = _build_final_pass_cmd(
+            inputs=inputs,
+            music_paths=music_paths,
+            music_gains_db=music_gains_db,
+            ass_path=ass_path,
+            watermark_path=watermark_path,
+            loudnorm_af=_loudnorm_audio_filter(stats),
+            out_path=out_path,
         )
-
-        if use_complex:
-            filter_parts: list[str] = []
-
-            if watermark_path:
-                filter_parts.append(
-                    f'[0:v][{wm_idx}:v]overlay=W-w-20:H-h-20:format=auto[vwm]',
-                )
-                v_out = '[vwm]'
-            else:
-                v_out = '[0:v]'
-
-            if ass_path:
-                filter_parts.append(f"{v_out}subtitles='{ass_path}'[vout]")
-                v_out = '[vout]'
-
-            if music_paths:
-                for i, gain_db in enumerate(music_gains_db, start=1):
-                    gain_linear = 10 ** (gain_db / 20.0)
-                    filter_parts.append(
-                        f'[{i}:a]volume={gain_linear:.4f}[m{i}]',
-                    )
-                music_refs = ''.join(
-                    f'[m{i}]' for i in range(1, len(music_paths) + 1)
-                )
-                n = 1 + len(music_paths)
-                filter_parts.append(
-                    f'[0:a]{music_refs}amix=inputs={n}:duration=first,'
-                    f'{loudnorm_af}[aout]',
-                )
-                a_out = '[aout]'
-            else:
-                filter_parts.append(f'[0:a]{loudnorm_af}[aout]')
-                a_out = '[aout]'
-
-            fc = ';'.join(filter_parts)
-            vmap = v_out if v_out != '[0:v]' else '0:v'
-            cmd = [
-                'ffmpeg',
-                '-y',
-                *inputs,
-                '-filter_complex',
-                fc,
-                '-map',
-                vmap,
-                '-map',
-                a_out,
-                '-c:v',
-                'libx264',
-                '-preset',
-                'slow',
-                '-crf',
-                '18',
-                '-pix_fmt',
-                'yuv420p',
-                '-r',
-                '30',
-                '-c:a',
-                'aac',
-                '-b:a',
-                '384k',
-                '-ar',
-                '48000',
-                '-ac',
-                '2',
-                '-movflags',
-                '+faststart',
-                out_path,
-            ]
-        else:
-            vf_parts = []
-            if ass_path:
-                vf_parts.append(f"subtitles='{ass_path}'")
-            vf = ','.join(vf_parts) if vf_parts else 'null'
-            cmd = [
-                'ffmpeg',
-                '-y',
-                *inputs,
-                '-vf',
-                vf,
-                '-af',
-                loudnorm_af,
-                '-c:v',
-                'libx264',
-                '-preset',
-                'slow',
-                '-crf',
-                '18',
-                '-pix_fmt',
-                'yuv420p',
-                '-r',
-                '30',
-                '-c:a',
-                'aac',
-                '-b:a',
-                '384k',
-                '-ar',
-                '48000',
-                '-ac',
-                '2',
-                '-movflags',
-                '+faststart',
-                out_path,
-            ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f'final_pass failed ({proc.returncode}): {stderr.decode()[:400]}',
-            )
+        await _run_ffmpeg_cmd(cmd)
     finally:
-        Path(concat_tmp).unlink(missing_ok=True)
+        await asyncio.to_thread(Path(concat_tmp).unlink, missing_ok=True)

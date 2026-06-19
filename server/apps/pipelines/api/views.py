@@ -89,10 +89,9 @@ class RunCollectionController(
     def post(self, parsed_body: Body[RunCreatePayload]) -> RunDetailPayload:
         """Create run and kick orchestrator."""
         require_operator(get_request_user(self.request))
-        idempotency_key = (
-            self.request.headers.get('Idempotency-Key')
-            or self.request.META.get('HTTP_IDEMPOTENCY_KEY')
-        )
+        idempotency_key = self.request.headers.get(
+            'Idempotency-Key',
+        ) or self.request.META.get('HTTP_IDEMPOTENCY_KEY')
         return self.resolve(PipelineRunService).create(
             parsed_body,
             idempotency_key=idempotency_key,

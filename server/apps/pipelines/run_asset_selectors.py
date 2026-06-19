@@ -54,10 +54,9 @@ def list_run_assets(
     """Return presigned URLs for assets owned by a run."""
     from server.apps.assets.models import Asset  # noqa: PLC0415
 
-    qs = (
-        Asset.objects
-        .filter(run_id=uuid.UUID(run_id))
-        .order_by('-created_at', '-id')
+    qs = Asset.objects.filter(run_id=uuid.UUID(run_id)).order_by(
+        '-created_at',
+        '-id',
     )
     rows, next_cursor, total = paginate_queryset(
         qs,
@@ -69,7 +68,9 @@ def list_run_assets(
             id=str(asset.id),
             kind=asset.kind,
             mime=asset.mime,
-            url=presign.presign_get(asset.file.name or '') if asset.file else '',
+            url=presign.presign_get(asset.file.name or '')
+            if asset.file
+            else '',
         )
         for asset in rows
     ]

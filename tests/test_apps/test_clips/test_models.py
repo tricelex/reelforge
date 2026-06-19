@@ -44,7 +44,9 @@ def pipeline_run(db: None) -> PipelineRun:
 
 
 @pytest.mark.django_db
-def test_clip_candidate_creates_configs_on_save(pipeline_run: PipelineRun) -> None:
+def test_clip_candidate_creates_configs_on_save(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
         run=pipeline_run,
         start_sec=10.0,
@@ -71,7 +73,10 @@ def test_clip_candidate_status_default(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_candidate_duration_property(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     assert candidate.duration_sec == 60.0
 
@@ -79,7 +84,10 @@ def test_clip_candidate_duration_property(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_layout_config_defaults(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     lc = candidate.layout_config
     assert lc.render_mode == RenderMode.SMART_CROP
@@ -88,17 +96,27 @@ def test_clip_layout_config_defaults(pipeline_run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_manual_smart_crop_false(pipeline_run: PipelineRun) -> None:
+def test_clip_layout_config_has_manual_smart_crop_false(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     assert candidate.layout_config.has_manual_smart_crop is False
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_manual_smart_crop_true(pipeline_run: PipelineRun) -> None:
+def test_clip_layout_config_has_manual_smart_crop_true(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     lc = candidate.layout_config
     lc.manual_crop_x = 100
@@ -109,17 +127,27 @@ def test_clip_layout_config_has_manual_smart_crop_true(pipeline_run: PipelineRun
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_spatial_regions_false(pipeline_run: PipelineRun) -> None:
+def test_clip_layout_config_has_spatial_regions_false(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     assert candidate.layout_config.has_spatial_regions is False
 
 
 @pytest.mark.django_db
-def test_clip_layout_config_has_spatial_regions_true(pipeline_run: PipelineRun) -> None:
+def test_clip_layout_config_has_spatial_regions_true(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     lc = candidate.layout_config
     lc.region_a_x = 0
@@ -136,7 +164,10 @@ def test_clip_layout_config_has_spatial_regions_true(pipeline_run: PipelineRun) 
 @pytest.mark.django_db
 def test_clip_style_config_defaults(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     sc = candidate.style_config
     assert sc.caption_enabled is True
@@ -148,7 +179,10 @@ def test_clip_style_config_defaults(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_timed_overlay_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     overlay = ClipTimedOverlay.objects.create(
         candidate=candidate,
@@ -162,7 +196,10 @@ def test_clip_timed_overlay_str(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_candidate_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='Test Clip',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='Test Clip',
     )
     assert 'Test Clip' in str(candidate)
 
@@ -170,7 +207,10 @@ def test_clip_candidate_str(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_layout_config_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     assert 'SMART_CROP' in str(candidate.layout_config)
 
@@ -178,7 +218,10 @@ def test_clip_layout_config_str(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_style_config_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     assert 'Style' in str(candidate.style_config)
 
@@ -186,7 +229,10 @@ def test_clip_style_config_str(pipeline_run: PipelineRun) -> None:
 @pytest.mark.django_db
 def test_clip_post_str(pipeline_run: PipelineRun) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     post = ClipPost.objects.create(
         candidate=candidate,
@@ -196,9 +242,14 @@ def test_clip_post_str(pipeline_run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db
-def test_signal_does_not_duplicate_configs_on_update(pipeline_run: PipelineRun) -> None:
+def test_signal_does_not_duplicate_configs_on_update(
+    pipeline_run: PipelineRun,
+) -> None:
     candidate = ClipCandidate.objects.create(
-        run=pipeline_run, start_sec=10.0, end_sec=70.0, title='T',
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
     )
     # Save again (update, not create) — should not raise or duplicate configs
     candidate.title = 'Updated'

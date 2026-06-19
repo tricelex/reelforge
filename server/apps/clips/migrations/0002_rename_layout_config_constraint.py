@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('clips', '0001_initial'),
     ]
@@ -16,6 +15,12 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='cliplayoutconfig',
-            constraint=models.CheckConstraint(condition=models.Q(('render_mode__in', ['SMART_CROP', 'SPATIAL_STACK', 'CENTER_CROP'])), name='clips_cliplayoutconfig_render_mode_valid'),
+            constraint=models.CheckConstraint(
+                condition=models.Q((
+                    'render_mode__in',
+                    ['SMART_CROP', 'SPATIAL_STACK', 'CENTER_CROP'],
+                )),
+                name='clips_cliplayoutconfig_render_mode_valid',
+            ),
         ),
     ]

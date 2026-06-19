@@ -82,7 +82,8 @@ def test_image_gen_run_child_returns_scene_asset() -> None:
                 ),
             ),
             patch(
-                'httpx.AsyncClient.get', new=AsyncMock(return_value=mock_resp),
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
             ),
         ):
             return await ImageGenStage().run(ctx)

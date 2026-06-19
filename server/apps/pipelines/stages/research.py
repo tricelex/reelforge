@@ -28,7 +28,8 @@ def _agent() -> Agent[StageContext, ResearchOutput]:
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
         sys, _ = await ctx.deps.prompts.render(
-            'research', {'topic': ctx.deps.run.topic},
+            'research',
+            {'topic': ctx.deps.run.topic},
         )
         return sys or (
             'You are a factual research assistant. '
@@ -38,7 +39,8 @@ def _agent() -> Agent[StageContext, ResearchOutput]:
 
     @a.tool
     async def web_search(
-        ctx: RunContext[StageContext], query: str,
+        ctx: RunContext[StageContext],
+        query: str,
     ) -> list[dict[str, Any]]:  # pragma: no cover
         """Search the web for relevant sources."""
         api_key: str = getattr(settings, 'EXA_API_KEY', '')

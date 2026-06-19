@@ -76,7 +76,8 @@ _PNG_ALPHA_PROBE = {
 
 
 def _make_asset(
-    kind: str = LibraryAssetKind.MUSIC, name: str = 'Track',
+    kind: str = LibraryAssetKind.MUSIC,
+    name: str = 'Track',
 ) -> LibraryAsset:
     file = SimpleUploadedFile('file.mp3', b'data', content_type='audio/mpeg')
     return LibraryAsset.objects.create(kind=kind, name=name, file=file)
@@ -130,7 +131,8 @@ def test_ingest_watermark_valid_png_with_alpha() -> None:
     asset = _make_asset(LibraryAssetKind.WATERMARK, 'Logo')
     with (
         patch(
-            'server.apps.assets.tasks._ffprobe', return_value=_PNG_ALPHA_PROBE,
+            'server.apps.assets.tasks._ffprobe',
+            return_value=_PNG_ALPHA_PROBE,
         ),
         patch('server.apps.assets.tasks._transcode'),
     ):
@@ -266,7 +268,8 @@ def test_ingest_video_creates_renditions() -> None:
     with (
         patch('server.apps.assets.tasks._ffprobe', return_value=_VIDEO_PROBE),
         patch(
-            'server.apps.assets.tasks._transcode', side_effect=fake_transcode,
+            'server.apps.assets.tasks._transcode',
+            side_effect=fake_transcode,
         ),
     ):
         ingest_library_asset.original_func(str(asset.id))

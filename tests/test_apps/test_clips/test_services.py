@@ -54,7 +54,10 @@ def candidate(db: None) -> ClipCandidate:
         topic='https://youtube.com/watch?v=test',
     )
     return ClipCandidate.objects.create(
-        run=run, start_sec=10.0, end_sec=70.0, title='Test Clip',
+        run=run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='Test Clip',
     )
 
 
@@ -158,10 +161,16 @@ def test_sync_gate_candidates() -> None:
         topic='test',
     )
     approved = ClipCandidate.objects.create(
-        run=run, start_sec=0.0, end_sec=10.0, title='Keep',
+        run=run,
+        start_sec=0.0,
+        end_sec=10.0,
+        title='Keep',
     )
     rejected = ClipCandidate.objects.create(
-        run=run, start_sec=20.0, end_sec=30.0, title='Drop',
+        run=run,
+        start_sec=20.0,
+        end_sec=30.0,
+        title='Drop',
     )
 
     count = _clips_service().sync_gate_candidates(
@@ -234,11 +243,14 @@ def test_get_preview_status_idle(candidate: ClipCandidate) -> None:
 @pytest.mark.django_db
 def test_approve_gate_mocks_orchestrator(candidate: ClipCandidate) -> None:
     """approve_gate syncs candidates and resumes the clip approval gate."""
-    with patch(
-        'server.apps.pipelines.services.orchestrator._approve_gate_sync',
-    ) as mock_sync, patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator._approve_gate_sync',
+        ) as mock_sync,
+        patch(
+            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+            new=AsyncMock(return_value=None),
+        ),
     ):
         result = _clips_service().approve_gate(
             str(candidate.run_id),
@@ -332,14 +344,20 @@ def test_distribution_status_branches(candidate: ClipCandidate) -> None:
         platform='tiktok',
         status=PostStatus.POSTING,
     )
-    assert svc.get_post(str(candidate.id), str(posting.id)).distribution_status == 'posting'
+    assert (
+        svc.get_post(str(candidate.id), str(posting.id)).distribution_status
+        == 'posting'
+    )
 
     failed = ClipPost.objects.create(
         candidate=candidate,
         platform='instagram',
         status=PostStatus.FAILED,
     )
-    assert svc.get_post(str(candidate.id), str(failed.id)).distribution_status == 'failed'
+    assert (
+        svc.get_post(str(candidate.id), str(failed.id)).distribution_status
+        == 'failed'
+    )
 
     posted = ClipPost.objects.create(
         candidate=candidate,
@@ -347,4 +365,7 @@ def test_distribution_status_branches(candidate: ClipCandidate) -> None:
         status=PostStatus.POSTED,
         platform_url='https://youtube.com/shorts/abc',
     )
-    assert svc.get_post(str(candidate.id), str(posted.id)).distribution_status == 'posted'
+    assert (
+        svc.get_post(str(candidate.id), str(posted.id)).distribution_status
+        == 'posted'
+    )

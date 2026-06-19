@@ -15,7 +15,8 @@ def test_get_redis_calls_from_url() -> None:
 
     mock_client = MagicMock()
     with patch(
-        'redis.asyncio.from_url', return_value=mock_client,
+        'redis.asyncio.from_url',
+        return_value=mock_client,
     ) as mock_from_url:
         result = get_redis()
     assert result is mock_client
@@ -29,7 +30,8 @@ def test_publish_pipeline_event_calls_redis_publish() -> None:
 
     async def _inner() -> None:
         with patch(
-            'server.common.redis_client.get_redis', return_value=mock_redis,
+            'server.common.redis_client.get_redis',
+            return_value=mock_redis,
         ):
             await publish_pipeline_event('run-abc', b'{"type":"stage.queued"}')
         mock_redis.publish.assert_awaited_once_with(

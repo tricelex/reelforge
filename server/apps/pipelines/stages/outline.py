@@ -26,7 +26,8 @@ def _agent() -> Agent[StageContext, OutlineOutput]:
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
         sys, _ = await ctx.deps.prompts.render(
-            'outline', {'topic': ctx.deps.run.topic},
+            'outline',
+            {'topic': ctx.deps.run.topic},
         )
         return sys or (
             'You are a documentary outline writer. '

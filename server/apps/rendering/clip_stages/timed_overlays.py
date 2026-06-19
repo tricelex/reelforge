@@ -50,9 +50,7 @@ class TimedOverlayStage(RenderStage):
         vf_parts = []
         for overlay in self.timed_overlays:
             if overlay.text:
-                safe = (
-                    overlay.text.replace("'", "\\'").replace(':', '\\:')
-                )
+                safe = overlay.text.replace("'", "\\'").replace(':', '\\:')
                 part = (
                     f"drawtext=text='{safe}'"
                     f':fontsize={overlay.font_size}'
@@ -67,13 +65,27 @@ class TimedOverlayStage(RenderStage):
 
         vf = ','.join(vf_parts)
         cmd = [
-            'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', vf,
-            '-c:v', 'libx264', '-crf', str(self.crf), '-preset', self.preset,
-            '-c:a', 'copy', str(self.output_path),
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-vf',
+            vf,
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'copy',
+            str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
-            cmd, capture_output=True, text=True, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(

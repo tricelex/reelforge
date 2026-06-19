@@ -57,7 +57,9 @@ def test_character_defaults_persisted() -> None:
 
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     char = Character.objects.create(
-        channel=ch, name='King Alaric', appearance_prompt='tall',
+        channel=ch,
+        name='King Alaric',
+        appearance_prompt='tall',
     )
     assert char.status == CharacterStatus.DRAFT
     assert char.origin == CharacterOrigin.RUN
@@ -70,7 +72,9 @@ def test_niche_config_links_to_channel() -> None:
 
     ch = Channel.objects.create(name='Ch', kind=ChannelKind.LONGFORM)
     nc = NicheConfig.objects.create(
-        channel=ch, audience='adults', angle='historical',
+        channel=ch,
+        audience='adults',
+        angle='historical',
     )
     assert nc.channel_id == ch.id
     assert nc.banned_topics == []
@@ -111,7 +115,9 @@ def test_str_methods_for_channel_related_models() -> None:
 
     ch = Channel.objects.create(name='Doc Hub', kind=ChannelKind.LONGFORM)
     nc = NicheConfig.objects.create(
-        channel=ch, audience='adults', angle='historical',
+        channel=ch,
+        audience='adults',
+        angle='historical',
     )
     assert 'Doc Hub' in str(nc)
 
@@ -126,15 +132,20 @@ def test_str_methods_for_channel_related_models() -> None:
     assert 'Doc Hub' in str(branding)
 
     char = Character.objects.create(
-        channel=ch, name='Hero', appearance_prompt='tall',
+        channel=ch,
+        name='Hero',
+        appearance_prompt='tall',
     )
     assert str(char) == 'Hero'
 
     asset = LibraryAsset.objects.create(
-        kind=LibraryAssetKind.CHARACTER_REF, name='ref.png',
+        kind=LibraryAssetKind.CHARACTER_REF,
+        name='ref.png',
     )
     sheet_item = CharacterSheetItem.objects.create(
-        character=char, asset=asset, label='front',
+        character=char,
+        asset=asset,
+        label='front',
     )
     assert 'Hero' in str(sheet_item)
     assert 'front' in str(sheet_item)

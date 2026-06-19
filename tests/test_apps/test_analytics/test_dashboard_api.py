@@ -76,3 +76,29 @@ def test_dashboard_summary(
     assert body['gates_waiting'] >= 1
     assert 'spend_today_usd' in body
     assert len(body['publish_scheduled']) == 1
+
+
+@pytest.mark.django_db
+def test_dashboard_non_list_calendar(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """Dashboard coerces non-list publish_scheduled values to []."""
+    from unittest.mock import patch
+
+    with patch(
+        'server.apps.analytics.api.views.selectors.get_dashboard',
+        return_value={
+            'runs_in_flight': 0,
+            'gates_waiting': 0,
+            'spend_today_usd': '0.00',
+            'publish_scheduled': 'invalid',
+        },
+    ):
+        response = dmr_client.get(
+            reverse('api:analytics_root:dashboard'),
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()['publish_scheduled'] == []

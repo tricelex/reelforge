@@ -9,6 +9,7 @@ from server.common.models import TimeStampedModel, UUIDModel
 
 class PublishStatus(models.TextChoices):
     """Lifecycle status of a PublishJob."""
+
     PENDING = 'PENDING', 'Pending'
     UPLOADING = 'UPLOADING', 'Uploading'
     COMPLETED = 'COMPLETED', 'Completed'

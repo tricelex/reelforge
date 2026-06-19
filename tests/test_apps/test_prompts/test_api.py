@@ -83,6 +83,16 @@ def test_story_format_crud(
     assert create_response.status_code == HTTPStatus.CREATED
     format_id = create_response.json()['id']
 
+    get_response = dmr_client.get(
+        reverse(
+            'api:prompts_api:story-format-detail',
+            kwargs={'format_id': format_id},
+        ),
+        headers=auth_headers,
+    )
+    assert get_response.status_code == HTTPStatus.OK
+    assert get_response.json()['key'] == 'true_crime_case'
+
     patch_response = dmr_client.patch(
         reverse(
             'api:prompts_api:story-format-detail',

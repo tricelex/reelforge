@@ -30,12 +30,7 @@ def test_is_youtube_url_rejects_other_hosts() -> None:
 
 def test_strip_vtt_removes_timestamps_and_tags() -> None:
     """VTT markup is stripped to plain text."""
-    raw = (
-        'WEBVTT\n\n'
-        '1\n'
-        '00:00:01.000 --> 00:00:03.000\n'
-        '<c>Hello</c> world\n'
-    )
+    raw = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\n<c>Hello</c> world\n'
     assert _strip_vtt(raw) == 'Hello world'
 
 
@@ -64,7 +59,10 @@ def test_fetch_caption_text_downloads_vtt() -> None:
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
-    with patch('server.apps.ideas.source_ingest.urllib.request.urlopen', return_value=mock_resp):
+    with patch(
+        'server.apps.ideas.source_ingest.urllib.request.urlopen',
+        return_value=mock_resp,
+    ):
         text = _fetch_caption_text(info)
 
     assert text == 'Hello'

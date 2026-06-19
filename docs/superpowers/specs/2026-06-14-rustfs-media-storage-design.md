@@ -100,7 +100,8 @@ Change default endpoint:
 
 ```python
 AWS_S3_ENDPOINT_URL: str = config(
-    'AWS_S3_ENDPOINT_URL', default='http://rustfs:9000',
+    'AWS_S3_ENDPOINT_URL',
+    default='http://rustfs:9000',
 )
 ```
 

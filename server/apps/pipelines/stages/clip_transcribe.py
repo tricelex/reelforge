@@ -18,8 +18,16 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
     """Extract mono 16kHz WAV from video for WhisperX."""
     subprocess.run(  # noqa: S603
         [  # noqa: S607
-            'ffmpeg', '-y', '-i', video_path,
-            '-ac', '1', '-ar', '16000', '-vn', audio_path,
+            'ffmpeg',
+            '-y',
+            '-i',
+            video_path,
+            '-ac',
+            '1',
+            '-ar',
+            '16000',
+            '-vn',
+            audio_path,
         ],
         check=True,
         capture_output=True,
@@ -30,10 +38,16 @@ def _run_whisperx(audio_path: str, language: str = 'en') -> dict[str, Any]:
     """Run WhisperX; falls back without diarization on error."""
     out_dir = tempfile.mkdtemp()
     base_cmd = [
-        'python', '-m', 'whisperx', audio_path,
-        '--language', language,
-        '--output_format', 'json',
-        '--output_dir', out_dir,
+        'python',
+        '-m',
+        'whisperx',
+        audio_path,
+        '--language',
+        language,
+        '--output_format',
+        'json',
+        '--output_dir',
+        out_dir,
     ]
     result = subprocess.run(  # noqa: S603
         [*base_cmd, '--diarize'],
@@ -104,7 +118,8 @@ class ClipTranscribeStage(Stage):
 
         source_asset_id: str = ctx.upstream['clip_ingest']['asset_id']
         source_duration_sec: float = ctx.upstream['clip_ingest'].get(
-            'source_duration_sec', 0.0,
+            'source_duration_sec',
+            0.0,
         )
 
         source_asset = await Asset.objects.aget(id=source_asset_id)
@@ -115,14 +130,17 @@ class ClipTranscribeStage(Stage):
             video_path = str(tmp / 'source.mp4')
             audio_path = str(tmp / 'audio.wav')
             await asyncio.to_thread(
-                (tmp / 'source.mp4').write_bytes, video_bytes,
+                (tmp / 'source.mp4').write_bytes,
+                video_bytes,
             )
             await asyncio.to_thread(_extract_audio, video_path, audio_path)
             transcript_json = await asyncio.to_thread(
-                _run_whisperx, audio_path,
+                _run_whisperx,
+                audio_path,
             )
             scene_cuts = await asyncio.to_thread(
-                _run_scene_detection, video_path,
+                _run_scene_detection,
+                video_path,
             )
 
         transcript_text = ' '.join(

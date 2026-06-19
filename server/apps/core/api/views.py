@@ -2,7 +2,7 @@
 
 import datetime as dt
 from http import HTTPStatus
-from typing import Any, final, override
+from typing import Any, Literal, final, override
 
 from dmr import Body, Controller, modify
 from dmr.plugins.msgspec import MsgspecSerializer
@@ -12,14 +12,7 @@ from dmr.security.jwt.views import (
     RefreshTokenSyncController,
 )
 
-from server.apps.core.auth import (
-    JWT_ACCESS_LIFETIME,
-    JWT_REFRESH_LIFETIME,
-    JWTAuthenticatedMixin,
-    get_request_user,
-    get_user_role,
-    jwt_sync_auth,
-)
+from server.apps.core.auth import get_user_role
 from server.apps.core.logic.value_objects import (
     EnumsPayload,
     LoginPayload,
@@ -28,17 +21,29 @@ from server.apps.core.logic.value_objects import (
     UserMePayload,
 )
 from server.apps.core.selectors import collect_enums
+from server.common.auth import (
+    JWT_ACCESS_LIFETIME,
+    JWT_REFRESH_LIFETIME,
+    JWTAuthenticatedMixin,
+    get_request_user,
+    jwt_sync_auth,
+)
 from server.common.di import HasContainer
 
+_ACCESS_JWT_TYPE: Literal['access'] = 'access'
+_REFRESH_JWT_TYPE: Literal['refresh'] = 'refresh'
 
-def _make_token_pair(controller: ObtainTokensSyncController[Any, Any, Any]) -> TokenPairPayload:
+
+def _make_token_pair(
+    controller: ObtainTokensSyncController[Any, Any, Any],
+) -> TokenPairPayload:
     """Create access + refresh JWT pair for the authenticated request user."""
     access = controller.create_jwt_token(
-        token_type='access',
+        token_type=_ACCESS_JWT_TYPE,
         expiration=dt.datetime.now(dt.UTC) + JWT_ACCESS_LIFETIME,
     )
     refresh = controller.create_jwt_token(
-        token_type='refresh',
+        token_type=_REFRESH_JWT_TYPE,
         expiration=dt.datetime.now(dt.UTC) + JWT_REFRESH_LIFETIME,
     )
     return TokenPairPayload(access_token=access, refresh_token=refresh)
@@ -64,7 +69,10 @@ class LoginController(
         return self.login(parsed_body)
 
     @override
-    def convert_auth_payload(self, payload: LoginPayload) -> ObtainTokensPayload:
+    def convert_auth_payload(
+        self,
+        payload: LoginPayload,
+    ) -> ObtainTokensPayload:
         """Map login body to django.contrib.auth.authenticate kwargs."""
         return {
             'username': payload.username,

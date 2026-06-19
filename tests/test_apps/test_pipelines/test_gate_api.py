@@ -1,5 +1,6 @@
 """Tests for the gate approval API endpoint."""
 
+from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -69,12 +70,15 @@ def test_gate_approve_endpoint(
     auth_headers: dict[str, str],
 ) -> None:
     """POST to gate approve endpoint calls orchestrator sync and returns 200."""
-    with patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new=AsyncMock(return_value=None),
-    ), patch(
-        'server.apps.pipelines.services.orchestrator._approve_gate_sync',
-    ) as mock_sync:
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator._approve_gate_sync',
+        ) as mock_sync,
+    ):
         resp = dmr_client.post(
             reverse(
                 'api:pipelines_api:gate-approve',
@@ -115,12 +119,15 @@ def test_gate_approve_thumbnail_and_schedule(
     thumb_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
     schedule = '2026-08-15T12:00:00+00:00'
 
-    with patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new=AsyncMock(return_value=None),
-    ), patch(
-        'server.apps.pipelines.services.orchestrator._approve_gate_sync',
-    ) as mock_sync:
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator._approve_gate_sync',
+        ) as mock_sync,
+    ):
         resp = dmr_client.post(
             reverse(
                 'api:pipelines_api:gate-approve',
@@ -186,12 +193,15 @@ def test_clip_approval_gate_syncs_candidates(
     )
     approved_ids = [str(candidate.id)]
 
-    with patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new=AsyncMock(return_value=None),
-    ), patch(
-        'server.apps.pipelines.services.orchestrator._approve_gate_sync',
-    ) as mock_sync:
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator._approve_gate_sync',
+        ) as mock_sync,
+    ):
         resp = dmr_client.post(
             reverse(
                 'api:pipelines_api:gate-approve',
@@ -208,3 +218,59 @@ def test_clip_approval_gate_syncs_candidates(
     mock_sync.assert_called_once()
     candidate.refresh_from_db()
     assert candidate.status == 'APPROVED'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clip_approval_gate_ignores_non_list_candidates(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """Non-list approved_candidate_ids skips sync branch."""
+    from server.apps.channels.models import ChannelKind, PublishMode
+    from server.apps.pipelines.models import PipelineKind
+
+    channel = Channel.objects.create(
+        name='Non-list Gate',
+        kind=ChannelKind.CLIPPING,
+        publish_mode=PublishMode.REVIEW,
+        gates=['clip_approval_gate'],
+    )
+    blueprint = PipelineBlueprint.objects.create(
+        name='non_list_gate',
+        kind=PipelineKind.CLIPPING,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=blueprint,
+        blueprint_snapshot={'stages': []},
+        topic='Non-list gate',
+        status=RunStatus.AWAITING_REVIEW,
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='clip_approval_gate',
+        status=StageStatus.RUNNING,
+        input_hash='',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator._approve_gate_sync',
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
+            new=AsyncMock(),
+        ),
+    ):
+        response = dmr_client.post(
+            reverse(
+                'api:pipelines_api:gate-approve',
+                kwargs={'run_id': run.id, 'gate_key': 'clip_approval_gate'},
+            ),
+            data={'approved_candidate_ids': 'not-a-list'},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['approved_count'] is None

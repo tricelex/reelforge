@@ -254,10 +254,9 @@ class ClipsService:
         """Return paginated candidates for a run."""
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        qs = (
-            ClipCandidate.objects
-            .filter(run_id=uuid.UUID(run_id))
-            .order_by('-created_at', '-id')
+        qs = ClipCandidate.objects.filter(run_id=uuid.UUID(run_id)).order_by(
+            '-created_at',
+            '-id',
         )
         rows, next_cursor, total = paginate_queryset(
             qs,
@@ -519,11 +518,9 @@ class ClipsService:
         """Return paginated timed overlays for a candidate."""
         from server.apps.clips.models import ClipTimedOverlay  # noqa: PLC0415
 
-        qs = (
-            ClipTimedOverlay.objects  # type: ignore[misc]
-            .filter(candidate_id=candidate_id)
-            .order_by('-created_at', '-id')
-        )
+        qs = ClipTimedOverlay.objects.filter(  # type: ignore[misc]
+            candidate_id=candidate_id,
+        ).order_by('-created_at', '-id')
         rows, next_cursor, total = paginate_queryset(
             qs,
             cursor=cursor,
@@ -638,10 +635,9 @@ class ClipsService:
         """Return paginated distribution posts."""
         from server.apps.clips.models import ClipPost  # noqa: PLC0415
 
-        qs = (
-            ClipPost.objects  # type: ignore[misc]
-            .filter(candidate_id=candidate_id)
-            .order_by('-created_at', '-id')
+        qs = ClipPost.objects.filter(candidate_id=candidate_id).order_by(  # type: ignore[misc]
+            '-created_at',
+            '-id',
         )
         rows, next_cursor, total = paginate_queryset(
             qs,

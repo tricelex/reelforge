@@ -16,7 +16,10 @@ def test_prompt_scope_choices() -> None:
 def test_prompt_version_default_model() -> None:
     tmpl = PromptTemplate(name='t', key='k', scope=PromptScope.GLOBAL)
     pv = PromptVersion(
-        template=tmpl, version=1, system_prompt='s', user_prompt='u',
+        template=tmpl,
+        version=1,
+        system_prompt='s',
+        user_prompt='u',
     )
     assert pv.model == 'claude-opus-4-8'
     assert pv.temperature == 1.0
@@ -26,7 +29,9 @@ def test_prompt_version_default_model() -> None:
 
 def test_prompt_template_str() -> None:
     tmpl = PromptTemplate(
-        name='Scene Breakdown', key='scene_breakdown', scope=PromptScope.GLOBAL,
+        name='Scene Breakdown',
+        key='scene_breakdown',
+        scope=PromptScope.GLOBAL,
     )
     assert str(tmpl) == 'scene_breakdown'
 
@@ -34,7 +39,10 @@ def test_prompt_template_str() -> None:
 def test_prompt_version_str() -> None:
     tmpl = PromptTemplate(name='t', key='script', scope=PromptScope.GLOBAL)
     pv = PromptVersion(
-        template=tmpl, version=3, system_prompt='s', user_prompt='u',
+        template=tmpl,
+        version=3,
+        system_prompt='s',
+        user_prompt='u',
     )
     assert str(pv) == 'script v3'
 

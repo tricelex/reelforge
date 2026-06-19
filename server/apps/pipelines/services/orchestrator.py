@@ -72,7 +72,7 @@ def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
 
 
 def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
-    """Create a RUNNING StageExecution for a gate; park run at AWAITING_REVIEW."""
+    """Park the run at AWAITING_REVIEW and open a gate StageExecution."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
         RunStatus,
         StageExecution,
@@ -165,6 +165,59 @@ def _node_should_skip(
     return bool(node.get('conditional')) and not _eval_condition(node, run)
 
 
+_TERMINAL_STAGE_STATES = frozenset({'SUCCEEDED', 'SKIPPED'})
+
+
+def _deps_terminal(
+    deps: list[str],
+    states: dict[str, str | None],
+    terminal: frozenset[str],
+) -> bool:
+    return all(states.get(dep) in terminal for dep in deps)
+
+
+def _try_park_gate_sync(
+    node: dict[str, Any],
+    run: 'PipelineRun',
+    states: dict[str, str | None],
+    key: str,
+) -> bool:
+    """Park an armed gate when deps are terminal; return True if parked."""
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+
+    if not node.get('gate'):
+        return False
+    deps: list[str] = node.get('depends_on', [])
+    if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
+        return False
+    _park_gate_sync(run, key)
+    states[key] = StageStatus.RUNNING
+    return True
+
+
+def _try_enqueue_stage_sync(
+    node: dict[str, Any],
+    run: 'PipelineRun',
+    states: dict[str, str | None],
+    to_enqueue: list[str],
+    key: str,
+) -> None:
+    """Enqueue a stage when dependencies are terminal."""
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
+
+    if key not in STAGE_REGISTRY:
+        return
+    deps: list[str] = node.get('depends_on', [])
+    if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
+        return
+    exec_id = _create_queued_stage_sync(run, node)
+    to_enqueue.append(exec_id)
+    states[key] = StageStatus.QUEUED
+
+
 def _process_node_sync(
     node: dict[str, Any],
     run: 'PipelineRun',
@@ -174,9 +227,6 @@ def _process_node_sync(
 ) -> None:
     """Evaluate one blueprint node; enqueue, skip, or ignore (sync)."""
     from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
-    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
-        STAGE_REGISTRY,
-    )
 
     key = node['key']
     current = states.get(key)
@@ -188,25 +238,10 @@ def _process_node_sync(
         states[key] = StageStatus.SKIPPED
         return
 
-    # Armed gate: park run at AWAITING_REVIEW (no executor call).
-    if node.get('gate'):
-        deps: list[str] = node.get('depends_on', [])
-        terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
-        if all(states.get(d) in terminal for d in deps):
-            _park_gate_sync(run, key)
-            states[key] = StageStatus.RUNNING
+    if _try_park_gate_sync(node, run, states, key):
         return
 
-    if key not in STAGE_REGISTRY:
-        return
-
-    stage_deps: list[str] = node.get('depends_on', [])
-    stage_terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
-    deps_ok = all(states.get(d) in stage_terminal for d in stage_deps)
-    if deps_ok:
-        exec_id = _create_queued_stage_sync(run, node)
-        to_enqueue.append(exec_id)
-        states[key] = StageStatus.QUEUED
+    _try_enqueue_stage_sync(node, run, states, to_enqueue, key)
 
 
 def _advance_in_transaction(
@@ -269,7 +304,7 @@ def _approve_gate_sync(
     gate_key: str,
     output: dict[str, Any],
 ) -> None:
-    """Mark gate SUCCEEDED and resume the run (sync, called from sync_to_async)."""
+    """Mark gate SUCCEEDED and resume the run (sync wrapper)."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineRun,
         RunStatus,
@@ -496,10 +531,15 @@ def _rerun_stage_sync(
         else:
             qs = qs.filter(shard_index__isnull=True)
 
-        latest_attempt = qs.order_by('-attempt').values_list(
-            'attempt',
-            flat=True,
-        ).first()
+        latest_attempt = (
+            qs
+            .order_by('-attempt')
+            .values_list(
+                'attempt',
+                flat=True,
+            )
+            .first()
+        )
         next_attempt = (latest_attempt or -1) + 1
 
         exec_ = StageExecution.objects.create(

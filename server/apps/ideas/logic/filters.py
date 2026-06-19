@@ -7,9 +7,7 @@ def touches_banned(text: str, banned_topics: list[str]) -> bool:
     """Return True when text contains a banned topic substring."""
     lowered = text.lower()
     return any(
-        term.lower() in lowered
-        for term in banned_topics
-        if term.strip()
+        term.lower() in lowered for term in banned_topics if term.strip()
     )
 
 

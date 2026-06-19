@@ -119,7 +119,8 @@ class DashboardController(
         """Return dashboard summary."""
         data = selectors.get_dashboard()
         calendar = data['publish_scheduled']
-        assert isinstance(calendar, list)
+        if not isinstance(calendar, list):
+            calendar = []
         return DashboardPayload(
             runs_in_flight=int(data['runs_in_flight']),  # type: ignore[call-overload]
             gates_waiting=int(data['gates_waiting']),  # type: ignore[call-overload]

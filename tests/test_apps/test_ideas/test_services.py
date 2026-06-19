@@ -73,7 +73,10 @@ def ideation_service() -> IdeationService:
 
 
 @pytest.mark.django_db
-def test_generate_invalid_count(ideation_service: IdeationService, niche: NicheConfig) -> None:
+def test_generate_invalid_count(
+    ideation_service: IdeationService,
+    niche: NicheConfig,
+) -> None:
     """Generate rejects counts outside the allowed range."""
     with pytest.raises(ValidationError, match='count must be between'):
         ideation_service.generate(

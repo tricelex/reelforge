@@ -20,15 +20,21 @@ def _raise_fal_error(
     msg = str(exc)
     if status in _RETRYABLE_CODES:
         raise RetryableProviderError(
-            msg, provider=provider, status_code=status,
+            msg,
+            provider=provider,
+            status_code=status,
         ) from exc
     if 'safety' in msg.lower() or 'content' in msg.lower():
         raise FatalProviderError(
-            msg, provider=provider, error_code='safety_filter',
+            msg,
+            provider=provider,
+            error_code='safety_filter',
         ) from exc
     if fatal_error_code is not None:
         raise FatalProviderError(
-            msg, provider=provider, error_code=fatal_error_code,
+            msg,
+            provider=provider,
+            error_code=fatal_error_code,
         ) from exc
     raise RetryableProviderError(msg, provider=provider) from exc
 

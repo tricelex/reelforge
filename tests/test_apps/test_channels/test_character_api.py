@@ -131,12 +131,15 @@ def test_character_round_and_approve(
     session_id = session_response.json()['id']
 
     mock_result = {'url': 'https://example.com/image.png', 'seed': 1}
-    with patch(
-        'server.apps.channels.character_studio.fal_client.generate_image',
-        new=AsyncMock(return_value=mock_result),
-    ), patch(
-        'server.apps.channels.character_studio._download_image',
-        return_value=b'\x89PNG',
+    with (
+        patch(
+            'server.apps.channels.character_studio.fal_client.generate_image',
+            new=AsyncMock(return_value=mock_result),
+        ),
+        patch(
+            'server.apps.channels.character_studio._download_image',
+            return_value=b'\x89PNG',
+        ),
     ):
         round_response = dmr_client.post(
             reverse(
@@ -313,12 +316,15 @@ def test_run_cast_patch_session_and_round(
     session_id = session_response.json()['id']
 
     mock_result = {'url': 'https://example.com/cast.png', 'seed': 2}
-    with patch(
-        'server.apps.channels.character_studio.fal_client.generate_image',
-        new=AsyncMock(return_value=mock_result),
-    ), patch(
-        'server.apps.channels.character_studio._download_image',
-        return_value=b'\x89PNG',
+    with (
+        patch(
+            'server.apps.channels.character_studio.fal_client.generate_image',
+            new=AsyncMock(return_value=mock_result),
+        ),
+        patch(
+            'server.apps.channels.character_studio._download_image',
+            return_value=b'\x89PNG',
+        ),
     ):
         round_response = dmr_client.post(
             reverse(

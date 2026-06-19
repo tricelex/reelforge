@@ -27,7 +27,8 @@ def _agent() -> Agent[StageContext, VideoMetadata]:
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
         sys, _ = await ctx.deps.prompts.render(
-            'metadata', {'topic': ctx.deps.run.topic},
+            'metadata',
+            {'topic': ctx.deps.run.topic},
         )
         return sys or (
             'You are a YouTube SEO specialist. '

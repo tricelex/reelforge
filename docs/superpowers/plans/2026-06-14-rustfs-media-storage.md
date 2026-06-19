@@ -295,14 +295,16 @@ git commit -m "feat(infra): expose RustFS S3 API and web UI ports in dev"
 In `server/settings/components/storage.py`, find:
 ```python
 AWS_S3_ENDPOINT_URL: str = config(
-    'AWS_S3_ENDPOINT_URL', default='http://minio:9000',
+    'AWS_S3_ENDPOINT_URL',
+    default='http://minio:9000',
 )
 ```
 
 Replace with:
 ```python
 AWS_S3_ENDPOINT_URL: str = config(
-    'AWS_S3_ENDPOINT_URL', default='http://rustfs:9000',
+    'AWS_S3_ENDPOINT_URL',
+    default='http://rustfs:9000',
 )
 ```
 

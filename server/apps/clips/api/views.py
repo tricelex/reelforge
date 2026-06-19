@@ -149,7 +149,9 @@ class ClipCandidateDetailView(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )
 
 
@@ -296,7 +298,9 @@ class ClipLayoutConfigView(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )
 
 
@@ -351,7 +355,9 @@ class ClipStyleConfigView(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )
 
 
@@ -451,7 +457,9 @@ class ClipTimedOverlayDetailView(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )
 
 
@@ -543,5 +551,7 @@ class ClipPostDetailView(
                 status_code=HTTPStatus.NOT_FOUND,
             )
         return super().handle_error(  # pragma: no cover
-            endpoint, controller, exc,
+            endpoint,
+            controller,
+            exc,
         )

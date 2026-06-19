@@ -62,10 +62,7 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
 
     @override
     def __str__(self) -> str:
-        return (
-            f'{self.title[:50]}'
-            f' ({self.start_sec:.0f}s-{self.end_sec:.0f}s)'
-        )
+        return f'{self.title[:50]} ({self.start_sec:.0f}s-{self.end_sec:.0f}s)'
 
     @property
     def duration_sec(self) -> float:
@@ -186,7 +183,9 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
     )
     caption_language = models.CharField(max_length=10, default='en')
     caption_translate_to = models.CharField(
-        max_length=10, blank=True, default='',
+        max_length=10,
+        blank=True,
+        default='',
     )
     emoji_keyword_map = models.JSONField(default=dict, blank=True)
     hook_enabled = models.BooleanField(default=True)

@@ -8,7 +8,10 @@ class RenderStageError(Exception):
     """Raised when a render stage fails, wrapping the underlying cause."""
 
     def __init__(
-        self, stage_name: str, stage_order: int, cause: Exception,
+        self,
+        stage_name: str,
+        stage_order: int,
+        cause: Exception,
     ) -> None:
         """Initialise with stage identity and the wrapped exception."""
         self.stage_name = stage_name

@@ -56,11 +56,11 @@ def _active_gate_key(run: PipelineRun) -> str | None:
 def _image_gen_state(run_id: str) -> dict[int, StageExecution]:
     """Map scene_idx → latest image_gen child execution."""
     by_scene: dict[int, StageExecution] = {}
-    children = (
-        StageExecution.objects  # type: ignore[misc]
-        .filter(run_id=run_id, stage_key='image_gen', parent__isnull=False)
-        .order_by('shard_index', '-attempt')
-    )
+    children = StageExecution.objects.filter(  # type: ignore[misc]
+        run_id=run_id,
+        stage_key='image_gen',
+        parent__isnull=False,
+    ).order_by('shard_index', '-attempt')
     seen_shards: set[int | None] = set()
     for child in children:
         if child.shard_index in seen_shards:
@@ -124,12 +124,14 @@ def _build_scene_row(
     narration = str(scene.get('narration_text', ''))
     cast_raw = scene.get('foreground_cast', [])
     cast = (
-        [str(value) for value in cast_raw]
-        if isinstance(cast_raw, list)
-        else []
+        [str(value) for value in cast_raw] if isinstance(cast_raw, list) else []
     )
-    visual_prompt = str(prompt.get('prompt', '')) if prompt else str(
-        scene.get('visual_concept', ''),
+    visual_prompt = (
+        str(prompt.get('prompt', ''))
+        if prompt
+        else str(
+            scene.get('visual_concept', ''),
+        )
     )
     return StoryboardScenePayload(
         idx=idx,
@@ -163,9 +165,7 @@ def get_storyboard(
         if isinstance(raw, list):
             scenes_raw = [s for s in raw if isinstance(s, dict)]
 
-    prompt_version = (
-        breakdown.attempt + 1 if breakdown is not None else 0
-    )
+    prompt_version = breakdown.attempt + 1 if breakdown is not None else 0
     prompts = _visual_prompts_map(run_id)
     images = _image_gen_state(run_id)
 

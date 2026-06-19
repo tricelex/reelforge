@@ -59,7 +59,8 @@ def test_fal_generate_image_retryable_on_no_images() -> None:
 
     async def _inner() -> None:
         with patch(
-            'fal_client.run_async', new=AsyncMock(return_value={'images': []}),
+            'fal_client.run_async',
+            new=AsyncMock(return_value={'images': []}),
         ):
             await generate_image('a lion')
 
@@ -84,7 +85,8 @@ def test_exa_search_retryable_on_500() -> None:
 
     async def _inner() -> None:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             await search('test query', api_key='test_key')
 
@@ -116,7 +118,8 @@ def test_exa_search_returns_results_on_success() -> None:
 
     async def _inner() -> list[dict[str, object]]:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             return await search('Rome fell', api_key='key')
 
@@ -140,10 +143,13 @@ def test_elevenlabs_synthesize_returns_bytes_on_success() -> None:
 
     async def _inner() -> bytes:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             return await synthesize(
-                'Hello world', voice_id='xyz', api_key='key',
+                'Hello world',
+                voice_id='xyz',
+                api_key='key',
             )
 
     result = asyncio.run(_inner())
@@ -166,7 +172,8 @@ def test_elevenlabs_synthesize_retryable_on_429() -> None:
 
     async def _inner() -> None:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             await synthesize('text', voice_id='v', api_key='k')
 
@@ -193,7 +200,8 @@ def test_elevenlabs_synthesize_fatal_on_422() -> None:
 
     async def _inner() -> None:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             await synthesize('text', voice_id='v', api_key='k')
 
@@ -220,7 +228,8 @@ def test_elevenlabs_synthesize_retryable_on_unknown_status() -> None:
 
     async def _inner() -> None:
         with patch(
-            'httpx.AsyncClient.post', new=AsyncMock(return_value=mock_resp),
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
         ):
             await synthesize('text', voice_id='v', api_key='k')
 
@@ -265,7 +274,9 @@ def test_fal_generate_image_with_image_url_arg() -> None:
     captured: list[dict[str, object]] = []
 
     async def _fake_run_async(
-        model: str, *, arguments: dict[str, object],
+        model: str,
+        *,
+        arguments: dict[str, object],
     ) -> object:
         captured.append(arguments)
         return {
@@ -277,7 +288,8 @@ def test_fal_generate_image_with_image_url_arg() -> None:
     async def _inner() -> None:
         with patch('fal_client.run_async', side_effect=_fake_run_async):
             await generate_image(
-                'img2img prompt', image_url='https://src.img/ref.jpg',
+                'img2img prompt',
+                image_url='https://src.img/ref.jpg',
             )
 
     asyncio.run(_inner())
@@ -510,7 +522,10 @@ def test_run_agent_records_input_and_output_token_costs() -> None:
 
     async def _inner() -> object:
         return await run_agent(
-            mock_agent, 'user prompt', mock_ctx, stage_key='metadata',
+            mock_agent,
+            'user prompt',
+            mock_ctx,
+            stage_key='metadata',
         )
 
     result = asyncio.run(_inner())

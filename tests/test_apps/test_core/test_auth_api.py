@@ -26,7 +26,10 @@ def test_login_success(dmr_client: DMRClient, api_user: object) -> None:
 
 
 @pytest.mark.django_db
-def test_login_invalid_credentials(dmr_client: DMRClient, api_user: object) -> None:
+def test_login_invalid_credentials(
+    dmr_client: DMRClient,
+    api_user: object,
+) -> None:
     """Invalid credentials return 401."""
     response = dmr_client.post(
         reverse('api:core:login'),

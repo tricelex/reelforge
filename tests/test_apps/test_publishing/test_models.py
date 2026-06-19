@@ -12,7 +12,8 @@ from server.apps.publishing.models import PublishJob, PublishStatus
 @pytest.fixture
 def channel(db):
     return Channel.objects.create(
-        name='Test Channel', kind=ChannelKind.LONGFORM,
+        name='Test Channel',
+        kind=ChannelKind.LONGFORM,
     )
 
 

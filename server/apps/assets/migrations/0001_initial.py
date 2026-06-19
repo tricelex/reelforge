@@ -54,7 +54,8 @@ class Migration(migrations.Migration):
                 (
                     'tags',
                     django.contrib.postgres.fields.ArrayField(
-                        base_field=models.CharField(max_length=40), default=list,
+                        base_field=models.CharField(max_length=40),
+                        default=list,
                     ),
                 ),
                 ('is_active', models.BooleanField(default=True)),
