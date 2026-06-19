@@ -6,7 +6,7 @@ from server.apps.pipelines.api import cast_views, review_views, views
 
 app_name = 'pipelines_api'
 
-urlpatterns = [
+run_urlpatterns = [
     path(
         'runs/',
         views.RunCollectionController.as_view(),
@@ -48,6 +48,19 @@ urlpatterns = [
         name='stage-rerun',
     ),
     path(
+        'runs/<uuid:run_id>/transcript/',
+        views.RunTranscriptController.as_view(),
+        name='run-transcript',
+    ),
+    path(
+        'runs/<uuid:run_id>/assets/',
+        views.RunAssetsController.as_view(),
+        name='run-assets',
+    ),
+]
+
+cast_urlpatterns = [
+    path(
         'runs/<uuid:run_id>/cast/',
         cast_views.RunCastCollectionController.as_view(),
         name='run-cast-collection',
@@ -72,6 +85,9 @@ urlpatterns = [
         cast_views.RunCastApproveController.as_view(),
         name='run-cast-approve',
     ),
+]
+
+review_urlpatterns = [
     path(
         'runs/<uuid:run_id>/storyboard/',
         review_views.RunStoryboardController.as_view(),
@@ -97,19 +113,19 @@ urlpatterns = [
         review_views.RunPublishController.as_view(),
         name='run-publish',
     ),
-    path(
-        'runs/<uuid:run_id>/transcript/',
-        views.RunTranscriptController.as_view(),
-        name='run-transcript',
-    ),
-    path(
-        'runs/<uuid:run_id>/assets/',
-        views.RunAssetsController.as_view(),
-        name='run-assets',
-    ),
+]
+
+blueprint_urlpatterns = [
     path(
         'blueprints/',
         views.BlueprintCollectionController.as_view(),
         name='blueprint-collection',
     ),
+]
+
+urlpatterns = [
+    *run_urlpatterns,
+    *cast_urlpatterns,
+    *review_urlpatterns,
+    *blueprint_urlpatterns,
 ]

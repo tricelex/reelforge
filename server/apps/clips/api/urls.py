@@ -6,7 +6,7 @@ from server.apps.clips.api import campaign_views, views
 
 app_name = 'clips'
 
-urlpatterns = [
+candidate_urlpatterns = [
     path(
         'runs/<uuid:run_id>/candidates/',
         views.ClipCandidateListView.as_view(),
@@ -47,6 +47,9 @@ urlpatterns = [
         views.ClipCandidateRejectView.as_view(),
         name='candidate_reject',
     ),
+]
+
+config_urlpatterns = [
     path(
         'candidates/<uuid:candidate_id>/layout-config/',
         views.ClipLayoutConfigView.as_view(),
@@ -67,6 +70,9 @@ urlpatterns = [
         views.ClipTimedOverlayDetailView.as_view(),
         name='overlay_detail',
     ),
+]
+
+post_urlpatterns = [
     path(
         'candidates/<uuid:candidate_id>/posts/',
         views.ClipPostCollectionView.as_view(),
@@ -77,6 +83,9 @@ urlpatterns = [
         views.ClipPostDetailView.as_view(),
         name='post_detail',
     ),
+]
+
+campaign_urlpatterns = [
     path(
         'campaigns/',
         campaign_views.CampaignCollectionController.as_view(),
@@ -92,4 +101,11 @@ urlpatterns = [
         campaign_views.EarningCollectionController.as_view(),
         name='earning-collection',
     ),
+]
+
+urlpatterns = [
+    *candidate_urlpatterns,
+    *config_urlpatterns,
+    *post_urlpatterns,
+    *campaign_urlpatterns,
 ]

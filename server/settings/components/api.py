@@ -4,6 +4,7 @@ from typing import Any, cast
 from dmr.openapi import OpenAPIConfig
 from dmr.settings import Settings
 
+from server.common.openapi_tags import TAG_DEFINITIONS
 from server.settings.components import BASE_DIR, config
 
 
@@ -21,11 +22,12 @@ def _get_project_meta() -> dict[str, str]:  # lying about return type
 DMR_SETTINGS: Any = {
     # Default OpenAPI config:
     Settings.openapi_config: OpenAPIConfig(
-        title='wemake-django-template',
+        title='ReelForge API',
         version=_get_project_meta()['version'],
+        tags=list(TAG_DEFINITIONS),
     ),
     # Generate fake examples in OpenAPI:
-    Settings.openapi_examples_seed: 1,
+    Settings.openapi_examples_seed: 10,
 }
 
 

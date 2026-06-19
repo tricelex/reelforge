@@ -13,9 +13,8 @@ from django.conf import settings
 from django.contrib import admin
 from django.contrib.admindocs import urls as admindocs_urls
 from django.http import HttpRequest, HttpResponse
-from django.urls import include
+from django.urls import include, path
 from django.views.generic import TemplateView
-from dmr.openapi import build_schema
 from dmr.openapi.views import (
     OpenAPIJsonView,
     RedocView,
@@ -25,23 +24,15 @@ from dmr.openapi.views import (
 )
 from dmr.openapi.views.yaml import OpenAPIYamlView
 from dmr.plugins.msgspec import MsgspecSerializer
-from dmr.routing import Router, build_404_handler, build_500_handler, path
+from dmr.routing import build_404_handler, build_500_handler
 from health_check.views import HealthCheckView
 
-from server.apps.analytics.api import root_urls as analytics_root_urls
-from server.apps.analytics.api import urls as analytics_api_urls
-from server.apps.assets.api import urls as assets_api_urls
-from server.apps.channels.api import urls as channels_api_urls
 from server.apps.clips.api import urls as clips_api_urls
-from server.apps.core.api import enums_urls as core_enums_urls
-from server.apps.core.api import urls as core_api_urls
-from server.apps.ideas.api import urls as ideas_api_urls
 from server.apps.main import urls as main_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
 from server.apps.pipelines import urls as pipelines_urls
-from server.apps.pipelines.api import urls as pipelines_api_urls
-from server.apps.prompts.api import urls as prompts_api_urls
+from server.openapi.routers import build_api_router, build_api_schema
 
 admin.autodiscover()
 
@@ -51,25 +42,8 @@ def trigger_error(request: HttpRequest) -> HttpResponse:
     raise ZeroDivisionError
 
 
-router = Router(
-    'api/',
-    [
-        path('auth/', include(core_api_urls, namespace='core')),
-        path('enums/', include(core_enums_urls, namespace='core_enums')),
-        path(
-            'analytics/',
-            include(analytics_api_urls, namespace='analytics_api'),
-        ),
-        path('', include(analytics_root_urls, namespace='analytics_root')),
-        path('', include(channels_api_urls, namespace='channels_api')),
-        path('', include(assets_api_urls, namespace='assets_api')),
-        path('', include(prompts_api_urls, namespace='prompts_api')),
-        path('', include(ideas_api_urls, namespace='ideas_api')),
-        path('', include(pipelines_api_urls, namespace='pipelines_api')),
-        path('', include(clips_api_urls, namespace='clips')),
-    ],
-)
-schema = build_schema(router)
+router = build_api_router()
+schema = build_api_schema()
 
 handler404 = build_404_handler(router.prefix, serializer=MsgspecSerializer)
 handler500 = build_500_handler(router.prefix, serializer=MsgspecSerializer)

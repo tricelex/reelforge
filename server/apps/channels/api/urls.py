@@ -6,7 +6,7 @@ from server.apps.channels.api import character_views, views
 
 app_name = 'channels_api'
 
-urlpatterns = [
+channel_urlpatterns = [
     path(
         'channels/',
         views.ChannelCollectionController.as_view(),
@@ -27,6 +27,9 @@ urlpatterns = [
         character_views.NicheConfigController.as_view(),
         name='channel-niche',
     ),
+]
+
+youtube_urlpatterns = [
     path(
         'channels/<uuid:channel_id>/youtube/connect/',
         views.YouTubeConnectController.as_view(),
@@ -42,6 +45,9 @@ urlpatterns = [
         views.YouTubeStatusController.as_view(),
         name='youtube-status',
     ),
+]
+
+character_urlpatterns = [
     path(
         'characters/',
         character_views.CharacterCollectionController.as_view(),
@@ -77,4 +83,10 @@ urlpatterns = [
         character_views.CharacterSheetExpandController.as_view(),
         name='character-sheet-expand',
     ),
+]
+
+urlpatterns = [
+    *channel_urlpatterns,
+    *youtube_urlpatterns,
+    *character_urlpatterns,
 ]
