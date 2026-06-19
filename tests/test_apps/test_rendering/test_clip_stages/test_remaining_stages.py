@@ -342,6 +342,55 @@ def test_timed_overlay_run_text_ffmpeg(mock_run: MagicMock) -> None:
     assert 'drawtext' in ' '.join(cmd)
 
 
+# --- ASSGenerator edge cases ---
+
+def test_ass_color_invalid_hex_returns_white() -> None:
+    sc = _sc()
+    gen = ASSGenerator(transcript_json={'segments': []}, style_config=sc)
+    assert gen._ass_color('#XYZ') == '&H00FFFFFF'
+
+
+def test_word_by_word_skips_empty_words() -> None:
+    sc = _sc()
+    sc.caption_style = 'WORD_BY_WORD'
+    transcript = {
+        'segments': [
+            {
+                'words': [
+                    {'word': '', 'start': 0.0, 'end': 0.3},
+                    {'word': 'Hello', 'start': 0.3, 'end': 0.8},
+                ],
+            },
+        ],
+    }
+    gen = ASSGenerator(transcript_json=transcript, style_config=sc)
+    result = gen.generate()
+    assert 'Hello' in result
+    assert 'Dialogue: 0,0:00:00.00' not in result
+
+
+def test_chunked_skips_all_empty_words() -> None:
+    sc = _sc()
+    sc.caption_style = 'CHUNKED'
+    # First chunk (3 words) is all-empty → triggers the `continue` branch on line 163
+    # Second chunk has real word → produces a Dialogue line
+    transcript = {
+        'segments': [
+            {
+                'words': [
+                    {'word': '', 'start': 0.0, 'end': 0.3},
+                    {'word': '  ', 'start': 0.3, 'end': 0.6},
+                    {'word': '\t', 'start': 0.6, 'end': 0.9},
+                    {'word': 'Real', 'start': 1.0, 'end': 1.5},
+                ],
+            },
+        ],
+    }
+    gen = ASSGenerator(transcript_json=transcript, style_config=sc)
+    result = gen.generate()
+    assert 'Real' in result
+
+
 @patch('server.apps.rendering.clip_stages.timed_overlays.subprocess.run')
 def test_timed_overlay_run_ffmpeg_failure(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=1, stderr='error')

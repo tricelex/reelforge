@@ -11,8 +11,4 @@ class ClipsConfig(AppConfig):
 
     @override
     def ready(self) -> None:
-        """Wire DI services for clips."""
-        from server import implemented
-        from server.common import container as container_module
-
-        implemented.populate_dependencies(container_module.container)
+        """Nothing to wire here — DI is populated by MainConfig.ready()."""

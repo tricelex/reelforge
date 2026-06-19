@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +12,7 @@ from server.apps.pipelines.stages.clip_transcribe import (
     _extract_audio,
     _run_scene_detection,
     _run_whisperx,
+    _try_scene_detect,
 )
 
 
@@ -73,6 +75,30 @@ def test_run_scene_detection_returns_empty_on_exception() -> None:
     with patch.dict('sys.modules', {'scenedetect': None, 'scenedetect.detectors': None}):
         result = _run_scene_detection('/nonexistent.mp4')
     assert result == []
+
+
+def test_try_scene_detect_returns_cuts() -> None:
+    fake_scene = MagicMock()
+    fake_scene[0].get_seconds.return_value = 5.0
+    fake_scene_b = MagicMock()
+    fake_scene_b[0].get_seconds.return_value = 12.0
+
+    fake_video = MagicMock()
+    mock_scene_manager = MagicMock()
+    mock_scene_manager.get_scene_list.return_value = [fake_scene, fake_scene_b]
+
+    fake_scenedetect = MagicMock()
+    fake_scenedetect.open_video.return_value = fake_video
+    fake_scenedetect.SceneManager.return_value = mock_scene_manager
+    fake_scenedetect.detectors = MagicMock()
+
+    with patch.dict(sys.modules, {
+        'scenedetect': fake_scenedetect,
+        'scenedetect.detectors': fake_scenedetect.detectors,
+    }):
+        result = _try_scene_detect('/video.mp4')
+
+    assert result == [12.0]
 
 
 @patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')

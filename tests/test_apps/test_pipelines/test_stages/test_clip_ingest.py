@@ -1,9 +1,10 @@
 """Tests for ClipIngestStage."""
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from server.apps.pipelines.stages.clip_ingest import ClipIngestStage
+from server.apps.pipelines.stages.clip_ingest import ClipIngestStage, _download_with_ytdlp
 
 
 def test_clip_ingest_attributes() -> None:
@@ -103,3 +104,19 @@ def test_clip_ingest_library_asset_default_title() -> None:
 
     result = asyncio.run(_inner())
     assert result['source_title'] == 'Uploaded Video'
+
+
+def test_download_with_ytdlp() -> None:
+    mock_ydl = MagicMock()
+    mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+    mock_ydl.__exit__ = MagicMock(return_value=False)
+    mock_ydl.extract_info.return_value = {'title': 'Cool Video', 'duration': 120}
+
+    fake_yt_dlp = MagicMock()
+    fake_yt_dlp.YoutubeDL.return_value = mock_ydl
+
+    with patch.dict(sys.modules, {'yt_dlp': fake_yt_dlp}):
+        result = _download_with_ytdlp('https://example.com/v', '/tmp/out.mp4')
+
+    assert result['title'] == 'Cool Video'
+    assert result['duration_sec'] == 120.0

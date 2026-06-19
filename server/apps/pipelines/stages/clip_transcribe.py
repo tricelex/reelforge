@@ -44,7 +44,8 @@ def _run_whisperx(audio_path: str, language: str = 'en') -> dict[str, Any]:
     if result.returncode != 0:
         subprocess.run(base_cmd, capture_output=True, text=True, check=True)  # noqa: S603
     out_file = Path(out_dir) / (Path(audio_path).stem + '.json')
-    return json.loads(out_file.read_text())
+    result_data: dict[str, Any] = json.loads(out_file.read_text())
+    return result_data
 
 
 def _try_scene_detect(video_path: str) -> list[float]:

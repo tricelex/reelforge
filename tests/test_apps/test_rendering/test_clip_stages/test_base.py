@@ -19,7 +19,11 @@ class _ConcreteStage(RenderStage):
 
 
 def test_should_run_default() -> None:
-    assert _ConcreteStage().should_run() is True
+    stage = _ConcreteStage()
+    assert stage.should_run() is True
+    assert stage.name == 'test'
+    assert stage.order == 1
+    assert stage.run(Path('/input.mp4')) == Path('/input.mp4')
 
 
 def test_render_stage_error_message() -> None:

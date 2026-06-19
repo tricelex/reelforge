@@ -1,3 +1,4 @@
+from server.apps.clips.logic.events import ClipCandidatesCreated
 from server.apps.clips.logic.constants import (
     CandidateStatus,
     CaptionStyle,
@@ -57,3 +58,9 @@ def test_progress_bar_position_values() -> None:
 def test_watermark_type_values() -> None:
     assert WatermarkType.IMAGE == 'IMAGE'
     assert WatermarkType.TEXT == 'TEXT'
+
+
+def test_clip_candidates_created_event() -> None:
+    event = ClipCandidatesCreated(run_id='abc', candidate_count=5)
+    assert event.run_id == 'abc'
+    assert event.candidate_count == 5

@@ -70,6 +70,30 @@ ignore_imports =
   server.apps.pipelines.stages.publish -> server.apps.publishing.models
   # Analytics selectors aggregate live cost data from pipelines CostRecord
   server.apps.analytics.selectors -> server.apps.pipelines.models
+  # Clip render stages read clip-specific enums (RenderMode, HookStyle, etc.) from
+  # clips.logic.constants — rendering is a dedicated service layer for the clips app
+  server.apps.rendering.clip_stages.trim_crop -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.watermark -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.progress_bar -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.captions -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.hook -> server.apps.clips.logic.constants
+  # Clip pipeline stages reference ClipCandidate/ClipPost models and ClipAnalysisService
+  server.apps.pipelines.stages.clip_render -> server.apps.clips.models
+  server.apps.pipelines.stages.clip_distribute -> server.apps.clips.models
+  server.apps.pipelines.stages.clip_distribute -> server.apps.clips.logic.constants
+  server.apps.pipelines.stages.clip_analyze -> server.apps.clips.analysis
+  # Clip render stage orchestrates the ClipRenderPipeline (rendering is a service for clips)
+  server.apps.pipelines.stages.clip_render -> server.apps.rendering.clip_render_pipeline
+  # Clip API views call the pipeline gate approval orchestrator
+  server.apps.clips.api.views -> server.apps.pipelines.services.orchestrator
+  # MainConfig.ready() calls populate_dependencies() which imports all services including clips.
+  # This transitive dependency (main -> implemented -> clips) is inherent to the DI architecture.
+  server.apps.main.apps -> server.implemented
+  # Clip pipeline stages save assets (same pattern as image_gen, tts, etc.)
+  server.apps.pipelines.stages.clip_ingest -> server.apps.assets.models
+  server.apps.pipelines.stages.clip_transcribe -> server.apps.assets.models
+  server.apps.pipelines.stages.clip_analyze -> server.apps.assets.models
+  server.apps.pipelines.stages.clip_render -> server.apps.assets.models
 
 
 [importlinter:contract:common-module-is-independent]
