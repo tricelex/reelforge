@@ -15,6 +15,12 @@ class PipelinesConfig(AppConfig):
         """Register all pipeline stage classes."""
         import server.apps.pipelines.stages.alignment  # noqa: F401
         import server.apps.pipelines.stages.assembly  # noqa: F401
+        import server.apps.pipelines.stages.clip_analyze  # noqa: F401
+        import server.apps.pipelines.stages.clip_approval_gate  # noqa: F401
+        import server.apps.pipelines.stages.clip_distribute  # noqa: F401
+        import server.apps.pipelines.stages.clip_ingest  # noqa: F401
+        import server.apps.pipelines.stages.clip_render  # noqa: F401
+        import server.apps.pipelines.stages.clip_transcribe  # noqa: F401
         import server.apps.pipelines.stages.dummy  # noqa: F401
         import server.apps.pipelines.stages.image_gen  # noqa: F401
         import server.apps.pipelines.stages.metadata  # noqa: F401
@@ -30,9 +36,3 @@ class PipelinesConfig(AppConfig):
         import server.apps.pipelines.stages.thumbnail  # noqa: F401
         import server.apps.pipelines.stages.tts  # noqa: F401
         import server.apps.pipelines.stages.visual_prompts  # noqa: F401
-        import server.apps.pipelines.stages.clip_ingest  # noqa: F401
-        import server.apps.pipelines.stages.clip_transcribe  # noqa: F401
-        import server.apps.pipelines.stages.clip_analyze  # noqa: F401
-        import server.apps.pipelines.stages.clip_approval_gate  # noqa: F401
-        import server.apps.pipelines.stages.clip_render  # noqa: F401
-        import server.apps.pipelines.stages.clip_distribute  # noqa: F401

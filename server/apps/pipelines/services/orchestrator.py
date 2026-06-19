@@ -238,6 +238,9 @@ def _advance_in_transaction(
         }:
             return to_enqueue, states
 
+        if run.is_paused:
+            return to_enqueue, states
+
         graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
         states = _get_stage_states(run)
         armed_gates: list[str] = list(
@@ -321,3 +324,221 @@ async def advance_pipeline_impl(run_id: str) -> None:
         await execute_stage_kiq(exec_id)
 
     await publish_sse(run_id, {'type': 'run.advanced', 'states': dict(states)})
+
+
+def _downstream_stage_keys(
+    graph: list[dict[str, Any]],
+    stage_key: str,
+) -> set[str]:
+    """Return all stage keys that transitively depend on stage_key."""
+    downstream: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in graph:
+            deps = node.get('depends_on', [])
+            key = node['key']
+            if key in downstream:
+                continue
+            if stage_key in deps or any(d in downstream for d in deps):
+                downstream.add(key)
+                changed = True
+    return downstream
+
+
+def _cancel_run_sync(run_id: str) -> None:
+    """Mark run and active stages as cancelled."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    active = {
+        StageStatus.PENDING,
+        StageStatus.QUEUED,
+        StageStatus.RUNNING,
+        StageStatus.NEEDS_INPUT,
+    }
+    with transaction.atomic():
+        run = PipelineRun.objects.select_for_update().get(
+            id=uuid.UUID(run_id),
+        )
+        if run.status in {RunStatus.COMPLETED, RunStatus.CANCELLED}:
+            return
+        StageExecution.objects.filter(
+            run=run,
+            status__in=active,
+        ).update(status=StageStatus.CANCELLED)
+        run.status = RunStatus.CANCELLED
+        run.is_paused = False
+        run.finished_at = tz.now()
+        run.save(update_fields=['status', 'is_paused', 'finished_at'])
+
+
+_cancel_run_sync_async = sync_to_async(_cancel_run_sync)
+
+
+async def cancel_run_impl(run_id: str) -> None:
+    """Cancel a pipeline run."""
+    await _cancel_run_sync_async(run_id)
+    await publish_sse(run_id, {'type': 'run.cancelled'})
+
+
+def _pause_run_sync(run_id: str) -> None:
+    """Set is_paused on the run."""
+    from server.apps.pipelines.models import PipelineRun  # noqa: PLC0415
+
+    with transaction.atomic():
+        run = PipelineRun.objects.select_for_update().get(
+            id=uuid.UUID(run_id),
+        )
+        run.is_paused = True
+        run.save(update_fields=['is_paused'])
+
+
+_pause_run_sync_async = sync_to_async(_pause_run_sync)
+
+
+async def pause_run_impl(run_id: str) -> None:
+    """Pause a pipeline run."""
+    await _pause_run_sync_async(run_id)
+    await publish_sse(run_id, {'type': 'run.paused'})
+
+
+def _resume_run_sync(run_id: str) -> None:
+    """Clear is_paused and set run back to RUNNING if needed."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+    )
+
+    with transaction.atomic():
+        run = PipelineRun.objects.select_for_update().get(
+            id=uuid.UUID(run_id),
+        )
+        run.is_paused = False
+        if run.status in {
+            RunStatus.PENDING,
+            RunStatus.AWAITING_REVIEW,
+            RunStatus.BUDGET_HOLD,
+        }:
+            run.status = RunStatus.RUNNING
+        run.save(update_fields=['is_paused', 'status'])
+
+
+_resume_run_sync_async = sync_to_async(_resume_run_sync)
+
+
+async def resume_run_impl(run_id: str) -> None:
+    """Resume a paused pipeline run."""
+    await _resume_run_sync_async(run_id)
+    await advance_pipeline_impl(run_id)
+
+
+def _rerun_stage_sync(
+    run_id: str,
+    stage_key: str,
+    shard_indices: list[int] | None,
+) -> list[str]:
+    """Stale downstream stages and queue fresh attempts; return exec IDs."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
+
+    to_enqueue: list[str] = []
+    terminal = {
+        StageStatus.SUCCEEDED,
+        StageStatus.FAILED,
+        StageStatus.NEEDS_INPUT,
+        StageStatus.SKIPPED,
+    }
+
+    with transaction.atomic():
+        run = (
+            PipelineRun.objects
+            .select_for_update()
+            .select_related('channel')
+            .get(id=uuid.UUID(run_id))
+        )
+        graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
+        downstream = _downstream_stage_keys(graph, stage_key)
+        stale_keys = downstream | {stage_key}
+
+        StageExecution.objects.filter(
+            run=run,
+            stage_key__in=stale_keys,
+            status__in=terminal,
+        ).update(status=StageStatus.STALE)
+
+        node = next((n for n in graph if n['key'] == stage_key), None)
+        if node is None:
+            return to_enqueue
+
+        stage_cls = STAGE_REGISTRY.get(stage_key)
+        if stage_cls is None:
+            return to_enqueue
+
+        qs = StageExecution.objects.filter(
+            run=run,
+            stage_key=stage_key,
+            parent=None,
+        )
+        if shard_indices is not None:
+            qs = qs.filter(shard_index__in=shard_indices)
+        else:
+            qs = qs.filter(shard_index__isnull=True)
+
+        latest_attempt = qs.order_by('-attempt').values_list(
+            'attempt',
+            flat=True,
+        ).first()
+        next_attempt = (latest_attempt or -1) + 1
+
+        exec_ = StageExecution.objects.create(
+            run=run,
+            stage_key=stage_key,
+            status=StageStatus.QUEUED,
+            queue=node.get('queue', stage_cls.queue),
+            max_retries=stage_cls.max_retries,
+            attempt=next_attempt,
+            input_hash='',
+        )
+        to_enqueue.append(str(exec_.id))
+
+        run.status = RunStatus.RUNNING
+        run.is_paused = False
+        run.finished_at = None
+        run.save(update_fields=['status', 'is_paused', 'finished_at'])
+
+    return to_enqueue
+
+
+_rerun_stage_sync_async = sync_to_async(_rerun_stage_sync)
+
+
+async def rerun_stage_impl(
+    run_id: str,
+    stage_key: str,
+    *,
+    shard_indices: list[int] | None = None,
+) -> None:
+    """Rerun a stage and enqueue its new execution."""
+    to_enqueue = await _rerun_stage_sync_async(
+        run_id,
+        stage_key,
+        shard_indices,
+    )
+    for exec_id in to_enqueue:
+        await execute_stage_kiq(exec_id)
+    await publish_sse(
+        run_id,
+        {'type': 'stage.rerun', 'stage_key': stage_key},
+    )

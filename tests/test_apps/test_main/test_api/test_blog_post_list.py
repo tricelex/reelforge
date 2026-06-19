@@ -11,7 +11,7 @@ from server.apps.main.models import BlogPost
 @pytest.mark.django_db
 def test_blog_post_list_empty(dmr_client: DMRClient) -> None:
     """Returns an empty list when there are no blog posts."""
-    response = dmr_client.get(reverse('api:main:blog_post_list'))
+    response = dmr_client.get(reverse('main_api:blog_post_list'))
 
     assert response.status_code == HTTPStatus.OK
     assert response.json() == []
@@ -26,7 +26,7 @@ def test_blog_post_list_returns_all_posts(
     post_a = BlogPost.objects.create(title=faker.word(), body=faker.text())
     post_b = BlogPost.objects.create(title=faker.word(), body=faker.text())
 
-    response = dmr_client.get(reverse('api:main:blog_post_list'))
+    response = dmr_client.get(reverse('main_api:blog_post_list'))
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()

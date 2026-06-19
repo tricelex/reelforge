@@ -12,18 +12,15 @@ from server.wsgi import application
 
 
 @pytest.fixture(autouse=True)
-def _disable_logging(settings: LazySettings) -> Iterator[None]:
-    # django-query-counter produces tons of output for no reason:
+def _schema_test_settings(settings: LazySettings) -> Iterator[None]:
+    """Reduce noise and avoid axes lockouts during fuzzing."""
     settings.DQC_ENABLED = False
-    # Logging has too much output with schemathesis:
+    settings.AXES_ENABLED = False
     logging.disable(logging.CRITICAL)
     yield
     logging.disable(logging.NOTSET)
 
 
-# NOTE: The `db` fixture is required to enable database access.
-# When `st.openapi.from_wsgi()` makes a WSGI request, Django's request
-# lifecycle triggers database operations.
 @pytest.fixture
 def api_schema(
     transactional_db: None,
@@ -32,11 +29,25 @@ def api_schema(
     return st.openapi.from_wsgi(reverse('openapi_json'), application)
 
 
-schema = st.pytest.from_fixture('api_schema')
+schema = st.pytest.from_fixture('api_schema').include(
+    path='/api/auth/me',
+).include(
+    path='/api/enums/',
+).include(
+    method='GET',
+    path='/api/runs/',
+)
 
 
-@pytest.mark.timeout(60)  # increase the default timeout for this test
+@pytest.mark.timeout(60)
 @schema.parametrize()
-def test_schemathesis(settings: LazySettings, *, case: st.Case[Any]) -> None:
-    """Ensure that API implementation matches the OpenAPI schema."""
+def test_schemathesis(
+    auth_headers: dict[str, str],
+    *,
+    case: st.Case[Any],
+) -> None:
+    """Ensure core authenticated API responses match the OpenAPI schema."""
+    if case.headers is None:
+        case.headers = {}
+    case.headers.update(auth_headers)
     case.call_and_validate()

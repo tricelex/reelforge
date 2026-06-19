@@ -70,10 +70,12 @@ def test_list_candidates(
     dmr_client: DMRClient,
     candidate: object,
     run: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """Candidates for a run are returned as a list."""
     response = dmr_client.get(
         reverse('clips:candidate_list', kwargs={'run_id': run.id}),  # type: ignore[attr-defined]
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -87,6 +89,7 @@ def test_list_candidates(
 def test_get_candidate(
     dmr_client: DMRClient,
     candidate: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """A single candidate is returned by ID."""
     response = dmr_client.get(
@@ -94,6 +97,7 @@ def test_get_candidate(
             'clips:candidate_detail',
             kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
         ),
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -102,7 +106,10 @@ def test_get_candidate(
 
 
 @pytest.mark.django_db
-def test_get_candidate_missing(dmr_client: DMRClient) -> None:
+def test_get_candidate_missing(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
     """404 is returned when candidate does not exist."""
     import uuid  # noqa: PLC0415
 
@@ -111,6 +118,7 @@ def test_get_candidate_missing(dmr_client: DMRClient) -> None:
             'clips:candidate_detail',
             kwargs={'candidate_id': uuid.uuid4()},
         ),
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.NOT_FOUND
@@ -123,6 +131,7 @@ def test_get_candidate_missing(dmr_client: DMRClient) -> None:
 def test_approve_candidate(
     dmr_client: DMRClient,
     candidate: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """Approving a candidate sets its status to APPROVED."""
     response = dmr_client.post(
@@ -130,6 +139,7 @@ def test_approve_candidate(
             'clips:candidate_approve',
             kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
         ),
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -143,6 +153,7 @@ def test_approve_candidate(
 def test_reject_candidate(
     dmr_client: DMRClient,
     candidate: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """Rejecting a candidate sets its status and records the reason."""
     response = dmr_client.post(
@@ -151,6 +162,7 @@ def test_reject_candidate(
             kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
         ),
         data={'reason': 'Not relevant'},
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -165,6 +177,7 @@ def test_reject_candidate(
 def test_reject_candidate_default_reason(
     dmr_client: DMRClient,
     candidate: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """Rejecting without a reason leaves rejection_reason blank."""
     response = dmr_client.post(
@@ -173,6 +186,7 @@ def test_reject_candidate_default_reason(
             kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
         ),
         data={},
+        headers=auth_headers,
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -186,6 +200,7 @@ def test_approve_gate(
     dmr_client: DMRClient,
     candidate: object,
     run: object,
+    auth_headers: dict[str, str],
 ) -> None:
     """Gate approval endpoint calls approve_gate_impl and returns approved count."""
     approved_ids = [str(candidate.id)]  # type: ignore[attr-defined]
@@ -197,6 +212,7 @@ def test_approve_gate(
         response = dmr_client.post(
             reverse('clips:approve_gate', kwargs={'run_id': run.id}),  # type: ignore[attr-defined]
             data={'approved_candidate_ids': approved_ids},
+            headers=auth_headers,
         )
 
     assert response.status_code == HTTPStatus.OK

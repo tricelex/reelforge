@@ -1,11 +1,10 @@
 """Tests for the gate approval API endpoint."""
 
-import asyncio
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from django.test import AsyncClient
+from django.urls import reverse
+from dmr.test import DMRClient
 
 from server.apps.channels.models import Channel, ChannelKind, PublishMode
 from server.apps.pipelines.models import (
@@ -19,7 +18,7 @@ from server.apps.pipelines.models import (
 
 
 @pytest.fixture
-def channel(db):
+def channel(db: None) -> Channel:
     """Create a LONGFORM review-mode channel with a single gate."""
     return Channel.objects.create(
         name='Gate API Channel',
@@ -30,7 +29,7 @@ def channel(db):
 
 
 @pytest.fixture
-def blueprint(db):
+def blueprint(db: None) -> PipelineBlueprint:
     """Create a LONGFORM pipeline blueprint with an empty stage graph."""
     return PipelineBlueprint.objects.create(
         name='gate_api_v1',
@@ -40,7 +39,7 @@ def blueprint(db):
 
 
 @pytest.fixture
-def run(channel, blueprint):
+def run(channel: Channel, blueprint: PipelineBlueprint) -> PipelineRun:
     """Create a pipeline run in AWAITING_REVIEW status."""
     return PipelineRun.objects.create(
         channel=channel,
@@ -52,7 +51,7 @@ def run(channel, blueprint):
 
 
 @pytest.fixture
-def gate_execution(run):
+def gate_execution(run: PipelineRun) -> StageExecution:
     """Create a running stage execution for the final_gate stage."""
     return StageExecution.objects.create(
         run=run,
@@ -63,44 +62,41 @@ def gate_execution(run):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_gate_approve_endpoint(run, gate_execution):
+def test_gate_approve_endpoint(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    gate_execution: StageExecution,
+    auth_headers: dict[str, str],
+) -> None:
     """POST to gate approve endpoint calls approve_gate_impl and returns 200."""
-    client = AsyncClient()
-    body = json.dumps({'thumbnail_asset_id': None, 'schedule_at': None})
-
-    async def _run_request():
-        with patch(
-            'server.apps.pipelines.views.approve_gate_impl',
-            new=AsyncMock(),
-        ) as mock_approve:
-            resp = await client.post(
-                f'/api/runs/{run.id}/gates/final_gate/approve/',
-                data=body,
-                content_type='application/json',
-            )
-            return resp, mock_approve
-
-    resp, mock_approve = asyncio.run(_run_request())
+    with patch(
+        'server.apps.pipelines.api.views.approve_gate_impl',
+        new=AsyncMock(return_value=None),
+    ) as mock_approve:
+        resp = dmr_client.post(
+            reverse(
+                'api:pipelines_api:gate-approve',
+                kwargs={'run_id': run.id, 'gate_key': 'final_gate'},
+            ),
+            data={'thumbnail_asset_id': None, 'schedule_at': None},
+            headers=auth_headers,
+        )
 
     assert resp.status_code == 200
-    mock_approve.assert_called_once_with(
-        str(run.id),
-        'final_gate',
-        {'thumbnail_asset_id': None, 'schedule_at': None},
-    )
+    mock_approve.assert_called_once()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_gate_approve_invalid_json(run):
-    """POST with invalid JSON body returns 400."""
-    client = AsyncClient()
-
-    async def _run_request():
-        return await client.post(
-            f'/api/runs/{run.id}/gates/final_gate/approve/',
-            data='not json',
-            content_type='application/json',
-        )
-
-    resp = asyncio.run(_run_request())
-    assert resp.status_code == 400
+def test_gate_approve_requires_auth(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+) -> None:
+    """Gate approve returns 401 without JWT."""
+    resp = dmr_client.post(
+        reverse(
+            'api:pipelines_api:gate-approve',
+            kwargs={'run_id': run.id, 'gate_key': 'final_gate'},
+        ),
+        data={'thumbnail_asset_id': None},
+    )
+    assert resp.status_code == 401

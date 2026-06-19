@@ -1,14 +1,12 @@
 """ASGI streaming views for pipeline events."""
 
-import json
 from collections.abc import AsyncIterator
 
 import redis.asyncio as aioredis
 from django.conf import settings
-from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 
-from server.apps.pipelines.services.orchestrator import approve_gate_impl
+from server.apps.pipelines.services.pipeline_run import PipelineRunService
 
 
 async def event_stream(run_id: str) -> AsyncIterator[str]:
@@ -28,8 +26,12 @@ async def event_stream(run_id: str) -> AsyncIterator[str]:
 async def pipeline_events(  # noqa: RUF029
     request: HttpRequest,
     run_id: str,
-) -> StreamingHttpResponse:
+) -> StreamingHttpResponse | HttpResponse:
     """Stream server-sent events for a pipeline run from Redis pub/sub."""
+    token = request.GET.get('token', '')
+    if not PipelineRunService.validate_sse_token(token, run_id):
+        return HttpResponse(status=401)
+
     response = StreamingHttpResponse(
         event_stream(run_id),
         content_type='text/event-stream',
@@ -37,19 +39,3 @@ async def pipeline_events(  # noqa: RUF029
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
     return response
-
-
-@csrf_exempt
-async def gate_approve(
-    request: HttpRequest,
-    run_id: str,
-    gate_key: str,
-) -> JsonResponse:
-    """Handle POST /api/runs/<run_id>/gates/<gate_key>/approve/."""
-    try:
-        body: dict[str, object] = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': 'Invalid JSON body'}, status=400)
-
-    await approve_gate_impl(run_id, gate_key, body)
-    return JsonResponse({'status': 'ok'})

@@ -28,12 +28,15 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from dmr.routing import Router, build_404_handler, build_500_handler, path
 from health_check.views import HealthCheckView
 
-from server.apps.analytics import urls as analytics_urls
+from server.apps.analytics.api import urls as analytics_api_urls
 from server.apps.clips.api import urls as clips_api_urls
+from server.apps.core.api import enums_urls as core_enums_urls
+from server.apps.core.api import urls as core_api_urls
 from server.apps.main import urls as main_urls
+from server.apps.pipelines import urls as pipelines_urls
+from server.apps.pipelines.api import urls as pipelines_api_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
-from server.apps.pipelines import urls as pipelines_urls
 
 admin.autodiscover()
 
@@ -46,7 +49,11 @@ def trigger_error(request: HttpRequest) -> HttpResponse:
 router = Router(
     'api/',
     [
-        path('user/', include(main_api_urls, namespace='main')),
+        path('auth/', include(core_api_urls, namespace='core')),
+        path('enums/', include(core_enums_urls, namespace='core_enums')),
+        path('analytics/', include(analytics_api_urls, namespace='analytics_api')),
+        path('', include(pipelines_api_urls, namespace='pipelines_api')),
+        path('', include(clips_api_urls, namespace='clips')),
     ],
 )
 schema = build_schema(router)
@@ -59,9 +66,12 @@ urlpatterns = [
     path('main/', include(main_urls, namespace='main')),
     # Apis:
     path(router.prefix, include((router.urls, 'server'), namespace='api')),
+    # Legacy SSE (streaming — outside DMR OpenAPI):
     path('api/', include(pipelines_urls, namespace='pipelines')),
-    path('api/clips/', include(clips_api_urls, namespace='clips')),
-    path('api/analytics/', include(analytics_urls, namespace='analytics')),
+    # Demo blog API (outside unified OpenAPI router):
+    path('api/user/', include((main_api_urls, 'main_api'), namespace='main_api')),
+    # Legacy clip prefix (deprecated — same handlers as unified /api/):
+    path('api/clips/', include(clips_api_urls, namespace='clips_legacy')),
     # OpenAPI:
     path(
         'docs/openapi.json/',

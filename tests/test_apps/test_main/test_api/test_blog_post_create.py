@@ -23,7 +23,7 @@ class _BlogPostCreateFactory(MsgspecFactory[BlogPostCreatePayload]):
 def test_blog_post_create(dmr_client: DMRClient) -> None:
     """Ensures that blog posts can be created."""
     response = dmr_client.post(
-        reverse('api:main:blog_post_create'),
+        reverse('main_api:blog_post_create'),
         data=msgspec.to_builtins(_BlogPostCreateFactory.build()),
     )
 

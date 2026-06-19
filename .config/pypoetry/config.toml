@@ -1,0 +1,2 @@
+[requests]
+max-retries = 3

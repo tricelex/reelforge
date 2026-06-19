@@ -27,9 +27,16 @@ def _inject_clips(container: Container) -> None:
     container.register(ClipCandidateService, scope=Scope.singleton)
 
 
+def _inject_pipelines(container: Container) -> None:
+    from server.apps.pipelines.services import PipelineRunService
+
+    container.register(PipelineRunService, scope=Scope.singleton)
+
+
 def populate_dependencies(container: Container) -> Container:
     """Populate the container with all application dependencies."""
     _inject_django(container)
     _inject_main(container)
     _inject_clips(container)
+    _inject_pipelines(container)
     return container

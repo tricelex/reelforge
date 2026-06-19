@@ -86,6 +86,8 @@ ignore_imports =
   server.apps.pipelines.stages.clip_render -> server.apps.rendering.clip_render_pipeline
   # Clip API views call the pipeline gate approval orchestrator
   server.apps.clips.api.views -> server.apps.pipelines.services.orchestrator
+  # Pipeline DMR API views call the gate approval orchestrator
+  server.apps.pipelines.api.views -> server.apps.pipelines.services.orchestrator
   # MainConfig.ready() calls populate_dependencies() which imports all services including clips.
   # This transitive dependency (main -> implemented -> clips) is inherent to the DI architecture.
   server.apps.main.apps -> server.implemented

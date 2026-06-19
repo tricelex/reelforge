@@ -22,6 +22,7 @@ from django.conf import LazySettings
 pytest_plugins = [
     # Should be the first custom one:
     'plugins.django_settings',
+    'plugins.auth',
     # TODO: add your own plugins here!
     'plugins.main.main_templates',
     'plugins.taskiq_broker',

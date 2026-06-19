@@ -25,7 +25,7 @@ def blog_post(faker: Faker) -> BlogPost:
 def test_blog_post_get(dmr_client: DMRClient, blog_post: BlogPost) -> None:
     """Ensures that blog posts can be fetched."""
     response = dmr_client.get(
-        reverse('api:main:blog_post_get', kwargs={'id': blog_post.pk}),
+        reverse('main_api:blog_post_get', kwargs={'id': blog_post.pk}),
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -36,7 +36,7 @@ def test_blog_post_get(dmr_client: DMRClient, blog_post: BlogPost) -> None:
 def test_blog_post_get_missing(dmr_client: DMRClient) -> None:
     """Ensures that blog posts can be fetched."""
     response = dmr_client.get(
-        reverse('api:main:blog_post_get', kwargs={'id': 0}),
+        reverse('main_api:blog_post_get', kwargs={'id': 0}),
     )
 
     assert response.status_code == HTTPStatus.NOT_FOUND

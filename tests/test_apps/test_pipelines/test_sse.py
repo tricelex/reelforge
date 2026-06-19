@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 from collections.abc import Coroutine
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,17 +52,40 @@ def test_pipeline_events_response_headers() -> None:
     """pipeline_events returns StreamingHttpResponse with SSE headers."""
     from django.test import RequestFactory  # noqa: PLC0415
 
+    from django.core.signing import TimestampSigner  # noqa: PLC0415
+
     from server.apps.pipelines.views import pipeline_events  # noqa: PLC0415
 
     async def _inner() -> None:
-        request = RequestFactory().get('/api/runs/fake-run-id/events/')
+        run_id = str(uuid.uuid4())
+        from django.core.signing import TimestampSigner  # noqa: PLC0415
+
+        signer = TimestampSigner(salt='pipeline-sse-token')
+        signed = signer.sign(run_id)
+        request = RequestFactory().get(
+            f'/api/runs/{run_id}/events/?token={signed}',
+        )
 
         with patch('server.apps.pipelines.views.aioredis.from_url'):
-            response = await pipeline_events(request, 'fake-run-id')
+            response = await pipeline_events(request, run_id)
 
         assert response.status_code == 200
         assert response['Content-Type'] == 'text/event-stream'
         assert response['Cache-Control'] == 'no-cache'
         assert response['X-Accel-Buffering'] == 'no'
+
+    _run(_inner())
+
+
+def test_pipeline_events_rejects_missing_token() -> None:
+    """pipeline_events returns 401 without a valid token."""
+    from django.test import RequestFactory  # noqa: PLC0415
+
+    from server.apps.pipelines.views import pipeline_events  # noqa: PLC0415
+
+    async def _inner() -> None:
+        request = RequestFactory().get('/api/runs/fake-run-id/events/')
+        response = await pipeline_events(request, 'fake-run-id')
+        assert response.status_code == 401
 
     _run(_inner())

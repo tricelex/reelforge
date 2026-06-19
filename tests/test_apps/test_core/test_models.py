@@ -1,25 +1,15 @@
-import uuid
+"""Tests for core models."""
 
-from django.db import models
+import pytest
+from django.contrib.auth.models import User
 
-from server.common.models import TimeStampedModel, UUIDModel
-
-
-class _SampleModel(UUIDModel, TimeStampedModel):
-    name = models.CharField(max_length=10)
-
-    class Meta:
-        app_label = 'main'
+from server.apps.core.logic.constants import UserRole
+from server.apps.core.models import UserProfile
 
 
-def test_uuid_model_uses_uuid_primary_key() -> None:
-    instance = _SampleModel(name='x')
-    assert isinstance(instance.id, uuid.UUID)
-
-
-def test_timestamped_model_has_created_at_field() -> None:
-    assert hasattr(TimeStampedModel, 'created_at')
-
-
-def test_timestamped_model_has_updated_at_field() -> None:
-    assert hasattr(TimeStampedModel, 'updated_at')
+@pytest.mark.django_db
+def test_user_profile_str() -> None:
+    """UserProfile string includes username and role."""
+    user = User.objects.create_user(username='alice', password='pass')
+    profile = UserProfile.objects.create(user=user, role=UserRole.REVIEWER)
+    assert str(profile) == 'alice (reviewer)'

@@ -18,6 +18,7 @@ from server.apps.clips.logic.value_objects import (
 )
 from server.apps.clips.models import ClipCandidate
 from server.apps.clips.services import ClipCandidateService
+from server.apps.core.auth import JWTAuthenticatedMixin, jwt_sync_auth
 from server.common.di import HasContainer
 
 
@@ -32,10 +33,13 @@ class _GateApprovalResult(msgspec.Struct, frozen=True):
 
 @final
 class ClipCandidateListView(
+    JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
     """List all clip candidates for a pipeline run."""
+
+    auth = (jwt_sync_auth,)
 
     def get(self) -> list[ClipCandidatePayload]:
         """Return all candidates for the given run_id."""
@@ -46,10 +50,13 @@ class ClipCandidateListView(
 
 @final
 class ClipCandidateDetailView(
+    JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
     """Get a single clip candidate by ID."""
+
+    auth = (jwt_sync_auth,)
 
     @modify(
         extra_responses=[
@@ -88,10 +95,13 @@ class ClipCandidateDetailView(
 
 @final
 class ClipCandidateApproveView(
+    JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
     """Approve a clip candidate for rendering."""
+
+    auth = (jwt_sync_auth,)
 
     @modify(status_code=HTTPStatus.OK)
     def post(self) -> ClipCandidatePayload:
@@ -103,10 +113,13 @@ class ClipCandidateApproveView(
 
 @final
 class ClipCandidateRejectView(
+    JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
     """Reject a clip candidate with an optional reason."""
+
+    auth = (jwt_sync_auth,)
 
     @modify(status_code=HTTPStatus.OK)
     def post(
@@ -122,10 +135,13 @@ class ClipCandidateRejectView(
 
 @final
 class ClipApproveGateView(
+    JWTAuthenticatedMixin,
     HasContainer,
     Controller[MsgspecSerializer],
 ):
     """Approve the clip_approval_gate and resume rendering."""
+
+    auth = (jwt_sync_auth,)
 
     @modify(status_code=HTTPStatus.OK)
     def post(
