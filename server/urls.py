@@ -31,7 +31,6 @@ from server.apps.clips.api import urls as clips_api_urls
 from server.apps.main import urls as main_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
-from server.apps.pipelines import urls as pipelines_urls
 from server.openapi.routers import build_api_router, build_api_schema
 
 admin.autodiscover()
@@ -53,8 +52,6 @@ urlpatterns = [
     path('main/', include(main_urls, namespace='main')),
     # Apis:
     path(router.prefix, include((router.urls, 'server'), namespace='api')),
-    # Legacy SSE (streaming — outside DMR OpenAPI):
-    path('api/', include(pipelines_urls, namespace='pipelines')),
     # Demo blog API (outside unified OpenAPI router):
     path(
         'api/user/',

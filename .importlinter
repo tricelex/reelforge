@@ -70,6 +70,7 @@ ignore_imports =
   server.apps.pipelines.stages.publish -> server.apps.publishing.models
   # Analytics selectors aggregate live cost data from pipelines CostRecord
   server.apps.analytics.selectors -> server.apps.pipelines.models
+  server.apps.analytics.selectors -> server.apps.pipelines.gate_selectors
   server.apps.analytics.selectors -> server.apps.publishing.models
   # Ideation promote creates pipeline runs; selectors read run topics
   server.apps.ideas.services -> server.apps.pipelines.services.pipeline_run
@@ -95,6 +96,7 @@ ignore_imports =
   # Pipeline DMR API views call clips gate sync + orchestrator
   server.apps.pipelines.api.views -> server.apps.pipelines.services.orchestrator
   server.apps.pipelines.api.views -> server.apps.clips.services
+  server.apps.pipelines.api.views -> server.apps.pipelines.gate_selectors
   # MainConfig.ready() calls populate_dependencies() which imports all services including clips.
   # This transitive dependency (main -> implemented -> clips) is inherent to the DI architecture.
   server.apps.main.apps -> server.implemented
@@ -102,6 +104,9 @@ ignore_imports =
   server.apps.pipelines.stages.clip_ingest -> server.apps.assets.models
   server.apps.clips.campaign_services -> server.apps.channels.models
   server.apps.clips.campaign_services -> server.apps.clips.models
+  server.apps.clips.source_services -> server.apps.channels.models
+  server.apps.clips.source_services -> server.apps.assets.models
+  server.apps.clips.source_services -> server.apps.clips.models
   server.apps.pipelines.stages.clip_analyze -> server.apps.assets.models
   server.apps.pipelines.stages.clip_render -> server.apps.assets.models
   # Clip service reads Asset rows for render URL presigning
@@ -115,7 +120,10 @@ ignore_imports =
   server.apps.pipelines.services.run_cast -> server.apps.channels.logic.value_objects
   server.apps.pipelines.services.run_cast -> server.apps.channels.character_studio
   server.apps.pipelines.services.pipeline_run -> server.apps.channels.models
+  server.apps.pipelines.services.pipeline_run -> server.apps.clips.source_services
   server.apps.pipelines.api.cast_views -> server.apps.channels.logic.value_objects
+  server.apps.pipelines.api.cast_views -> server.apps.channels.character_selectors
+  server.apps.pipelines.api.cast_views -> server.apps.channels.models
   # Character studio generates images via fal client and reads LibraryAsset
   server.apps.channels.character_studio -> server.apps.generation.clients.fal
   server.apps.channels.character_studio -> server.apps.assets.models
@@ -131,6 +139,7 @@ ignore_imports =
   server.apps.channels.api.views -> server.apps.core.auth
   server.apps.channels.api.character_views -> server.apps.core.auth
   server.apps.clips.api.campaign_views -> server.apps.core.auth
+  server.apps.clips.api.source_views -> server.apps.core.auth
   server.apps.ideas.api.views -> server.apps.core.auth
   server.apps.pipelines.api.cast_views -> server.apps.core.auth
   server.apps.pipelines.api.review_views -> server.apps.core.auth

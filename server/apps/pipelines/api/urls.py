@@ -2,7 +2,12 @@
 
 from dmr.routing import path
 
-from server.apps.pipelines.api import cast_views, review_views, views
+from server.apps.pipelines.api import (
+    cast_views,
+    events_views,
+    review_views,
+    views,
+)
 
 app_name = 'pipelines_api'
 
@@ -38,6 +43,11 @@ run_urlpatterns = [
         name='run-events-token',
     ),
     path(
+        'runs/<uuid:run_id>/events/',
+        events_views.RunEventsController.as_view(),
+        name='run-events',
+    ),
+    path(
         'runs/<uuid:run_id>/gates/<str:gate_key>/approve/',
         views.RunGateApproveController.as_view(),
         name='gate-approve',
@@ -57,6 +67,11 @@ run_urlpatterns = [
         views.RunAssetsController.as_view(),
         name='run-assets',
     ),
+    path(
+        'gates/waiting/',
+        views.GatesWaitingController.as_view(),
+        name='gates-waiting',
+    ),
 ]
 
 cast_urlpatterns = [
@@ -74,6 +89,11 @@ cast_urlpatterns = [
         'runs/<uuid:run_id>/cast/<uuid:cast_id>/sessions/',
         cast_views.RunCastSessionController.as_view(),
         name='run-cast-session',
+    ),
+    path(
+        'runs/<uuid:run_id>/cast/<uuid:cast_id>/sessions/<uuid:session_id>/',
+        cast_views.RunCastSessionDetailController.as_view(),
+        name='run-cast-session-detail',
     ),
     path(
         'runs/<uuid:run_id>/cast/<uuid:cast_id>/sessions/<uuid:session_id>/rounds/',
@@ -107,6 +127,11 @@ review_urlpatterns = [
         'runs/<uuid:run_id>/preview/',
         review_views.RunPreviewController.as_view(),
         name='run-preview',
+    ),
+    path(
+        'runs/<uuid:run_id>/publish-metadata/',
+        review_views.RunPublishMetadataController.as_view(),
+        name='run-publish-metadata',
     ),
     path(
         'runs/<uuid:run_id>/publish/',

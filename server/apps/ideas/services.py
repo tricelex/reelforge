@@ -15,6 +15,7 @@ from server.apps.ideas.logic.value_objects import (
     IdeaGeneratePayload,
     IdeaListPayload,
     PromoteIdeaResultPayload,
+    TopicIdeaCreatePayload,
     TopicIdeaPatchPayload,
     TopicIdeaPayload,
 )
@@ -177,6 +178,64 @@ class IdeationService:
             total=len(created),
         )
 
+    def generate_for_channel(
+        self,
+        channel_id: str,
+        payload: IdeaGeneratePayload,
+    ) -> IdeaListPayload:
+        """Generate ideas using the niche linked to a channel."""
+        from server.apps.channels.models import (  # noqa: PLC0415
+            Channel,
+            NicheConfig,
+        )
+
+        try:
+            Channel.objects.get(id=uuid.UUID(channel_id))
+        except ObjectDoesNotExist as exc:
+            msg = f'Channel not found: {channel_id}'
+            raise ValidationError(msg) from exc
+        try:
+            niche = NicheConfig.objects.get(channel_id=uuid.UUID(channel_id))
+        except ObjectDoesNotExist as exc:
+            msg = f'Niche not found for channel: {channel_id}'
+            raise ValidationError(msg) from exc
+        return self.generate(str(niche.id), payload)
+
+    def create_manual(
+        self,
+        payload: TopicIdeaCreatePayload,
+    ) -> TopicIdeaPayload:
+        """Create one manual backlog idea."""
+        from server.apps.channels.models import Channel  # noqa: PLC0415
+        from server.apps.ideas.models import TopicIdea  # noqa: PLC0415
+
+        try:
+            channel = Channel.objects.get(id=uuid.UUID(payload.channel_id))
+        except ObjectDoesNotExist as exc:
+            msg = f'Channel not found: {payload.channel_id}'
+            raise ValidationError(msg) from exc
+
+        niche_id = None
+        if payload.niche_id:
+            from server.apps.channels.models import NicheConfig  # noqa: PLC0415
+
+            niche = NicheConfig.objects.get(
+                id=uuid.UUID(payload.niche_id),
+                channel=channel,
+            )
+            niche_id = niche.id
+
+        idea = TopicIdea.objects.create(
+            channel=channel,
+            niche_id=niche_id,
+            title=payload.title[:200],
+            topic=payload.topic,
+            score=payload.score,
+            status=IdeaStatus.BACKLOG,
+            metadata={'source_type': 'manual'},
+        )
+        return get_idea(str(idea.id))
+
     def patch(
         self,
         idea_id: str,
@@ -238,6 +297,7 @@ class IdeationService:
         *,
         status: str | None,
         channel_id: str | None,
+        niche_id: str | None,
         cursor: str | None,
         limit: int,
     ) -> IdeaListPayload:
@@ -245,6 +305,7 @@ class IdeationService:
         return list_ideas(
             status=status,
             channel_id=channel_id,
+            niche_id=niche_id,
             cursor=cursor,
             limit=limit,
         )

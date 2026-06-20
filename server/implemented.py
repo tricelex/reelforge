@@ -23,8 +23,10 @@ def _inject_main(container: Container) -> None:
 
 def _inject_clips(container: Container) -> None:
     from server.apps.clips.services import ClipsService
+    from server.apps.clips.source_services import ClipSourceService
 
     container.register(ClipsService, scope=Scope.singleton)
+    container.register(ClipSourceService, scope=Scope.singleton)
 
 
 def _inject_pipelines(container: Container) -> None:

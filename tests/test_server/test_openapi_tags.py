@@ -19,12 +19,14 @@ _TAGGED_OPERATIONS: Final = {
     '/api/dashboard/': {'get': 'Analytics'},
     '/api/ideas/': {'get': 'Ideas'},
     '/api/runs/': {'post': 'Pipeline Runs'},
+    '/api/runs/{run_id}/events/': {'get': 'Pipeline Runs'},
     '/api/runs/{run_id}/storyboard/': {'get': 'Pipeline Review'},
     '/api/runs/{run_id}/cast/': {'get': 'Pipeline Cast'},
     '/api/blueprints/': {'get': 'Blueprints'},
     '/api/candidates/{candidate_id}/layout-config/': {'get': 'Clip Config'},
     '/api/candidates/{candidate_id}/posts/': {'get': 'Clip Posts'},
     '/api/campaigns/': {'get': 'Campaigns'},
+    '/api/clip-sources/': {'get': 'Clip Sources'},
     '/api/channels/': {'get': 'Channels'},
     '/api/characters/': {'get': 'Characters'},
     '/api/channels/{channel_id}/youtube/status/': {'get': 'YouTube'},
@@ -47,6 +49,21 @@ def _operation_tags(
     tags = operation.get('tags')
     assert tags is not None, f'{method.upper()} {path} has no tags'
     return list(tags)
+
+
+def _find_untagged_operations(schema: dict[str, Any]) -> list[str]:
+    """Return untagged /api/ operations for schema validation tests."""
+    untagged: list[str] = []
+    for path, path_item in schema['paths'].items():
+        if not path.startswith('/api/'):
+            continue
+        for method, operation in path_item.items():
+            if method == 'parameters':
+                continue
+            tags = operation.get('tags')
+            if not tags:
+                untagged.append(f'{method.upper()} {path}')
+    return untagged
 
 
 @pytest.mark.django_db
@@ -80,17 +97,33 @@ def test_openapi_operation_has_expected_tag(
 
 
 @pytest.mark.django_db
+def test_openapi_build_api_schema() -> None:
+    """build_api_schema accepts optional context."""
+    from dmr.openapi import OpenAPIContext, default_config
+
+    from server.openapi.routers import build_api_schema
+
+    schema = build_api_schema(context=OpenAPIContext(config=default_config()))
+    assert '/api/clip-sources/' in schema.paths
+
+
+@pytest.mark.django_db
 def test_openapi_api_paths_are_tagged(client: Client) -> None:
     """Every /api/ operation in the schema has at least one tag."""
     schema = _load_openapi_schema(client)
-    untagged: list[str] = []
-    for path, path_item in schema['paths'].items():
-        if not path.startswith('/api/'):
-            continue
-        for method, operation in path_item.items():
-            if method == 'parameters':
-                continue
-            tags = operation.get('tags')
-            if not tags:
-                untagged.append(f'{method.upper()} {path}')
-    assert untagged == []
+    assert _find_untagged_operations(schema) == []
+
+
+def test_find_untagged_operations_skips_non_api_and_parameters() -> None:
+    """Untagged scan ignores non-API paths and path-level parameters."""
+    schema = {
+        'paths': {
+            '/health/': {'get': {'tags': ['Health']}},
+            '/api/demo/': {
+                'parameters': [{'name': 'x', 'in': 'query'}],
+                'get': {'tags': ['Demo']},
+                'post': {},
+            },
+        },
+    }
+    assert _find_untagged_operations(schema) == ['POST /api/demo/']

@@ -115,3 +115,19 @@ class OverlayType(models.TextChoices):
 
     TEXT = 'TEXT', 'Text'
     IMAGE = 'IMAGE', 'Image'
+
+
+class ClipSourceStatus(models.TextChoices):
+    """Ingest lifecycle for a clip source."""
+
+    INGESTING = 'INGESTING', 'Ingesting'
+    READY = 'READY', 'Ready'
+    FAILED = 'FAILED', 'Failed'
+
+
+class ClipSourceType(models.TextChoices):
+    """Origin of a clip source video."""
+
+    YOUTUBE = 'youtube', 'YouTube'
+    RSS = 'rss', 'RSS'
+    UPLOAD = 'upload', 'Upload'

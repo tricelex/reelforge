@@ -97,6 +97,19 @@ class ChannelService:
             wpm=payload.wpm,
         )
         ChannelBranding.objects.get_or_create(channel=channel)
+        if payload.niche is not None:
+            NicheConfig.objects.create(
+                channel=channel,
+                format_id=(
+                    uuid.UUID(payload.niche.format_id)
+                    if payload.niche.format_id
+                    else None
+                ),
+                audience=payload.niche.audience,
+                angle=payload.niche.angle,
+                banned_topics=payload.niche.banned_topics or [],
+                lore_document=payload.niche.lore_document,
+            )
         return get_channel_detail(str(channel.id))
 
     def patch(

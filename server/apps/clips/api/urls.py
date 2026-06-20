@@ -2,7 +2,7 @@
 
 from dmr.routing import path
 
-from server.apps.clips.api import campaign_views, views
+from server.apps.clips.api import campaign_views, source_views, views
 
 app_name = 'clips'
 
@@ -103,9 +103,23 @@ campaign_urlpatterns = [
     ),
 ]
 
+source_urlpatterns = [
+    path(
+        'clip-sources/',
+        source_views.ClipSourceCollectionController.as_view(),
+        name='clip-source-collection',
+    ),
+    path(
+        'clip-sources/<uuid:source_id>/',
+        source_views.ClipSourceDetailController.as_view(),
+        name='clip-source-detail',
+    ),
+]
+
 urlpatterns = [
     *candidate_urlpatterns,
     *config_urlpatterns,
     *post_urlpatterns,
     *campaign_urlpatterns,
+    *source_urlpatterns,
 ]

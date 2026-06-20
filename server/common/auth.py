@@ -9,7 +9,7 @@ from django.core.exceptions import PermissionDenied
 from dmr.security import SyncAuth
 from dmr.security.jwt.auth import JWTSyncAuth
 
-JWT_ACCESS_LIFETIME = dt.timedelta(minutes=15)
+JWT_ACCESS_LIFETIME = dt.timedelta(hours=3)
 JWT_REFRESH_LIFETIME = dt.timedelta(days=7)
 
 jwt_sync_auth = JWTSyncAuth(

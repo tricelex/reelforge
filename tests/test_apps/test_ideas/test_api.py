@@ -388,3 +388,160 @@ def test_promote_validation_error_returns_422(
         headers=auth_headers,
     )
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db
+def test_manual_create_idea(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST /api/ideas/ creates a manual backlog row."""
+    response = dmr_client.post(
+        reverse('api:ideas_api:idea-collection'),
+        data={
+            'channel_id': str(channel.id),
+            'title': 'Manual Topic',
+            'topic': 'A manually entered video idea',
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.CREATED
+    body = response.json()
+    assert body['title'] == 'Manual Topic'
+    assert body['status'] == IdeaStatus.BACKLOG
+
+
+@pytest.mark.django_db
+def test_generate_ideas_by_channel(
+    dmr_client: DMRClient,
+    niche: NicheConfig,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST channel ideas generate resolves niche from channel_id."""
+    candidates = [
+        TopicCandidate(
+            title='Channel Route Idea',
+            topic='Generated via channel route',
+            score=0.88,
+            remix_strategy='',
+            hook_pattern='',
+            differentiation='',
+            source_refs=[],
+        ),
+    ]
+    with patch(
+        'server.apps.ideas.services.run_ideation_agent',
+        return_value=IdeationOutput(ideas=candidates),
+    ):
+        response = dmr_client.post(
+            reverse(
+                'api:ideas_api:channel-ideas-generate',
+                kwargs={'channel_id': niche.channel_id},
+            ),
+            data={'count': 1},
+            headers=auth_headers,
+        )
+    assert response.status_code == HTTPStatus.CREATED
+    assert response.json()['total'] == 1
+
+
+@pytest.mark.django_db
+def test_manual_create_idea_with_niche(
+    dmr_client: DMRClient,
+    channel: Channel,
+    niche: NicheConfig,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST /api/ideas/ accepts optional niche_id."""
+    response = dmr_client.post(
+        reverse('api:ideas_api:idea-collection'),
+        data={
+            'channel_id': str(channel.id),
+            'niche_id': str(niche.id),
+            'title': 'Niche Manual',
+            'topic': 'Scoped to niche',
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.CREATED
+    assert response.json()['niche_id'] == str(niche.id)
+
+
+@pytest.mark.django_db
+def test_manual_create_idea_unknown_channel(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST /api/ideas/ rejects unknown channel."""
+    response = dmr_client.post(
+        reverse('api:ideas_api:idea-collection'),
+        data={
+            'channel_id': str(uuid.uuid4()),
+            'title': 'Bad',
+            'topic': 'Bad topic',
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db
+def test_generate_ideas_by_channel_unknown(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST channel ideas generate rejects unknown channel."""
+    response = dmr_client.post(
+        reverse(
+            'api:ideas_api:channel-ideas-generate',
+            kwargs={'channel_id': uuid.uuid4()},
+        ),
+        data={'count': 1},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db
+def test_generate_ideas_by_channel_without_niche(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST channel ideas generate rejects channels without a niche."""
+    channel = Channel.objects.create(
+        name='No Niche Channel',
+        kind=ChannelKind.LONGFORM,
+        publish_mode=PublishMode.REVIEW,
+    )
+    response = dmr_client.post(
+        reverse(
+            'api:ideas_api:channel-ideas-generate',
+            kwargs={'channel_id': channel.id},
+        ),
+        data={'count': 1},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db
+def test_list_ideas_filter_by_niche(
+    dmr_client: DMRClient,
+    niche: NicheConfig,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET /api/ideas/ accepts niche_id filter."""
+    TopicIdea.objects.create(
+        niche=niche,
+        channel_id=niche.channel_id,
+        title='Niche Filtered',
+        topic='Only this niche',
+    )
+    response = dmr_client.get(
+        reverse('api:ideas_api:idea-collection')
+        + f'?niche_id={niche.id}',
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['total'] == 1

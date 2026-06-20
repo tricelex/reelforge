@@ -1,6 +1,6 @@
 """Tests for PresignUrlHelper."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from server.common.storage import PresignUrlHelper
 
@@ -31,3 +31,19 @@ def test_presign_get_returns_url() -> None:
 
     assert url == 'https://example/get'
     mock_client.generate_presigned_url.assert_called_once()
+
+
+@patch('server.common.storage.boto3.client')
+def test_init_uses_public_endpoint_for_presigning(
+    mock_boto_client: MagicMock,
+) -> None:
+    """Presigned URLs must use the browser-reachable public endpoint."""
+    mock_boto_client.return_value = MagicMock()
+
+    PresignUrlHelper()
+
+    mock_boto_client.assert_called_once()
+    call_kwargs = mock_boto_client.call_args.kwargs
+    assert call_kwargs['endpoint_url'] == 'http://localhost:9000'
+    assert call_kwargs['config'].signature_version == 's3v4'
+    assert call_kwargs['config'].s3['addressing_style'] == 'path'

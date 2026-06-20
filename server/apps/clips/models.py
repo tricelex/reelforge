@@ -13,6 +13,8 @@ from server.apps.clips.logic.constants import (
     CaptionAnimation,
     CaptionPosition,
     CaptionStyle,
+    ClipSourceStatus,
+    ClipSourceType,
     HookStyle,
     OverlayType,
     PostStatus,
@@ -436,6 +438,60 @@ class ClipCampaign(UUIDModel, TimeStampedModel):
     @override
     def __str__(self) -> str:
         return self.name
+
+
+class ClipSource(UUIDModel, TimeStampedModel):
+    """Registered video ready (or being probed) for clipping."""
+
+    channel = models.ForeignKey(
+        'channels.Channel',
+        on_delete=models.CASCADE,
+        related_name='clip_sources',
+    )
+    run = models.ForeignKey(
+        'pipelines.PipelineRun',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='clip_sources',
+    )
+    campaign = models.ForeignKey(
+        ClipCampaign,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='clip_sources',
+    )
+    source_type = models.CharField(
+        max_length=10,
+        choices=ClipSourceType.choices,
+    )
+    url = models.TextField(blank=True)
+    library_asset_id = models.UUIDField(null=True, blank=True)
+    title = models.CharField(max_length=300, blank=True)
+    duration_sec = models.FloatField(null=True, blank=True)
+    status = models.CharField(
+        max_length=10,
+        choices=ClipSourceStatus.choices,
+        default=ClipSourceStatus.INGESTING,
+    )
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                name='clips_clipsource_status_valid',
+                condition=models.Q(status__in=ClipSourceStatus.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipsource_type_valid',
+                condition=models.Q(source_type__in=ClipSourceType.values),
+            ),
+        ]
+
+    @override
+    def __str__(self) -> str:
+        return self.title or f'ClipSource {self.id}'
 
 
 class Earning(UUIDModel, TimeStampedModel):

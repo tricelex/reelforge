@@ -10,6 +10,8 @@ from django.db import transaction
 
 from server.apps.pipelines.logic.value_objects import (
     PreviewPayload,
+    PublishMetadataPatchPayload,
+    PublishMetadataPayload,
     PublishPayload,
     PublishResultPayload,
     SceneBreakdownPayload,
@@ -153,6 +155,54 @@ class RunReviewService:
     def get_preview(self, run_id: str) -> PreviewPayload:
         """Return assembly preview URL."""
         return get_preview(run_id, self._presign)
+
+    def get_publish_metadata(self, run_id: str) -> PublishMetadataPayload:
+        """Return metadata stage output for final review."""
+        meta_exec = _latest_parent_execution(run_id, 'metadata')
+        if meta_exec is None or meta_exec.status != StageStatus.SUCCEEDED:
+            return PublishMetadataPayload(
+                title='',
+                description='',
+                tags=[],
+                category='Education',
+                thumbnail_asset_id=None,
+            )
+        meta = meta_exec.output
+        tags_raw = meta.get('tags', [])
+        tags = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+        thumb = meta.get('thumbnail_asset_id')
+        return PublishMetadataPayload(
+            title=str(meta.get('title', '')),
+            description=str(meta.get('description', '')),
+            tags=tags,
+            category=str(meta.get('category', 'Education')),
+            thumbnail_asset_id=str(thumb) if thumb else None,
+        )
+
+    def patch_publish_metadata(
+        self,
+        run_id: str,
+        payload: PublishMetadataPatchPayload,
+    ) -> PublishMetadataPayload:
+        """Merge edits into metadata stage output."""
+        meta_exec = _latest_parent_execution(run_id, 'metadata')
+        if meta_exec is None:
+            msg = 'metadata stage output is not available'
+            raise ValidationError(msg)
+        meta = dict(meta_exec.output)
+        if payload.title is not None:
+            meta['title'] = payload.title
+        if payload.description is not None:
+            meta['description'] = payload.description
+        if payload.tags is not None:
+            meta['tags'] = payload.tags
+        if payload.category is not None:
+            meta['category'] = payload.category
+        if payload.thumbnail_asset_id is not None:
+            meta['thumbnail_asset_id'] = payload.thumbnail_asset_id
+        meta_exec.output = meta
+        meta_exec.save(update_fields=['output'])
+        return self.get_publish_metadata(run_id)
 
     def patch_scene(
         self,

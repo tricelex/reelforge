@@ -64,6 +64,11 @@ character_urlpatterns = [
         name='character-session-collection',
     ),
     path(
+        'characters/<uuid:character_id>/sessions/<uuid:session_id>/',
+        character_views.CharacterSessionDetailController.as_view(),
+        name='character-session-detail',
+    ),
+    path(
         'characters/<uuid:character_id>/sessions/<uuid:session_id>/rounds/',
         character_views.CharacterRoundController.as_view(),
         name='character-round',

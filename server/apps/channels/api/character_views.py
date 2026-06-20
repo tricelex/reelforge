@@ -13,6 +13,7 @@ from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.channels.character_selectors import (
     get_character_detail,
+    get_character_session,
     list_characters,
 )
 from server.apps.channels.character_studio import CharacterStudioService
@@ -30,7 +31,7 @@ from server.apps.channels.logic.value_objects import (
     NicheConfigPatchPayload,
     NicheConfigPayload,
 )
-from server.apps.channels.models import Character
+from server.apps.channels.models import Character, CharacterGenerationSession
 from server.apps.channels.selectors import get_niche_config
 from server.apps.channels.services import ChannelService
 from server.apps.core.auth import require_operator
@@ -165,6 +166,54 @@ class CharacterSessionCollectionController(
         return self.resolve(CharacterStudioService).start_session(
             str(self.kwargs['character_id']),
         )
+
+
+@final
+class CharacterSessionDetailController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Read one character generation session."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> CharacterSessionPayload:
+        """Return session with rounds."""
+        character_id = str(self.kwargs['character_id'])
+        session_id = str(self.kwargs['session_id'])
+        session = CharacterGenerationSession.objects.select_related(
+            'character',
+        ).get(id=session_id)
+        if str(session.character_id) != character_id:
+            msg = 'Session not found'
+            raise CharacterGenerationSession.DoesNotExist(msg)
+        return get_character_session(session_id)
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, CharacterGenerationSession.DoesNotExist):
+            return self.to_error(
+                self.format_error(
+                    'Session not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

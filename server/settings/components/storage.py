@@ -14,6 +14,12 @@ AWS_S3_ENDPOINT_URL: str = config(
     'AWS_S3_ENDPOINT_URL',
     default='http://rustfs:9000',
 )
+# Browser-facing endpoint for presigned URLs. In Docker dev, rustfs is only
+# reachable on the backend network; clients use localhost via compose ports.
+AWS_S3_PUBLIC_ENDPOINT_URL: str = config(
+    'AWS_S3_PUBLIC_ENDPOINT_URL',
+    default='http://localhost:9000',
+)
 AWS_S3_REGION_NAME: str = config('AWS_S3_REGION_NAME', default='us-east-1')
 AWS_S3_FILE_OVERWRITE: bool = False
 AWS_DEFAULT_ACL: str | None = None

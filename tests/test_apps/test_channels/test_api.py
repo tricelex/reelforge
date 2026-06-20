@@ -38,7 +38,13 @@ def test_list_channels(
     assert response.status_code == HTTPStatus.OK
     body = response.json()
     assert body['total'] >= 1
-    assert any(item['id'] == str(channel.id) for item in body['items'])
+    row = next(item for item in body['items'] if item['id'] == str(channel.id))
+    assert 'niche_angle' in row
+    assert 'published_videos' in row
+    assert 'active_runs' in row
+    assert 'total_spend_usd' in row
+    assert 'youtube_status' in row
+    assert row['youtube_status'] == 'disconnected'
 
 
 @pytest.mark.django_db
@@ -59,6 +65,43 @@ def test_create_channel(
     body = response.json()
     assert body['name'] == 'New Channel'
     assert Channel.objects.filter(id=body['id']).exists()
+
+
+@pytest.mark.django_db
+def test_create_channel_with_niche(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST channel with niche block creates NicheConfig."""
+    from server.apps.channels.models import NicheConfig
+
+    response = dmr_client.post(
+        reverse('api:channels_api:channel-collection'),
+        data={
+            'name': 'Niche Channel',
+            'kind': ChannelKind.LONGFORM,
+            'niche': {
+                'angle': 'space exploration',
+                'audience': 'sci-fi fans',
+            },
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.CREATED
+    channel_id = response.json()['id']
+    niche = NicheConfig.objects.get(channel_id=channel_id)
+    assert niche.angle == 'space exploration'
+
+    niche_resp = dmr_client.get(
+        reverse(
+            'api:channels_api:channel-niche',
+            kwargs={'channel_id': channel_id},
+        ),
+        headers=auth_headers,
+    )
+    assert niche_resp.status_code == HTTPStatus.OK
+    assert niche_resp.json()['id'] == str(niche.id)
+    assert niche_resp.json()['angle'] == 'space exploration'
 
 
 @pytest.mark.django_db
@@ -417,3 +460,53 @@ def test_youtube_status_connected(
     body = response.json()
     assert body['connected'] is True
     assert body['scope'] == 'youtube.upload'
+
+
+@pytest.mark.django_db
+def test_list_channels_youtube_expired_status(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """Channel list reports expired YouTube tokens."""
+    from django.utils import timezone
+
+    YouTubeCredential.objects.create(
+        channel=channel,
+        access_token='access',
+        refresh_token='refresh',
+        token_expiry=timezone.now() - timezone.timedelta(hours=1),
+        scope='youtube.upload',
+    )
+    response = dmr_client.get(
+        reverse('api:channels_api:channel-collection'),
+        headers=auth_headers,
+    )
+    row = next(item for item in response.json()['items'] if item['id'] == str(channel.id))
+    assert row['youtube_status'] == 'expired'
+
+
+@pytest.mark.django_db
+def test_list_channels_youtube_connected_status(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """Channel list reports connected YouTube tokens."""
+    from django.utils import timezone
+
+    YouTubeCredential.objects.create(
+        channel=channel,
+        access_token='access',
+        refresh_token='refresh',
+        token_expiry=timezone.now() + timezone.timedelta(hours=1),
+        scope='youtube.upload',
+    )
+    response = dmr_client.get(
+        reverse('api:channels_api:channel-collection'),
+        headers=auth_headers,
+    )
+    row = next(
+        item for item in response.json()['items'] if item['id'] == str(channel.id)
+    )
+    assert row['youtube_status'] == 'connected'

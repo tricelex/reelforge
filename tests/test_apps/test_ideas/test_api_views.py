@@ -36,6 +36,7 @@ def test_collection_invalid_limit_defaults_to_twenty() -> None:
     service.list_backlog.assert_called_once_with(
         status=None,
         channel_id=None,
+        niche_id=None,
         cursor=None,
         limit=20,
     )

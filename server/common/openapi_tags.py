@@ -21,6 +21,7 @@ CLIPS: Final = 'Clips'
 CLIP_CONFIG: Final = 'Clip Config'
 CLIP_POSTS: Final = 'Clip Posts'
 CAMPAIGNS: Final = 'Campaigns'
+CLIP_SOURCES: Final = 'Clip Sources'
 
 ALL_TAGS: Final = (
     AUTH,
@@ -40,6 +41,7 @@ ALL_TAGS: Final = (
     CLIP_CONFIG,
     CLIP_POSTS,
     CAMPAIGNS,
+    CLIP_SOURCES,
 )
 
 TAG_DEFINITIONS: Final = (
@@ -104,5 +106,9 @@ TAG_DEFINITIONS: Final = (
     Tag(
         name=CAMPAIGNS,
         description='Clip campaigns and earnings tracking.',
+    ),
+    Tag(
+        name=CLIP_SOURCES,
+        description='Clip source registration and ingest probing.',
     ),
 )

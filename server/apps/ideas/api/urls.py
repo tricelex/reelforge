@@ -23,6 +23,11 @@ urlpatterns = [
         name='idea-promote',
     ),
     path(
+        'channels/<uuid:channel_id>/ideas/generate/',
+        views.ChannelIdeaGenerateController.as_view(),
+        name='channel-ideas-generate',
+    ),
+    path(
         'niches/<uuid:niche_id>/ideas/generate/',
         views.NicheIdeaGenerateController.as_view(),
         name='niche-ideas-generate',

@@ -16,6 +16,7 @@ from server.apps.ideas.logic.value_objects import (
     IdeaGeneratePayload,
     IdeaListPayload,
     PromoteIdeaResultPayload,
+    TopicIdeaCreatePayload,
     TopicIdeaPatchPayload,
     TopicIdeaPayload,
 )
@@ -44,6 +45,7 @@ class IdeaCollectionController(
         """Return cursor-paginated ideas."""
         status = self.request.GET.get('status')
         channel_id = self.request.GET.get('channel_id')
+        niche_id = self.request.GET.get('niche_id')
         cursor = self.request.GET.get('cursor')
         limit_raw = self.request.GET.get('limit', '20')
         try:
@@ -53,9 +55,36 @@ class IdeaCollectionController(
         return self.resolve(IdeationService).list_backlog(
             status=status,
             channel_id=channel_id,
+            niche_id=niche_id,
             cursor=cursor,
             limit=limit,
         )
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[TopicIdeaCreatePayload],
+    ) -> TopicIdeaPayload:
+        """Create a manual backlog idea."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(IdeationService).create_manual(parsed_body)
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ValidationError):
+            return self.to_error(
+                self.format_error(
+                    '; '.join(exc.messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final
@@ -122,6 +151,46 @@ class IdeaDetailController(
                     error_type=ErrorType.not_found,
                 ),
                 status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
+
+
+@final
+class ChannelIdeaGenerateController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Batch-generate ideas for a channel's niche."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[IdeaGeneratePayload],
+    ) -> IdeaListPayload:
+        """Generate backlog ideas for the channel niche."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(IdeationService).generate_for_channel(
+            str(self.kwargs['channel_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ValidationError):
+            return self.to_error(
+                self.format_error(
+                    '; '.join(exc.messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
             )
         return super().handle_error(endpoint, controller, exc)
 

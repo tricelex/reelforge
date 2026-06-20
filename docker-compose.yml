@@ -148,9 +148,17 @@ services:
     depends_on:
       rustfs:
         condition: service_healthy
+    volumes:
+      - ./docker/rustfs/cors-dev.xml:/cors/dev.xml:ro
     environment:
       MC_HOST_local: http://${AWS_ACCESS_KEY_ID:-minioadmin}:${AWS_SECRET_ACCESS_KEY:-minioadmin}@rustfs:9000
-    command: mb --ignore-existing local/${AWS_STORAGE_BUCKET_NAME:-reelforge}
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -eu
+        mc mb --ignore-existing local/${AWS_STORAGE_BUCKET_NAME:-reelforge}
+        mc cors set local/${AWS_STORAGE_BUCKET_NAME:-reelforge} /cors/dev.xml
     restart: on-failure
 
 networks:

@@ -8,6 +8,11 @@ app_name = 'analytics_api'
 
 urlpatterns = [
     path(
+        'summary/',
+        views.AnalyticsSummaryController.as_view(),
+        name='analytics-summary',
+    ),
+    path(
         'runs/<uuid:run_id>/cost/',
         views.RunCostController.as_view(),
         name='run-cost',

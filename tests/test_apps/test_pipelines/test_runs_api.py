@@ -269,6 +269,22 @@ def test_pipeline_run_service_idempotency(
 
 
 @pytest.mark.django_db
+def test_create_run_requires_topic_or_source(
+    dmr_client: DMRClient,
+    channel: Channel,
+    blueprint: PipelineBlueprint,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST run without topic or source_id returns 400."""
+    response = dmr_client.post(
+        reverse('api:pipelines_api:run-collection'),
+        data={'channel_id': str(channel.id)},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_create_run_bad_channel(
     dmr_client: DMRClient,
     auth_headers: dict[str, str],

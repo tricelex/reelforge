@@ -155,6 +155,9 @@ class PipelineRunService:
 
     def _create_run_sync(self, payload: RunCreatePayload) -> str:
         from server.apps.channels.models import Channel  # noqa: PLC0415
+        from server.apps.clips.source_services import (  # noqa: PLC0415
+            ClipSourceService,
+        )
         from server.apps.pipelines.models import (  # noqa: PLC0415
             PipelineBlueprint,
             PipelineRun,
@@ -166,6 +169,17 @@ class PipelineRunService:
         except ObjectDoesNotExist as exc:
             msg = f'Channel not found: {payload.channel_id}'
             raise ValidationError(msg) from exc
+
+        topic = payload.topic
+        source_service = ClipSourceService()
+        if payload.source_id:
+            topic = source_service.resolve_topic_for_run(payload.source_id)
+            if payload.topic:
+                msg = 'Provide either topic or source_id, not both'
+                raise ValidationError(msg)
+        elif not topic:
+            msg = 'topic or source_id is required'
+            raise ValidationError(msg)
 
         blueprint_name = payload.blueprint_name or _BLUEPRINT_BY_KIND.get(
             channel.kind,
@@ -187,7 +201,7 @@ class PipelineRunService:
             channel=channel,
             blueprint=blueprint,
             blueprint_snapshot=blueprint.graph,
-            topic=payload.topic,
+            topic=topic,
             status=RunStatus.PENDING,
             source_idea_id=(
                 uuid.UUID(payload.source_idea_id)
@@ -195,6 +209,8 @@ class PipelineRunService:
                 else None
             ),
         )
+        if payload.source_id:
+            source_service.link_run(payload.source_id, str(run.id))
         return str(run.id)
 
     @staticmethod

@@ -15,10 +15,13 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from server.apps.clips.services import ClipsService
 from server.apps.core.auth import require_operator
 from server.apps.pipelines.clip_selectors import get_run_transcript
+from server.apps.pipelines.gate_selectors import list_gates_waiting
 from server.apps.pipelines.logic.value_objects import (
     BlueprintListPayload,
     GateApprovePayload,
     GateApproveResultPayload,
+    GateWaitingListPayload,
+    GateWaitingPayload,
     RerunStagePayload,
     RunActionResultPayload,
     RunAssetListPayload,
@@ -320,6 +323,34 @@ class RunAssetsController(
             self.resolve(PresignUrlHelper),
             cursor=cursor,
             limit=limit,
+        )
+
+
+@final
+class GatesWaitingController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List runs waiting at armed review gates."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> GateWaitingListPayload:
+        """Return waiting gate queue."""
+        rows = list_gates_waiting()
+        return GateWaitingListPayload(
+            items=[
+                GateWaitingPayload(
+                    run_id=str(row['run_id']),
+                    gate_key=str(row['gate_key']),
+                    channel_name=str(row['channel_name']),
+                    topic=str(row['topic']),
+                    spent_usd=str(row['spent_usd']),
+                )
+                for row in rows
+            ],
+            total=len(rows),
         )
 
 

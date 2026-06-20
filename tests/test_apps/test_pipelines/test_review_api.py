@@ -609,6 +609,138 @@ def test_publish_no_active_gate(
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
+@pytest.mark.django_db
+def test_publish_metadata_get_and_patch(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET/PATCH publish-metadata reads and updates metadata stage output."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='metadata',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'title': 'Original title',
+            'description': 'Original description',
+            'tags': ['history'],
+            'category': 'Education',
+        },
+    )
+    get_resp = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        headers=auth_headers,
+    )
+    assert get_resp.status_code == HTTPStatus.OK
+    assert get_resp.json()['title'] == 'Original title'
+
+    patch_resp = dmr_client.patch(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        data={
+            'title': 'Updated title',
+            'description': 'Updated description',
+            'tags': ['rome', 'empire'],
+        },
+        headers=auth_headers,
+    )
+    assert patch_resp.status_code == HTTPStatus.OK
+    body = patch_resp.json()
+    assert body['title'] == 'Updated title'
+    assert body['description'] == 'Updated description'
+    assert body['tags'] == ['rome', 'empire']
+
+
+@pytest.mark.django_db
+def test_publish_metadata_handle_error_not_found() -> None:
+    """Publish metadata controller maps missing run to 404."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.api.review_views import (
+        RunPublishMetadataController,
+    )
+
+    controller = RunPublishMetadataController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(),
+        controller,
+        PipelineRun.DoesNotExist(),
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_publish_metadata_patch_category_and_thumbnail(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH publish-metadata can update category and thumbnail."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='metadata',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'title': 'T', 'description': 'D', 'tags': []},
+    )
+    response = dmr_client.patch(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        data={
+            'category': 'Entertainment',
+            'thumbnail_asset_id': str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['category'] == 'Entertainment'
+
+
+@pytest.mark.django_db
+def test_publish_metadata_get_empty_when_missing_stage(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET publish-metadata returns defaults when metadata stage is absent."""
+    get_resp = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        headers=auth_headers,
+    )
+    assert get_resp.status_code == HTTPStatus.OK
+    assert get_resp.json()['title'] == ''
+
+
+@pytest.mark.django_db
+def test_publish_metadata_patch_requires_stage(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH publish-metadata fails when metadata stage output is missing."""
+    response = dmr_client.patch(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        data={'title': 'No stage'},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
 @pytest.mark.django_db(transaction=True)
 def test_publish_with_metadata_and_thumbnail(
     dmr_client: DMRClient,

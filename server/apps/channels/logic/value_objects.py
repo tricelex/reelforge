@@ -12,6 +12,13 @@ class ChannelSummaryPayload(msgspec.Struct, frozen=True):
     publish_mode: str
     is_active: bool
     gates: list[str]
+    niche_id: str | None
+    niche_angle: str
+    published_videos: int
+    active_runs: int
+    total_spend_usd: str
+    last_activity_at: str | None
+    youtube_status: str
 
 
 class ChannelDetailPayload(msgspec.Struct, frozen=True):
@@ -31,6 +38,16 @@ class ChannelDetailPayload(msgspec.Struct, frozen=True):
     is_active: bool
 
 
+class NicheCreatePayload(msgspec.Struct, frozen=True):
+    """Optional niche block on channel create."""
+
+    format_id: str | None = None
+    audience: str = ''
+    angle: str = ''
+    banned_topics: list[str] | None = None
+    lore_document: str = ''
+
+
 class ChannelCreatePayload(msgspec.Struct, frozen=True):
     """Input for creating a channel."""
 
@@ -44,6 +61,7 @@ class ChannelCreatePayload(msgspec.Struct, frozen=True):
     stability: float = 0.5
     similarity_boost: float = 0.75
     wpm: int = 158
+    niche: NicheCreatePayload | None = None
 
 
 class ChannelPatchPayload(msgspec.Struct, frozen=True):
@@ -129,6 +147,7 @@ class YouTubeConnectResultPayload(msgspec.Struct, frozen=True):
 class NicheConfigPayload(msgspec.Struct, frozen=True):
     """Niche configuration for a channel."""
 
+    id: str
     channel_id: str
     format_id: str | None
     audience: str

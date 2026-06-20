@@ -27,6 +27,7 @@ from server.common.openapi_tags import (
     CHARACTERS,
     CLIP_CONFIG,
     CLIP_POSTS,
+    CLIP_SOURCES,
     CLIPS,
     ENUMS,
     IDEAS,
@@ -85,6 +86,7 @@ def build_tagged_routers() -> tuple[Router, ...]:
         Router('api/', clips_api_urls.config_urlpatterns, tags=[CLIP_CONFIG]),
         Router('api/', clips_api_urls.post_urlpatterns, tags=[CLIP_POSTS]),
         Router('api/', clips_api_urls.campaign_urlpatterns, tags=[CAMPAIGNS]),
+        Router('api/', clips_api_urls.source_urlpatterns, tags=[CLIP_SOURCES]),
     )
 
 

@@ -104,11 +104,14 @@ def _apply_filters(
     *,
     status: str | None,
     channel_id: str | None,
+    niche_id: str | None,
 ) -> QuerySet['TopicIdea']:
     if status:
         qs = qs.filter(status=status)
     if channel_id:
         qs = qs.filter(channel_id=uuid.UUID(channel_id))
+    if niche_id:
+        qs = qs.filter(niche_id=uuid.UUID(niche_id))
     return qs
 
 
@@ -116,6 +119,7 @@ def list_ideas(
     *,
     status: str | None = None,
     channel_id: str | None = None,
+    niche_id: str | None = None,
     cursor: str | None = None,
     limit: int = 20,
 ) -> IdeaListPayload:
@@ -124,7 +128,12 @@ def list_ideas(
 
     page_size = min(max(limit, 1), _MAX_PAGE_SIZE)
     qs = TopicIdea.objects.order_by('-created_at', '-id')
-    qs = _apply_filters(qs, status=status, channel_id=channel_id)
+    qs = _apply_filters(
+        qs,
+        status=status,
+        channel_id=channel_id,
+        niche_id=niche_id,
+    )
     total = qs.count()
 
     if cursor:

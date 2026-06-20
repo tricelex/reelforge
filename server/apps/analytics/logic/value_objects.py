@@ -10,6 +10,18 @@ class RunCostPayload(msgspec.Struct, frozen=True):
     grand_total_usd: str
     by_stage: dict[str, str]
     by_provider: dict[str, str]
+    lines: list['CostLinePayload']
+
+
+class CostLinePayload(msgspec.Struct, frozen=True):
+    """One provider cost row."""
+
+    stage_key: str
+    provider: str
+    operation: str
+    units: str
+    unit_cost_usd: str
+    total_usd: str
 
 
 class ChannelRoiPayload(msgspec.Struct, frozen=True):
@@ -56,3 +68,43 @@ class DashboardPayload(msgspec.Struct, frozen=True):
     gates_waiting: int
     spend_today_usd: str
     publish_scheduled: list[PublishCalendarItemPayload]
+
+
+class DailySpendPayload(msgspec.Struct, frozen=True):
+    """Spend on one calendar day."""
+
+    date: str
+    amount_usd: str
+
+
+class CostSharePayload(msgspec.Struct, frozen=True):
+    """Cost share slice."""
+
+    label: str
+    amount_usd: str
+    pct: str
+
+
+class ProviderSpendPayload(msgspec.Struct, frozen=True):
+    """Spend grouped by provider."""
+
+    provider: str
+    amount_usd: str
+
+
+class KpiPayload(msgspec.Struct, frozen=True):
+    """Named KPI metric."""
+
+    key: str
+    label: str
+    value: str
+
+
+class AnalyticsSummaryPayload(msgspec.Struct, frozen=True):
+    """Cross-channel analytics summary."""
+
+    total_spend_usd: str
+    daily_spend: list[DailySpendPayload]
+    cost_share: list[CostSharePayload]
+    providers: list[ProviderSpendPayload]
+    kpis: list[KpiPayload]

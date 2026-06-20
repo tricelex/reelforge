@@ -93,3 +93,52 @@ def test_channel_stages_view_returns_200(
     assert resp.status_code == 200
     data = resp.json()
     assert 'stage_performance' in data
+
+
+@pytest.mark.django_db
+def test_analytics_summary_view_returns_200(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET /api/analytics/summary/ returns aggregate payload."""
+    resp = dmr_client.get(
+        reverse('api:analytics_api:analytics-summary'),
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert 'total_spend_usd' in data
+    assert 'daily_spend' in data
+    assert 'cost_share' in data
+    assert 'providers' in data
+    assert 'kpis' in data
+
+
+@pytest.mark.django_db
+def test_analytics_summary_channel_filter(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET summary accepts channel_id filter."""
+    resp = dmr_client.get(
+        reverse('api:analytics_api:analytics-summary')
+        + f'?days=7&channel_id={channel.id}',
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_analytics_summary_invalid_days_defaults(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET summary treats non-numeric days as the default window."""
+    resp = dmr_client.get(
+        reverse('api:analytics_api:analytics-summary') + '?days=not-a-number',
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert 'total_spend_usd' in resp.json()

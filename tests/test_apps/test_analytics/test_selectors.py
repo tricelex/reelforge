@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from server.apps.analytics.selectors import (
+    get_analytics_summary,
     get_channel_roi,
     get_run_cost_breakdown,
     get_stage_performance,
@@ -197,3 +198,18 @@ def test_get_stage_performance_avg_cost_per_exec_none() -> None:
         rows = get_stage_performance(channel_id)
 
     assert rows[0]['avg_cost_per_execution_usd'] is None
+
+
+@pytest.mark.django_db
+def test_get_analytics_summary_with_cost(
+    channel: Channel,
+    completed_run: PipelineRun,
+    cost_record: CostRecord,
+) -> None:
+    """get_analytics_summary aggregates cost records into share and KPIs."""
+    result = get_analytics_summary(days=30, channel_id=str(channel.id))
+    assert result['total_spend_usd'] == '0.0050'
+    assert len(result['cost_share']) == 1
+    assert result['cost_share'][0]['label'] == 'script'
+    assert len(result['providers']) == 1
+    assert len(result['kpis']) == 4

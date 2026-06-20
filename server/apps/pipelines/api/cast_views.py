@@ -11,12 +11,14 @@ from dmr.errors import ErrorType
 from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
+from server.apps.channels.character_selectors import get_character_session
 from server.apps.channels.logic.value_objects import (
     CharacterRoundCreatePayload,
     CharacterRoundResultPayload,
     CharacterSessionPayload,
 )
 from server.apps.core.auth import require_operator
+from server.apps.channels.models import CharacterGenerationSession
 from server.apps.pipelines.logic.value_objects import (
     RunCastApprovePayload,
     RunCastListPayload,
@@ -116,6 +118,60 @@ class RunCastSessionController(
             str(self.kwargs['run_id']),
             str(self.kwargs['cast_id']),
         )
+
+
+@final
+class RunCastSessionDetailController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Read in-run Studio session for a cast member."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> CharacterSessionPayload:
+        """Return session with rounds."""
+        run_id = str(self.kwargs['run_id'])
+        cast_id = str(self.kwargs['cast_id'])
+        session_id = str(self.kwargs['session_id'])
+        cast = RunCast.objects.select_related('character').get(
+            id=cast_id,
+            run_id=run_id,
+        )
+        session = CharacterGenerationSession.objects.get(id=session_id)
+        if str(session.character_id) != str(cast.character_id):
+            msg = 'Session not found'
+            raise CharacterGenerationSession.DoesNotExist(msg)
+        return get_character_session(session_id)
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(
+            exc,
+            (RunCast.DoesNotExist, CharacterGenerationSession.DoesNotExist),
+        ):
+            return self.to_error(
+                self.format_error(
+                    'Session not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

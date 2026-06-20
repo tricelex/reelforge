@@ -31,6 +31,16 @@ class TopicIdeaPatchPayload(msgspec.Struct, frozen=True):
     rejection_reason: str | None = None
 
 
+class TopicIdeaCreatePayload(msgspec.Struct, frozen=True):
+    """Manual backlog idea entry."""
+
+    channel_id: str
+    title: str
+    topic: str
+    niche_id: str | None = None
+    score: float = 0.0
+
+
 class IdeaGeneratePayload(msgspec.Struct, frozen=True):
     """Batch-generate ideas for a niche."""
 

@@ -380,3 +380,35 @@ class EarningListPayload(msgspec.Struct, frozen=True):
 
     items: list[EarningPayload]
     total: int
+
+
+class ClipSourcePayload(msgspec.Struct, frozen=True):
+    """Read representation of a clip source."""
+
+    id: str
+    run_id: str | None
+    title: str
+    status: str
+    duration_sec: float | None
+    candidate_count: int
+    campaign_id: str | None
+    source_type: str
+    url: str
+
+
+class ClipSourceCreatePayload(msgspec.Struct, frozen=True):
+    """Register a new clip source for probing."""
+
+    channel_id: str
+    source_type: str
+    url: str = ''
+    library_asset_id: str | None = None
+    campaign_id: str | None = None
+
+
+class ClipSourceListPayload(msgspec.Struct, frozen=True):
+    """Paginated clip source list."""
+
+    items: list[ClipSourcePayload]
+    next_cursor: str | None
+    total: int

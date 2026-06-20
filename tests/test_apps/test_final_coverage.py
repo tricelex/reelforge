@@ -14,6 +14,7 @@ from dmr.test import DMRClient
 from server.apps.channels.api.character_views import (
     CharacterDetailController,
     CharacterPromoteController,
+    CharacterSessionDetailController,
     CharacterSheetExpandController,
 )
 from server.apps.channels.api.views import (
@@ -34,13 +35,19 @@ from server.apps.clips.api.campaign_views import (
     CampaignDetailController,
     EarningCollectionController,
 )
-from server.apps.clips.models import ClipCampaign
+from server.apps.clips.api.source_views import (
+    ClipSourceCollectionController,
+    ClipSourceDetailController,
+)
+from server.apps.clips.models import ClipCampaign, ClipSource
 from server.apps.pipelines.api.cast_views import (
     RunCastApproveController,
     RunCastDetailController,
+    RunCastSessionDetailController,
 )
 from server.apps.pipelines.api.review_views import (
     RunPublishController,
+    RunPublishMetadataController,
     RunSceneDetailController,
 )
 from server.apps.pipelines.api.views import RunCollectionController
@@ -66,6 +73,10 @@ from server.apps.prompts.api.views import (
     PromptTemplateDetailController,
     PromptVersionActivateController,
     StoryFormatDetailController,
+)
+from server.apps.ideas.api.views import (
+    ChannelIdeaGenerateController,
+    IdeaCollectionController,
 )
 from server.common.storage import PresignUrlHelper
 
@@ -436,3 +447,104 @@ def test_character_list_status_filter(
     response = dmr_client.get(url, headers=auth_headers)
     assert response.status_code == HTTPStatus.OK
     assert response.json()['total'] == 1
+
+
+def test_clip_source_collection_handle_error_validation() -> None:
+    """Clip source create ValidationError returns 422."""
+    controller = ClipSourceCollectionController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ValidationError('bad source'),
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_clip_source_collection_handle_error_super() -> None:
+    """Clip source create unknown errors delegate to base handler."""
+    _super_handle_error(ClipSourceCollectionController(), RuntimeError('x'))
+
+
+def test_clip_source_detail_handle_error_not_found() -> None:
+    """Clip source detail maps DoesNotExist to 404."""
+    controller = ClipSourceDetailController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ClipSource.DoesNotExist(),
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_clip_source_detail_handle_error_validation() -> None:
+    """Clip source detail ValidationError returns 422."""
+    controller = ClipSourceDetailController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ValidationError('bad source'),
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_clip_source_detail_handle_error_super() -> None:
+    """Clip source detail unknown errors delegate to base handler."""
+    _super_handle_error(ClipSourceDetailController(), RuntimeError('x'))
+
+
+def test_campaign_detail_handle_error_validation() -> None:
+    """Campaign detail ValidationError returns 422."""
+    controller = CampaignDetailController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ValidationError('bad campaign'),
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_character_session_detail_handle_error_super() -> None:
+    """Character session detail unknown errors delegate to base handler."""
+    _super_handle_error(
+        CharacterSessionDetailController(),
+        RuntimeError('x'),
+    )
+
+
+def test_run_cast_session_detail_handle_error_super() -> None:
+    """Run cast session detail unknown errors delegate to base handler."""
+    _super_handle_error(
+        RunCastSessionDetailController(),
+        RuntimeError('x'),
+    )
+
+
+def test_publish_metadata_handle_error_super() -> None:
+    """Publish metadata unknown errors delegate to base handler."""
+    _super_handle_error(RunPublishMetadataController(), RuntimeError('x'))
+
+
+def test_idea_collection_handle_error_super() -> None:
+    """Idea collection unknown errors delegate to base handler."""
+    _super_handle_error(IdeaCollectionController(), RuntimeError('x'))
+
+
+def test_channel_idea_generate_handle_error_validation() -> None:
+    """Channel idea generate ValidationError returns 422."""
+    controller = ChannelIdeaGenerateController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(spec=Endpoint),
+        MagicMock(),
+        ValidationError('bad channel'),
+    )
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_channel_idea_generate_handle_error_super() -> None:
+    """Channel idea generate unknown errors delegate to base handler."""
+    _super_handle_error(ChannelIdeaGenerateController(), RuntimeError('x'))

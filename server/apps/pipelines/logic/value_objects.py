@@ -51,9 +51,10 @@ class RunCreatePayload(msgspec.Struct, frozen=True):
     """Input for creating a new pipeline run."""
 
     channel_id: str
-    topic: str
+    topic: str = ''
     blueprint_name: str | None = None
     source_idea_id: str | None = None
+    source_id: str | None = None
 
 
 class RunListPayload(msgspec.Struct, frozen=True):
@@ -274,3 +275,40 @@ class PublishResultPayload(msgspec.Struct, frozen=True):
     status: str
     gate_key: str
     publish_job_id: str | None = None
+
+
+class PublishMetadataPayload(msgspec.Struct, frozen=True):
+    """YouTube publish metadata for final review."""
+
+    title: str
+    description: str
+    tags: list[str]
+    category: str
+    thumbnail_asset_id: str | None
+
+
+class PublishMetadataPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for publish metadata."""
+
+    title: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    category: str | None = None
+    thumbnail_asset_id: str | None = None
+
+
+class GateWaitingPayload(msgspec.Struct, frozen=True):
+    """One run waiting at a review gate."""
+
+    run_id: str
+    gate_key: str
+    channel_name: str
+    topic: str
+    spent_usd: str
+
+
+class GateWaitingListPayload(msgspec.Struct, frozen=True):
+    """All runs waiting at armed gates."""
+
+    items: list[GateWaitingPayload]
+    total: int

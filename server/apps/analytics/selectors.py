@@ -10,6 +10,27 @@ def get_run_cost_breakdown(run_id: str) -> dict[str, object]:
 
     from server.apps.pipelines.models import CostRecord  # noqa: PLC0415
 
+    line_qs = (
+        CostRecord.objects
+        .filter(
+            stage_execution__run_id=UUID(run_id),
+            stage_execution__parent=None,
+        )
+        .select_related('stage_execution')
+        .order_by('stage_execution__stage_key', 'provider')
+    )
+    lines = [
+        {
+            'stage_key': row.stage_execution.stage_key,
+            'provider': row.provider,
+            'operation': row.operation,
+            'units': f'{row.units:.4f}',
+            'unit_cost_usd': f'{row.unit_cost_usd:.6f}',
+            'total_usd': f'{row.total_usd:.4f}',
+        }
+        for row in line_qs
+    ]
+
     records = (
         CostRecord.objects
         .filter(
@@ -37,6 +58,7 @@ def get_run_cost_breakdown(run_id: str) -> dict[str, object]:
         'grand_total_usd': f'{grand_total:.4f}',
         'by_stage': {k: f'{v:.4f}' for k, v in by_stage.items()},
         'by_provider': {k: f'{v:.4f}' for k, v in by_provider.items()},
+        'lines': lines,
     }
 
 
@@ -92,6 +114,126 @@ def get_stage_performance(channel_id: str) -> list[dict[str, object]]:
     ]
 
 
+def get_analytics_summary(
+    *,
+    days: int = 30,
+    channel_id: str | None = None,
+) -> dict[str, object]:
+    """Aggregate spend metrics for the analytics dashboard."""
+    import datetime as dt  # noqa: PLC0415
+
+    import django.utils.timezone as tz  # noqa: PLC0415
+    from django.db.models import Sum  # noqa: PLC0415
+    from django.db.models.functions import TruncDate  # noqa: PLC0415
+
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        CostRecord,
+        PipelineRun,
+        RunStatus,
+    )
+
+    window_days = min(max(days, 1), 365)
+    since = tz.now() - dt.timedelta(days=window_days)
+
+    cost_qs = CostRecord.objects.filter(created_at__gte=since)
+    run_qs = PipelineRun.objects.filter(created_at__gte=since)
+    if channel_id:
+        channel_uuid = UUID(channel_id)
+        cost_qs = cost_qs.filter(stage_execution__run__channel_id=channel_uuid)
+        run_qs = run_qs.filter(channel_id=channel_uuid)
+
+    total_spend = cost_qs.aggregate(total=Sum('total_usd')).get('total')
+    total_spend_dec = total_spend if total_spend is not None else Decimal(0)
+
+    daily_rows = (
+        cost_qs
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(amount=Sum('total_usd'))
+        .order_by('day')
+    )
+    daily_spend = [
+        {
+            'date': row['day'].isoformat(),
+            'amount_usd': f"{row['amount']:.4f}",
+        }
+        for row in daily_rows
+        if row['day'] is not None
+    ]
+
+    stage_rows = (
+        cost_qs
+        .values('stage_execution__stage_key')
+        .annotate(amount=Sum('total_usd'))
+        .order_by('-amount')
+    )
+    cost_share: list[dict[str, str]] = []
+    for row in stage_rows:
+        amount: Decimal = row['amount'] or Decimal(0)
+        pct = (
+            (amount / total_spend_dec * Decimal(100))
+            if total_spend_dec > 0
+            else Decimal(0)
+        )
+        cost_share.append(
+            {
+                'label': str(row['stage_execution__stage_key']),
+                'amount_usd': f'{amount:.4f}',
+                'pct': f'{pct:.2f}',
+            },
+        )
+
+    provider_rows = (
+        cost_qs
+        .values('provider')
+        .annotate(amount=Sum('total_usd'))
+        .order_by('-amount')
+    )
+    providers = [
+        {
+            'provider': str(row['provider']),
+            'amount_usd': f"{row['amount']:.4f}",
+        }
+        for row in provider_rows
+    ]
+
+    run_count = run_qs.count()
+    completed_count = run_qs.filter(status=RunStatus.COMPLETED).count()
+    avg_cost = (
+        total_spend_dec / Decimal(run_count) if run_count > 0 else Decimal(0)
+    )
+    kpis = [
+        {
+            'key': 'total_spend_usd',
+            'label': 'Total spend',
+            'value': f'{total_spend_dec:.4f}',
+        },
+        {
+            'key': 'run_count',
+            'label': 'Runs',
+            'value': str(run_count),
+        },
+        {
+            'key': 'completed_count',
+            'label': 'Completed runs',
+            'value': str(completed_count),
+        },
+        {
+            'key': 'avg_cost_usd',
+            'label': 'Avg cost per run',
+            'value': f'{avg_cost:.4f}',
+        },
+    ]
+
+    return {
+        'total_spend_usd': f'{total_spend_dec:.4f}',
+        'daily_spend': daily_spend,
+        'cost_share': cost_share,
+        'providers': providers,
+        'kpis': kpis,
+    }
+
+
 def get_dashboard() -> dict[str, object]:
     """Return operator dashboard aggregates from live tables."""
     from decimal import Decimal  # noqa: PLC0415
@@ -99,11 +241,12 @@ def get_dashboard() -> dict[str, object]:
     import django.utils.timezone as tz  # noqa: PLC0415
     from django.db.models import Sum  # noqa: PLC0415
 
+    from server.apps.pipelines.gate_selectors import (  # noqa: PLC0415
+        count_gates_waiting,
+    )
     from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineRun,
         RunStatus,
-        StageExecution,
-        StageStatus,
     )
     from server.apps.publishing.models import PublishJob  # noqa: PLC0415
 
@@ -118,10 +261,7 @@ def get_dashboard() -> dict[str, object]:
         status__in=in_flight_statuses,
     ).count()
 
-    gates_waiting = StageExecution.objects.filter(
-        parent=None,
-        status=StageStatus.RUNNING,
-    ).count()
+    gates_waiting = count_gates_waiting()
 
     today = tz.localdate()
     spend_today = PipelineRun.objects.filter(created_at__date=today).aggregate(

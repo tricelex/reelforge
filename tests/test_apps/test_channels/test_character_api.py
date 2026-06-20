@@ -130,6 +130,19 @@ def test_character_round_and_approve(
     assert session_response.status_code == HTTPStatus.CREATED
     session_id = session_response.json()['id']
 
+    get_session = dmr_client.get(
+        reverse(
+            'api:channels_api:character-session-detail',
+            kwargs={
+                'character_id': character.id,
+                'session_id': session_id,
+            },
+        ),
+        headers=auth_headers,
+    )
+    assert get_session.status_code == HTTPStatus.OK
+    assert get_session.json()['id'] == session_id
+
     mock_result = {'url': 'https://example.com/image.png', 'seed': 1}
     with (
         patch(
@@ -315,6 +328,20 @@ def test_run_cast_patch_session_and_round(
     assert session_response.status_code == HTTPStatus.CREATED
     session_id = session_response.json()['id']
 
+    get_session = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-cast-session-detail',
+            kwargs={
+                'run_id': run.id,
+                'cast_id': cast_member.id,
+                'session_id': session_id,
+            },
+        ),
+        headers=auth_headers,
+    )
+    assert get_session.status_code == HTTPStatus.OK
+    assert get_session.json()['character_id'] == str(cast_member.character_id)
+
     mock_result = {'url': 'https://example.com/cast.png', 'seed': 2}
     with (
         patch(
@@ -340,6 +367,67 @@ def test_run_cast_patch_session_and_round(
         )
     assert round_response.status_code == HTTPStatus.OK
     assert round_response.json()['candidate_asset_ids']
+
+
+@pytest.mark.django_db
+def test_character_session_detail_wrong_character_404(
+    dmr_client: DMRClient,
+    character: Character,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET session for wrong character returns 404."""
+    other = Character.objects.create(channel=channel, name='Other')
+    session_id = dmr_client.post(
+        reverse(
+            'api:channels_api:character-session-collection',
+            kwargs={'character_id': other.id},
+        ),
+        headers=auth_headers,
+    ).json()['id']
+    response = dmr_client.get(
+        reverse(
+            'api:channels_api:character-session-detail',
+            kwargs={
+                'character_id': character.id,
+                'session_id': session_id,
+            },
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_run_cast_session_detail_wrong_cast_404(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    cast_member: RunCast,
+    character: Character,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET cast session for mismatched cast returns 404."""
+    other = Character.objects.create(channel=run.channel, name='Other Cast')
+    other_cast = RunCast.objects.create(run=run, character=other, role='extra')
+    session_id = dmr_client.post(
+        reverse(
+            'api:pipelines_api:run-cast-session',
+            kwargs={'run_id': run.id, 'cast_id': other_cast.id},
+        ),
+        headers=auth_headers,
+    ).json()['id']
+    response = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-cast-session-detail',
+            kwargs={
+                'run_id': run.id,
+                'cast_id': cast_member.id,
+                'session_id': session_id,
+            },
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
 
 
 @pytest.mark.django_db
@@ -427,4 +515,50 @@ def test_run_cast_approve_404(
         headers=auth_headers,
     )
 
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_character_session_detail_not_found(
+    dmr_client: DMRClient,
+    character: Character,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET missing session returns 404."""
+    import uuid
+
+    response = dmr_client.get(
+        reverse(
+            'api:channels_api:character-session-detail',
+            kwargs={
+                'character_id': character.id,
+                'session_id': uuid.uuid4(),
+            },
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_run_cast_session_detail_not_found(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    cast_member: RunCast,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET missing cast session returns 404."""
+    import uuid
+
+    response = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-cast-session-detail',
+            kwargs={
+                'run_id': run.id,
+                'cast_id': cast_member.id,
+                'session_id': uuid.uuid4(),
+            },
+        ),
+        headers=auth_headers,
+    )
     assert response.status_code == HTTPStatus.NOT_FOUND

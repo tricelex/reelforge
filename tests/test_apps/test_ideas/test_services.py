@@ -333,6 +333,7 @@ def test_list_backlog_channel_filter_and_cursor(
     first_page = ideation_service.list_backlog(
         status=IdeaStatus.BACKLOG,
         channel_id=str(longform_channel.id),
+        niche_id=None,
         cursor=None,
         limit=2,
     )
@@ -343,6 +344,7 @@ def test_list_backlog_channel_filter_and_cursor(
     second_page = ideation_service.list_backlog(
         status=IdeaStatus.BACKLOG,
         channel_id=str(longform_channel.id),
+        niche_id=None,
         cursor=first_page.next_cursor,
         limit=2,
     )
@@ -368,6 +370,7 @@ def test_list_backlog_channel_filter_without_status(
     result = ideation_service.list_backlog(
         status=None,
         channel_id=str(longform_channel.id),
+        niche_id=None,
         cursor=None,
         limit=10,
     )

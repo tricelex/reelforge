@@ -12,7 +12,11 @@ from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.core.auth import require_operator
 from server.apps.pipelines.logic.value_objects import (
+    GateWaitingListPayload,
+    GateWaitingPayload,
     PreviewPayload,
+    PublishMetadataPatchPayload,
+    PublishMetadataPayload,
     PublishPayload,
     PublishResultPayload,
     SceneBreakdownPayload,
@@ -120,6 +124,60 @@ class RunPreviewController(
         return self.resolve(RunReviewService).get_preview(
             str(self.kwargs['run_id']),
         )
+
+
+@final
+class RunPublishMetadataController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Read and patch publish metadata for final review."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> PublishMetadataPayload:
+        """Return publish metadata."""
+        return self.resolve(RunReviewService).get_publish_metadata(
+            str(self.kwargs['run_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[PublishMetadataPatchPayload],
+    ) -> PublishMetadataPayload:
+        """Update publish metadata."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(RunReviewService).patch_publish_metadata(
+            str(self.kwargs['run_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ValidationError):
+            return self.to_error(
+                self.format_error(
+                    '; '.join(exc.messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+            )
+        if isinstance(exc, PipelineRun.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Run not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

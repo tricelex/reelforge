@@ -60,6 +60,23 @@ def test_campaign_crud(
 
 
 @pytest.mark.django_db
+def test_campaign_patch_not_found(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH missing campaign returns 404."""
+    response = dmr_client.patch(
+        reverse(
+            'api:clips:campaign-detail',
+            kwargs={'campaign_id': uuid.uuid4()},
+        ),
+        data={'status': CampaignStatus.ACTIVE},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_earning_create_and_list(
     dmr_client: DMRClient,
     channel: Channel,

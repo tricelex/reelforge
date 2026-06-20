@@ -7,8 +7,14 @@ from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.analytics import selectors
 from server.apps.analytics.logic.value_objects import (
+    AnalyticsSummaryPayload,
     ChannelRoiPayload,
+    CostLinePayload,
+    CostSharePayload,
+    DailySpendPayload,
     DashboardPayload,
+    KpiPayload,
+    ProviderSpendPayload,
     PublishCalendarItemPayload,
     RunCostPayload,
     StagePerformanceListPayload,
@@ -31,11 +37,29 @@ class RunCostController(
     def get(self) -> RunCostPayload:
         """Return run cost breakdown."""
         data = selectors.get_run_cost_breakdown(str(self.kwargs['run_id']))
+        lines_raw = data.get('lines', [])
+        lines = (
+            [
+                CostLinePayload(
+                    stage_key=str(row['stage_key']),
+                    provider=str(row['provider']),
+                    operation=str(row['operation']),
+                    units=str(row['units']),
+                    unit_cost_usd=str(row['unit_cost_usd']),
+                    total_usd=str(row['total_usd']),
+                )
+                for row in lines_raw
+                if isinstance(row, dict)
+            ]
+            if isinstance(lines_raw, list)
+            else []
+        )
         return RunCostPayload(
             run_id=str(data['run_id']),
             grand_total_usd=str(data['grand_total_usd']),
             by_stage=dict(data['by_stage']),  # type: ignore[call-overload]
             by_provider=dict(data['by_provider']),  # type: ignore[call-overload]
+            lines=lines,
         )
 
 
@@ -101,6 +125,67 @@ class ChannelStagesController(
                     ),
                 )
                 for row in rows
+            ],
+        )
+
+
+@final
+class AnalyticsSummaryController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Return cross-channel analytics summary."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> AnalyticsSummaryPayload:
+        """Return spend aggregates."""
+        days_raw = self.request.GET.get('days', '30')
+        channel_id = self.request.GET.get('channel_id')
+        try:
+            days = int(days_raw)
+        except ValueError:
+            days = 30
+        data = selectors.get_analytics_summary(
+            days=days,
+            channel_id=channel_id,
+        )
+        return AnalyticsSummaryPayload(
+            total_spend_usd=str(data['total_spend_usd']),
+            daily_spend=[
+                DailySpendPayload(
+                    date=str(row['date']),
+                    amount_usd=str(row['amount_usd']),
+                )
+                for row in data['daily_spend']  # type: ignore[union-attr]
+                if isinstance(row, dict)
+            ],
+            cost_share=[
+                CostSharePayload(
+                    label=str(row['label']),
+                    amount_usd=str(row['amount_usd']),
+                    pct=str(row['pct']),
+                )
+                for row in data['cost_share']  # type: ignore[union-attr]
+                if isinstance(row, dict)
+            ],
+            providers=[
+                ProviderSpendPayload(
+                    provider=str(row['provider']),
+                    amount_usd=str(row['amount_usd']),
+                )
+                for row in data['providers']  # type: ignore[union-attr]
+                if isinstance(row, dict)
+            ],
+            kpis=[
+                KpiPayload(
+                    key=str(row['key']),
+                    label=str(row['label']),
+                    value=str(row['value']),
+                )
+                for row in data['kpis']  # type: ignore[union-attr]
+                if isinstance(row, dict)
             ],
         )
 
