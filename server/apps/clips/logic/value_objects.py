@@ -386,6 +386,7 @@ class ClipSourcePayload(msgspec.Struct, frozen=True):
     """Read representation of a clip source."""
 
     id: str
+    channel_id: str
     run_id: str | None
     title: str
     status: str
@@ -394,6 +395,7 @@ class ClipSourcePayload(msgspec.Struct, frozen=True):
     campaign_id: str | None
     source_type: str
     url: str
+    error_message: str | None = None
 
 
 class ClipSourceCreatePayload(msgspec.Struct, frozen=True):

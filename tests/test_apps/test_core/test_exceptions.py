@@ -1,4 +1,13 @@
-from server.common.exceptions import FatalProviderError, RetryableProviderError
+from server.common.exceptions import (
+    ConflictError,
+    FatalProviderError,
+    RetryableProviderError,
+)
+
+
+def test_conflict_error_message() -> None:
+    err = ConflictError('Clip source already has a pipeline run')
+    assert str(err) == 'Clip source already has a pipeline run'
 
 
 def test_retryable_error_stores_provider_and_status() -> None:

@@ -7,16 +7,24 @@ import tempfile
 from pathlib import Path
 from typing import Any, override
 
+import structlog
+
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
 )
+from server.common.subprocess_errors import (
+    format_subprocess_failure,
+    raise_subprocess_failure,
+)
+
+logger = structlog.get_logger(__name__)
 
 
 def _extract_audio(video_path: str, audio_path: str) -> None:
     """Extract mono 16kHz WAV from video for WhisperX."""
-    subprocess.run(  # noqa: S603
+    result = subprocess.run(  # noqa: S603
         [  # noqa: S607
             'ffmpeg',
             '-y',
@@ -29,9 +37,12 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
             '-vn',
             audio_path,
         ],
-        check=True,
         capture_output=True,
+        text=True,
+        check=False,
     )
+    if result.returncode != 0:
+        raise_subprocess_failure('ffmpeg', result)
 
 
 def _run_whisperx(audio_path: str, language: str = 'en') -> dict[str, Any]:
@@ -56,7 +67,23 @@ def _run_whisperx(audio_path: str, language: str = 'en') -> dict[str, Any]:
         check=False,
     )
     if result.returncode != 0:
-        subprocess.run(base_cmd, capture_output=True, text=True, check=True)  # noqa: S603
+        logger.warning(
+            'clip_transcribe_diarize_failed',
+            stderr=(result.stderr or '')[:500],
+        )
+        fallback = subprocess.run(  # noqa: S603
+            base_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if fallback.returncode != 0:
+            diarize_msg = format_subprocess_failure(
+                'whisperx (diarize)',
+                result,
+            )
+            fallback_msg = format_subprocess_failure('whisperx', fallback)
+            raise RuntimeError(f'{diarize_msg}; fallback: {fallback_msg}')
     out_file = Path(out_dir) / (Path(audio_path).stem + '.json')
     result_data: dict[str, Any] = json.loads(out_file.read_text())
     return result_data
@@ -79,7 +106,11 @@ def _run_scene_detection(video_path: str) -> list[float]:
     """Return scene-cut timestamps in seconds; returns [] on any error."""
     try:
         return _try_scene_detect(video_path)
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            'clip_transcribe_scene_detect_failed',
+            error=str(exc),
+        )
         return []
 
 
@@ -133,10 +164,16 @@ class ClipTranscribeStage(Stage):
                 (tmp / 'source.mp4').write_bytes,
                 video_bytes,
             )
+            logger.info('clip_transcribe_extract_audio', run_id=str(ctx.run.id))
             await asyncio.to_thread(_extract_audio, video_path, audio_path)
+            logger.info('clip_transcribe_whisperx', run_id=str(ctx.run.id))
             transcript_json = await asyncio.to_thread(
                 _run_whisperx,
                 audio_path,
+            )
+            logger.info(
+                'clip_transcribe_scene_detect',
+                run_id=str(ctx.run.id),
             )
             scene_cuts = await asyncio.to_thread(
                 _run_scene_detection,

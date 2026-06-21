@@ -55,6 +55,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'unfold.contrib.filters',
     'unfold.contrib.forms',
     'unfold.contrib.inlines',
+    'django_json_widget',
     # django-admin:
     'django.contrib.admin',
     'django.contrib.admindocs',

@@ -190,6 +190,10 @@ def test_execute_stage_fails_after_exhausting_retries(
                 'server.apps.pipelines.services.executor.execute_stage_kiq',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
         ):
             await execute_stage_impl(str(exec_.id))
 

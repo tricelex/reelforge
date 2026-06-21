@@ -161,10 +161,7 @@ def test_promote_idea_creates_run(
     auth_headers: dict[str, str],
 ) -> None:
     """POST promote creates a pipeline run linked to the idea."""
-    with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
-    ):
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
         response = dmr_client.post(
             reverse(
                 'api:ideas_api:idea-promote',

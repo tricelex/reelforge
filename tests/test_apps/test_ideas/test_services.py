@@ -401,10 +401,7 @@ def test_promote_from_backlog(
         status=IdeaStatus.BACKLOG,
     )
 
-    with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
-    ):
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
         result = ideation_service.promote(str(idea.id))
 
     assert result.status == IdeaStatus.PROMOTED
@@ -434,10 +431,7 @@ def test_promote_success(
         status=IdeaStatus.APPROVED,
     )
 
-    with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
-    ):
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
         result = ideation_service.promote(str(idea.id))
 
     assert result.status == IdeaStatus.PROMOTED

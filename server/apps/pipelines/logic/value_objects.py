@@ -3,6 +3,14 @@
 import msgspec
 
 
+class StageErrorPayload(msgspec.Struct, frozen=True):
+    """Failure details for a stage execution attempt."""
+
+    type: str
+    message: str
+    retryable: bool
+
+
 class StageSummaryPayload(msgspec.Struct, frozen=True):
     """Summary of one stage execution attempt."""
 
@@ -12,6 +20,7 @@ class StageSummaryPayload(msgspec.Struct, frozen=True):
     cost_usd: str
     started_at: str | None
     finished_at: str | None
+    error: StageErrorPayload | None = None
 
 
 class RunSummaryPayload(msgspec.Struct, frozen=True):
@@ -45,6 +54,7 @@ class RunDetailPayload(msgspec.Struct, frozen=True):
     finished_at: str | None
     stages: list[StageSummaryPayload]
     source_idea_id: str | None = None
+    source_id: str | None = None
 
 
 class RunCreatePayload(msgspec.Struct, frozen=True):

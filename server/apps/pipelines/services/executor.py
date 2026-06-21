@@ -6,8 +6,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import django.utils.timezone as tz
+import structlog
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 
 from server.common.exceptions import FatalProviderError, RetryableProviderError
+
+logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from server.apps.pipelines.models import StageExecution
@@ -36,10 +41,20 @@ async def execute_stage_kiq(execution_id: str) -> None:
     await execute_stage.kiq(execution_id)
 
 
+def _execution_log_fields(execution: 'StageExecution') -> dict[str, Any]:
+    return {
+        'run_id': str(execution.run_id),
+        'execution_id': str(execution.id),
+        'stage_key': execution.stage_key,
+        'attempt': execution.attempt,
+    }
+
+
 async def _mark_running(execution: 'StageExecution') -> None:
     execution.status = 'RUNNING'
     execution.started_at = tz.now()
     await execution.asave(update_fields=['status', 'started_at'])
+    logger.info('stage_started', **_execution_log_fields(execution))
 
 
 async def _complete(
@@ -54,9 +69,14 @@ async def _complete(
     await execution.asave(
         update_fields=['status', 'output', 'cost_usd', 'finished_at'],
     )
+    logger.info('stage_succeeded', **_execution_log_fields(execution))
 
 
 async def _fail(execution: 'StageExecution', error: Exception) -> None:
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        publish_sse,
+    )
+
     execution.status = 'FAILED'
     execution.error = {
         'type': type(error).__name__,
@@ -65,6 +85,26 @@ async def _fail(execution: 'StageExecution', error: Exception) -> None:
     }
     execution.finished_at = tz.now()
     await execution.asave(update_fields=['status', 'error', 'finished_at'])
+
+    log_fields = _execution_log_fields(execution)
+    log_fields['error'] = execution.error
+    logger.error('stage_failed', **log_fields)
+
+    span = trace.get_current_span()
+    span.record_exception(error)
+    span.set_status(StatusCode.ERROR, str(error))
+
+    await publish_sse(
+        str(execution.run_id),
+        {
+            'type': 'stage.failed',
+            'stage_key': execution.stage_key,
+            'attempt': execution.attempt,
+            'error_type': execution.error['type'],
+            'error_message': execution.error['message'],
+            'retryable': execution.error['retryable'],
+        },
+    )
 
 
 async def _mark_needs_input(
@@ -270,7 +310,11 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
                 parent=execution,
             ).aexists()
             if not already_fanned:
-                await _handle_fan_out(execution, shard_inputs)
+                if not shard_inputs:
+                    await _complete(execution, {'shards': []}, cost=Decimal(0))
+                    await kick_advance(execution)
+                else:
+                    await _handle_fan_out(execution, shard_inputs)
             return
 
     await _run_stage(execution, stage_cls, ctx)

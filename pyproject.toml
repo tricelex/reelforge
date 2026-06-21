@@ -30,6 +30,7 @@ django-permissions-policy = "^4.27"
 django-stubs-ext = "^6.0"
 django-modern-rest = { version = "^0.10.0", extras = ["msgspec", "pydantic", "attrs", "jwt", "openapi"] }
 django-unfold = ">=0.40"
+django-json-widget = "^2.0"
 pygments = "^2.19"
 
 psycopg2-binary = "^2.9"
@@ -49,6 +50,8 @@ fal-client = "^1.0"
 elevenlabs = "^2.0"
 exa-py = "^2.0"
 pillow = "^11.0"
+whisperx = "^3.3"
+scenedetect = { version = "^0.6", extras = ["opencv"] }
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"

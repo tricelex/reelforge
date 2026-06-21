@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import pydantic
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
 
@@ -40,7 +40,7 @@ class ClipsOutput(pydantic.BaseModel):
 
 
 clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
-    OpenAIModel(DEFAULT_LLM_MODEL),
+    OpenAIChatModel(DEFAULT_LLM_MODEL),
     output_type=ClipsOutput,
     system_prompt=(
         'You are an expert short-form video editor. '

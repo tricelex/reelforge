@@ -15,8 +15,15 @@ from server.apps.clips.logic.value_objects import (
     ClipSourcePayload,
 )
 from server.apps.clips.models import ClipCampaign, ClipSource
-from server.apps.clips.source_selectors import get_clip_source, list_clip_sources
-from server.apps.clips.tasks import _probe_clip_source_sync, probe_clip_source_task
+from server.apps.clips.source_selectors import (
+    get_clip_source,
+    list_clip_sources,
+)
+from server.apps.clips.tasks import (
+    _probe_clip_source_sync,
+    probe_clip_source_task,
+)
+from server.common.exceptions import ConflictError
 from server.common.taskiq_sender import kiq_task
 
 
@@ -26,7 +33,8 @@ def _require_remote_url(source_type: str, url: str) -> None:
         raise ValidationError(msg)
 
 
-def _resolve_topic(source: ClipSource) -> str:
+def resolve_ingest_key(source: ClipSource) -> str:
+    """Return the ingest key (URL or library asset id) for a clip source."""
     if source.source_type == ClipSourceType.UPLOAD:
         if source.library_asset_id is None:
             msg = 'Upload source missing library_asset_id'
@@ -36,6 +44,17 @@ def _resolve_topic(source: ClipSource) -> str:
         msg = 'Source URL is required'
         raise ValidationError(msg)
     return source.url
+
+
+def display_topic_for_source(source: ClipSource) -> str:
+    """Return a human-readable topic for a clip source run."""
+    if source.title:
+        return source.title
+    if source.url:
+        return source.url
+    if source.library_asset_id:
+        return str(source.library_asset_id)
+    return 'Untitled clip source'
 
 
 @final
@@ -127,9 +146,41 @@ class ClipSourceService:
             kiq_task(probe_clip_source_task, str(source.id))
         return get_clip_source(str(source.id))
 
-    def link_run(self, source_id: str, run_id: str) -> None:
+    def prepare_for_run(
+        self,
+        *,
+        channel_id: str,
+        source_id: str,
+    ) -> ClipSource:
+        """Validate and lock a clip source before starting a pipeline run.
+
+        Caller must hold ``transaction.atomic()`` so the row lock persists
+        through run creation and ``link_run``.
+        """
+        try:
+            source = ClipSource.objects.select_for_update().get(
+                id=uuid.UUID(source_id),
+            )
+        except ObjectDoesNotExist as exc:
+            msg = f'Clip source not found: {source_id}'
+            raise ValidationError(msg) from exc
+
+        if str(source.channel_id) != channel_id:
+            msg = 'source_id does not belong to channel_id'
+            raise ValidationError(msg)
+
+        if source.status != ClipSourceStatus.READY:
+            msg = f'Clip source is not ready: {source.status}'
+            raise ValidationError(msg)
+
+        if source.run_id is not None:
+            msg = 'Clip source already has a pipeline run'
+            raise ConflictError(msg)
+
+        return source
+
+    def link_run(self, source: ClipSource, run_id: str) -> None:
         """Associate a pipeline run with a clip source."""
-        source = ClipSource.objects.get(id=uuid.UUID(source_id))
         source.run_id = uuid.UUID(run_id)
         source.save(update_fields=['run_id', 'updated_at'])
 
@@ -139,7 +190,7 @@ class ClipSourceService:
         if source.status != ClipSourceStatus.READY:
             msg = f'Clip source is not ready: {source.status}'
             raise ValidationError(msg)
-        return _resolve_topic(source)
+        return resolve_ingest_key(source)
 
     def probe_now(self, source_id: str) -> ClipSourcePayload:
         """Synchronous probe helper for tests."""

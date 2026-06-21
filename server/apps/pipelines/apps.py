@@ -13,4 +13,4 @@ class PipelinesConfig(AppConfig):
     @override
     def ready(self) -> None:
         """Register all pipeline stage classes."""
-        import server.apps.pipelines.stages.visual_prompts  # noqa: F401
+        import server.apps.pipelines.stages  # noqa: F401

@@ -23,6 +23,7 @@ def _source_url(source: ClipSource) -> str:
 def _to_payload(source: ClipSource, *, candidate_count: int) -> ClipSourcePayload:
     return ClipSourcePayload(
         id=str(source.id),
+        channel_id=str(source.channel_id),
         run_id=str(source.run_id) if source.run_id else None,
         title=source.title,
         status=source.status,
@@ -31,6 +32,7 @@ def _to_payload(source: ClipSource, *, candidate_count: int) -> ClipSourcePayloa
         campaign_id=str(source.campaign_id) if source.campaign_id else None,
         source_type=source.source_type,
         url=_source_url(source),
+        error_message=source.error_message or None,
     )
 
 

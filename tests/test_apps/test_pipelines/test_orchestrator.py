@@ -827,3 +827,81 @@ def test_advance_pipeline_armed_gate_with_unfinished_deps_is_not_parked():
         run=run,
         stage_key='final_gate',
     ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_pipeline_logs_failed_stage_details(
+    channel,
+) -> None:
+    """pipeline_advanced includes failure details when a stage is FAILED."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+
+    bp = PipelineBlueprint.objects.create(
+        name='fail_log_v1',
+        kind=PipelineKind.CLIPPING,
+        graph={
+            'stages': [
+                {'key': 'clip_ingest', 'depends_on': []},
+                {'key': 'clip_transcribe', 'depends_on': ['clip_ingest']},
+            ],
+        },
+        is_active=True,
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='failure logging test',
+        status=RunStatus.RUNNING,
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'asset_id': 'asset-1'},
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='clip_transcribe',
+        status=StageStatus.FAILED,
+        attempt=0,
+        error={
+            'type': 'RuntimeError',
+            'message': 'whisperx failed: module not found',
+            'retryable': False,
+        },
+    )
+
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.logger',
+        ) as mock_logger,
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    mock_logger.info.assert_called()
+    log_kwargs = mock_logger.info.call_args.kwargs
+    assert log_kwargs['failures'][0]['stage_key'] == 'clip_transcribe'
+    assert 'whisperx failed' in log_kwargs['failures'][0]['message']

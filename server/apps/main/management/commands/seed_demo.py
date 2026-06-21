@@ -862,9 +862,9 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _seed_prompt_templates(self) -> None:
-        # from server.apps.generation.logic.constants import (  # noqa: PLC0415
-        #     DEFAULT_LLM_MODEL,
-        # )
+        from server.apps.generation.logic.constants import (  # noqa: PLC0415
+            DEFAULT_LLM_MODEL,
+        )
         from server.apps.prompts.models import (  # noqa: PLC0415
             PromptTemplate,
             PromptVersion,

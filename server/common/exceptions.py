@@ -16,6 +16,14 @@ class RetryableProviderError(Exception):
         self.status_code = status_code
 
 
+class ConflictError(Exception):
+    """Resource state conflict — e.g. clip source already has a run."""
+
+    def __init__(self, message: str) -> None:
+        """Initialise with a human-readable conflict message."""
+        super().__init__(message)
+
+
 class FatalProviderError(Exception):
     """Fatal provider error — requires human intervention to resolve."""
 

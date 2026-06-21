@@ -5,10 +5,13 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 import django.utils.timezone as tz
+import structlog
 from asgiref.sync import sync_to_async
 from django.db import transaction
 
 from server.common.redis_client import publish_pipeline_event
+
+logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from server.apps.pipelines.models import PipelineRun
@@ -87,6 +90,11 @@ def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
     )
     run.status = RunStatus.AWAITING_REVIEW
     run.save(update_fields=['status'])
+    logger.info(
+        'pipeline_gate_parked',
+        run_id=str(run.id),
+        gate_key=stage_key,
+    )
 
 
 def _create_queued_stage_sync(
@@ -209,6 +217,11 @@ def _try_enqueue_stage_sync(
     )
 
     if key not in STAGE_REGISTRY:
+        logger.warning(
+            'pipeline_stage_not_registered',
+            run_id=str(run.id),
+            stage_key=key,
+        )
         return
     deps: list[str] = node.get('depends_on', [])
     if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
@@ -347,6 +360,40 @@ async def approve_gate_impl(
     await advance_pipeline_impl(run_id)
 
 
+def _get_failed_stage_summaries(run_id: str) -> list[dict[str, Any]]:
+    """Return latest failure details per stage_key for logging."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    failures: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    qs = StageExecution.objects.filter(
+        run_id=run_id,
+        parent=None,
+        status=StageStatus.FAILED,
+    ).order_by('stage_key', '-attempt')
+    for exec_ in qs:
+        if exec_.stage_key in seen:
+            continue
+        seen.add(exec_.stage_key)
+        err = exec_.error or {}
+        failures.append({
+            'stage_key': exec_.stage_key,
+            'attempt': exec_.attempt,
+            'type': err.get('type'),
+            'message': err.get('message'),
+        })
+    return failures
+
+
+_get_failed_stage_summaries_async = sync_to_async(
+    _get_failed_stage_summaries,
+    thread_sensitive=True,
+)
+
+
 async def advance_pipeline_impl(run_id: str) -> None:
     """Re-evaluate the DAG and enqueue any newly-ready stages.
 
@@ -354,6 +401,16 @@ async def advance_pipeline_impl(run_id: str) -> None:
     The inner DAG evaluation runs in a sync thread with SELECT FOR UPDATE.
     """
     to_enqueue, states = await _advance_in_transaction_async(run_id)
+
+    log_kwargs: dict[str, Any] = {
+        'run_id': run_id,
+        'enqueued_count': len(to_enqueue),
+        'states': dict(states),
+    }
+    if 'FAILED' in states.values():
+        log_kwargs['failures'] = await _get_failed_stage_summaries_async(run_id)
+
+    logger.info('pipeline_advanced', **log_kwargs)
 
     for exec_id in to_enqueue:
         await execute_stage_kiq(exec_id)

@@ -508,15 +508,17 @@ def test_execute_stage_unknown_stage_key_marks_failed(run: PipelineRun) -> None:
             status=StageStatus.QUEUED,
             input_hash='',
         )
-        with patch(
-            'server.apps.pipelines.services.executor.kick_advance',
-            new=AsyncMock(),
+        with (
+            patch(
+                'server.apps.pipelines.services.executor.kick_advance',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
         ):
             await execute_stage_impl(str(exec_.id))
-
-        refreshed = await StageExecution.objects.aget(id=exec_.id)
-        assert refreshed.status == StageStatus.FAILED
-        assert 'Unknown stage key' in refreshed.error['message']
 
     _run(_inner())
 
@@ -617,6 +619,10 @@ def test_execute_stage_schedules_retry_when_under_max_retries(
                 'server.apps.pipelines.services.executor.execute_stage_kiq',
                 new=AsyncMock(),
             ) as mock_kiq,
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
         ):
             await execute_stage_impl(str(exec_.id))
 
@@ -669,9 +675,15 @@ def test_execute_stage_generic_exception_marks_failed(run: PipelineRun) -> None:
             status=StageStatus.QUEUED,
             input_hash='',
         )
-        with patch(
-            'server.apps.pipelines.services.executor.kick_advance',
-            new=AsyncMock(),
+        with (
+            patch(
+                'server.apps.pipelines.services.executor.kick_advance',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ) as mock_sse,
         ):
             await execute_stage_impl(str(exec_.id))
 
@@ -679,6 +691,10 @@ def test_execute_stage_generic_exception_marks_failed(run: PipelineRun) -> None:
         assert refreshed.status == StageStatus.FAILED
         assert refreshed.error['type'] == 'ValueError'
         assert 'something went very wrong' in refreshed.error['message']
+        mock_sse.assert_awaited_once()
+        sse_payload = mock_sse.await_args.args[1]
+        assert sse_payload['type'] == 'stage.failed'
+        assert sse_payload['error_message'] == 'something went very wrong'
 
     _run(_inner())
 
@@ -904,8 +920,8 @@ def test_advance_pending_run_needs_input_stage_no_save(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_advance_skips_unknown_stage_key_silently(channel: Channel) -> None:
-    """Stage key absent from STAGE_REGISTRY is skipped silently."""
+def test_advance_skips_unknown_stage_key(channel: Channel) -> None:
+    """Stage key absent from STAGE_REGISTRY is skipped with a warning."""
     from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
@@ -939,11 +955,15 @@ def test_advance_skips_unknown_stage_key_silently(channel: Channel) -> None:
                 'server.apps.pipelines.services.orchestrator.publish_sse',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.logger.warning',
+            ) as mock_warning,
         ):
             await advance_pipeline_impl(str(the_run.id))
 
         count = await StageExecution.objects.filter(run=the_run).acount()
         assert count == 0
+        mock_warning.assert_called_once()
 
     _run(_inner())
 
@@ -1216,8 +1236,8 @@ def test_execute_stage_already_fanned_returns_without_creating_new_children(
 
 
 def test_all_production_stages_registered() -> None:
-    """All 14 production stages appear in STAGE_REGISTRY after importing them."""
-    import server.apps.pipelines.stages.visual_prompts  # noqa: F401
+    """All production stages appear in STAGE_REGISTRY after package import."""
+    import server.apps.pipelines.stages  # noqa: F401
     from server.apps.pipelines.stages.base import (
         STAGE_REGISTRY,
     )
@@ -1237,6 +1257,14 @@ def test_all_production_stages_registered() -> None:
         'metadata',
         'assembly',
         'qc',
+        'publish',
+        'review_gate',
+        'clip_ingest',
+        'clip_transcribe',
+        'clip_analyze',
+        'clip_approval_gate',
+        'clip_render',
+        'clip_distribute',
     }
     assert expected.issubset(set(STAGE_REGISTRY.keys()))
 

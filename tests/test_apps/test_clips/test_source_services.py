@@ -7,6 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.db import transaction
+
+from server.common.exceptions import ConflictError
 
 from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 from server.apps.channels.models import Channel, ChannelKind
@@ -15,7 +18,12 @@ from server.apps.clips.logic.value_objects import ClipSourceCreatePayload
 from server.apps.clips.models import ClipCampaign, ClipSource
 from server.apps.clips.source_probe import probe_youtube_or_rss
 from server.apps.clips.source_selectors import list_clip_sources
-from server.apps.clips.source_services import ClipSourceService, _resolve_topic
+from server.apps.clips.source_services import (
+    ClipSourceService,
+    display_topic_for_source,
+    resolve_ingest_key,
+)
+from server.common.exceptions import ConflictError
 from server.apps.clips.tasks import _probe_clip_source_sync
 
 
@@ -190,7 +198,7 @@ def test_create_clip_source_validation_errors(
 
 @pytest.mark.django_db
 def test_resolve_topic_and_run_helpers(clipping_channel: Channel) -> None:
-    """resolve_topic_for_run and link_run enforce readiness."""
+    """prepare_for_run and link_run enforce readiness and channel match."""
     source = ClipSource.objects.create(
         channel=clipping_channel,
         source_type=ClipSourceType.YOUTUBE,
@@ -199,11 +207,14 @@ def test_resolve_topic_and_run_helpers(clipping_channel: Channel) -> None:
     )
     service = ClipSourceService()
     with pytest.raises(ValidationError, match='not ready'):
-        service.resolve_topic_for_run(str(source.id))
+        with transaction.atomic():
+            service.prepare_for_run(
+                channel_id=str(clipping_channel.id),
+                source_id=str(source.id),
+            )
 
     source.status = ClipSourceStatus.READY
     source.save(update_fields=['status'])
-    assert service.resolve_topic_for_run(str(source.id)) == source.url
     from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
 
     blueprint = PipelineBlueprint.objects.create(
@@ -217,19 +228,24 @@ def test_resolve_topic_and_run_helpers(clipping_channel: Channel) -> None:
         blueprint_snapshot={'stages': []},
         topic=source.url,
     )
-    service.link_run(str(source.id), str(run.id))
+    with transaction.atomic():
+        locked = service.prepare_for_run(
+            channel_id=str(clipping_channel.id),
+            source_id=str(source.id),
+        )
+        service.link_run(locked, str(run.id))
 
 
 @pytest.mark.django_db
-def test_resolve_topic_upload_missing_asset(clipping_channel: Channel) -> None:
-    """_resolve_topic validates upload sources."""
+def test_resolve_ingest_key_upload_missing_asset(clipping_channel: Channel) -> None:
+    """resolve_ingest_key validates upload sources."""
     source = ClipSource.objects.create(
         channel=clipping_channel,
         source_type=ClipSourceType.UPLOAD,
         status=ClipSourceStatus.READY,
     )
     with pytest.raises(ValidationError, match='library_asset_id'):
-        _resolve_topic(source)
+        resolve_ingest_key(source)
 
 
 def test_probe_youtube_or_rss() -> None:
@@ -246,8 +262,8 @@ def test_probe_youtube_or_rss() -> None:
 
 
 @pytest.mark.django_db
-def test_resolve_topic_missing_url(clipping_channel: Channel) -> None:
-    """_resolve_topic requires URL for remote sources."""
+def test_resolve_ingest_key_missing_url(clipping_channel: Channel) -> None:
+    """resolve_ingest_key requires URL for remote sources."""
     source = ClipSource.objects.create(
         channel=clipping_channel,
         source_type=ClipSourceType.YOUTUBE,
@@ -255,7 +271,7 @@ def test_resolve_topic_missing_url(clipping_channel: Channel) -> None:
         status=ClipSourceStatus.READY,
     )
     with pytest.raises(ValidationError, match='Source URL is required'):
-        _resolve_topic(source)
+        resolve_ingest_key(source)
 
 
 @pytest.mark.django_db
@@ -293,6 +309,94 @@ def test_probe_clip_source_sync_failure(clipping_channel: Channel) -> None:
     source.refresh_from_db()
     assert source.status == ClipSourceStatus.FAILED
     assert 'probe failed' in source.error_message
+
+
+def test_display_topic_for_source_fallbacks(clipping_channel: Channel) -> None:
+    """display_topic_for_source falls back to url, asset id, then default."""
+    url_source = ClipSource(
+        channel=clipping_channel,
+        source_type=ClipSourceType.YOUTUBE,
+        url='https://example.com/v',
+        title='',
+    )
+    assert display_topic_for_source(url_source) == 'https://example.com/v'
+
+    asset_id = uuid.uuid4()
+    upload_source = ClipSource(
+        channel=clipping_channel,
+        source_type=ClipSourceType.UPLOAD,
+        library_asset_id=asset_id,
+        title='',
+        url='',
+    )
+    assert display_topic_for_source(upload_source) == str(asset_id)
+
+    empty_source = ClipSource(
+        channel=clipping_channel,
+        source_type=ClipSourceType.UPLOAD,
+        title='',
+        url='',
+    )
+    assert display_topic_for_source(empty_source) == 'Untitled clip source'
+
+
+@pytest.mark.django_db
+def test_prepare_for_run_rejects_missing_source(clipping_channel: Channel) -> None:
+    """prepare_for_run raises ValidationError for unknown source."""
+    service = ClipSourceService()
+    with pytest.raises(ValidationError, match='Clip source not found'):
+        with transaction.atomic():
+            service.prepare_for_run(
+                channel_id=str(clipping_channel.id),
+                source_id=str(uuid.uuid4()),
+            )
+
+
+@pytest.mark.django_db
+def test_resolve_topic_for_run_returns_ingest_key(clipping_channel: Channel) -> None:
+    """resolve_topic_for_run keeps ingest-key behavior for legacy callers."""
+    source = ClipSource.objects.create(
+        channel=clipping_channel,
+        source_type=ClipSourceType.YOUTUBE,
+        url='https://example.com/v',
+        status=ClipSourceStatus.READY,
+    )
+    service = ClipSourceService()
+    assert service.resolve_topic_for_run(str(source.id)) == source.url
+
+
+@pytest.mark.django_db
+def test_prepare_for_run_rejects_existing_run(clipping_channel: Channel) -> None:
+    """prepare_for_run raises ConflictError when source already linked."""
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+
+    source = ClipSource.objects.create(
+        channel=clipping_channel,
+        source_type=ClipSourceType.UPLOAD,
+        library_asset_id=uuid.uuid4(),
+        title='Linked',
+        status=ClipSourceStatus.READY,
+    )
+    blueprint = PipelineBlueprint.objects.create(
+        name='conflict_blueprint',
+        kind=PipelineKind.CLIPPING,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=clipping_channel,
+        blueprint=blueprint,
+        blueprint_snapshot={'stages': []},
+        topic='Linked',
+    )
+    source.run_id = run.id
+    source.save(update_fields=['run_id'])
+    service = ClipSourceService()
+    with pytest.raises(ConflictError, match='already has a pipeline run'):
+        with transaction.atomic():
+            service.prepare_for_run(
+                channel_id=str(clipping_channel.id),
+                source_id=str(source.id),
+            )
 
 
 @pytest.mark.django_db

@@ -73,10 +73,7 @@ def test_create_run_uses_channel_default_blueprint(
     channel.default_blueprint_name = alt.name
     channel.save(update_fields=['default_blueprint_name'])
 
-    with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
-    ):
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
         response = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -101,8 +98,7 @@ def test_create_run(
 ) -> None:
     """POST /api/runs/ creates a run and returns detail."""
     with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
+        'server.apps.pipelines.services.pipeline_run.kiq_task',
     ) as mock_kiq:
         response = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
@@ -253,8 +249,7 @@ def test_create_run_idempotency(
     cache_key = f'idem-run-{uuid.uuid4()}'
     headers = {**auth_headers, 'Idempotency-Key': cache_key}
     with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
+        'server.apps.pipelines.services.pipeline_run.kiq_task',
     ) as mock_kiq:
         first = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
@@ -294,8 +289,7 @@ def test_pipeline_run_service_idempotency(
     )
     idem_key = f'svc-idem-{uuid.uuid4()}'
     with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
+        'server.apps.pipelines.services.pipeline_run.kiq_task',
     ) as mock_kiq:
         first = service.create(payload, idempotency_key=idem_key)
         second = service.create(payload, idempotency_key=idem_key)
@@ -412,6 +406,37 @@ def test_list_runs_filters_and_cursor(
 
 
 @pytest.mark.django_db
+def test_get_run_detail_includes_stage_error(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET detail exposes error payload for failed stages."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='clip_transcribe',
+        status=StageStatus.FAILED,
+        attempt=0,
+        error={
+            'type': 'RuntimeError',
+            'message': 'whisperx failed: module not found',
+            'retryable': False,
+        },
+    )
+
+    response = dmr_client.get(
+        reverse('api:pipelines_api:run-detail', kwargs={'run_id': run.id}),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    stage = response.json()['stages'][0]
+    assert stage['error']['type'] == 'RuntimeError'
+    assert 'whisperx failed' in stage['error']['message']
+    assert stage['error']['retryable'] is False
+
+
+@pytest.mark.django_db
 def test_get_run_detail_includes_latest_stage_attempts(
     dmr_client: DMRClient,
     run: PipelineRun,
@@ -478,10 +503,7 @@ def test_rerun_stage(
     )
 
     with (
-        patch(
-            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
-            new_callable=AsyncMock,
-        ) as mock_kiq,
+        patch('server.apps.pipelines.services.pipeline_run.kiq_task') as mock_kiq,
         patch(
             'server.apps.pipelines.services.orchestrator.publish_sse',
             new_callable=AsyncMock,

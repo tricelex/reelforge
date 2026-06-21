@@ -9,6 +9,7 @@ import attrs
 import django.utils.timezone as tz
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import transaction
 
 from server.apps.pipelines.blueprint_validation import resolve_blueprint_name
 from server.apps.pipelines.logic.events import PipelineRunCreated
@@ -18,7 +19,9 @@ from server.apps.pipelines.logic.value_objects import (
     SseTokenPayload,
 )
 from server.apps.pipelines.selectors import get_run_detail
+from server.apps.pipelines.tasks import advance_pipeline, execute_stage
 from server.common.events import EventBus
+from server.common.taskiq_sender import kiq_task
 
 _IDEMPOTENCY_TTL = 60 * 60 * 24
 _SSE_TOKEN_MAX_AGE = 300
@@ -54,7 +57,7 @@ class PipelineRunService:
         self._events.emit(
             PipelineRunCreated(run_id=run_id, channel_id=payload.channel_id),
         )
-        asyncio.run(self._kick_advance(run_id))
+        kiq_task(advance_pipeline, run_id)
         return get_run_detail(run_id)
 
     def cancel(self, run_id: str) -> RunDetailPayload:
@@ -100,21 +103,19 @@ class PipelineRunService:
         """Mark a stage stale and enqueue a fresh attempt."""
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _rerun_stage_sync,
-            execute_stage_kiq,
             publish_sse,
         )
 
         to_enqueue = _rerun_stage_sync(run_id, stage_key, shard_indices)
 
-        async def _enqueue() -> None:
-            for exec_id in to_enqueue:
-                await execute_stage_kiq(exec_id)
-            await publish_sse(
+        for exec_id in to_enqueue:
+            kiq_task(execute_stage, exec_id)
+        asyncio.run(
+            publish_sse(
                 run_id,
                 {'type': 'stage.rerun', 'stage_key': stage_key},
-            )
-
-        asyncio.run(_enqueue())
+            ),
+        )
         return get_run_detail(run_id)
 
     def issue_sse_token(self, run_id: str) -> SseTokenPayload:
@@ -149,9 +150,13 @@ class PipelineRunService:
         return unsigned == run_id
 
     def _create_run_sync(self, payload: RunCreatePayload) -> str:
-        from server.apps.channels.models import Channel  # noqa: PLC0415
+        from server.apps.channels.models import (  # noqa: PLC0415
+            Channel,
+            ChannelKind,
+        )
         from server.apps.clips.source_services import (  # noqa: PLC0415
             ClipSourceService,
+            display_topic_for_source,
         )
         from server.apps.pipelines.models import (  # noqa: PLC0415
             PipelineBlueprint,
@@ -166,11 +171,14 @@ class PipelineRunService:
             raise ValidationError(msg) from exc
 
         topic = payload.topic
+        prompt_snapshot: dict[str, str] = {}
         source_service = ClipSourceService()
         if payload.source_id:
-            topic = source_service.resolve_topic_for_run(payload.source_id)
             if payload.topic:
                 msg = 'Provide either topic or source_id, not both'
+                raise ValidationError(msg)
+            if channel.kind != ChannelKind.CLIPPING:
+                msg = 'source_id requires a CLIPPING channel'
                 raise ValidationError(msg)
         elif not topic:
             msg = 'topic or source_id is required'
@@ -186,11 +194,39 @@ class PipelineRunService:
             is_active=True,
         )
 
+        if payload.source_id:
+            with transaction.atomic():
+                clip_source = source_service.prepare_for_run(
+                    channel_id=payload.channel_id,
+                    source_id=payload.source_id,
+                )
+                topic = display_topic_for_source(clip_source)
+                prompt_snapshot = {
+                    'source_title': clip_source.title,
+                    'source_id': str(clip_source.id),
+                }
+                run = PipelineRun.objects.create(
+                    channel=channel,
+                    blueprint=blueprint,
+                    blueprint_snapshot=blueprint.graph,
+                    topic=topic,
+                    prompt_snapshot=prompt_snapshot,
+                    status=RunStatus.PENDING,
+                    source_idea_id=(
+                        uuid.UUID(payload.source_idea_id)
+                        if payload.source_idea_id
+                        else None
+                    ),
+                )
+                source_service.link_run(clip_source, str(run.id))
+            return str(run.id)
+
         run = PipelineRun.objects.create(
             channel=channel,
             blueprint=blueprint,
             blueprint_snapshot=blueprint.graph,
             topic=topic,
+            prompt_snapshot=prompt_snapshot,
             status=RunStatus.PENDING,
             source_idea_id=(
                 uuid.UUID(payload.source_idea_id)
@@ -198,14 +234,4 @@ class PipelineRunService:
                 else None
             ),
         )
-        if payload.source_id:
-            source_service.link_run(payload.source_id, str(run.id))
         return str(run.id)
-
-    @staticmethod
-    async def _kick_advance(run_id: str) -> None:
-        from server.apps.pipelines.tasks import (  # noqa: PLC0415
-            advance_pipeline,
-        )
-
-        await advance_pipeline.kiq(run_id)

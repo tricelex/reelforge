@@ -47,6 +47,7 @@ from server.common.auth import (
     jwt_sync_auth,
 )
 from server.common.di import HasContainer
+from server.common.exceptions import ConflictError
 from server.common.storage import PresignUrlHelper
 
 
@@ -91,6 +92,10 @@ class RunCollectionController(
                 Controller.error_model,
                 status_code=HTTPStatus.BAD_REQUEST,
             ),
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.CONFLICT,
+            ),
         ],
     )
     def post(self, parsed_body: Body[RunCreatePayload]) -> RunDetailPayload:
@@ -112,6 +117,14 @@ class RunCollectionController(
         exc: Exception,
     ) -> HttpResponse:
         """Map validation failures to 400 responses."""
+        if isinstance(exc, ConflictError):
+            return self.to_error(
+                self.format_error(
+                    str(exc),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.CONFLICT,
+            )
         if isinstance(exc, ValidationError):
             messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
             return self.to_error(

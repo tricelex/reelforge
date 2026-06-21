@@ -5,7 +5,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
 
@@ -28,7 +28,7 @@ _SYSTEM_PROMPT = (
 @cache
 def _agent() -> Agent[None, IdeationOutput]:
     return Agent(
-        OpenAIModel(DEFAULT_LLM_MODEL),
+        OpenAIChatModel(DEFAULT_LLM_MODEL),
         output_type=IdeationOutput,
         system_prompt=_SYSTEM_PROMPT,
     )

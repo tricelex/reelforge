@@ -43,6 +43,21 @@ class StageRerunEvent(
     stage_key: str
 
 
+class StageFailedEvent(
+    msgspec.Struct,
+    frozen=True,
+    tag='stage.failed',
+    tag_field='type',
+):
+    """Published when a stage attempt fails."""
+
+    stage_key: str
+    attempt: int
+    error_type: str
+    error_message: str
+    retryable: bool
+
+
 class RunEventsQuery(msgspec.Struct, frozen=True):
     """Query parameters for subscribing to pipeline run events."""
 
@@ -54,4 +69,5 @@ PipelineRunEvent = (
     | RunCancelledEvent
     | RunPausedEvent
     | StageRerunEvent
+    | StageFailedEvent
 )

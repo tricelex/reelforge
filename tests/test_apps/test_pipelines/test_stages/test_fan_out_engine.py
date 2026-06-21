@@ -48,6 +48,21 @@ _FAN_GRAPH: dict[str, Any] = {
 }
 
 
+class FanTestEmptyStage(Stage):
+    """Test fan-out stage returning zero shards."""
+
+    key = 'fan_test_empty'
+    max_retries = 0
+    timeout_s = 10
+
+    def fan_out(self, ctx: StageContext) -> list[dict[str, Any]] | None:
+        """Return no shards."""
+        return []
+
+    async def run(self, ctx: StageContext) -> dict[str, Any]:
+        raise RuntimeError('fan_out parent should not call run()')
+
+
 class FanTestParentStage(Stage):
     """Test fan-out stage returning 3 shards."""
 
@@ -225,5 +240,78 @@ def test_all_children_succeed_completes_parent(run: PipelineRun) -> None:
         parent = await StageExecution.objects.aget(id=parent_exec_id)
         assert parent.status == StageStatus.SUCCEEDED
         assert len(advance_calls) >= 1
+
+    _run(_inner())
+
+
+_EMPTY_FAN_GRAPH: dict[str, Any] = {
+    'stages': [
+        {'key': 'fan_test_empty', 'depends_on': [], 'queue': 'api'},
+    ],
+}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_empty_fan_out_completes_parent_and_advances(
+    channel: Channel,
+) -> None:
+    """Empty fan_out list marks parent SUCCEEDED and triggers advance."""
+    register_stage(FanTestEmptyStage)
+    blueprint = PipelineBlueprint.objects.create(
+        name='fan_empty_v1',
+        kind=PipelineKind.LONGFORM,
+        graph=_EMPTY_FAN_GRAPH,
+    )
+    the_run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=blueprint,
+        blueprint_snapshot=_EMPTY_FAN_GRAPH,
+        topic='empty fan-out test',
+    )
+    from server.apps.pipelines.services.executor import (
+        execute_stage_impl,
+    )
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    async def _inner() -> None:
+        kicked: list[str] = []
+
+        async def fake_execute_stage_kiq(eid: str) -> None:
+            kicked.append(eid)
+
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                side_effect=fake_execute_stage_kiq,
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(the_run.id))
+
+        parent_exec_id = kicked[0]
+        advance_calls: list[str] = []
+
+        async def record_advance(rid: str) -> None:
+            advance_calls.append(rid)
+
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            side_effect=record_advance,
+        ):
+            await execute_stage_impl(parent_exec_id)
+
+        parent = await StageExecution.objects.aget(id=parent_exec_id)
+        assert parent.status == StageStatus.SUCCEEDED
+        assert parent.output == {'shards': []}
+        child_count = await StageExecution.objects.filter(
+            parent_id=parent_exec_id,
+        ).acount()
+        assert child_count == 0
+        assert advance_calls == [str(the_run.id)]
 
     _run(_inner())

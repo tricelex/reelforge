@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, override
 
+from server.apps.clips.models import ClipSource
+from server.apps.clips.source_services import resolve_ingest_key
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -29,6 +31,26 @@ def _download_with_ytdlp(url: str, out_path: str) -> dict[str, Any]:
     }
 
 
+async def _resolve_ingest_input(
+    ctx: StageContext,
+) -> tuple[str, str]:
+    """Return ingest key and display title for the run source."""
+    prompt = ctx.run.prompt_snapshot
+    clip_source = await ClipSource.objects.filter(run_id=ctx.run.id).afirst()
+    if clip_source is not None:
+        ingest_key = resolve_ingest_key(clip_source)
+        default_title = prompt.get('source_title', 'Uploaded Video')
+        title = clip_source.title or default_title
+        return ingest_key, str(title)
+
+    source_url: str = ctx.run.topic
+    if source_url.startswith('http'):
+        title = str(prompt.get('source_title', source_url))
+    else:
+        title = str(prompt.get('source_title', 'Uploaded Video'))
+    return source_url, title
+
+
 @register_stage
 class ClipIngestStage(Stage):
     """Stage 1: download source video → Asset(VIDEO_SEGMENT)."""
@@ -43,8 +65,7 @@ class ClipIngestStage(Stage):
         """Download or copy source video and persist as VIDEO_SEGMENT asset."""
         from server.apps.assets.models import AssetKind  # noqa: PLC0415
 
-        source_url: str = ctx.run.topic
-        prompt = ctx.run.prompt_snapshot
+        source_url, display_title = await _resolve_ingest_input(ctx)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out_path = str(Path(tmpdir) / 'source.mp4')
@@ -55,7 +76,7 @@ class ClipIngestStage(Stage):
                     source_url,
                     out_path,
                 )
-                title: str = info['title']
+                title: str = info['title'] or display_title
                 duration_sec: float = info['duration_sec']
             else:
                 from server.apps.assets.models import (  # noqa: PLC0415
@@ -65,7 +86,7 @@ class ClipIngestStage(Stage):
                 lib_asset = await LibraryAsset.objects.aget(id=source_url)
                 video_bytes = await asyncio.to_thread(lib_asset.file.read)
                 await asyncio.to_thread(Path(out_path).write_bytes, video_bytes)
-                title = prompt.get('source_title', 'Uploaded Video')
+                title = display_title or 'Uploaded Video'
                 duration_sec = 0.0
 
             video_bytes = await asyncio.to_thread(Path(out_path).read_bytes)

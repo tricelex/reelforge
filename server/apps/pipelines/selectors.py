@@ -11,6 +11,7 @@ from server.apps.pipelines.logic.value_objects import (
     RunDetailPayload,
     RunListPayload,
     RunSummaryPayload,
+    StageErrorPayload,
     StageSummaryPayload,
 )
 
@@ -42,6 +43,13 @@ def _run_to_summary(run: 'PipelineRun') -> RunSummaryPayload:
 
 
 def _stage_to_summary(stage: 'StageExecution') -> StageSummaryPayload:
+    error_payload: StageErrorPayload | None = None
+    if stage.error:
+        error_payload = StageErrorPayload(
+            type=str(stage.error.get('type', '')),
+            message=str(stage.error.get('message', '')),
+            retryable=bool(stage.error.get('retryable', False)),
+        )
     return StageSummaryPayload(
         stage_key=stage.stage_key,
         status=stage.status,
@@ -49,6 +57,7 @@ def _stage_to_summary(stage: 'StageExecution') -> StageSummaryPayload:
         cost_usd=str(stage.cost_usd),
         started_at=_iso(stage.started_at),
         finished_at=_iso(stage.finished_at),
+        error=error_payload,
     )
 
 
@@ -115,6 +124,7 @@ def list_runs(
 
 def get_run_detail(run_id: str) -> RunDetailPayload:
     """Return full run detail with latest stage attempts."""
+    from server.apps.clips.models import ClipSource  # noqa: PLC0415
     from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineRun,
         StageExecution,
@@ -130,6 +140,11 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
     ):
         if stage.stage_key not in latest:
             latest[stage.stage_key] = stage
+
+    source_id = ClipSource.objects.filter(run_id=run.id).values_list(
+        'id',
+        flat=True,
+    ).first()
 
     return RunDetailPayload(
         id=str(run.id),
@@ -147,4 +162,5 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
         source_idea_id=(
             str(run.source_idea_id) if run.source_idea_id else None
         ),
+        source_id=str(source_id) if source_id else None,
     )

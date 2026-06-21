@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from server.apps.pipelines.stages.clip_ingest import (
@@ -27,8 +28,52 @@ def test_clip_ingest_registered() -> None:
     assert 'clip_ingest' in STAGE_REGISTRY
 
 
+def test_clip_ingest_linked_clip_source_uses_ingest_key() -> None:
+    """Linked ClipSource supplies ingest key even when topic is a title."""
+    ctx = MagicMock()
+    ctx.run.id = uuid.uuid4()
+    ctx.run.topic = 'Human Readable Title'
+    ctx.run.prompt_snapshot = {'source_title': 'Human Readable Title'}
+
+    fake_asset = MagicMock()
+    fake_asset.id = 'asset-uuid-1'
+    fake_video_bytes = b'fake video bytes'
+    fake_source = MagicMock()
+    fake_source.title = 'Human Readable Title'
+    fake_source.source_type = 'upload'
+    fake_source.library_asset_id = uuid.uuid4()
+    fake_source.url = ''
+
+    async def _inner() -> dict:
+        with (
+            patch(
+                'server.apps.pipelines.stages.clip_ingest.ClipSource.objects.filter',
+            ) as mock_filter,
+            patch(
+                'server.apps.pipelines.stages.clip_ingest.resolve_ingest_key',
+                return_value=str(fake_source.library_asset_id),
+            ),
+            patch(
+                'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
+                new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
+            ),
+            patch(
+                'server.apps.assets.models.LibraryAsset',
+            ) as mock_lib_cls,
+        ):
+            mock_filter.return_value.afirst = AsyncMock(return_value=fake_source)
+            mock_lib_cls.objects.aget = AsyncMock(return_value=MagicMock())
+            ctx.assets.save = AsyncMock(return_value=fake_asset)
+            return await ClipIngestStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert result['source_title'] == 'Human Readable Title'
+    assert result['source_url'] == str(fake_source.library_asset_id)
+
+
 def test_clip_ingest_http_url() -> None:
     ctx = MagicMock()
+    ctx.run.id = uuid.uuid4()
     ctx.run.topic = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
     ctx.run.prompt_snapshot = {}
 
@@ -37,15 +82,21 @@ def test_clip_ingest_http_url() -> None:
     fake_video_bytes = b'fake video bytes'
 
     async def _inner() -> dict:
-        with patch(
-            'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
-            new=AsyncMock(
-                side_effect=[
-                    {'title': 'Test Video', 'duration_sec': 300.0},
-                    fake_video_bytes,
-                ],
+        with (
+            patch(
+                'server.apps.pipelines.stages.clip_ingest.ClipSource.objects.filter',
+            ) as mock_filter,
+            patch(
+                'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
+                new=AsyncMock(
+                    side_effect=[
+                        {'title': 'Test Video', 'duration_sec': 300.0},
+                        fake_video_bytes,
+                    ],
+                ),
             ),
         ):
+            mock_filter.return_value.afirst = AsyncMock(return_value=None)
             ctx.assets.save = AsyncMock(return_value=fake_asset)
             return await ClipIngestStage().run(ctx)
 
@@ -58,6 +109,7 @@ def test_clip_ingest_http_url() -> None:
 
 def test_clip_ingest_library_asset_uuid() -> None:
     ctx = MagicMock()
+    ctx.run.id = uuid.uuid4()
     ctx.run.topic = 'some-library-asset-uuid'
     ctx.run.prompt_snapshot = {'source_title': 'My Video'}
 
@@ -68,6 +120,9 @@ def test_clip_ingest_library_asset_uuid() -> None:
     async def _inner() -> dict:
         with (
             patch(
+                'server.apps.pipelines.stages.clip_ingest.ClipSource.objects.filter',
+            ) as mock_filter,
+            patch(
                 'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
                 new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
             ),
@@ -75,6 +130,7 @@ def test_clip_ingest_library_asset_uuid() -> None:
                 'server.apps.assets.models.LibraryAsset',
             ) as mock_lib_cls,
         ):
+            mock_filter.return_value.afirst = AsyncMock(return_value=None)
             mock_lib_cls.objects.aget = AsyncMock(return_value=fake_lib_asset)
             ctx.assets.save = AsyncMock(return_value=fake_asset)
             return await ClipIngestStage().run(ctx)
@@ -86,6 +142,7 @@ def test_clip_ingest_library_asset_uuid() -> None:
 
 def test_clip_ingest_library_asset_default_title() -> None:
     ctx = MagicMock()
+    ctx.run.id = uuid.uuid4()
     ctx.run.topic = 'some-uuid'
     ctx.run.prompt_snapshot = {}
 
@@ -96,6 +153,9 @@ def test_clip_ingest_library_asset_default_title() -> None:
     async def _inner() -> dict:
         with (
             patch(
+                'server.apps.pipelines.stages.clip_ingest.ClipSource.objects.filter',
+            ) as mock_filter,
+            patch(
                 'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
                 new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
             ),
@@ -103,6 +163,7 @@ def test_clip_ingest_library_asset_default_title() -> None:
                 'server.apps.assets.models.LibraryAsset',
             ) as mock_lib_cls,
         ):
+            mock_filter.return_value.afirst = AsyncMock(return_value=None)
             mock_lib_cls.objects.aget = AsyncMock(return_value=fake_lib_asset)
             ctx.assets.save = AsyncMock(return_value=fake_asset)
             return await ClipIngestStage().run(ctx)

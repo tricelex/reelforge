@@ -108,6 +108,44 @@ def test_try_scene_detect_returns_cuts() -> None:
 
 
 @patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
+def test_extract_audio_raises_with_stderr(mock_run: MagicMock) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=1,
+        stderr='ffmpeg: invalid data',
+        stdout='',
+    )
+    try:
+        _extract_audio('/video.mp4', '/audio.wav')
+    except RuntimeError as exc:
+        assert 'ffmpeg failed' in str(exc)
+        assert 'invalid data' in str(exc)
+    else:
+        raise AssertionError('expected RuntimeError')
+
+
+@patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
+def test_run_whisperx_raises_with_both_attempt_stderr(
+    mock_run: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_run.side_effect = [
+        MagicMock(returncode=1, stderr='diarize failed', stdout=''),
+        MagicMock(returncode=1, stderr='module not found', stdout=''),
+    ]
+    with patch(
+        'server.apps.pipelines.stages.clip_transcribe.tempfile.mkdtemp',
+    ) as mock_mkdtemp:
+        mock_mkdtemp.return_value = str(tmp_path)
+        try:
+            _run_whisperx(str(tmp_path / 'audio.wav'))
+        except RuntimeError as exc:
+            assert 'diarize failed' in str(exc)
+            assert 'module not found' in str(exc)
+        else:
+            raise AssertionError('expected RuntimeError')
+
+
+@patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
 def test_extract_audio_calls_ffmpeg(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
     _extract_audio('/video.mp4', '/audio.wav')

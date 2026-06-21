@@ -47,6 +47,7 @@ def test_upload_clip_source_create_and_list(
     )
     assert create_resp.status_code == HTTPStatus.CREATED
     body = create_resp.json()
+    assert body['channel_id'] == str(clipping_channel.id)
     assert body['status'] == ClipSourceStatus.READY
     assert body['title'] == 'Podcast Ep 1'
     assert body['run_id'] is None
@@ -201,10 +202,7 @@ def test_create_run_from_clip_source(
     )
     source_id = create_resp.json()['id']
 
-    with patch(
-        'server.apps.pipelines.tasks.advance_pipeline.kiq',
-        new_callable=AsyncMock,
-    ):
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
         run_resp = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -214,9 +212,240 @@ def test_create_run_from_clip_source(
             headers=auth_headers,
         )
     assert run_resp.status_code == HTTPStatus.CREATED
+    run_body = run_resp.json()
     linked = ClipSource.objects.get(id=source_id)
     assert linked.run_id is not None
-    assert str(linked.run_id) == run_resp.json()['id']
+    assert str(linked.run_id) == run_body['id']
+    assert run_body['topic'] == 'Run Source'
+    assert run_body['source_id'] == source_id
+
+    detail_resp = dmr_client.get(
+        reverse(
+            'api:clips:clip-source-detail',
+            kwargs={'source_id': source_id},
+        ),
+        headers=auth_headers,
+    )
+    assert detail_resp.json()['run_id'] == run_body['id']
+
+
+@pytest.mark.django_db
+def test_create_run_rejects_duplicate_source(
+    dmr_client: DMRClient,
+    clipping_channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """Second run start for the same source returns 409."""
+    from unittest.mock import AsyncMock
+
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
+
+    PipelineBlueprint.objects.get_or_create(
+        name='clipping_v1',
+        defaults={
+            'kind': PipelineKind.CLIPPING,
+            'graph': {'stages': []},
+            'is_active': True,
+        },
+    )
+    asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.INTRO,
+        name='Duplicate Source',
+        file='library/dup-source.mp4',
+    )
+    source_id = dmr_client.post(
+        reverse('api:clips:clip-source-collection'),
+        data={
+            'channel_id': str(clipping_channel.id),
+            'source_type': ClipSourceType.UPLOAD,
+            'library_asset_id': str(asset.id),
+        },
+        headers=auth_headers,
+    ).json()['id']
+
+    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
+        first = dmr_client.post(
+            reverse('api:pipelines_api:run-collection'),
+            data={
+                'channel_id': str(clipping_channel.id),
+                'source_id': source_id,
+            },
+            headers=auth_headers,
+        )
+        second = dmr_client.post(
+            reverse('api:pipelines_api:run-collection'),
+            data={
+                'channel_id': str(clipping_channel.id),
+                'source_id': source_id,
+            },
+            headers=auth_headers,
+        )
+    assert first.status_code == HTTPStatus.CREATED
+    assert second.status_code == HTTPStatus.CONFLICT
+
+
+@pytest.mark.django_db
+def test_create_run_rejects_mismatched_channel(
+    dmr_client: DMRClient,
+    clipping_channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST run rejects source_id from a different channel."""
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
+
+    other_channel = Channel.objects.create(
+        name='Other Clip Channel',
+        kind=ChannelKind.CLIPPING,
+    )
+    PipelineBlueprint.objects.get_or_create(
+        name='clipping_v1',
+        defaults={
+            'kind': PipelineKind.CLIPPING,
+            'graph': {'stages': []},
+            'is_active': True,
+        },
+    )
+    asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.INTRO,
+        name='Mismatch Source',
+        file='library/mismatch.mp4',
+    )
+    source_id = dmr_client.post(
+        reverse('api:clips:clip-source-collection'),
+        data={
+            'channel_id': str(clipping_channel.id),
+            'source_type': ClipSourceType.UPLOAD,
+            'library_asset_id': str(asset.id),
+        },
+        headers=auth_headers,
+    ).json()['id']
+
+    response = dmr_client.post(
+        reverse('api:pipelines_api:run-collection'),
+        data={
+            'channel_id': str(other_channel.id),
+            'source_id': source_id,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_failed_clip_source_exposes_error_message(
+    dmr_client: DMRClient,
+    clipping_channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """FAILED clip source returns error_message in API payload."""
+    with patch(
+        'server.apps.clips.source_services.kiq_task',
+        new=lambda *_args, **_kwargs: None,
+    ):
+        source_id = dmr_client.post(
+            reverse('api:clips:clip-source-collection'),
+            data={
+                'channel_id': str(clipping_channel.id),
+                'source_type': ClipSourceType.YOUTUBE,
+                'url': 'https://www.youtube.com/watch?v=fail',
+            },
+            headers=auth_headers,
+        ).json()['id']
+
+    with patch(
+        'server.apps.clips.tasks.probe_youtube_or_rss',
+        side_effect=RuntimeError('probe failed'),
+    ):
+        ClipSourceService().probe_now(source_id)
+
+    detail = dmr_client.get(
+        reverse(
+            'api:clips:clip-source-detail',
+            kwargs={'source_id': source_id},
+        ),
+        headers=auth_headers,
+    )
+    body = detail.json()
+    assert body['status'] == ClipSourceStatus.FAILED
+    assert body['error_message'] == 'probe failed'
+
+
+@pytest.mark.django_db
+def test_create_run_rejects_source_on_non_clipping_channel(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST run with source_id rejects non-clipping channels."""
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
+
+    longform = Channel.objects.create(
+        name='Longform Channel',
+        kind=ChannelKind.LONGFORM,
+    )
+    clipping = Channel.objects.create(
+        name='Clip Channel',
+        kind=ChannelKind.CLIPPING,
+    )
+    PipelineBlueprint.objects.get_or_create(
+        name='clipping_v1',
+        defaults={
+            'kind': PipelineKind.CLIPPING,
+            'graph': {'stages': []},
+            'is_active': True,
+        },
+    )
+    asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.INTRO,
+        name='Wrong Channel Source',
+        file='library/wrong-channel.mp4',
+    )
+    source_id = dmr_client.post(
+        reverse('api:clips:clip-source-collection'),
+        data={
+            'channel_id': str(clipping.id),
+            'source_type': ClipSourceType.UPLOAD,
+            'library_asset_id': str(asset.id),
+        },
+        headers=auth_headers,
+    ).json()['id']
+
+    response = dmr_client.post(
+        reverse('api:pipelines_api:run-collection'),
+        data={
+            'channel_id': str(longform.id),
+            'source_id': source_id,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_create_run_rejects_missing_source(
+    dmr_client: DMRClient,
+    clipping_channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST run with unknown source_id returns 400."""
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
+
+    PipelineBlueprint.objects.get_or_create(
+        name='clipping_v1',
+        defaults={
+            'kind': PipelineKind.CLIPPING,
+            'graph': {'stages': []},
+            'is_active': True,
+        },
+    )
+    response = dmr_client.post(
+        reverse('api:pipelines_api:run-collection'),
+        data={
+            'channel_id': str(clipping_channel.id),
+            'source_id': str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.django_db
