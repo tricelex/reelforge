@@ -5,7 +5,9 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.openai import OpenAIModel
+
+from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
 
 from server.apps.ideas.logic.schemas import IdeationOutput, SourceSnapshot
 
@@ -26,7 +28,7 @@ _SYSTEM_PROMPT = (
 @cache
 def _agent() -> Agent[None, IdeationOutput]:
     return Agent(
-        AnthropicModel('claude-sonnet-4-6'),
+        OpenAIModel(DEFAULT_LLM_MODEL),
         output_type=IdeationOutput,
         system_prompt=_SYSTEM_PROMPT,
     )

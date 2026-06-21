@@ -122,6 +122,15 @@ class ChannelDetailController(
                 ),
                 status_code=HTTPStatus.NOT_FOUND,
             )
+        if isinstance(exc, ValidationError):
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            return self.to_error(
+                self.format_error(
+                    '; '.join(str(m) for m in messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
         return super().handle_error(  # pragma: no cover
             endpoint,
             controller,

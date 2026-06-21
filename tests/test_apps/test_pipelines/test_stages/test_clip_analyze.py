@@ -75,7 +75,7 @@ def test_clip_analyze_run() -> None:
     assert result['candidate_count'] == 1
     assert 'candidate-uuid-1' in result['candidate_ids']
     ctx.costs.record.assert_called_once_with(
-        provider='anthropic',
+        provider='openai',
         operation='clip_analysis',
         units=1,
         unit_cost_usd=0.05,

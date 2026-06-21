@@ -92,7 +92,12 @@ def test_assets_list_inactive_and_filters(channel) -> None:
     from server.apps.assets.logic.value_objects import LibraryAssetCreatePayload
     from server.apps.assets.models import LibraryAssetKind
 
-    service = LibraryAssetService(events=InProcessEventBus())
+    presign = MagicMock(spec=PresignUrlHelper)
+    presign.presign_get.return_value = 'https://storage.example/file'
+    service = LibraryAssetService(
+        events=InProcessEventBus(),
+        presign=presign,
+    )
     service.register_from_key(
         LibraryAssetCreatePayload(
             kind=LibraryAssetKind.MUSIC,
@@ -519,7 +524,7 @@ def test_pipeline_run_unmapped_kind(channel: Channel) -> None:
 
     service = PipelineRunService(events=InProcessEventBus())
     with patch(
-        'server.apps.pipelines.services.pipeline_run._BLUEPRINT_BY_KIND',
+        'server.apps.pipelines.blueprint_validation.BLUEPRINT_BY_KIND',
         {},
     ):
         with pytest.raises(ValidationError, match='No blueprint mapping'):
@@ -627,7 +632,9 @@ def test_niche_patch_all_fields(channel: Channel) -> None:
 
 
 @pytest.mark.django_db
-def test_list_characters_status_filter(channel: Channel, character: Character) -> None:
+def test_list_characters_status_filter(
+    channel: Channel, character: Character
+) -> None:
     """Cover character list status filter branch."""
     from server.apps.channels.character_selectors import list_characters
 
@@ -641,7 +648,9 @@ def test_list_characters_status_filter(channel: Channel, character: Character) -
 
 
 @pytest.mark.django_db
-def test_list_characters_channel_filter_only(channel: Channel, character: Character) -> None:
+def test_list_characters_channel_filter_only(
+    channel: Channel, character: Character
+) -> None:
     """Cover character list channel_id-only filter branch."""
     from server.apps.channels.character_selectors import list_characters
 
@@ -868,7 +877,9 @@ def test_visual_prompts_map_skips_invalid_items(run) -> None:
             ],
         },
     )
-    assert _visual_prompts_map(str(run.id)) == {0: {'scene_idx': 0, 'prompt': 'keep'}}
+    assert _visual_prompts_map(str(run.id)) == {
+        0: {'scene_idx': 0, 'prompt': 'keep'}
+    }
 
 
 @pytest.mark.django_db
@@ -909,7 +920,10 @@ def test_presign_asset_with_stored_file(run) -> None:
     asset.file.save('image.png', ContentFile(b'png'), save=True)
     presign = MagicMock(spec=PresignUrlHelper)
     presign.presign_get.return_value = 'https://example.com/image.png'
-    assert _presign_asset(str(asset.id), presign) == 'https://example.com/image.png'
+    assert (
+        _presign_asset(str(asset.id), presign)
+        == 'https://example.com/image.png'
+    )
     presign.presign_get.assert_called_once()
 
 
@@ -919,11 +933,14 @@ def test_sync_visual_prompts_without_stage(run) -> None:
     from server.apps.pipelines.logic.value_objects import ScenePatchPayload
     from server.apps.pipelines.services.run_review import _sync_visual_prompts
 
-    assert _sync_visual_prompts(
-        str(run.id),
-        0,
-        ScenePatchPayload(visual_prompt='x'),
-    ) == 'scene_breakdown'
+    assert (
+        _sync_visual_prompts(
+            str(run.id),
+            0,
+            ScenePatchPayload(visual_prompt='x'),
+        )
+        == 'scene_breakdown'
+    )
 
 
 @pytest.mark.django_db
@@ -1079,7 +1096,9 @@ def test_channel_patch_empty_payload(channel: Channel) -> None:
 @pytest.mark.django_db
 def test_channel_branding_empty_patch(channel: Channel) -> None:
     """Cover branding patch when no fields change."""
-    from server.apps.channels.logic.value_objects import ChannelBrandingPatchPayload
+    from server.apps.channels.logic.value_objects import (
+        ChannelBrandingPatchPayload,
+    )
     from server.apps.channels.services import ChannelService
 
     service = ChannelService()
@@ -1150,7 +1169,9 @@ def test_clips_empty_candidate_patch(candidate) -> None:
 @pytest.mark.django_db
 def test_clips_empty_layout_patch(candidate) -> None:
     """Cover layout patch with no mutable fields."""
-    from server.apps.clips.logic.value_objects import ClipLayoutConfigPatchPayload
+    from server.apps.clips.logic.value_objects import (
+        ClipLayoutConfigPatchPayload,
+    )
     from server.apps.clips.models import ClipLayoutConfig
 
     ClipLayoutConfig.objects.get_or_create(candidate=candidate)
@@ -1165,7 +1186,9 @@ def test_clips_empty_layout_patch(candidate) -> None:
 @pytest.mark.django_db
 def test_clips_empty_style_patch(candidate) -> None:
     """Cover style patch with no mutable fields."""
-    from server.apps.clips.logic.value_objects import ClipStyleConfigPatchPayload
+    from server.apps.clips.logic.value_objects import (
+        ClipStyleConfigPatchPayload,
+    )
     from server.apps.clips.models import ClipStyleConfig
 
     ClipStyleConfig.objects.get_or_create(candidate=candidate)
@@ -1230,11 +1253,14 @@ def test_sync_visual_prompts_skips_non_dict_prompts(run) -> None:
         attempt=0,
         output={'prompts': ['bad', {'scene_idx': 0, 'prompt': 'old'}]},
     )
-    assert _sync_visual_prompts(
-        str(run.id),
-        0,
-        ScenePatchPayload(visual_prompt='new'),
-    ) == 'visual_prompts'
+    assert (
+        _sync_visual_prompts(
+            str(run.id),
+            0,
+            ScenePatchPayload(visual_prompt='new'),
+        )
+        == 'visual_prompts'
+    )
 
 
 @pytest.mark.django_db
@@ -1250,11 +1276,14 @@ def test_sync_visual_prompts_when_stage_not_succeeded(run) -> None:
         attempt=0,
         output={'prompts': []},
     )
-    assert _sync_visual_prompts(
-        str(run.id),
-        0,
-        ScenePatchPayload(visual_prompt='x'),
-    ) == 'scene_breakdown'
+    assert (
+        _sync_visual_prompts(
+            str(run.id),
+            0,
+            ScenePatchPayload(visual_prompt='x'),
+        )
+        == 'scene_breakdown'
+    )
 
 
 @pytest.mark.django_db

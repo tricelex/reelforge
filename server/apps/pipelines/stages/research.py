@@ -7,6 +7,7 @@ from django.conf import settings
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
+from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.generation.clients import search as search_client
 from server.apps.pipelines.schemas import ResearchOutput
 from server.apps.pipelines.stages.base import (
@@ -20,7 +21,7 @@ from server.apps.pipelines.stages.base import (
 def _agent() -> Agent[StageContext, ResearchOutput]:
     """Create and cache the research agent on first call."""
     a: Agent[StageContext, ResearchOutput] = Agent(
-        'anthropic:claude-opus-4-8',
+        PYDANTIC_AI_MODEL,
         output_type=ResearchOutput,
         deps_type=StageContext,
     )

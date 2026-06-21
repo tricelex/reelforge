@@ -17,6 +17,7 @@ from server.apps.clips.logic.value_objects import (
 from server.apps.clips.models import ClipCampaign, ClipSource
 from server.apps.clips.source_selectors import get_clip_source, list_clip_sources
 from server.apps.clips.tasks import _probe_clip_source_sync, probe_clip_source_task
+from server.common.taskiq_sender import kiq_task
 
 
 def _require_remote_url(source_type: str, url: str) -> None:
@@ -123,7 +124,7 @@ class ClipSourceService:
         )
 
         if source_type in (ClipSourceType.YOUTUBE, ClipSourceType.RSS):
-            probe_clip_source_task.kiq(str(source.id))
+            kiq_task(probe_clip_source_task, str(source.id))
         return get_clip_source(str(source.id))
 
     def link_run(self, source_id: str, run_id: str) -> None:

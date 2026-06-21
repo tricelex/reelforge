@@ -256,6 +256,19 @@ def test_ingest_ffprobe_failure_raises_retryable() -> None:
 
 
 @pytest.mark.django_db
+def test_ingest_ffprobe_missing_binary_raises_fatal() -> None:
+    asset = _make_asset()
+    with (
+        patch(
+            'server.apps.assets.tasks._ffprobe',
+            side_effect=FileNotFoundError('ffprobe'),
+        ),
+        pytest.raises(FatalProviderError, match='ffprobe not found'),
+    ):
+        ingest_library_asset.original_func(str(asset.id))
+
+
+@pytest.mark.django_db
 def test_ingest_video_creates_renditions() -> None:
     from server.apps.assets.models import AssetRendition
 
@@ -295,10 +308,9 @@ def test_ingest_video_rendition_ffmpeg_failure_logs_and_continues() -> None:
 
 
 def test_handle_library_asset_ingested_enqueues_task() -> None:
-    with patch('server.apps.assets.tasks.ingest_library_asset') as mock_task:
-        mock_task.kiq = AsyncMock(return_value=None)
+    with patch('server.apps.assets.tasks.kiq_task') as mock_kiq:
         handle_library_asset_ingested(LibraryAssetIngested(asset_id='abc-123'))
-        mock_task.kiq.assert_called_once_with('abc-123')
+        mock_kiq.assert_called_once_with(ingest_library_asset, 'abc-123')
 
 
 def test_ffprobe_calls_subprocess_and_parses_json() -> None:

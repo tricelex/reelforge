@@ -6,6 +6,7 @@ from typing import Any, override
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
+from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import ScriptOutput
 from server.apps.pipelines.stages.base import (
     Stage,
@@ -18,7 +19,7 @@ from server.apps.pipelines.stages.base import (
 def _agent() -> Agent[StageContext, ScriptOutput]:
     """Create and cache the script agent on first call."""
     a: Agent[StageContext, ScriptOutput] = Agent(
-        'anthropic:claude-opus-4-8',
+        PYDANTIC_AI_MODEL,
         output_type=ScriptOutput,
         deps_type=StageContext,
     )

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -30,9 +30,6 @@ def test_hourly_cleanup() -> None:
 
 def test_handle_blog_post_created() -> None:
     """Ensures the EventBus handler enqueues notify_blog_post_created."""
-    with patch(
-        'server.apps.main.tasks.notify_blog_post_created',
-    ) as mock_task:
-        mock_task.kiq = AsyncMock(return_value=None)
+    with patch('server.apps.main.tasks.kiq_task') as mock_kiq:
         handle_blog_post_created(BlogPostCreated(blog_post_id=42))
-        mock_task.kiq.assert_called_once_with(42)
+        mock_kiq.assert_called_once_with(notify_blog_post_created, 42)

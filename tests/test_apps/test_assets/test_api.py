@@ -33,7 +33,7 @@ def test_presign_upload(
     assert response.status_code == HTTPStatus.OK
     body = response.json()
     assert body['url'] == 'https://storage.example/put'
-    assert body['key'].startswith('uploads/')
+    assert body['key'].startswith('library/')
 
 
 @pytest.mark.django_db
@@ -41,26 +41,16 @@ def test_library_asset_register_and_list(
     dmr_client: DMRClient,
     auth_headers: dict[str, str],
 ) -> None:
-    def _noop_async_to_sync(func):  # type: ignore[no-untyped-def]
-        def _wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return None
-
-        return _wrapper
-
-    with patch(
-        'server.apps.assets.tasks.async_to_sync',
-        _noop_async_to_sync,
-    ):
-        create_response = dmr_client.post(
-            reverse('api:assets_api:library-asset-collection'),
-            data={
-                'kind': LibraryAssetKind.MUSIC,
-                'name': 'API Track',
-                'storage_key': 'uploads/test/track.mp3',
-                'tags': ['test'],
-            },
-            headers=auth_headers,
-        )
+    create_response = dmr_client.post(
+        reverse('api:assets_api:library-asset-collection'),
+        data={
+            'kind': LibraryAssetKind.MUSIC,
+            'name': 'API Track',
+            'storage_key': 'uploads/test/track.mp3',
+            'tags': ['test'],
+        },
+        headers=auth_headers,
+    )
     assert create_response.status_code == HTTPStatus.CREATED
     asset_id = create_response.json()['id']
 
@@ -79,7 +69,48 @@ def test_library_asset_register_and_list(
         headers=auth_headers,
     )
     assert detail_response.status_code == HTTPStatus.OK
-    assert detail_response.json()['name'] == 'API Track'
+    detail_body = detail_response.json()
+    assert detail_body['name'] == 'API Track'
+    assert detail_body['url'].startswith('http')
+    assert detail_body['mime'] == 'audio/mpeg'
+
+
+@pytest.mark.django_db
+def test_library_asset_detail_includes_presigned_url(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET detail returns a presigned URL for preview."""
+    create_response = dmr_client.post(
+        reverse('api:assets_api:library-asset-collection'),
+        data={
+            'kind': LibraryAssetKind.MUSIC,
+            'name': 'Preview Track',
+            'storage_key': 'uploads/test/preview.mp3',
+        },
+        headers=auth_headers,
+    )
+    asset_id = create_response.json()['id']
+    mock_presign = MagicMock()
+    mock_presign.presign_get.return_value = 'https://storage.example/preview.mp3'
+    with patch.object(
+        PresignUrlHelper,
+        'presign_get',
+        mock_presign.presign_get,
+    ):
+        detail_response = dmr_client.get(
+            reverse(
+                'api:assets_api:library-asset-detail',
+                kwargs={'asset_id': asset_id},
+            ),
+            headers=auth_headers,
+        )
+
+    assert detail_response.status_code == HTTPStatus.OK
+    detail = detail_response.json()
+    assert detail['url'] == 'https://storage.example/preview.mp3'
+    assert detail['mime'] == 'audio/mpeg'
+    mock_presign.presign_get.assert_called_once_with('uploads/test/preview.mp3')
 
 
 @pytest.mark.django_db

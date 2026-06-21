@@ -2,6 +2,8 @@
 
 import msgspec
 
+from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
+
 JsonScalar = str | int | float | bool | None
 JsonObject = dict[str, JsonScalar | list[str]]
 
@@ -72,7 +74,7 @@ class PromptVersionCreatePayload(msgspec.Struct, frozen=True):
 
     system_prompt: str
     user_prompt: str
-    model: str = 'claude-opus-4-8'
+    model: str = DEFAULT_LLM_MODEL
     temperature: float = 1.0
     max_tokens: int = 8192
 

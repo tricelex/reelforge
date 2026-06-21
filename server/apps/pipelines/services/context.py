@@ -37,7 +37,12 @@ async def build_context(execution: 'StageExecution') -> 'StageContext':
         (n for n in graph if n['key'] == execution.stage_key),
         {},
     )
-    config: dict[str, Any] = stage_node.get('config', {})
+    base_config: dict[str, Any] = stage_node.get('config', {})
+    channel_overrides = channel.config_overrides or {}
+    stage_overrides = channel_overrides.get(execution.stage_key, {})
+    if not isinstance(stage_overrides, dict):
+        stage_overrides = {}
+    config: dict[str, Any] = {**base_config, **stage_overrides}
 
     deps: list[str] = stage_node.get('depends_on', [])
     upstream: dict[str, Any] = {}

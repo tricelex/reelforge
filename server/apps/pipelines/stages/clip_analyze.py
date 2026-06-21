@@ -4,6 +4,7 @@ import asyncio
 import json
 from typing import Any, override
 
+from server.apps.generation.logic.constants import DEFAULT_LLM_PROVIDER
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -48,7 +49,7 @@ class ClipAnalyzeStage(Stage):
         )
 
         await ctx.costs.record(
-            provider='anthropic',
+            provider=DEFAULT_LLM_PROVIDER,
             operation='clip_analysis',
             units=1,
             unit_cost_usd=0.05,

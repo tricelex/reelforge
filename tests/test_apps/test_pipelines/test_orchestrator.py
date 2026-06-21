@@ -289,6 +289,57 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
     _run(_inner())
 
 
+@pytest.mark.django_db(transaction=True)
+def test_build_context_merges_channel_config_overrides() -> None:
+    """build_context merges channel config_overrides over blueprint config."""
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.context import build_context
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='override_ctx_v1',
+            kind=PipelineKind.LONGFORM,
+            graph={
+                'stages': [
+                    {
+                        'key': 'motion',
+                        'depends_on': [],
+                        'queue': 'render',
+                        'config': {'hero_ratio': 0.15},
+                    },
+                ],
+            },
+        )
+        ch = await Channel.objects.acreate(
+            name='override_ch',
+            kind=ChannelKind.LONGFORM,
+            config_overrides={'motion': {'hero_ratio': 0.2}},
+        )
+        ctx_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='override test',
+        )
+        execution = await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='motion',
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        ctx = await build_context(execution)
+        assert ctx.config == {'hero_ratio': 0.2}
+
+    _run(_inner())
+
+
 from server.apps.pipelines.models import (
     RunStatus,
 )

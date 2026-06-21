@@ -50,6 +50,7 @@ def test_library_asset_defaults() -> None:
     assert la.version == 1
     assert la.tags == []
     assert la.meta == {}
+    assert la.mime == ''
 
 
 def test_library_asset_str() -> None:

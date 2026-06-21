@@ -6,9 +6,13 @@ from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
-from unfold.admin import ModelAdmin
+from unfold.contrib.filters.admin import (
+    BooleanRadioFilter,
+    RangeDateFilter,
+)
 
 from server.apps.main.models import BlogPost
+from server.common.admin import ReelForgeAdmin
 
 # Unregister auth and axes models so we can re-register them with Unfold's
 # ModelAdmin base for consistent theming. These models are auto-registered by
@@ -21,15 +25,13 @@ admin.site.unregister(AccessFailureLog)
 
 
 @admin.register(BlogPost)
-class BlogPostAdmin(ModelAdmin[BlogPost]):  # type: ignore[misc]
+class BlogPostAdmin(ReelForgeAdmin):
     """Admin panel for BlogPost with Unfold enhancements."""
 
     list_display = ('title', 'created_at', 'updated_at')
     search_fields = ('title', 'body')
     date_hierarchy = 'created_at'
     readonly_fields = ('created_at', 'updated_at')
-    compressed_fields = True
-    warn_unsaved_form = True
     fieldsets = (
         ('Content', {'fields': ('title', 'body')}),
         (
@@ -43,25 +45,32 @@ class BlogPostAdmin(ModelAdmin[BlogPost]):  # type: ignore[misc]
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin[User], ModelAdmin):  # type: ignore[misc]
+class UserAdmin(BaseUserAdmin[User], ReelForgeAdmin):  # type: ignore[misc]
     """User admin using Unfold base for consistent theming."""
+
+    list_filter = (
+        ('is_staff', BooleanRadioFilter),
+        ('is_active', BooleanRadioFilter),
+        ('is_superuser', BooleanRadioFilter),
+        ('date_joined', RangeDateFilter),
+    )
 
 
 @admin.register(Group)
-class GroupAdmin(BaseGroupAdmin, ModelAdmin):  # type: ignore[misc]
+class GroupAdmin(BaseGroupAdmin, ReelForgeAdmin):  # type: ignore[misc]
     """Group admin using Unfold base for consistent theming."""
 
 
 @admin.register(AccessAttempt)
-class AccessAttemptAdmin(BaseAccessAttemptAdmin, ModelAdmin):  # type: ignore[misc]
+class AccessAttemptAdmin(BaseAccessAttemptAdmin, ReelForgeAdmin):  # type: ignore[misc]
     """AccessAttempt admin using Unfold base for consistent theming."""
 
 
 @admin.register(AccessLog)
-class AccessLogAdmin(BaseAccessLogAdmin, ModelAdmin):  # type: ignore[misc]
+class AccessLogAdmin(BaseAccessLogAdmin, ReelForgeAdmin):  # type: ignore[misc]
     """AccessLog admin using Unfold base for consistent theming."""
 
 
 @admin.register(AccessFailureLog)
-class AccessFailureLogAdmin(BaseAccessFailureLogAdmin, ModelAdmin):  # type: ignore[misc]
+class AccessFailureLogAdmin(BaseAccessFailureLogAdmin, ReelForgeAdmin):  # type: ignore[misc]
     """AccessFailureLog admin using Unfold base for consistent theming."""

@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CORSConfiguration>
   <CORSRule>
-    <AllowedOrigin>http://localhost:3000</AllowedOrigin>
-    <AllowedOrigin>http://127.0.0.1:3000</AllowedOrigin>
-    <AllowedOrigin>http://localhost:8000</AllowedOrigin>
-    <AllowedOrigin>http://127.0.0.1:8000</AllowedOrigin>
-    <AllowedOrigin>http://localhost</AllowedOrigin>
-    <AllowedOrigin>http://127.0.0.1</AllowedOrigin>
+    <!-- Dev-only: allow any local frontend origin (Vite 5173, Next 3000, etc.) -->
+    <AllowedOrigin>*</AllowedOrigin>
     <AllowedMethod>GET</AllowedMethod>
     <AllowedMethod>PUT</AllowedMethod>
     <AllowedMethod>POST</AllowedMethod>

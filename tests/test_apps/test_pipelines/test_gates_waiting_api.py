@@ -103,3 +103,21 @@ def test_gates_waiting_ignores_unarmed_gate(
     )
     assert response.status_code == HTTPStatus.OK
     assert response.json()['total'] == 0
+
+
+@pytest.mark.django_db
+def test_gate_catalog(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET /api/gates/ returns known gate keys."""
+    response = dmr_client.get(
+        reverse('api:pipelines_api:gate-catalog'),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    keys = {item['key'] for item in response.json()['items']}
+    assert 'script_gate' in keys
+    assert 'storyboard_gate' in keys
+    assert 'clip_approval_gate' in keys
+    assert 'review_gate' in keys

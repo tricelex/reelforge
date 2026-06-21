@@ -102,7 +102,14 @@ services:
         condition: service_healthy
       rustfs-init:
         condition: service_completed_successfully
-    command: python -m taskiq worker server.common.broker:broker server.apps.main.tasks
+    command: >-
+      python -m taskiq worker server.common.broker:broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks
+      server.apps.pipelines.tasks
+      server.apps.analytics.tasks
     healthcheck:
       disable: true
       test: []

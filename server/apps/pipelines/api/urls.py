@@ -13,6 +13,11 @@ app_name = 'pipelines_api'
 
 run_urlpatterns = [
     path(
+        'gates/',
+        views.GateCatalogController.as_view(),
+        name='gate-catalog',
+    ),
+    path(
         'runs/',
         views.RunCollectionController.as_view(),
         name='run-collection',

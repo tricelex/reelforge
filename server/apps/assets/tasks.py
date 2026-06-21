@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from asgiref.sync import async_to_sync
-
 from server.apps.assets.logic.events import LibraryAssetIngested
 from server.common.broker import broker
+from server.common.taskiq_sender import kiq_task
 
 if TYPE_CHECKING:
     from server.apps.assets.models import (
@@ -180,6 +179,7 @@ def ingest_library_asset(asset_id: str) -> None:
         LibraryAssetKind,
     )
     from server.common.exceptions import (  # noqa: PLC0415
+        FatalProviderError,
         RetryableProviderError,
     )
 
@@ -198,6 +198,11 @@ def ingest_library_asset(asset_id: str) -> None:
     try:
         try:
             probe = _ffprobe(tmp_path)
+        except FileNotFoundError as exc:
+            raise FatalProviderError(
+                'ffprobe not found on PATH',
+                provider='ffprobe',
+            ) from exc
         except subprocess.CalledProcessError as exc:
             raise RetryableProviderError(str(exc), provider='ffprobe') from exc
 
@@ -250,4 +255,4 @@ def ingest_library_asset(asset_id: str) -> None:
 
 def handle_library_asset_ingested(event: LibraryAssetIngested) -> None:
     """EventBus handler — enqueues the ingest task."""
-    async_to_sync(ingest_library_asset.kiq)(event.asset_id)
+    kiq_task(ingest_library_asset, event.asset_id)

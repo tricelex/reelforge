@@ -6,12 +6,17 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
+from server.apps.generation.logic.constants import (
+    DEFAULT_LLM_MODEL,
+    DEFAULT_LLM_PROVIDER,
+)
+
 if TYPE_CHECKING:
     from server.apps.pipelines.stages.base import StageContext
 
-# Per-token costs for claude-opus-4-8.
-_INPUT_COST_PER_TOKEN = Decimal('0.000015')
-_OUTPUT_COST_PER_TOKEN = Decimal('0.000075')
+# Approximate per-token costs for gpt-5.2 (USD).
+_INPUT_COST_PER_TOKEN = Decimal('0.00000175')
+_OUTPUT_COST_PER_TOKEN = Decimal('0.000014')
 
 
 async def run_agent(
@@ -30,15 +35,15 @@ async def run_agent(
     usage = result.usage
     if usage.input_tokens:
         await ctx.costs.record(
-            provider='anthropic',
-            operation=f'claude-opus-4-8/{stage_key}/input',
+            provider=DEFAULT_LLM_PROVIDER,
+            operation=f'{DEFAULT_LLM_MODEL}/{stage_key}/input',
             units=usage.input_tokens,
             unit_cost_usd=_INPUT_COST_PER_TOKEN,
         )
     if usage.output_tokens:
         await ctx.costs.record(
-            provider='anthropic',
-            operation=f'claude-opus-4-8/{stage_key}/output',
+            provider=DEFAULT_LLM_PROVIDER,
+            operation=f'{DEFAULT_LLM_MODEL}/{stage_key}/output',
             units=usage.output_tokens,
             unit_cost_usd=_OUTPUT_COST_PER_TOKEN,
         )

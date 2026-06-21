@@ -1,6 +1,15 @@
 """API DTOs for the channels app."""
 
+from typing import Any
+
 import msgspec
+
+
+class ProviderDailyCapPayload(msgspec.Struct, frozen=True):
+    """Per-provider daily spend cap for a channel."""
+
+    provider: str
+    daily_cap_usd: str
 
 
 class ChannelSummaryPayload(msgspec.Struct, frozen=True):
@@ -12,6 +21,7 @@ class ChannelSummaryPayload(msgspec.Struct, frozen=True):
     publish_mode: str
     is_active: bool
     gates: list[str]
+    default_blueprint_name: str | None
     niche_id: str | None
     niche_angle: str
     published_videos: int
@@ -36,6 +46,9 @@ class ChannelDetailPayload(msgspec.Struct, frozen=True):
     similarity_boost: float
     wpm: int
     is_active: bool
+    default_blueprint_name: str | None
+    provider_daily_caps: list[ProviderDailyCapPayload]
+    config_overrides: dict[str, Any]
 
 
 class NicheCreatePayload(msgspec.Struct, frozen=True):
@@ -61,6 +74,9 @@ class ChannelCreatePayload(msgspec.Struct, frozen=True):
     stability: float = 0.5
     similarity_boost: float = 0.75
     wpm: int = 158
+    default_blueprint_name: str | None = None
+    provider_daily_caps: list[ProviderDailyCapPayload] | None = None
+    config_overrides: dict[str, Any] | None = None
     niche: NicheCreatePayload | None = None
 
 
@@ -77,6 +93,9 @@ class ChannelPatchPayload(msgspec.Struct, frozen=True):
     similarity_boost: float | None = None
     wpm: int | None = None
     is_active: bool | None = None
+    default_blueprint_name: str | None = None
+    provider_daily_caps: list[ProviderDailyCapPayload] | None = None
+    config_overrides: dict[str, Any] | None = None
 
 
 class ChannelListPayload(msgspec.Struct, frozen=True):

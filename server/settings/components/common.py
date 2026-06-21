@@ -268,6 +268,13 @@ UNFOLD: dict[str, Any] = {
                         ),
                     },
                     {
+                        'title': 'Character Sessions',
+                        'icon': 'history',
+                        'link': reverse_lazy(
+                            'admin:channels_charactergenerationsession_changelist',
+                        ),
+                    },
+                    {
                         'title': 'Niche Configs',
                         'icon': 'tune',
                         'link': reverse_lazy(
@@ -355,6 +362,13 @@ UNFOLD: dict[str, Any] = {
                         ),
                     },
                     {
+                        'title': 'Stage Executions',
+                        'icon': 'timeline',
+                        'link': reverse_lazy(
+                            'admin:pipelines_stageexecution_changelist',
+                        ),
+                    },
+                    {
                         'title': 'Cost Records',
                         'icon': 'payments',
                         'link': reverse_lazy(
@@ -364,9 +378,29 @@ UNFOLD: dict[str, Any] = {
                 ],
             },
             {
+                'title': 'Publishing',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Publish Jobs',
+                        'icon': 'cloud_upload',
+                        'link': reverse_lazy(
+                            'admin:publishing_publishjob_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
                 'title': 'Clips',
                 'separator': True,
                 'items': [
+                    {
+                        'title': 'Sources',
+                        'icon': 'video_library',
+                        'link': reverse_lazy(
+                            'admin:clips_clipsource_changelist',
+                        ),
+                    },
                     {
                         'title': 'Candidates',
                         'icon': 'movie',

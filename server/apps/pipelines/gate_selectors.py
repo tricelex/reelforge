@@ -1,7 +1,10 @@
 """Read-only queries for pipeline review gates."""
 
-from decimal import Decimal
-
+from server.apps.pipelines.logic.constants import GATE_CATALOG
+from server.apps.pipelines.logic.value_objects import (
+    GateCatalogEntryPayload,
+    GateCatalogPayload,
+)
 from server.apps.pipelines.models import (
     PipelineRun,
     RunStatus,
@@ -18,6 +21,20 @@ def _armed_gate_key(run: PipelineRun, gate: StageExecution) -> bool:
 def count_gates_waiting() -> int:
     """Count runs parked at armed review gates."""
     return len(list_gates_waiting())
+
+
+def list_gate_catalog() -> GateCatalogPayload:
+    """Return known gate keys for channel armed-gates UI."""
+    return GateCatalogPayload(
+        items=[
+            GateCatalogEntryPayload(
+                key=key,
+                label=label,
+                description=description,
+            )
+            for key, label, description in GATE_CATALOG
+        ],
+    )
 
 
 def list_gates_waiting() -> list[dict[str, object]]:

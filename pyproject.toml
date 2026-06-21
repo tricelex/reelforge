@@ -30,6 +30,7 @@ django-permissions-policy = "^4.27"
 django-stubs-ext = "^6.0"
 django-modern-rest = { version = "^0.10.0", extras = ["msgspec", "pydantic", "attrs", "jwt", "openapi"] }
 django-unfold = ">=0.40"
+pygments = "^2.19"
 
 psycopg2-binary = "^2.9"
 gunicorn = "^26.0"
@@ -177,6 +178,7 @@ pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "server/apps/*/migrations/*.py" = ["D101", "E501", "RUF012"]
+"server/apps/*/management/commands/*.py" = ["E501", "RUF001"]
 "server/common/typing/*.py" = ["F401"]
 "server/implemented.py" = ["PLC0415", "D103"]
 "server/apps/*/apps.py" = ["PLC0415"]

@@ -78,7 +78,7 @@ def test_youtube_clip_source_probe(
 ) -> None:
     """YouTube source probes metadata and becomes READY."""
     with patch(
-        'server.apps.clips.source_services.probe_clip_source_task.kiq',
+        'server.apps.clips.source_services.kiq_task',
         new=lambda *_args, **_kwargs: None,
     ):
         create_resp = dmr_client.post(

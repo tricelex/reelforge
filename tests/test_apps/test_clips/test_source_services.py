@@ -87,7 +87,7 @@ def test_create_clip_source_with_campaign(clipping_channel: Channel) -> None:
     )
     service = ClipSourceService()
     with patch(
-        'server.apps.clips.source_services.probe_clip_source_task.kiq',
+        'server.apps.clips.source_services.kiq_task',
         new=lambda *_a, **_k: None,
     ):
         payload = service.create(
@@ -156,7 +156,7 @@ def test_create_clip_source_validation_errors(
             ),
         )
     with patch(
-        'server.apps.clips.source_services.probe_clip_source_task.kiq',
+        'server.apps.clips.source_services.kiq_task',
         new=lambda *_a, **_k: None,
     ):
         youtube_payload = service.create(
@@ -168,7 +168,7 @@ def test_create_clip_source_validation_errors(
         )
     assert youtube_payload.url == 'https://example.com/watch?v=abc'
     with patch(
-        'server.apps.clips.source_services.probe_clip_source_task.kiq',
+        'server.apps.clips.source_services.kiq_task',
         new=lambda *_a, **_k: None,
     ):
         rss_payload = service.create(

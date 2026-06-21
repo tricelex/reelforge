@@ -312,3 +312,17 @@ class GateWaitingListPayload(msgspec.Struct, frozen=True):
 
     items: list[GateWaitingPayload]
     total: int
+
+
+class GateCatalogEntryPayload(msgspec.Struct, frozen=True):
+    """One known pipeline gate key."""
+
+    key: str
+    label: str
+    description: str
+
+
+class GateCatalogPayload(msgspec.Struct, frozen=True):
+    """Catalog of gate keys for channel configuration."""
+
+    items: list[GateCatalogEntryPayload]

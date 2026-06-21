@@ -2,9 +2,17 @@
 
 from typing import final
 
-import boto3
-from botocore.client import Config
 from django.conf import settings
+
+from server.common.s3 import AssetStorage, build_s3_client
+
+
+def _storage_object_key(name: str) -> str:
+    """Return the bucket object key for a FileField-relative name."""
+    location = AssetStorage.location.strip('/')
+    if not location or name.startswith(f'{location}/'):
+        return name
+    return f'{location}/{name}'
 
 
 @final
@@ -14,18 +22,7 @@ class PresignUrlHelper:
     def __init__(self) -> None:
         """Initialise the boto3 S3 client from Django storage settings."""
         self._bucket = settings.AWS_STORAGE_BUCKET_NAME
-        self._client = boto3.client(
-            's3',
-            endpoint_url=settings.AWS_S3_PUBLIC_ENDPOINT_URL,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME,
-            verify=getattr(settings, 'AWS_S3_VERIFY', False),
-            config=Config(
-                signature_version='s3v4',
-                s3={'addressing_style': 'path'},
-            ),
-        )
+        self._client = build_s3_client(settings.AWS_S3_PUBLIC_ENDPOINT_URL)
 
     def presign_put(
         self,
@@ -34,13 +31,13 @@ class PresignUrlHelper:
         expires_in: int = 3600,
     ) -> str:
         """Return a presigned PUT URL for uploading an object."""
+        _ = content_type  # MIME is recorded at register time, not bound to signature.
         return str(
             self._client.generate_presigned_url(
                 'put_object',
                 Params={
                     'Bucket': self._bucket,
-                    'Key': key,
-                    'ContentType': content_type,
+                    'Key': _storage_object_key(key),
                 },
                 ExpiresIn=expires_in,
             ),
@@ -53,7 +50,7 @@ class PresignUrlHelper:
                 'get_object',
                 Params={
                     'Bucket': self._bucket,
-                    'Key': key,
+                    'Key': _storage_object_key(key),
                 },
                 ExpiresIn=expires_in,
             ),

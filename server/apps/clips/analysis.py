@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, Any
 
 import pydantic
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.openai import OpenAIModel
+
+from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipCandidate
@@ -38,7 +40,7 @@ class ClipsOutput(pydantic.BaseModel):
 
 
 clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
-    AnthropicModel('claude-opus-4-8'),
+    OpenAIModel(DEFAULT_LLM_MODEL),
     output_type=ClipsOutput,
     system_prompt=(
         'You are an expert short-form video editor. '
@@ -50,7 +52,7 @@ clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
 
 
 class ClipAnalysisService:
-    """Identifies clip candidates from transcript using Claude (PydanticAI)."""
+    """Identifies clip candidates from transcript using GPT 5.2 (PydanticAI)."""
 
     def __init__(self, run: Any, clips_requested: int = 5) -> None:
         """Initialise with the pipeline run and requested clip count."""

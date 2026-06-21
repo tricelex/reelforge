@@ -8,6 +8,7 @@ from django.db.models import Model
 from django.test import Client
 from django.urls import reverse
 
+from server.apps.assets.models import Asset
 from server.apps.main.models import BlogPost
 
 # Models that should have restricted (FORBIDDEN) admin add pages
@@ -15,6 +16,7 @@ _RESTRICTED_ADMIN_ADD_MODELS = frozenset((
     AccessAttempt,
     AccessLog,
     AccessFailureLog,
+    Asset,
 ))
 
 # Creates a list of tuples containing all registered admin sites,

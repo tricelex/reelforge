@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 from server.apps.assets.logic.events import LibraryAssetIngested
 from server.apps.assets.logic.value_objects import (
@@ -8,10 +9,20 @@ from server.apps.assets.logic.value_objects import (
 from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 from server.apps.assets.services import LibraryAssetService
 from server.common.events import InProcessEventBus
+from server.common.storage import PresignUrlHelper
+
+
+def _make_presign() -> MagicMock:
+    presign = MagicMock(spec=PresignUrlHelper)
+    presign.presign_get.return_value = 'https://storage.example/file'
+    return presign
 
 
 def _make_service() -> LibraryAssetService:
-    return LibraryAssetService(events=InProcessEventBus())
+    return LibraryAssetService(
+        events=InProcessEventBus(),
+        presign=_make_presign(),
+    )
 
 
 @pytest.mark.django_db
@@ -29,7 +40,25 @@ def test_register_from_key_creates_library_asset() -> None:
     assert isinstance(result, LibraryAssetPayload)
     assert result.name == 'Epic Strings'
     assert result.tags == ['tense']
+    assert result.url == 'https://storage.example/file'
+    assert result.mime == 'audio/mpeg'
     assert LibraryAsset.objects.filter(id=result.id).exists()
+
+
+@pytest.mark.django_db
+def test_register_from_key_uses_explicit_mime() -> None:
+    service = _make_service()
+    payload = LibraryAssetCreatePayload(
+        kind=LibraryAssetKind.MUSIC,
+        name='Custom MIME',
+        storage_key='uploads/test/track.bin',
+        mime='audio/mp4',
+    )
+
+    result = service.register_from_key(payload)
+
+    assert result.mime == 'audio/mp4'
+    assert LibraryAsset.objects.get(id=result.id).mime == 'audio/mp4'
 
 
 @pytest.mark.django_db
@@ -38,7 +67,10 @@ def test_register_from_key_emits_library_asset_ingested() -> None:
     bus = InProcessEventBus()
     bus.subscribe(LibraryAssetIngested, events.append)
 
-    service = LibraryAssetService(events=bus)
+    service = LibraryAssetService(
+        events=bus,
+        presign=_make_presign(),
+    )
     payload = LibraryAssetCreatePayload(
         kind=LibraryAssetKind.WATERMARK,
         name='Logo',

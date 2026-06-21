@@ -1,5 +1,7 @@
 """Read-only query helpers for channels."""
 
+from typing import Any
+
 import django.utils.timezone as tz
 from django.db.models import Count, Max, Q, Sum
 
@@ -9,6 +11,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelListPayload,
     ChannelSummaryPayload,
     NicheConfigPayload,
+    ProviderDailyCapPayload,
 )
 from server.apps.channels.models import Channel, ChannelBranding, NicheConfig
 from server.apps.pipelines.models import RunStatus
@@ -33,11 +36,33 @@ def _iso(dt: object) -> str | None:
 def _youtube_status(channel: Channel) -> str:
     try:
         cred = channel.youtube_credential
-    except Exception:  # noqa: BLE001
+    except Exception:
         return 'disconnected'
     if cred.token_expiry and cred.token_expiry < tz.now():
         return 'expired'
     return 'connected'
+
+
+def _default_blueprint_name(channel: Channel) -> str | None:
+    name = channel.default_blueprint_name
+    if not name:
+        return None
+    return name
+
+
+def _provider_daily_caps(channel: Channel) -> list[ProviderDailyCapPayload]:
+    raw: list[dict[str, object]] = list(channel.provider_daily_caps or [])
+    return [
+        ProviderDailyCapPayload(
+            provider=str(item['provider']),
+            daily_cap_usd=str(item['daily_cap_usd']),
+        )
+        for item in raw
+    ]
+
+
+def _config_overrides(channel: Channel) -> dict[str, Any]:
+    return dict(channel.config_overrides or {})
 
 
 def _to_summary(channel: Channel) -> ChannelSummaryPayload:
@@ -47,7 +72,10 @@ def _to_summary(channel: Channel) -> ChannelSummaryPayload:
     published_videos = int(getattr(channel, 'published_videos', 0))
     active_runs = int(getattr(channel, 'active_runs', 0))
     total_spend = getattr(channel, 'total_spend', None)
-    total_spend_usd = f'{total_spend:.4f}' if total_spend is not None else '0.0000'
+    if total_spend is not None:
+        total_spend_usd = f'{total_spend:.4f}'
+    else:
+        total_spend_usd = '0.0000'
     last_activity = getattr(channel, 'last_activity', None)
     return ChannelSummaryPayload(
         id=str(channel.id),
@@ -56,6 +84,7 @@ def _to_summary(channel: Channel) -> ChannelSummaryPayload:
         publish_mode=channel.publish_mode,
         is_active=channel.is_active,
         gates=list(channel.gates),
+        default_blueprint_name=_default_blueprint_name(channel),
         niche_id=niche_id,
         niche_angle=niche_angle,
         published_videos=published_videos,
@@ -126,6 +155,9 @@ def get_channel_detail(channel_id: str) -> ChannelDetailPayload:
         similarity_boost=channel.similarity_boost,
         wpm=channel.wpm,
         is_active=channel.is_active,
+        default_blueprint_name=_default_blueprint_name(channel),
+        provider_daily_caps=_provider_daily_caps(channel),
+        config_overrides=_config_overrides(channel),
     )
 
 

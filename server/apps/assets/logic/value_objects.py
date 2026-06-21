@@ -23,6 +23,8 @@ class LibraryAssetPayload(msgspec.Struct, frozen=True):
     id: str
     kind: str
     name: str
+    url: str
+    mime: str
     tags: list[str]
     channel_id: str | None
     is_active: bool
@@ -36,6 +38,7 @@ class LibraryAssetCreatePayload(msgspec.Struct, frozen=True):
     kind: str
     name: str
     storage_key: str
+    mime: str | None = None
     tags: list[str] | None = None
     channel_id: str | None = None
 

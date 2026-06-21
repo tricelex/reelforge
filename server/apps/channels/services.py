@@ -21,6 +21,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelPatchPayload,
     NicheConfigPatchPayload,
     NicheConfigPayload,
+    ProviderDailyCapPayload,
     YouTubeCallbackPayload,
     YouTubeConnectPayload,
     YouTubeConnectResultPayload,
@@ -36,6 +37,9 @@ from server.apps.channels.selectors import (
     get_channel_branding,
     get_channel_detail,
     get_niche_config,
+)
+from server.apps.pipelines.blueprint_validation import (
+    validate_active_blueprint_name,
 )
 
 _YOUTUBE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -73,6 +77,75 @@ def _set_fk(
     update_fields.append(f'{field_name}_id')
 
 
+def _normalize_blueprint_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    return name
+
+
+def _provider_daily_caps_to_storage(
+    caps: list[ProviderDailyCapPayload],
+) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    stored: list[dict[str, str]] = []
+    for cap in caps:
+        provider = cap.provider.strip()
+        if not provider:
+            msg = 'Provider key cannot be empty'
+            raise ValidationError(msg)
+        if provider in seen:
+            msg = f'Duplicate provider cap: {provider}'
+            raise ValidationError(msg)
+        seen.add(provider)
+        amount = Decimal(cap.daily_cap_usd)
+        if amount < 0:
+            msg = f'daily_cap_usd must be >= 0 for provider {provider}'
+            raise ValidationError(msg)
+        stored.append(
+            {
+                'provider': provider,
+                'daily_cap_usd': str(amount),
+            },
+        )
+    return stored
+
+
+def _validate_config_overrides(overrides: Any) -> dict[str, Any]:
+    if not isinstance(overrides, dict):
+        msg = 'config_overrides must be a JSON object'
+        raise ValidationError(msg)
+    return dict(overrides)
+
+
+def _apply_channel_config_patch(
+    channel: Channel,
+    payload: ChannelPatchPayload,
+) -> list[str]:
+    update_fields: list[str] = []
+    if payload.default_budget_usd is not None:
+        channel.default_budget_usd = Decimal(payload.default_budget_usd)
+        update_fields.append('default_budget_usd')
+    if payload.default_blueprint_name is not None:
+        blueprint_name = _normalize_blueprint_name(
+            payload.default_blueprint_name,
+        )
+        if blueprint_name is not None:
+            validate_active_blueprint_name(blueprint_name)
+        channel.default_blueprint_name = blueprint_name or ''
+        update_fields.append('default_blueprint_name')
+    if payload.provider_daily_caps is not None:
+        channel.provider_daily_caps = _provider_daily_caps_to_storage(
+            payload.provider_daily_caps,
+        )
+        update_fields.append('provider_daily_caps')
+    if payload.config_overrides is not None:
+        channel.config_overrides = _validate_config_overrides(
+            payload.config_overrides,
+        )
+        update_fields.append('config_overrides')
+    return update_fields
+
+
 @final
 @attrs.define(slots=True, frozen=True)
 class ChannelService:
@@ -80,6 +153,21 @@ class ChannelService:
 
     def create(self, payload: ChannelCreatePayload) -> ChannelDetailPayload:
         """Create a channel with default branding row."""
+        blueprint_name = _normalize_blueprint_name(
+            payload.default_blueprint_name,
+        )
+        if blueprint_name is not None:
+            validate_active_blueprint_name(blueprint_name)
+        provider_caps: list[dict[str, str]] = []
+        if payload.provider_daily_caps is not None:
+            provider_caps = _provider_daily_caps_to_storage(
+                payload.provider_daily_caps,
+            )
+        config_overrides: dict[str, Any] = {}
+        if payload.config_overrides is not None:
+            config_overrides = _validate_config_overrides(
+                payload.config_overrides,
+            )
         channel = Channel.objects.create(
             name=payload.name,
             kind=payload.kind,
@@ -95,6 +183,9 @@ class ChannelService:
             stability=payload.stability,
             similarity_boost=payload.similarity_boost,
             wpm=payload.wpm,
+            default_blueprint_name=blueprint_name or '',
+            provider_daily_caps=provider_caps,
+            config_overrides=config_overrides,
         )
         ChannelBranding.objects.get_or_create(channel=channel)
         if payload.niche is not None:
@@ -134,9 +225,9 @@ class ChannelService:
                 'is_active',
             ),
         )
-        if payload.default_budget_usd is not None:
-            channel.default_budget_usd = Decimal(payload.default_budget_usd)
-            update_fields.append('default_budget_usd')
+        update_fields.extend(
+            _apply_channel_config_patch(channel, payload),
+        )
         if update_fields:
             channel.save(update_fields=update_fields)
         return get_channel_detail(str(channel.id))

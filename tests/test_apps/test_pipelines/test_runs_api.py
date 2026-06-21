@@ -57,6 +57,42 @@ def run(
 
 
 @pytest.mark.django_db
+def test_create_run_uses_channel_default_blueprint(
+    dmr_client: DMRClient,
+    channel: Channel,
+    blueprint: PipelineBlueprint,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST /api/runs/ falls back to channel.default_blueprint_name."""
+    alt = PipelineBlueprint.objects.create(
+        name='longform_alt',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': [{'key': 'research', 'depends_on': []}]},
+        is_active=True,
+    )
+    channel.default_blueprint_name = alt.name
+    channel.save(update_fields=['default_blueprint_name'])
+
+    with patch(
+        'server.apps.pipelines.tasks.advance_pipeline.kiq',
+        new_callable=AsyncMock,
+    ):
+        response = dmr_client.post(
+            reverse('api:pipelines_api:run-collection'),
+            data={
+                'channel_id': str(channel.id),
+                'topic': 'Channel default blueprint',
+            },
+            headers=auth_headers,
+        )
+
+    assert response.status_code == HTTPStatus.CREATED
+    assert response.json()['blueprint_name'] == alt.name
+    run = PipelineRun.objects.get(id=response.json()['id'])
+    assert run.blueprint_id == alt.id
+
+
+@pytest.mark.django_db
 def test_create_run(
     dmr_client: DMRClient,
     channel: Channel,

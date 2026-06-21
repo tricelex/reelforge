@@ -1,5 +1,6 @@
 """Business logic for library assets and presigned uploads."""
 
+import mimetypes
 import uuid
 from typing import final
 
@@ -19,16 +20,30 @@ from server.common.pagination import paginate_queryset
 from server.common.storage import PresignUrlHelper
 
 
-def _to_payload(asset: LibraryAsset) -> LibraryAssetPayload:
+def _guess_mime(filename: str) -> str:
+    """Return a MIME type guess for a storage key or filename."""
+    guessed, _ = mimetypes.guess_type(filename)
+    return guessed or ''
+
+
+def _to_payload(
+    asset: LibraryAsset,
+    presign: PresignUrlHelper,
+) -> LibraryAssetPayload:
     meta = {
         key: value
         for key, value in dict(asset.meta).items()
         if isinstance(value, (str, int, float, bool)) or value is None
     }
+    url = ''
+    if asset.file:
+        url = presign.presign_get(asset.file.name or '')
     return LibraryAssetPayload(
         id=str(asset.id),
         kind=asset.kind,
         name=asset.name,
+        url=url,
+        mime=asset.mime or _guess_mime(asset.file.name or ''),
         tags=list(asset.tags),
         channel_id=str(asset.channel_id) if asset.channel_id else None,
         is_active=asset.is_active,
@@ -49,7 +64,7 @@ class UploadService:
         payload: PresignUploadPayload,
     ) -> PresignUploadResultPayload:
         """Return a presigned PUT URL and storage key."""
-        key = f'uploads/{uuid.uuid4()}/{payload.filename}'
+        key = f'library/{uuid.uuid4()}/{payload.filename}'
         url = self._presign.presign_put(key, payload.mime)
         return PresignUploadResultPayload(url=url, key=key)
 
@@ -60,6 +75,7 @@ class LibraryAssetService:
     """Manages library asset registration and metadata."""
 
     _events: EventBus
+    _presign: PresignUrlHelper
 
     def list_assets(
         self,
@@ -87,7 +103,7 @@ class LibraryAssetService:
             limit=limit,
         )
         return LibraryAssetListPayload(
-            items=[_to_payload(a) for a in rows],
+            items=[_to_payload(a, self._presign) for a in rows],
             next_cursor=next_cursor,
             total=total,
         )
@@ -96,7 +112,10 @@ class LibraryAssetService:
         """Return one library asset."""
         from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
 
-        return _to_payload(LibraryAsset.objects.get(id=asset_id))
+        return _to_payload(
+            LibraryAsset.objects.get(id=asset_id),
+            self._presign,
+        )
 
     def register_from_key(
         self,
@@ -113,6 +132,7 @@ class LibraryAssetService:
                 uuid.UUID(payload.channel_id) if payload.channel_id else None
             ),
             file=payload.storage_key,
+            mime=payload.mime or _guess_mime(payload.storage_key),
         )
         self._events.emit(LibraryAssetIngested(asset_id=str(asset.id)))
-        return _to_payload(asset)
+        return _to_payload(asset, self._presign)

@@ -77,6 +77,9 @@ class Channel(UUIDModel, TimeStampedModel):
     stability = models.FloatField(default=0.5)
     similarity_boost = models.FloatField(default=0.75)
     wpm = models.PositiveIntegerField(default=158)
+    default_blueprint_name = models.CharField(max_length=100, blank=True, default='')
+    provider_daily_caps = models.JSONField(default=list, blank=True)
+    config_overrides = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

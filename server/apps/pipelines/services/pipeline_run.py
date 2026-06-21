@@ -10,6 +10,7 @@ import django.utils.timezone as tz
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
+from server.apps.pipelines.blueprint_validation import resolve_blueprint_name
 from server.apps.pipelines.logic.events import PipelineRunCreated
 from server.apps.pipelines.logic.value_objects import (
     RunCreatePayload,
@@ -22,12 +23,6 @@ from server.common.events import EventBus
 _IDEMPOTENCY_TTL = 60 * 60 * 24
 _SSE_TOKEN_MAX_AGE = 300
 _SSE_SIGNER_SALT = 'pipeline-sse-token'
-
-_BLUEPRINT_BY_KIND: dict[str, str] = {
-    'LONGFORM': 'longform_v1',
-    'CLIPPING': 'clipping_v1',
-    'SHORTS': 'longform_v1',
-}
 
 
 @final
@@ -181,21 +176,15 @@ class PipelineRunService:
             msg = 'topic or source_id is required'
             raise ValidationError(msg)
 
-        blueprint_name = payload.blueprint_name or _BLUEPRINT_BY_KIND.get(
-            channel.kind,
+        blueprint_name = resolve_blueprint_name(
+            channel_kind=channel.kind,
+            channel_default=channel.default_blueprint_name or None,
+            run_override=payload.blueprint_name,
         )
-        if blueprint_name is None:
-            msg = f'No blueprint mapping for channel kind {channel.kind}'
-            raise ValidationError(msg)
-
-        try:
-            blueprint = PipelineBlueprint.objects.get(
-                name=blueprint_name,
-                is_active=True,
-            )
-        except ObjectDoesNotExist as exc:
-            msg = f'Blueprint not found: {blueprint_name}'
-            raise ValidationError(msg) from exc
+        blueprint = PipelineBlueprint.objects.get(
+            name=blueprint_name,
+            is_active=True,
+        )
 
         run = PipelineRun.objects.create(
             channel=channel,

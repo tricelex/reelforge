@@ -1,10 +1,10 @@
 """Background tasks for the main app."""
 
 import structlog
-from asgiref.sync import async_to_sync
 
 from server.apps.main.logic.events import BlogPostCreated
 from server.common.broker import broker
+from server.common.taskiq_sender import kiq_task
 
 logger = structlog.get_logger(__name__)
 
@@ -32,7 +32,7 @@ def notify_blog_post_created(blog_post_id: int) -> None:
 
 def handle_blog_post_created(event: BlogPostCreated) -> None:
     """EventBus handler — enqueues the notification task."""
-    async_to_sync(notify_blog_post_created.kiq)(event.blog_post_id)
+    kiq_task(notify_blog_post_created, event.blog_post_id)
 
 
 @broker.task(schedule=[{'cron': '*/2 * * * *'}])

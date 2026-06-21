@@ -482,7 +482,11 @@ def test_list_channels_youtube_expired_status(
         reverse('api:channels_api:channel-collection'),
         headers=auth_headers,
     )
-    row = next(item for item in response.json()['items'] if item['id'] == str(channel.id))
+    row = next(
+        item
+        for item in response.json()['items']
+        if item['id'] == str(channel.id)
+    )
     assert row['youtube_status'] == 'expired'
 
 
@@ -507,6 +511,203 @@ def test_list_channels_youtube_connected_status(
         headers=auth_headers,
     )
     row = next(
-        item for item in response.json()['items'] if item['id'] == str(channel.id)
+        item
+        for item in response.json()['items']
+        if item['id'] == str(channel.id)
     )
     assert row['youtube_status'] == 'connected'
+
+
+@pytest.fixture
+def blueprint(db) -> object:  # type: ignore[no-untyped-def]
+    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
+
+    return PipelineBlueprint.objects.create(
+        name='longform_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+        is_active=True,
+    )
+
+
+@pytest.mark.django_db
+def test_channel_default_blueprint_get_and_patch(
+    dmr_client: DMRClient,
+    channel: Channel,
+    blueprint: object,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    body = dmr_client.get(detail_url, headers=auth_headers).json()
+    assert body['default_blueprint_name'] is None
+    assert body['provider_daily_caps'] == []
+    assert body['config_overrides'] == {}
+
+    patch_response = dmr_client.patch(
+        detail_url,
+        data={'default_blueprint_name': 'longform_v1'},
+        headers=auth_headers,
+    )
+    assert patch_response.status_code == HTTPStatus.OK
+    assert patch_response.json()['default_blueprint_name'] == 'longform_v1'
+
+
+@pytest.mark.django_db
+def test_channel_patch_invalid_blueprint_returns_400(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={'default_blueprint_name': 'missing_blueprint'},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_channel_patch_clears_default_blueprint_with_empty_string(
+    dmr_client: DMRClient,
+    channel: Channel,
+    blueprint: object,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    dmr_client.patch(
+        detail_url,
+        data={'default_blueprint_name': 'longform_v1'},
+        headers=auth_headers,
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={'default_blueprint_name': ''},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['default_blueprint_name'] is None
+
+
+@pytest.mark.django_db
+def test_channel_patch_provider_daily_caps(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={
+            'provider_daily_caps': [
+                {'provider': 'elevenlabs', 'daily_cap_usd': '25.00'},
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    caps = response.json()['provider_daily_caps']
+    assert caps == [{'provider': 'elevenlabs', 'daily_cap_usd': '25.00'}]
+
+
+@pytest.mark.django_db
+def test_channel_patch_rejects_negative_provider_cap(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={
+            'provider_daily_caps': [
+                {'provider': 'fal', 'daily_cap_usd': '-1'},
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_channel_patch_rejects_duplicate_provider_cap(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={
+            'provider_daily_caps': [
+                {'provider': 'fal', 'daily_cap_usd': '10'},
+                {'provider': 'fal', 'daily_cap_usd': '20'},
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_channel_patch_config_overrides(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+    response = dmr_client.patch(
+        detail_url,
+        data={
+            'config_overrides': {
+                'motion': {'hero_ratio': 0.2},
+            },
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['config_overrides'] == {
+        'motion': {'hero_ratio': 0.2},
+    }
+
+
+@pytest.mark.django_db
+def test_channel_summary_includes_default_blueprint_name(
+    dmr_client: DMRClient,
+    channel: Channel,
+    blueprint: object,
+    auth_headers: dict[str, str],
+) -> None:
+    channel.default_blueprint_name = 'longform_v1'
+    channel.save(update_fields=['default_blueprint_name'])
+    response = dmr_client.get(
+        reverse('api:channels_api:channel-collection'),
+        headers=auth_headers,
+    )
+    row = next(
+        item
+        for item in response.json()['items']
+        if item['id'] == str(channel.id)
+    )
+    assert row['default_blueprint_name'] == 'longform_v1'

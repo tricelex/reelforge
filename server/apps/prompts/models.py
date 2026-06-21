@@ -4,6 +4,7 @@ from typing import ClassVar, override
 
 from django.db import models
 
+from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
 from server.common.models import TimeStampedModel, UUIDModel
 
 
@@ -51,7 +52,7 @@ class PromptVersion(UUIDModel, TimeStampedModel):
     version = models.PositiveIntegerField()
     system_prompt = models.TextField()
     user_prompt = models.TextField()
-    model = models.CharField(max_length=60, default='claude-opus-4-8')
+    model = models.CharField(max_length=60, default=DEFAULT_LLM_MODEL)
     temperature = models.FloatField(default=1.0)
     max_tokens = models.PositiveIntegerField(default=8192)
     is_active = models.BooleanField(default=False)

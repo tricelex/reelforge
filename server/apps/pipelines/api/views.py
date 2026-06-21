@@ -15,11 +15,15 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from server.apps.clips.services import ClipsService
 from server.apps.core.auth import require_operator
 from server.apps.pipelines.clip_selectors import get_run_transcript
-from server.apps.pipelines.gate_selectors import list_gates_waiting
+from server.apps.pipelines.gate_selectors import (
+    list_gate_catalog,
+    list_gates_waiting,
+)
 from server.apps.pipelines.logic.value_objects import (
     BlueprintListPayload,
     GateApprovePayload,
     GateApproveResultPayload,
+    GateCatalogPayload,
     GateWaitingListPayload,
     GateWaitingPayload,
     RerunStagePayload,
@@ -324,6 +328,21 @@ class RunAssetsController(
             cursor=cursor,
             limit=limit,
         )
+
+
+@final
+class GateCatalogController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List known pipeline gate keys."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> GateCatalogPayload:
+        """Return gate catalog for armed-gates UI."""
+        return list_gate_catalog()
 
 
 @final
