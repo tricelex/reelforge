@@ -1,8 +1,13 @@
 """Enqueue Taskiq tasks from synchronous Django code.
 
-Do not call ``async_to_sync(task.kiq)(...)`` directly: each invocation may
-use a different event loop, which closes the RabbitMQ channel opened by
-``broker.startup()``.  Route all sync enqueues through ``kiq_task``.
+Do not call ``task.kiq(...)`` or ``async_to_sync(task.kiq)(...)`` directly:
+each ad-hoc call may use a different event loop, which closes the RabbitMQ
+channel opened by ``broker.startup()``.
+
+Route all enqueues through this module:
+
+- ``kiq_task`` — from synchronous Django code (views, services, event handlers)
+- ``kiq_task_async`` — from ``async def`` code (orchestrator, executor)
 """
 
 import asyncio
@@ -64,3 +69,17 @@ async def _enqueue(
 def kiq_task(task: Any, *args: Any, **kwargs: Any) -> None:
     """Enqueue a Taskiq task from synchronous code."""
     _run_async(_enqueue(task, args, kwargs))
+
+
+async def kiq_task_async(task: Any, *args: Any, **kwargs: Any) -> None:
+    """Enqueue a Taskiq task from asynchronous code.
+
+    Uses the same persistent sender loop as ``kiq_task`` so broker startup
+    and RabbitMQ channels stay on one event loop.
+    """
+    loop = _ensure_loop()
+    future = asyncio.run_coroutine_threadsafe(
+        _enqueue(task, args, kwargs),
+        loop,
+    )
+    await asyncio.wrap_future(future)

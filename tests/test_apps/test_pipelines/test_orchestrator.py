@@ -290,6 +290,73 @@ def test_build_context_resolves_upstream(run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_build_context_resolves_transitive_upstream() -> None:
+    """build_context includes outputs from transitive depends_on ancestors."""
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.context import build_context
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='ctx_transitive_v1',
+            kind=PipelineKind.CLIPPING,
+            graph={
+                'stages': [
+                    {'key': 'clip_ingest', 'depends_on': []},
+                    {'key': 'clip_transcribe', 'depends_on': ['clip_ingest']},
+                    {
+                        'key': 'clip_analyze',
+                        'depends_on': ['clip_transcribe'],
+                    },
+                ],
+            },
+        )
+        ch = await Channel.objects.acreate(
+            name='ctx_transitive_ch',
+            kind=ChannelKind.CLIPPING,
+        )
+        ctx_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='transitive ctx test',
+        )
+        await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='clip_ingest',
+            status=StageStatus.SUCCEEDED,
+            output={'asset_id': 'ingest-asset-id'},
+            input_hash='',
+        )
+        await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='clip_transcribe',
+            status=StageStatus.SUCCEEDED,
+            output={'manifest_asset_id': 'manifest-id'},
+            input_hash='',
+        )
+        exec_analyze = await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='clip_analyze',
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        ctx = await build_context(exec_analyze)
+        assert ctx.upstream == {
+            'clip_transcribe': {'manifest_asset_id': 'manifest-id'},
+            'clip_ingest': {'asset_id': 'ingest-asset-id'},
+        }
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
 def test_build_context_merges_channel_config_overrides() -> None:
     """build_context merges channel config_overrides over blueprint config."""
     from server.apps.channels.models import Channel, ChannelKind
@@ -542,7 +609,7 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
-    """An armed gate sets run.status=AWAITING_REVIEW and creates a RUNNING execution."""
+    """An armed gate sets run.status=AWAITING_REVIEW and creates a parked execution."""
     from unittest.mock import AsyncMock, patch
 
     from server.apps.channels.models import (
@@ -602,7 +669,7 @@ def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
     run.refresh_from_db()
     assert run.status == RunStatus.AWAITING_REVIEW
     exec_ = StageExecution.objects.get(run=run, stage_key='final_gate')
-    assert exec_.status == StageStatus.RUNNING
+    assert exec_.status == StageStatus.NEEDS_INPUT
 
 
 @pytest.mark.django_db(transaction=True)

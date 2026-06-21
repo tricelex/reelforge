@@ -5,6 +5,25 @@ if TYPE_CHECKING:
     from server.apps.pipelines.stages.base import StageContext
 
 
+def _transitive_dep_keys(
+    graph: list[dict[str, Any]],
+    stage_key: str,
+) -> list[str]:
+    """Return all ancestor stage keys for *stage_key* (transitive depends_on)."""
+    by_key = {node['key']: node for node in graph}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    pending = list(by_key.get(stage_key, {}).get('depends_on', []))
+    while pending:
+        dep_key = pending.pop()
+        if dep_key in seen:
+            continue
+        seen.add(dep_key)
+        ordered.append(dep_key)
+        pending.extend(by_key.get(dep_key, {}).get('depends_on', []))
+    return ordered
+
+
 async def build_context(execution: 'StageExecution') -> 'StageContext':
     """Assemble a StageContext from a StageExecution row.
 
@@ -44,7 +63,7 @@ async def build_context(execution: 'StageExecution') -> 'StageContext':
         stage_overrides = {}
     config: dict[str, Any] = {**base_config, **stage_overrides}
 
-    deps: list[str] = stage_node.get('depends_on', [])
+    deps = _transitive_dep_keys(graph, execution.stage_key)
     upstream: dict[str, Any] = {}
     for dep_key in deps:
         dep_exec = await (

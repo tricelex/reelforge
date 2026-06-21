@@ -17,6 +17,10 @@ class _NoOpBroker(AsyncBroker):
     """
 
     @override
+    async def startup(self) -> None:
+        """No-op startup for sender-loop initialization in tests."""
+
+    @override
     async def kick(self, message: BrokerMessage) -> None:
         """Accept the message and discard it."""
 
@@ -38,28 +42,34 @@ async def _empty_async_gen() -> AsyncGenerator[bytes]:  # pragma: no cover
 def _taskiq_in_memory() -> Generator[None]:
     import server.common.broker as broker_module
     import server.common.taskiq_sender as sender_module
-    from server.apps.main import tasks as tasks_module
+
+    # Import every task module so they register with the broker.
+    import server.apps.analytics.tasks  # noqa: F401
+    import server.apps.assets.tasks  # noqa: F401
+    import server.apps.clips.tasks  # noqa: F401
+    import server.apps.main.tasks  # noqa: F401
+    import server.apps.pipelines.tasks  # noqa: F401
 
     no_op = _NoOpBroker()
-    original = broker_module.broker
-    original_add_broker: AsyncBroker = tasks_module.add.broker
-    original_notify_broker: AsyncBroker = (
-        tasks_module.notify_blog_post_created.broker
-    )
-    original_broker_ready = sender_module._broker_ready
+    original_broker = broker_module.broker
+    original_task_brokers: list[
+        tuple[AsyncTaskiqDecoratedTask[Any, Any], AsyncBroker]
+    ] = []
 
-    _swap_broker(tasks_module.add, no_op)
-    _swap_broker(tasks_module.notify_blog_post_created, no_op)
+    for task in original_broker.local_task_registry.values():
+        original_task_brokers.append((task, task.broker))
+        _swap_broker(task, no_op)
+
     broker_module.broker = no_op  # type: ignore[assignment]
     sender_module._broker_ready = False
 
     with patch.object(sender_module, 'kiq_task'):
         yield
 
-    broker_module.broker = original
-    sender_module._broker_ready = original_broker_ready
-    _swap_broker(tasks_module.add, original_add_broker)
-    _swap_broker(tasks_module.notify_blog_post_created, original_notify_broker)
+    broker_module.broker = original_broker
+    sender_module._broker_ready = False
+    for task, original_task_broker in original_task_brokers:
+        _swap_broker(task, original_task_broker)
 
 
 def _swap_broker(

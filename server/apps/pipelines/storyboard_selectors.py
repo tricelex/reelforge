@@ -11,6 +11,7 @@ from server.apps.pipelines.logic.value_objects import (
     StoryboardSceneImagePayload,
     StoryboardScenePayload,
 )
+from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.models import (
     PipelineRun,
     StageExecution,
@@ -38,10 +39,25 @@ def _latest_parent_execution(
     )
 
 
+def _gate_stage_keys(run: PipelineRun) -> set[str]:
+    graph: list[dict[str, object]] = run.blueprint_snapshot.get('stages', [])
+    return {
+        str(node['key'])
+        for node in graph
+        if isinstance(node, dict) and node.get('gate')
+    }
+
+
 def _active_gate_key(run: PipelineRun) -> str | None:
+    gate_keys = _gate_stage_keys(run)
     gate = (
         StageExecution.objects
-        .filter(run=run, parent=None, status=StageStatus.RUNNING)
+        .filter(
+            run=run,
+            parent=None,
+            stage_key__in=gate_keys,
+            status__in=GATE_PARKED_STATUSES,
+        )
         .order_by('-created_at')
         .first()
     )

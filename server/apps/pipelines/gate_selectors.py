@@ -1,6 +1,6 @@
 """Read-only queries for pipeline review gates."""
 
-from server.apps.pipelines.logic.constants import GATE_CATALOG
+from server.apps.pipelines.logic.constants import GATE_CATALOG, GATE_PARKED_STATUSES
 from server.apps.pipelines.logic.value_objects import (
     GateCatalogEntryPayload,
     GateCatalogPayload,
@@ -9,7 +9,6 @@ from server.apps.pipelines.models import (
     PipelineRun,
     RunStatus,
     StageExecution,
-    StageStatus,
 )
 
 
@@ -49,7 +48,7 @@ def list_gates_waiting() -> list[dict[str, object]]:
     for run in runs:
         gate = (
             StageExecution.objects
-            .filter(run=run, parent=None, status=StageStatus.RUNNING)
+            .filter(run=run, parent=None, status__in=GATE_PARKED_STATUSES)
             .order_by('-created_at')
             .first()
         )

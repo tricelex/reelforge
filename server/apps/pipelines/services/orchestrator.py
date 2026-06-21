@@ -9,6 +9,10 @@ import structlog
 from asgiref.sync import sync_to_async
 from django.db import transaction
 
+from server.apps.pipelines.logic.constants import (
+    GATE_PARKED_STATUS,
+    GATE_PARKED_STATUSES,
+)
 from server.common.redis_client import publish_pipeline_event
 
 logger = structlog.get_logger(__name__)
@@ -25,8 +29,9 @@ async def publish_sse(run_id: str, data: dict[str, Any]) -> None:
 async def execute_stage_kiq(execution_id: str) -> None:
     """Enqueue execute_stage (separate function for mockability in tests)."""
     from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
+    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
 
-    await execute_stage.kiq(execution_id)
+    await kiq_task_async(execute_stage, execution_id)
 
 
 def _get_stage_states(run: 'PipelineRun') -> dict[str, str | None]:
@@ -85,7 +90,7 @@ def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
     StageExecution.objects.create(
         run=run,
         stage_key=stage_key,
-        status=StageStatus.RUNNING,
+        status=GATE_PARKED_STATUS,
         input_hash='',
     )
     run.status = RunStatus.AWAITING_REVIEW
@@ -120,6 +125,21 @@ def _create_queued_stage_sync(
         input_hash='',
     )
     return str(exec_.id)
+
+
+def _gate_keys(graph: list[dict[str, Any]]) -> set[str]:
+    return {node['key'] for node in graph if node.get('gate')}
+
+
+def _has_parked_gate(
+    states: dict[str, str | None],
+    graph: list[dict[str, Any]],
+) -> bool:
+    """Return True when an armed gate stage is waiting for human approval."""
+    for key in _gate_keys(graph):
+        if states.get(key) in GATE_PARKED_STATUSES:
+            return True
+    return False
 
 
 def _apply_terminal_status(
@@ -157,7 +177,11 @@ def _update_run_status_sync(
         return
 
     old_status = run.status
-    _apply_terminal_status(run, values, RunStatus, StageStatus)
+    graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
+    if _has_parked_gate(states, graph):
+        run.status = RunStatus.AWAITING_REVIEW
+    else:
+        _apply_terminal_status(run, values, RunStatus, StageStatus)
     if run.status != old_status or run.started_at is not None:
         run.save(update_fields=['status', 'started_at', 'finished_at'])
 
@@ -199,7 +223,7 @@ def _try_park_gate_sync(
     if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
         return False
     _park_gate_sync(run, key)
-    states[key] = StageStatus.RUNNING
+    states[key] = GATE_PARKED_STATUS
     return True
 
 
@@ -336,7 +360,7 @@ def _approve_gate_sync(
             run=run,
             stage_key=gate_key,
             parent=None,
-            status=StageStatus.RUNNING,
+            status__in=GATE_PARKED_STATUSES,
         )
         execution.status = StageStatus.SUCCEEDED
         execution.output = output

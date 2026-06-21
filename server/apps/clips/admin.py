@@ -116,6 +116,7 @@ class ClipCandidateAdmin(ReelForgeAdmin):
     )
     search_fields = ('title', 'hook_text', 'run__topic')
     autocomplete_fields = ('run',)
+    list_select_related = ('run',)
     readonly_fields = ('render_asset_id', 'created_at', 'updated_at')
     inlines: ClassVar = [
         ClipLayoutConfigInline,

@@ -19,11 +19,13 @@ from server.apps.pipelines.logic.value_objects import (
     StoryboardPayload,
     StoryboardScenePayload,
 )
+from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.models import (
     PipelineRun,
     StageExecution,
     StageStatus,
 )
+from server.apps.pipelines.storyboard_selectors import _gate_stage_keys
 from server.apps.pipelines.storyboard_selectors import (
     _latest_parent_execution,
     get_preview,
@@ -60,14 +62,19 @@ def _stale_downstream_sync(run_id: str, from_stage_key: str) -> None:
 def _resolve_publish_gate(run: PipelineRun, gate_key: str | None) -> str:
     if gate_key:
         return gate_key
-    running = (
+    parked = (
         StageExecution.objects
-        .filter(run=run, parent=None, status=StageStatus.RUNNING)
+        .filter(
+            run=run,
+            parent=None,
+            stage_key__in=_gate_stage_keys(run),
+            status__in=GATE_PARKED_STATUSES,
+        )
         .order_by('-created_at')
         .first()
     )
-    if running is not None:
-        return running.stage_key
+    if parked is not None:
+        return parked.stage_key
     for candidate in ('final_gate', 'review_gate', 'storyboard_gate'):
         if candidate in (run.channel.gates or []):
             return candidate

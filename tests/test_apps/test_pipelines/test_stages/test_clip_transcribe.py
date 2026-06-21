@@ -194,6 +194,7 @@ def test_clip_transcribe_run() -> None:
             return await ClipTranscribeStage().run(ctx)
 
     result = asyncio.run(_inner())
+    assert result['source_asset_id'] == 'src-asset-id'
     assert result['transcript_asset_id'] == 'transcript-asset-id'
     assert result['manifest_asset_id'] == 'manifest-asset-id'
     assert result['scene_cuts'] == [5.0, 10.0]

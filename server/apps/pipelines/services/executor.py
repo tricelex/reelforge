@@ -22,8 +22,9 @@ if TYPE_CHECKING:
 async def advance_pipeline_kiq(run_id: str) -> None:
     """Enqueue advance_pipeline task."""
     from server.apps.pipelines.tasks import advance_pipeline  # noqa: PLC0415
+    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
 
-    await advance_pipeline.kiq(run_id)
+    await kiq_task_async(advance_pipeline, run_id)
 
 
 async def kick_advance(execution: 'StageExecution') -> None:
@@ -37,8 +38,9 @@ async def kick_advance(execution: 'StageExecution') -> None:
 async def execute_stage_kiq(execution_id: str) -> None:
     """Enqueue execute_stage (separate function for mockability in tests)."""
     from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
+    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
 
-    await execute_stage.kiq(execution_id)
+    await kiq_task_async(execute_stage, execution_id)
 
 
 def _execution_log_fields(execution: 'StageExecution') -> dict[str, Any]:

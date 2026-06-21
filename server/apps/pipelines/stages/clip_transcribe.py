@@ -188,6 +188,7 @@ class ClipTranscribeStage(Stage):
         )
 
         return {
+            'source_asset_id': source_asset_id,
             'transcript_asset_id': str(transcript_asset.id),
             'manifest_asset_id': str(manifest_asset.id),
             'transcript_text': transcript_text,
