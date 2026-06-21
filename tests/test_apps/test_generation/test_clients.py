@@ -474,6 +474,98 @@ def test_whisperx_align_raises_on_nonzero_returncode() -> None:
         assert 'WhisperX failed' in str(e)
 
 
+def test_whisper_calculate_cost() -> None:
+    from decimal import Decimal
+
+    from server.apps.generation.clients.whisper import calculate_cost
+
+    assert calculate_cost(60.0) == Decimal('0.006000')
+    assert calculate_cost(0.0) == Decimal('0.000000')
+
+
+def test_whisper_transcribe_returns_verbose_json() -> None:
+    from pathlib import Path
+
+    from server.apps.generation.clients.whisper import transcribe
+
+    fake_response = MagicMock()
+    fake_response.model_dump.return_value = {
+        'text': 'hello',
+        'segments': [{'text': 'hello', 'words': []}],
+        'duration': 1.5,
+    }
+
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.return_value = fake_response
+
+    with (
+        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
+        patch('pathlib.Path.open', create=True),
+    ):
+        mock_openai.return_value = mock_client
+        result = transcribe(Path('/tmp/audio.mp3'), 'test-key')
+
+    assert result['text'] == 'hello'
+    assert result['duration'] == 1.5
+
+
+def test_whisper_transcribe_raises_retryable_on_timeout() -> None:
+    from pathlib import Path
+
+    from openai import APITimeoutError
+
+    from server.apps.generation.clients.whisper import transcribe
+    from server.common.exceptions import RetryableProviderError
+
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.side_effect = APITimeoutError(
+        request=MagicMock(),
+    )
+
+    with (
+        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
+        patch('pathlib.Path.open', create=True),
+    ):
+        mock_openai.return_value = mock_client
+        try:
+            transcribe(Path('/tmp/audio.mp3'), 'test-key')
+        except RetryableProviderError as exc:
+            assert exc.provider == 'openai'
+        else:
+            raise AssertionError('expected RetryableProviderError')
+
+
+def test_whisper_transcribe_raises_fatal_on_401() -> None:
+    from pathlib import Path
+
+    from openai import APIStatusError
+
+    from server.apps.generation.clients.whisper import transcribe
+    from server.common.exceptions import FatalProviderError
+
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.side_effect = APIStatusError(
+        'invalid key',
+        response=mock_response,
+        body=None,
+    )
+
+    with (
+        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
+        patch('pathlib.Path.open', create=True),
+    ):
+        mock_openai.return_value = mock_client
+        try:
+            transcribe(Path('/tmp/audio.mp3'), 'test-key')
+        except FatalProviderError as exc:
+            assert exc.provider == 'openai'
+            assert exc.error_code == '401'
+        else:
+            raise AssertionError('expected FatalProviderError')
+
+
 def test_run_agent_skips_cost_recording_when_zero_tokens() -> None:
     """run_agent() skips ctx.costs.record when token counts are zero."""
     from server.apps.generation.clients.llm import run_agent

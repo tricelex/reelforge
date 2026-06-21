@@ -481,3 +481,7 @@ EMAIL_TIMEOUT = 5
 # YouTube Data API v3 OAuth credentials
 YOUTUBE_CLIENT_ID: str = config('YOUTUBE_CLIENT_ID', default='')
 YOUTUBE_CLIENT_SECRET: str = config('YOUTUBE_CLIENT_SECRET', default='')
+
+# Provider API keys
+OPENAI_API_KEY: str = config('OPENAI_API_KEY', default='')
+HUGGINGFACE_TOKEN: str = config('HUGGINGFACE_TOKEN', default='')

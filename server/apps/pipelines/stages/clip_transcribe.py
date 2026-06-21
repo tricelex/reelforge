@@ -1,4 +1,4 @@
-"""ClipTranscribeStage — WhisperX + scene detection → transcript assets."""
+"""ClipTranscribeStage — OpenAI Whisper + scene detection."""
 
 import asyncio
 import json
@@ -8,22 +8,27 @@ from pathlib import Path
 from typing import Any, override
 
 import structlog
+from django.conf import settings
 
+from server.apps.generation.clients.whisper import (
+    WHISPER_COST_PER_MINUTE_USD,
+    calculate_cost,
+)
+from server.apps.generation.clients.whisper import (
+    transcribe as whisper_transcribe,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
 )
-from server.common.subprocess_errors import (
-    format_subprocess_failure,
-    raise_subprocess_failure,
-)
+from server.common.subprocess_errors import raise_subprocess_failure
 
 logger = structlog.get_logger(__name__)
 
 
 def _extract_audio(video_path: str, audio_path: str) -> None:
-    """Extract mono 16kHz WAV from video for WhisperX."""
+    """Extract mono 16kHz MP3 from video for OpenAI Whisper."""
     result = subprocess.run(  # noqa: S603
         [  # noqa: S607
             'ffmpeg',
@@ -34,6 +39,8 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
             '1',
             '-ar',
             '16000',
+            '-b:a',
+            '32k',
             '-vn',
             audio_path,
         ],
@@ -45,48 +52,9 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
         raise_subprocess_failure('ffmpeg', result)
 
 
-def _run_whisperx(audio_path: str, language: str = 'en') -> dict[str, Any]:
-    """Run WhisperX; falls back without diarization on error."""
-    out_dir = tempfile.mkdtemp()
-    base_cmd = [
-        'python',
-        '-m',
-        'whisperx',
-        audio_path,
-        '--language',
-        language,
-        '--output_format',
-        'json',
-        '--output_dir',
-        out_dir,
-    ]
-    result = subprocess.run(  # noqa: S603
-        [*base_cmd, '--diarize'],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        logger.warning(
-            'clip_transcribe_diarize_failed',
-            stderr=(result.stderr or '')[:500],
-        )
-        fallback = subprocess.run(  # noqa: S603
-            base_cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if fallback.returncode != 0:
-            diarize_msg = format_subprocess_failure(
-                'whisperx (diarize)',
-                result,
-            )
-            fallback_msg = format_subprocess_failure('whisperx', fallback)
-            raise RuntimeError(f'{diarize_msg}; fallback: {fallback_msg}')
-    out_file = Path(out_dir) / (Path(audio_path).stem + '.json')
-    result_data: dict[str, Any] = json.loads(out_file.read_text())
-    return result_data
+def _run_whisper(audio_path: str, api_key: str) -> dict[str, Any]:
+    """Transcribe audio via OpenAI Whisper API."""
+    return whisper_transcribe(Path(audio_path), api_key)
 
 
 def _try_scene_detect(video_path: str) -> list[float]:
@@ -152,6 +120,7 @@ class ClipTranscribeStage(Stage):
             'source_duration_sec',
             0.0,
         )
+        api_key: str = getattr(settings, 'OPENAI_API_KEY', '')
 
         source_asset = await Asset.objects.aget(id=source_asset_id)
         video_bytes = await asyncio.to_thread(source_asset.file.read)
@@ -159,17 +128,18 @@ class ClipTranscribeStage(Stage):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             video_path = str(tmp / 'source.mp4')
-            audio_path = str(tmp / 'audio.wav')
+            audio_path = str(tmp / 'audio.mp3')
             await asyncio.to_thread(
                 (tmp / 'source.mp4').write_bytes,
                 video_bytes,
             )
             logger.info('clip_transcribe_extract_audio', run_id=str(ctx.run.id))
             await asyncio.to_thread(_extract_audio, video_path, audio_path)
-            logger.info('clip_transcribe_whisperx', run_id=str(ctx.run.id))
+            logger.info('clip_transcribe_whisper', run_id=str(ctx.run.id))
             transcript_json = await asyncio.to_thread(
-                _run_whisperx,
+                _run_whisper,
                 audio_path,
+                api_key,
             )
             logger.info(
                 'clip_transcribe_scene_detect',
@@ -207,10 +177,21 @@ class ClipTranscribeStage(Stage):
             mime='application/json',
         )
 
+        duration_sec = float(
+            transcript_json.get('duration', source_duration_sec),
+        )
+        await ctx.costs.record(
+            provider='openai',
+            operation='whisper_transcription',
+            units=float(duration_sec) / 60.0,
+            unit_cost_usd=WHISPER_COST_PER_MINUTE_USD,
+        )
+
         return {
             'transcript_asset_id': str(transcript_asset.id),
             'manifest_asset_id': str(manifest_asset.id),
             'transcript_text': transcript_text,
             'scene_cuts': scene_cuts,
             'source_duration_sec': source_duration_sec,
+            'transcription_cost_usd': str(calculate_cost(duration_sec)),
         }

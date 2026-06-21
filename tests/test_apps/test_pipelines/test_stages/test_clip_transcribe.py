@@ -11,7 +11,7 @@ from server.apps.pipelines.stages.clip_transcribe import (
     _build_enriched_transcript,
     _extract_audio,
     _run_scene_detection,
-    _run_whisperx,
+    _run_whisper,
     _try_scene_detect,
 )
 
@@ -115,7 +115,7 @@ def test_extract_audio_raises_with_stderr(mock_run: MagicMock) -> None:
         stdout='',
     )
     try:
-        _extract_audio('/video.mp4', '/audio.wav')
+        _extract_audio('/video.mp4', '/audio.mp3')
     except RuntimeError as exc:
         assert 'ffmpeg failed' in str(exc)
         assert 'invalid data' in str(exc)
@@ -123,76 +123,24 @@ def test_extract_audio_raises_with_stderr(mock_run: MagicMock) -> None:
         raise AssertionError('expected RuntimeError')
 
 
-@patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
-def test_run_whisperx_raises_with_both_attempt_stderr(
-    mock_run: MagicMock,
-    tmp_path: Path,
-) -> None:
-    mock_run.side_effect = [
-        MagicMock(returncode=1, stderr='diarize failed', stdout=''),
-        MagicMock(returncode=1, stderr='module not found', stdout=''),
-    ]
-    with patch(
-        'server.apps.pipelines.stages.clip_transcribe.tempfile.mkdtemp',
-    ) as mock_mkdtemp:
-        mock_mkdtemp.return_value = str(tmp_path)
-        try:
-            _run_whisperx(str(tmp_path / 'audio.wav'))
-        except RuntimeError as exc:
-            assert 'diarize failed' in str(exc)
-            assert 'module not found' in str(exc)
-        else:
-            raise AssertionError('expected RuntimeError')
+@patch('server.apps.pipelines.stages.clip_transcribe.whisper_transcribe')
+def test_run_whisper_delegates_to_client(mock_transcribe: MagicMock) -> None:
+    transcript_data = {'segments': [{'text': 'hello'}], 'duration': 12.0}
+    mock_transcribe.return_value = transcript_data
+    result = _run_whisper('/tmp/audio.mp3', 'test-key')
+    assert result == transcript_data
+    mock_transcribe.assert_called_once_with(Path('/tmp/audio.mp3'), 'test-key')
 
 
 @patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
 def test_extract_audio_calls_ffmpeg(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
-    _extract_audio('/video.mp4', '/audio.wav')
+    _extract_audio('/video.mp4', '/audio.mp3')
     assert mock_run.called
     cmd = mock_run.call_args[0][0]
     assert 'ffmpeg' in cmd
     assert '-vn' in cmd
-
-
-@patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
-def test_run_whisperx_success(mock_run: MagicMock, tmp_path: Path) -> None:
-    transcript_data = {'segments': [{'text': 'hello'}]}
-    out_file = tmp_path / 'audio.json'
-    out_file.write_text(json.dumps(transcript_data))
-
-    mock_run.return_value = MagicMock(returncode=0)
-    with patch(
-        'server.apps.pipelines.stages.clip_transcribe.tempfile.mkdtemp',
-    ) as mock_mkdtemp:
-        mock_mkdtemp.return_value = str(tmp_path)
-        result = _run_whisperx(str(tmp_path / 'audio.wav'))
-
-    assert result == transcript_data
-
-
-@patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
-def test_run_whisperx_fallback_without_diarize(
-    mock_run: MagicMock,
-    tmp_path: Path,
-) -> None:
-    transcript_data = {'segments': [{'text': 'fallback'}]}
-    out_file = tmp_path / 'audio.json'
-    out_file.write_text(json.dumps(transcript_data))
-
-    mock_run.side_effect = [
-        MagicMock(returncode=1, stderr='diarize failed'),
-        MagicMock(returncode=0, stdout=''),
-    ]
-
-    with patch(
-        'server.apps.pipelines.stages.clip_transcribe.tempfile.mkdtemp',
-    ) as mock_mkdtemp:
-        mock_mkdtemp.return_value = str(tmp_path)
-        result = _run_whisperx(str(tmp_path / 'audio.wav'))
-
-    assert result == transcript_data
-    assert mock_run.call_count == 2
+    assert '32k' in cmd
 
 
 def test_clip_transcribe_run() -> None:
@@ -206,6 +154,7 @@ def test_clip_transcribe_run() -> None:
 
     transcript_data: dict = {
         'segments': [{'text': 'hello', 'speaker': 'A', 'words': []}],
+        'duration': 60.0,
     }
     fake_source_asset = MagicMock()
     fake_transcript_asset = MagicMock()
@@ -225,18 +174,23 @@ def test_clip_transcribe_run() -> None:
                         b'video bytes',  # source_asset.file.read
                         None,  # write_bytes
                         None,  # extract_audio
-                        transcript_data,  # whisperx
+                        transcript_data,  # whisper
                         [5.0, 10.0],  # scene_detection
                     ],
                 ),
             ),
+            patch(
+                'server.apps.pipelines.stages.clip_transcribe.settings',
+            ) as mock_settings,
         ):
+            mock_settings.OPENAI_API_KEY = 'test-key'
             mock_asset_cls.objects.aget = AsyncMock(
                 return_value=fake_source_asset,
             )
             ctx.assets.save = AsyncMock(
                 side_effect=[fake_transcript_asset, fake_manifest_asset],
             )
+            ctx.costs.record = AsyncMock()
             return await ClipTranscribeStage().run(ctx)
 
     result = asyncio.run(_inner())
@@ -244,3 +198,4 @@ def test_clip_transcribe_run() -> None:
     assert result['manifest_asset_id'] == 'manifest-asset-id'
     assert result['scene_cuts'] == [5.0, 10.0]
     assert result['source_duration_sec'] == 60.0
+    ctx.costs.record.assert_called_once()
