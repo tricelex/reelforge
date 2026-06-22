@@ -18,7 +18,7 @@ broker = (
     )
     .with_result_backend(
         RedisAsyncResultBackend(
-            config('REDIS_URL', default='redis://localhost:6379'),
+            config('REDIS_URL', default='redis://localhost:6379/0'),
         ),
     )
     .with_middlewares(ObservabilityMiddleware())
