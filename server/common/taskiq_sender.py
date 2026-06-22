@@ -66,8 +66,25 @@ async def _enqueue(
     await task.kiq(*args, **kwargs)
 
 
+async def _enqueue_in_worker(
+    task: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> None:
+    """Enqueue on the worker's running loop (broker already started there)."""
+    await task.kiq(*args, **kwargs)
+
+
 def kiq_task(task: Any, *args: Any, **kwargs: Any) -> None:
     """Enqueue a Taskiq task from synchronous code."""
+    if broker.is_worker_process:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            loop.create_task(_enqueue_in_worker(task, args, kwargs))
+            return
     _run_async(_enqueue(task, args, kwargs))
 
 
@@ -77,6 +94,9 @@ async def kiq_task_async(task: Any, *args: Any, **kwargs: Any) -> None:
     Uses the same persistent sender loop as ``kiq_task`` so broker startup
     and RabbitMQ channels stay on one event loop.
     """
+    if broker.is_worker_process:
+        await _enqueue_in_worker(task, args, kwargs)
+        return
     loop = _ensure_loop()
     future = asyncio.run_coroutine_threadsafe(
         _enqueue(task, args, kwargs),

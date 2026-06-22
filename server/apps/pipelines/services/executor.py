@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import django.utils.timezone as tz
 import structlog
+from asgiref.sync import sync_to_async
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
@@ -306,7 +307,10 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
 
     # Fan-out: only for top-level (non-child) executions
     if execution.parent_id is None:
-        shard_inputs = stage_cls().fan_out(ctx)
+        shard_inputs = await sync_to_async(
+            stage_cls().fan_out,
+            thread_sensitive=True,
+        )(ctx)
         if shard_inputs is not None:
             already_fanned = await StageExecution.objects.filter(
                 parent=execution,

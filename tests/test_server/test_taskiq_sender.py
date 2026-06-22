@@ -24,6 +24,18 @@ def test_enqueue_starts_broker_once() -> None:
     assert task.kiq.await_count == 2
 
 
+def test_kiq_task_async_uses_worker_loop_when_in_worker() -> None:
+    task = AsyncMock()
+    task.kiq = AsyncMock(return_value=None)
+
+    async def _inner() -> None:
+        with patch.object(taskiq_sender.broker, 'is_worker_process', True):
+            await taskiq_sender.kiq_task_async(task, 'run-id')
+
+    asyncio.run(_inner())
+    task.kiq.assert_awaited_once_with('run-id')
+
+
 def test_kiq_task_async_starts_broker_once() -> None:
     task = AsyncMock()
     task.kiq = AsyncMock(return_value=None)
