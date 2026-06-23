@@ -5,25 +5,28 @@
 # Set DJANGO_ENV and all other app variables in Coolify's environment
 # variable UI; no .env file is needed (AutoConfig falls back to process env).
 
+x-base: &base
+  image: "***REMOVED***:latest"
+  build:
+    target: production_build
+    context: .
+    dockerfile: ./docker/django/Dockerfile
+    args:
+      DJANGO_ENV: development
+  restart: unless-stopped
+  volumes:
+    - django-media:/var/www/django/media
+    - django-locale:/code/locale
+
 services:
-  web: &web
-    image: "***REMOVED***:latest"
-    build:
-      target: production_build
-      context: .
-      dockerfile: ./docker/django/Dockerfile
-      args:
-        DJANGO_ENV: development
+  web:
+    <<: *base
     command: python -We -bb manage.py runserver 0.0.0.0:8099
-    restart: unless-stopped
     ports:
       - "8099:8099"
-    volumes:
-      - django-media:/var/www/django/media
-      - django-locale:/code/locale
 
   worker:
-    <<: *web
+    <<: *base
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -34,7 +37,7 @@ services:
       server.apps.analytics.tasks
 
   scheduler:
-    <<: *web
+    <<: *base
     command: python -m taskiq scheduler server.common.scheduler:scheduler
 
 volumes:
