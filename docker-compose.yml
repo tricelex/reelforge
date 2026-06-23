@@ -8,23 +8,6 @@
 # in production.
 
 services:
-  db:
-    image: "postgres:18-alpine"
-    restart: unless-stopped
-    volumes:
-      # Postgres 18 default PGDATA is `/var/lib/postgresql/18/docker`,
-      # so we mount the parent directory to persist the actual data path.
-      - postgres-data:/var/lib/postgresql
-    networks:
-      - backend-net
-    env_file: ./config/.env
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 30s
-      retries: 5
-      start_period: 5s
-
   web:
     <<: &web
       # Image name is changed in production:
@@ -41,16 +24,9 @@ services:
 
       volumes:
         - django-static:/var/www/django/static
-      depends_on:
-        db:
-          condition: service_healthy
-        rustfs-init:
-          condition: service_completed_successfully
       networks:
         - backend-net
       env_file: ./config/.env
-      environment:
-        DJANGO_DATABASE_HOST: db
 
     command: python -We -bb manage.py runserver 0.0.0.0:8000
     healthcheck:
@@ -62,11 +38,6 @@ services:
 
   worker:
     <<: *web
-    depends_on:
-      db:
-        condition: service_healthy
-      rustfs-init:
-        condition: service_completed_successfully
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -81,58 +52,13 @@ services:
 
   scheduler:
     <<: *web
-    depends_on:
-      db:
-        condition: service_healthy
-      rustfs-init:
-        condition: service_completed_successfully
     command: python -m taskiq scheduler server.common.scheduler:scheduler
     healthcheck:
       disable: true
       test: []
 
-  rustfs:
-    image: rustfs/rustfs:latest
-    restart: unless-stopped
-    networks:
-      - backend-net
-    volumes:
-      - rustfs-data:/data
-    environment:
-      RUSTFS_ACCESS_KEY: ${AWS_ACCESS_KEY_ID:-minioadmin}
-      RUSTFS_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
-    command: server --console-enable
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -sf http://localhost:9000/health || exit 1']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  rustfs-init:
-    image: minio/mc:latest
-    networks:
-      - backend-net
-    depends_on:
-      rustfs:
-        condition: service_healthy
-    volumes:
-      - ./docker/rustfs/cors-dev.xml:/cors/dev.xml:ro
-    environment:
-      MC_HOST_local: http://${AWS_ACCESS_KEY_ID:-minioadmin}:${AWS_SECRET_ACCESS_KEY:-minioadmin}@rustfs:9000
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        set -eu
-        mc mb --ignore-existing local/${AWS_STORAGE_BUCKET_NAME:-reelforge}
-        mc cors set local/${AWS_STORAGE_BUCKET_NAME:-reelforge} /cors/dev.xml
-    restart: on-failure
-
 networks:
   backend-net:
 
 volumes:
-  postgres-data:
   django-static:
-  rustfs-data:

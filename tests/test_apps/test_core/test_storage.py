@@ -65,9 +65,14 @@ def test_init_uses_public_endpoint_for_presigning(
     mock_build_client: MagicMock,
 ) -> None:
     """Presigned URLs must use the browser-reachable public endpoint."""
+    from django.test.utils import override_settings
+
     mock_build_client.return_value = MagicMock()
 
-    PresignUrlHelper()
+    with override_settings(
+        AWS_S3_PUBLIC_ENDPOINT_URL='http://localhost:9000',
+    ):
+        PresignUrlHelper()
 
     mock_build_client.assert_called_once_with('http://localhost:9000')
 
@@ -104,3 +109,13 @@ def test_asset_storage_url_uses_public_endpoint(
     params = mock_client.generate_presigned_url.call_args.kwargs['Params']
     assert params['Bucket'] == 'reelforge'
     assert params['Key'] == 'assets/renditions/foo.mp4'
+
+
+def test_static_storage_is_public_and_not_signed() -> None:
+    """StaticStorage must never sign URLs — static files are publicly accessible."""
+    from server.common.s3 import StaticStorage
+
+    assert StaticStorage.querystring_auth is False
+    assert StaticStorage.location == 'static'
+    assert StaticStorage.default_acl is None
+    assert StaticStorage.file_overwrite is True

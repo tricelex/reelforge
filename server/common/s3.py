@@ -25,6 +25,15 @@ def build_s3_client(endpoint_url: str) -> BaseClient:
     )
 
 
+class StaticStorage(S3Boto3Storage):  # type: ignore[misc]
+    """S3-compatible storage for static files (public, direct URLs)."""
+
+    location = 'static'
+    file_overwrite = True
+    default_acl = None
+    querystring_auth = False
+
+
 class AssetStorage(S3Boto3Storage):  # type: ignore[misc]
     """S3-compatible storage for pipeline-generated and library assets."""
 
