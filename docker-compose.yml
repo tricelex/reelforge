@@ -21,11 +21,9 @@ services:
         cache_from:
           - "***REMOVED***:dev"
           - "***REMOVED***:latest"
-
       volumes:
-        - django-static:/var/www/django/static
-      networks:
-        - backend-net
+        # We only mount source code in development:
+        - .:/code
       env_file: ./config/.env
 
     command: python -We -bb manage.py runserver 0.0.0.0:8000
@@ -46,13 +44,13 @@ services:
       server.apps.clips.tasks
       server.apps.pipelines.tasks
       server.apps.analytics.tasks
+    volumes:
+      # We only mount source code in development:
+      - .:/code
 
   scheduler:
     <<: *web
     command: python -m taskiq scheduler server.common.scheduler:scheduler
-
-networks:
-  backend-net:
-
-volumes:
-  django-static:
+    volumes:
+      # We only mount source code in development:
+      - .:/code
