@@ -14,10 +14,10 @@ services:
       dockerfile: ./docker/django/Dockerfile
       args:
         DJANGO_ENV: development
-    command: python -We -bb manage.py runserver 0.0.0.0:8009
+    command: python -We -bb manage.py runserver 0.0.0.0:8099
     restart: unless-stopped
     ports:
-      - "8009:8009"
+      - "8099:8099"
     volumes:
       - django-media:/var/www/django/media
       - django-locale:/code/locale
