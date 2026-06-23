@@ -33,6 +33,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    expose:
+      - "8000"
 
   worker:
     <<: *web
