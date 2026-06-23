@@ -1,9 +1,9 @@
 ---
 
-# Coolify deployment: production build with all services.
-# Configure Coolify to use this file instead of docker-compose.yml.
-# Source code is baked into the image via the production_build stage —
-# no source volume mount required or used.
+# Coolify deployment: source code is baked into the image via
+# production_build stage — no source volume mount required or used.
+# Set DJANGO_ENV and all other app variables in Coolify's environment
+# variable UI; no .env file is needed (AutoConfig falls back to process env).
 
 services:
   web:
@@ -14,9 +14,8 @@ services:
       context: .
       dockerfile: ./docker/django/Dockerfile
       args:
-        DJANGO_ENV: production
-    command: bash ./docker/django/gunicorn.sh
-    env_file: ./config/.env
+        DJANGO_ENV: development
+    command: python -We -bb manage.py runserver 0.0.0.0:8000
     restart: unless-stopped
     expose:
       - "8000"
