@@ -1,0 +1,44 @@
+---
+
+# Coolify deployment: production build with all services.
+# Configure Coolify to use this file instead of docker-compose.yml.
+# Source code is baked into the image via the production_build stage —
+# no source volume mount required or used.
+
+services:
+  web:
+    &web
+    image: "***REMOVED***:latest"
+    build:
+      target: production_build
+      context: .
+      dockerfile: ./docker/django/Dockerfile
+      args:
+        DJANGO_ENV: production
+    command: bash ./docker/django/gunicorn.sh
+    env_file: ./config/.env
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - django-media:/var/www/django/media
+      - django-locale:/code/locale
+
+  worker:
+    <<: *web
+    command: >-
+      python -m taskiq worker server.common.broker:broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks
+      server.apps.pipelines.tasks
+      server.apps.analytics.tasks
+
+  scheduler:
+    <<: *web
+    command: python -m taskiq scheduler server.common.scheduler:scheduler
+
+volumes:
+  django-media:
+  django-locale:
