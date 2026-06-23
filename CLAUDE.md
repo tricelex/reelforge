@@ -1,369 +1,202 @@
-# CLAUDE.md — Reelforge Project Memory
+# CLAUDE.md
 
-> This file is the authoritative reference for Claude Code when working on this project.
-> Read this fully before writing any code. Every decision made here was deliberate.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
----
+## Commands
 
-## WORKFLOW — SUPERPOWERS SKILLS
-
-This project uses the **Superpowers** Claude Code plugin. Before starting any non-trivial task, invoke the appropriate skill:
-
-| Situation | Skill to invoke |
-|---|---|
-| New feature / idea to build | `superpowers:brainstorming` |
-| Writing an implementation plan | `superpowers:writing-plans` |
-| Executing a plan from `docs/superpowers/plans/` | `superpowers:executing-plans` |
-| Setting up an isolated branch to work in | `superpowers:using-git-worktrees` |
-| Finishing a feature branch | `superpowers:finishing-a-development-branch` |
-
-Worktrees live in `.worktrees/` (gitignored). Plans live in `docs/superpowers/plans/`. Specs live in `docs/superpowers/specs/`.
-
----
-
-## IMPLEMENTATION STATUS
-
-**Current State**: ✅ **Substantial pipeline + operator dashboard in place**
-
-**What Works Today:**
-- Full Django 5.2 project with all core apps (channels, research, scripts, assets, production, distribution, pipeline, clipping, ui)
-- Multi-channel YouTube automation pipeline (FSM-orchestrated, Celery-driven)
-- Clipping feature: analyze → render → review dashboard
-- Operator dashboard (`/app/`) — job list, job detail, clip candidate config, render progress
-- Admin interface (Unfold theme) for all models
-- Docker Compose development environment
-- Pre-commit hooks: Ruff, djlint, mypy
-
-**Apps in `reelforge/`:**
-- `core/` — abstract base models, validators, storage helpers
-- `channels/` — Channel model, YouTube OAuth credentials
-- `research/` — ResearchJob, TopicIdea
-- `scripts/` — ScriptJob, ScriptRevision
-- `assets/` — AssetJob, VoiceoverRun, ImageGenerationRun, etc.
-- `production/` — SceneBreakdownJob, AudioMixJob, ProductionJob
-- `distribution/` — DistributionJob
-- `pipeline/` — PipelineRun, PipelineEvent (FSM orchestration)
-- `clipping/` — ClipCandidate, ClipRender, ClipLayoutConfig, ClipStyleConfig, ClipTimedOverlay
-- `ui/` — Dashboard views, base templates (Tailwind + HTMX + Alpine.js)
-- `agents/` — OpenAI Agents SDK agent definitions
-- `services/` — Provider abstractions, media processing (audio/video/image)
-- `users/` — Custom User model (cookiecutter default)
-
----
-
-## PART I: QUICK START
-
-### 1. Tech Stack
-
-- **Django 5.2** + DRF + Celery + PostgreSQL (psycopg3) + Redis
-- **Python 3.13**, dependency management via `uv`
-- **Docker Compose** for all services (run `just up`)
-- **Tailwind CSS v4** (binary at `bin/tailwindcss`, compiled to `reelforge/static/css/tailwind.css`)
-- **HTMX 2.0.4** + **Alpine.js 3.14** for operator UI (no separate frontend build beyond Tailwind)
-- **Unfold** admin theme
-
-### 2. Running Tests
-
-Tests are run **from the host machine** against the Docker Postgres instance (port 5435):
-
+### Setup
 ```bash
-# Standard test run — use real DB credentials from .envs/.local/.postgres
-DATABASE_URL="postgres://iWlkarZJuZGrMUoUridGOMxfeYdFOFPC:dxvRAIPjs24iALAGDDCgpcnx2utkTlyjvPpJ3JxfekUm1M2M9qv6aynQyaGwZgZL@localhost:5435/reelforge" \
-CREDENTIAL_ENCRYPTION_KEY="SQWkV11cGKrYsGrGfy8by0S3lCB7W-Z4x0hquqew0Es=" \
-uv run pytest
-
-# Single test / subset
-DATABASE_URL="..." CREDENTIAL_ENCRYPTION_KEY="..." uv run pytest reelforge/clipping/tests/ -v
-DATABASE_URL="..." CREDENTIAL_ENCRYPTION_KEY="..." uv run pytest path/to/test.py::test_name -v
-
-# Type checking
-uv run mypy reelforge
-
-# Linting / formatting
-uv run ruff check . --unsafe-fixes
-uv run ruff format .
+# All development happens inside the running Docker web container.
+# Start it once and exec into it for all commands:
+docker compose up -d
+docker compose exec web bash
 ```
 
-**The Postgres credentials never change** — they're in `.envs/.local/.postgres` (gitignored). Always use port **5435** (Docker mapped port, not 5432).
-
-### 3. Docker / Just Commands
-
-Docker is managed via `just` (see `justfile`):
-
+### Run manage.py commands
 ```bash
-just up                # Start all Docker services
-just down              # Stop containers
-just build             # Rebuild images
-just prune             # Remove containers + volumes
-just logs [service]    # Follow logs
-just manage <cmd>      # Run manage.py inside Django container
-just tailwind-build    # Compile Tailwind CSS (minified)
-just tailwind-watch    # Watch + recompile Tailwind on change
-just lint              # ruff check
-just format            # ruff format
-just precommit         # Run all pre-commit hooks
+just run migrate
+just run makemigrations
+just run createsuperuser
+just run shell
 ```
+`just run <cmd>` sources `.env.local` and calls `python manage.py <cmd>` without needing the app container.
 
-**Docker services:**
-- `django` — Django app (port 8000)
-- `postgres` — PostgreSQL (mapped to host port 5435)
-- `redis` — Redis (port 6379)
-- `celeryworker` — Celery worker
-- `celerybeat` — Celery beat scheduler
-- `flower` — Celery monitoring (port 5555)
-- `mailpit` — Email testing (port 8025)
-
-Environment files: `.envs/.local/` (local) and `.envs/.production/` (production). **Never commit these.**
-
-### 4. Migrations
-
-Always run makemigrations from the Docker container (access to the running DB):
-
+### Tests
 ```bash
-just manage makemigrations <app> --name <descriptive_name>
-just manage migrate
+docker compose exec web pytest                          # all tests (requires 100% coverage)
+docker compose exec web pytest tests/test_apps/test_main/          # single app
+docker compose exec web pytest tests/test_apps/test_main/test_api/test_blog_post_create.py  # single file
+docker compose exec web pytest --no-cov                # skip coverage (faster in TDD)
 ```
 
-Or from the host using the real credentials:
-
+### Linting & type checking
 ```bash
-DATABASE_URL="postgres://...@localhost:5435/reelforge" \
-CREDENTIAL_ENCRYPTION_KEY="..." \
-uv run python manage.py makemigrations <app> --name <descriptive_name>
+docker compose exec web ruff check .                   # lint
+docker compose exec web ruff format --check .          # format check
+docker compose exec web mypy server                    # strict type checking
+docker compose exec web lint-imports                   # enforce layered architecture contracts
 ```
 
-**Never use placeholder/fake DB URLs for makemigrations** — Django needs to inspect the real schema.
-
-### 5. Tailwind CSS
-
-Tailwind binary lives at `bin/tailwindcss`. Run `just tailwind-build` before committing template changes. The compiled output at `reelforge/static/css/tailwind.css` **is** committed to git (it's served as a static file).
-
----
-
-## PART II: ARCHITECTURE
-
-### 1. What We Are Building
-
-**Reelforge** is a multi-channel YouTube automation SaaS — manages the full lifecycle from research to analytics for multiple channels simultaneously. The operator runs everything from the Django admin + a lightweight operator dashboard (`/app/`).
-
-### 2. The Pipeline Flow
-
-```
-Channel Config
-     │
-     ▼
-[RESEARCHING]       ResearchAgent discovers topics
-     │
-     ▼
-[SCRIPTING]         ScriptAgent writes script + hooks + SEO metadata
-     │
-     ▼
-[AWAITING_APPROVAL] Operator reviews in admin (or auto-approves)
-     │
-     ▼
-[GENERATING_ASSETS] AssetAgent: voiceover (ElevenLabs), images (Fal.ai), music, thumbnails
-     │
-     ▼
-[RENDERING]         VideoRenderer: MoviePy + FFmpeg encode
-     │
-     ▼
-[QA]                VideoQA: 9 automated checks
-     │
-     ▼
-[UPLOADING]         YouTube upload + thumbnail + chapters + Shorts
-     │
-     ▼
-[PUBLISHED]         Analytics polling → feeds back into research
+### Migration checks
+```bash
+docker compose exec web python manage.py lintmigrations
+docker compose exec web python manage.py check_migrations --exclude-apps=axes
 ```
 
-### 3. Clipping Feature
+## Architecture
 
-The clipping feature is a separate pipeline for taking existing video content and turning it into social clips:
-
+### Project layout
 ```
-ClippingJob (source video)
-     │
-     ▼
-[analyze_clips task]  → ClipCandidates created with relevance scores
-     │
-     ▼
-Operator reviews in /app/clipping/ dashboard:
-  - Approve/reject candidates
-  - Configure layout (Smart Crop / Spatial Stack / Center Crop)
-  - Configure style (captions, hook, watermark, music, etc.)
-  - Configure timed overlays
-  - Set review gates (pause pipeline at stages 1/3/5/8 for review)
-  - Generate preview image
-     │
-     ▼
-[render_clip task]    → ClipRender with 10-stage pipeline
-     │ (may pause at gate)
-     ▼
-Operator reviews render stages at /app/clipping/renders/<id>/
-  - Can re-run from any stage
-  - Can resume after gate pause
+server/               Django project root (Python package)
+  settings/           django-split-settings modular config
+    components/       feature-specific settings (common, api, logging, csp, caches)
+    environments/     per-environment overrides (development, production, local.py)
+  apps/               Django apps (one dir per bounded context)
+    main/             example/template app
+      services.py     ALL business logic + DB ops for this app (one class per domain)
+      models.py       Django ORM models
+      logic/          pure domain types — value_objects.py, events.py, constants.py
+      api/            DMR controllers + URL routing
+  common/             shared utilities (no imports from server.apps.*)
+    container.py      module-level punq singleton, populated once at startup
+    di.py             HasContainer mixin — resolve() delegates to container singleton
+    events.py         EventBus Protocol + InProcessEventBus implementation
+  services/           cross-app orchestration (may import from multiple apps)
+  implemented.py      DI wiring — all Scope.singleton registrations go here
+  urls.py             root URL conf with OpenAPI docs + health check
+tests/                mirrors server/apps/ layout; not a Python package
+  plugins/            pytest fixtures/plugins
 ```
 
-**Key models:**
-- `ClipCandidate` — a proposed clip with layout/style config + `render_gates: list[int]`
-- `ClipLayoutConfig` — render mode, crop coords, spatial stack regions (auto-created via signal)
-- `ClipStyleConfig` — all visual style fields (auto-created via signal)
-- `ClipTimedOverlay` — timed text overlays
-- `ClipRender` — one render attempt; statuses include `PAUSED_AT_GATE`
-- `ClipRenderStageResult` — per-stage result for the 10-stage pipeline
+### Per-app structure (new entity checklist)
+Every domain entity in an app follows this minimal structure:
 
-**Pipeline gate mechanism:** `render_gates` on `ClipCandidate` lists stage order numbers where the pipeline should pause. `ClipRenderPipeline.run(pause_after_stages=...)` raises `GatePausedException` at those points. The task catches it, marks the render `PAUSED_AT_GATE`, and exits cleanly (no retry).
+1. `models.py` — Django ORM model
+2. `logic/value_objects.py` — msgspec.Struct input/output DTOs
+3. `logic/events.py` — domain events (attrs frozen dataclass, e.g. `ThingCreated`)
+4. `services.py` — one `@final @attrs.define` class with all read + write methods
+5. `api/views.py` — thin controllers that delegate to the service
+6. `api/urls.py` — URL routing
+7. `implemented.py` — register the service as a singleton
+8. `just run makemigrations` — generate migration
 
-### 4. Operator Dashboard (`/app/`)
+### Layered architecture (enforced by import-linter)
+Imports flow strictly downward — upper layers may import from lower, never the reverse:
 
-URL namespace: `ui:` for the dashboard shell, `clipping:` for clipping views.
+```
+(urls) | (admin)
+(views) | (api)
+(tasks)
+(models)
+(logic)
+```
 
-Key URLs:
-- `/app/` — dashboard home (active jobs, recent activity)
-- `/app/clipping/` — clipping job list
-- `/app/clipping/<job_id>/` — job detail + candidate cards
-- `/app/clipping/clips/<candidate_id>/` — candidate config (layout editor, style panels, overlays, gates)
-- `/app/clipping/renders/<render_id>/` — render detail (stage list, pause/resume actions)
+All apps in `server.apps.*` are independent — no cross-app imports.
+`server.common` cannot import from `server.apps.*`.
+`server.apps.*` cannot import from `server.services` (services may import from apps, never the reverse).
 
-All views require `@staff_member_required`.
+### Dependency injection — punq singleton container
 
-### 5. FSM State Management
+The global container lives in `server/common/container.py`. It is populated **once** in
+`MainConfig.ready()` by calling `implemented.populate_dependencies(container)`.
 
-**Django FSM-2 governs all pipeline state transitions.** This is non-negotiable.
-- `FSMField(protected=True)` — direct assignment raises `AttributeError`
-- All state changes via `@transition`-decorated methods only
-- `post_transition` signals in `apps/pipeline/signals.py` fire Celery tasks
-- Always use `can_proceed()` before calling a transition in non-signal code
-- Never call `save()` inside a `@transition` method
+All registrations use `Scope.singleton`. Every class stored in the container must be
+`frozen=True` (stateless — no mutable fields).
 
-**Exception:** `ClipRender.status` is a plain `CharField` (not FSM-protected) — direct assignment is safe.
+Adding a new service in `implemented.py`:
+```python
+def _inject_myapp(container: Container) -> None:
+    from server.apps.myapp.services import MyService
+    from server.common.events import EventBus
 
-### 6. Provider Abstraction
+    # EventBus already registered — punq injects it automatically
+    container.register(MyService, scope=Scope.singleton)
+```
 
-Every external API call goes through `services/providers/registry.py`. Business logic never imports API SDKs directly.
+Controllers retrieve instances via `self.resolve(MyService)` — never construct manually.
+
+**CRITICAL:** Never add `from __future__ import annotations` to files registered with punq.
+It makes annotations lazy strings punq cannot resolve at registration time.
+
+### Service pattern
+Each app has a single service class that owns all DB operations and business logic:
 
 ```python
-# CORRECT
-llm = get_llm_provider(channel=channel)
-response = llm.complete(prompt=..., system=...)
+@final
+@attrs.define(slots=True, frozen=True)
+class BlogPostService:
+    _events: EventBus  # injected by punq
 
-# WRONG — never in pipeline/task/model code
-import anthropic
-client = anthropic.Anthropic(api_key=...)
+    def create(self, payload: BlogPostCreatePayload) -> BlogPostFullPayload:
+        post = BlogPost.objects.create(title=payload.title, body=payload.body)
+        result = BlogPostFullPayload(
+            id=post.pk, title=post.title, body=post.body
+        )
+        self._events.emit(BlogPostCreated(blog_post_id=result.id))
+        return result
+
+    def get_by_id(self, post_id: int) -> BlogPostFullPayload:
+        post = BlogPost.objects.get(pk=post_id)
+        return BlogPostFullPayload(id=post.pk, title=post.title, body=post.body)
+
+    def list_all(self) -> list[BlogPostSummaryPayload]:
+        return [
+            BlogPostSummaryPayload(id=r['id'], title=r['title'])
+            for r in BlogPost.objects.values('id', 'title').order_by('-id')
+        ]
 ```
 
----
+Write methods emit domain events. Read methods (list/get) return lightweight value objects
+directly from ORM `.values()` calls — no separate mapper needed.
 
-## PART III: CODING STANDARDS — NON-NEGOTIABLE
+### Domain events — EventBus
+`server/common/events.py` has `EventBus` Protocol + `InProcessEventBus` (registered as
+singleton in `implemented.py`). App events live in `logic/events.py`.
 
-### Type Annotations — Always, Everywhere
-
-Every function signature must have complete type annotations.
-
+Emit in a service method:
 ```python
-# CORRECT
-def merge_segments(files: list[dict[str, Any]], output_path: str) -> dict[str, Any]:
-
-# WRONG
-def merge_segments(files, output_path):
+self._events.emit(BlogPostCreated(blog_post_id=result.id))
 ```
 
-- Use `from __future__ import annotations` at the top of every file
-- Prefer `X | None` over `Optional[X]`
-- No wildcard imports (`from module import *`)
-
-### Models — Best Practices
-
-Always define `__str__`, `Meta.ordering`, `verbose_name`, indexes.
-
-Use `update_fields` on every `.save()` call when updating specific fields:
+Subscribe a handler (e.g. in `AppConfig.ready()` after `populate_dependencies()`):
 ```python
-# CORRECT
-self.save(update_fields=["status", "completed_at", "updated_at"])
-
-# WRONG
-self.save()
+bus = container.resolve(EventBus)
+bus.subscribe(BlogPostCreated, some_handler_function)
 ```
 
-Use `select_related` / `prefetch_related` explicitly — never allow N+1.
+### API layer — django-modern-rest (DMR)
+Controllers inherit from `Controller[MsgspecSerializer]` and `HasContainer`. Payloads are
+`msgspec.Struct` subclasses defined in `logic/value_objects.py`. Controllers are thin —
+they only parse input, call `self.resolve(MyService).method()`, and return the result.
 
-### Service Layer — Keep Models Thin
+### Application Services layer
+`server/services/` is for orchestrators that coordinate multiple apps. Import freely from
+any `server.apps.*` package here, but apps must never import back into services. Enforced
+by import-linter contract `apps-cannot-import-services`.
 
-Models contain: fields, FSM transitions, simple `@property`, `__str__`, `Meta`.
-Business logic goes in `services/` or `apps/<app>/services.py`.
+### Class conventions
+- `@final` on every concrete class (mypy-enforced, prevents subclassing).
+- `@attrs.define(slots=True, frozen=True)` for all service objects (stateless, thread-safe).
+- Value objects use `msgspec.Struct` (fast serialisation, strict typing).
+- Domain events use `@attrs.define(frozen=True)` (immutable, no slots needed).
 
-### Error Handling — Be Specific
+### Settings
+`DJANGO_SETTINGS_MODULE = "server.settings"` — composes components then overlays the
+active environment. `server/settings/environments/local.py` (gitignored) for local overrides.
 
-Never swallow exceptions silently. Never catch bare `Exception` without logging and re-raising.
+### Testing patterns
+- `@pytest.mark.django_db` for any test that touches the ORM.
+- `dmr.test.DMRClient` for API endpoint tests (not Django's `Client`).
+- Factories use `polyfactory` with `MsgspecFactory` for value objects.
+- 100% coverage required — `--cov-fail-under=100` in `pyproject.toml`.
+- `--doctest-modules` is active — docstring code examples must be valid.
+- No `from __future__ import annotations` in files used by punq.
 
-### Logging — Structured and Contextual
-
-Use structured logging with `extra={}` dicts. Never use `print()`.
-
-```python
-logger = logging.getLogger("reelforge.clipping")
-
-logger.info(
-    "Render paused at gate",
-    extra={"render_id": str(render_id), "stage_order": stage_order},
-)
-```
-
-### Celery Tasks
-
-- Always `bind=True`, always set `max_retries`
-- Exponential backoff: `countdown=2 ** self.request.retries * 60`
-- Tasks must be idempotent
-- Never dispatch tasks from inside `@transition` methods (use `post_transition` signals)
-
-### FSM — Usage Rules
-
-```python
-# CORRECT
-if can_proceed(job.retry):
-    job.retry()
-    job.save()  # save() is OUTSIDE the transition
-
-# WRONG — save() inside transition, or side effects inside transition
-@transition(...)
-def start(self) -> None:
-    self.save()              # Wrong
-    send_notification(...)   # Wrong
-    task.delay(...)          # Wrong
-```
-
----
-
-## PART IV: WHAT NOT TO DO
-
-- **Never** import an API SDK directly in pipeline/task/model code — use the provider registry
-- **Never** do `obj.status = "RUNNING"` on FSM-protected fields — use transition methods
-- **Never** dispatch Celery tasks from inside `@transition` methods
-- **Never** call `save()` inside a `@transition` method
-- **Never** use `print()` anywhere in application code
-- **Never** write a migration without a descriptive name
-- **Never** store credentials or secrets unencrypted — use Fernet encryption
-- **Never** write business logic in model methods
-- **Never** let a rendering Celery task run without a `time_limit`
-- **Never** use wildcard imports
-- **Never** write a function without type annotations
-- **Never** delete or update a `PipelineEvent` record (immutable audit log)
-- **Never** catch `Exception` without logging and re-raising
-- **Never** commit `.env` files or secret values to git
-
----
-
-## PART V: ADMIN STANDARDS (Unfold)
-
-- Every `ModelAdmin` uses `unfold.admin.ModelAdmin` as base — never plain `django.contrib.admin.ModelAdmin`
-- Every list view shows status with a color-coded badge using `@display(label={...})`
-- FSM models always show `available_transitions` as a display column
-- Pipeline stage models always show `duration_seconds` and `agent_cost_usd` in list view
-- `PipelineEvent` is always shown as a read-only `TabularInline` on `PipelineRunAdmin`
-- Admin actions that trigger FSM transitions must use `can_proceed()` first
-
----
-
-*Project: Reelforge — YouTube Automation HQ*
-*Stack: Django 5.2 · Celery · PostgreSQL · Redis · OpenAI Agents SDK · Unfold Admin · HTMX · Alpine.js · Tailwind v4*
-*Owner: Emmanuel / 29signals*
+## Key constraints
+- Python 3.13.x.
+- Django 6.0.x.
+- `ruff` uses single quotes, 80-char line length.
+- `mypy` runs in strict mode — all public functions need type annotations.
+- Migrations must be backward-compatible (zero-downtime) — migration linter enforces this.
+- `ZEAL_RAISE = True` in development: N+1 queries raise exceptions.
+- `server/apps/*/apps.py` is exempt from `PLC0415` (inline imports in `ready()` required by Django).

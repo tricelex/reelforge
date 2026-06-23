@@ -1,0 +1,195 @@
+# See https://github.com/seddonym/import-linter
+
+[importlinter]
+root_package = server
+include_external_packages = True
+exclude_type_checking_imports = True
+
+
+[importlinter:contract:layers]
+name = Layered architecture of our project
+type = layers
+
+containers =
+  server.apps.*
+
+layers =
+  (urls) | (admin)
+  (views) | (htmx) | (api)
+  (tasks)
+  (infra)
+  (models)
+  (logic)
+
+
+[importlinter:contract:apps-independence]
+name = All apps must be independent
+type = independence
+
+modules =
+  server.apps.*
+
+ignore_imports =
+  # This is hack we have to use due to models relations
+  server.apps.*.admin -> server.apps.*.models
+  # Pipeline services need prompts/assets models; deferred runtime imports
+  server.apps.pipelines.services.prompt_renderer -> server.apps.prompts.models
+  server.apps.pipelines.services.asset_writer -> server.apps.assets.models
+  # Pipeline stages use generation provider clients (generation is a client
+  # library whose sole consumer is pipeline stages — cross-app by design)
+  server.apps.pipelines.stages.research -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.research -> server.apps.generation.clients.search
+  server.apps.pipelines.stages.outline -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.visual_prompts -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.image_gen -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.tts -> server.apps.generation.clients.elevenlabs
+  server.apps.pipelines.stages.motion -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.alignment -> server.apps.generation.clients.whisperx
+  server.apps.pipelines.stages.clip_transcribe -> server.apps.generation.clients.whisper
+  server.apps.pipelines.stages.music_plan -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.thumbnail -> server.apps.generation.clients.fal
+  server.apps.pipelines.stages.metadata -> server.apps.generation.clients.llm
+  # Pipeline stages save assets and reference AssetKind from the assets app
+  server.apps.pipelines.stages.image_gen -> server.apps.assets.models
+  server.apps.pipelines.stages.tts -> server.apps.assets.models
+  server.apps.pipelines.stages.motion -> server.apps.assets.models
+  server.apps.pipelines.stages.alignment -> server.apps.assets.models
+  server.apps.pipelines.stages.thumbnail -> server.apps.assets.models
+  server.apps.pipelines.stages.music_plan -> server.apps.assets.models
+  # Assembly + QC stages call rendering service layer
+  server.apps.pipelines.stages.assembly -> server.apps.rendering.ffmpeg
+  server.apps.pipelines.stages.qc -> server.apps.rendering.ffmpeg
+  # Assembly and QC fetch Asset rows from the assets app
+  server.apps.pipelines.stages.assembly -> server.apps.assets.models
+  server.apps.pipelines.stages.qc -> server.apps.assets.models
+  # Publish stage uploads to YouTube, needs assets, channels, generation, publishing
+  server.apps.pipelines.stages.publish -> server.apps.assets.models
+  server.apps.pipelines.stages.publish -> server.apps.channels.models
+  server.apps.pipelines.stages.publish -> server.apps.generation.clients.youtube
+  server.apps.pipelines.stages.publish -> server.apps.publishing.models
+  # Analytics selectors aggregate live cost data from pipelines CostRecord
+  server.apps.analytics.selectors -> server.apps.pipelines.models
+  server.apps.analytics.selectors -> server.apps.pipelines.gate_selectors
+  server.apps.analytics.selectors -> server.apps.publishing.models
+  # Ideation promote creates pipeline runs; selectors read run topics
+  server.apps.ideas.services -> server.apps.pipelines.services.pipeline_run
+  server.apps.ideas.services -> server.apps.pipelines.logic.value_objects
+  server.apps.ideas.selectors -> server.apps.pipelines.models
+  server.apps.ideas.services -> server.apps.channels.models
+  # Clip render stages read clip-specific enums (RenderMode, HookStyle, etc.) from
+  # clips.logic.constants — rendering is a dedicated service layer for the clips app
+  server.apps.rendering.clip_stages.trim_crop -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.watermark -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.progress_bar -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.captions -> server.apps.clips.logic.constants
+  server.apps.rendering.clip_stages.hook -> server.apps.clips.logic.constants
+  # Clip pipeline stages reference ClipCandidate/ClipPost models and ClipAnalysisService
+  server.apps.pipelines.stages.clip_render -> server.apps.clips.models
+  server.apps.pipelines.stages.clip_distribute -> server.apps.clips.models
+  server.apps.pipelines.stages.clip_distribute -> server.apps.clips.logic.constants
+  server.apps.pipelines.stages.clip_analyze -> server.apps.clips.analysis
+  server.apps.pipelines.stages.clip_analyze -> server.apps.clips.logic.transcript_merge
+  server.apps.pipelines.stages.clip_analyze -> server.apps.rendering.speaker_detection
+  # Clip render stage orchestrates the ClipRenderPipeline (rendering is a service for clips)
+  server.apps.pipelines.stages.clip_render -> server.apps.rendering.clip_render_pipeline
+  # Clip gate approval calls the pipeline orchestrator from the service layer
+  server.apps.clips.services -> server.apps.pipelines.services.orchestrator
+  # Pipeline DMR API views call clips gate sync + orchestrator
+  server.apps.pipelines.api.views -> server.apps.pipelines.services.orchestrator
+  server.apps.pipelines.api.views -> server.apps.clips.services
+  server.apps.pipelines.api.views -> server.apps.pipelines.gate_selectors
+  # MainConfig.ready() calls populate_dependencies() which imports all services including clips.
+  # This transitive dependency (main -> implemented -> clips) is inherent to the DI architecture.
+  server.apps.main.apps -> server.implemented
+  # Clip pipeline stages save assets (same pattern as image_gen, tts, etc.)
+  server.apps.pipelines.stages.clip_ingest -> server.apps.assets.models
+  server.apps.clips.campaign_services -> server.apps.channels.models
+  server.apps.clips.campaign_services -> server.apps.clips.models
+  server.apps.clips.source_services -> server.apps.channels.models
+  server.apps.clips.source_services -> server.apps.assets.models
+  server.apps.clips.source_services -> server.apps.clips.models
+  server.apps.pipelines.stages.clip_analyze -> server.apps.assets.models
+  server.apps.pipelines.stages.clip_render -> server.apps.assets.models
+  # Clip service reads Asset rows for render URL presigning
+  server.apps.clips.services -> server.apps.assets.models
+  # Pipeline selectors read Asset/LibraryAsset for presigned URLs and transcripts
+  server.apps.pipelines.run_asset_selectors -> server.apps.assets.models
+  server.apps.pipelines.storyboard_selectors -> server.apps.assets.models
+  server.apps.pipelines.stages.clip_transcribe -> server.apps.assets.models
+  server.apps.pipelines.clip_selectors -> server.apps.assets.models
+  # Pipeline run-cast service and views use Channel character studio + value objects
+  server.apps.pipelines.services.run_cast -> server.apps.channels.logic.value_objects
+  server.apps.pipelines.services.run_cast -> server.apps.channels.character_studio
+  server.apps.pipelines.services.pipeline_run -> server.apps.channels.models
+  server.apps.pipelines.services.pipeline_run -> server.apps.clips.source_services
+  server.apps.pipelines.api.cast_views -> server.apps.channels.logic.value_objects
+  server.apps.pipelines.api.cast_views -> server.apps.channels.character_selectors
+  server.apps.pipelines.api.cast_views -> server.apps.channels.models
+  # Character studio generates images via fal client and reads LibraryAsset
+  server.apps.channels.character_studio -> server.apps.generation.clients.fal
+  server.apps.channels.character_studio -> server.apps.assets.models
+  # ChannelService looks up LibraryAsset for branding asset validation
+  server.apps.channels.services -> server.apps.assets.models
+  # core.selectors.collect_enums aggregates enum choices from all apps for the frontend
+  server.apps.core.selectors -> server.apps.clips.logic.constants
+  server.apps.core.selectors -> server.apps.channels.models
+  server.apps.core.selectors -> server.apps.pipelines.models
+  server.apps.core.selectors -> server.apps.publishing.models
+  # App API views import require_operator from core.auth for role enforcement
+  server.apps.assets.api.views -> server.apps.core.auth
+  server.apps.channels.api.views -> server.apps.core.auth
+  server.apps.channels.api.character_views -> server.apps.core.auth
+  server.apps.clips.api.campaign_views -> server.apps.core.auth
+  server.apps.clips.api.source_views -> server.apps.core.auth
+  server.apps.ideas.api.views -> server.apps.core.auth
+  server.apps.pipelines.api.cast_views -> server.apps.core.auth
+  server.apps.pipelines.api.review_views -> server.apps.core.auth
+  server.apps.pipelines.api.views -> server.apps.core.auth
+  server.apps.prompts.api.views -> server.apps.core.auth
+
+
+[importlinter:contract:common-module-is-independent]
+name = Common utilities cannot import things from apps
+type = forbidden
+
+source_modules =
+  server.common
+
+forbidden_modules =
+  server.apps
+
+
+
+[importlinter:contract:tests-restrictions]
+name = Explicit import restrictions for tests
+type = forbidden
+
+source_modules =
+  server
+
+forbidden_modules =
+  tests
+
+
+[importlinter:contract:apps-cannot-import-services]
+name = Apps must not import from the services layer
+type = forbidden
+
+source_modules =
+  server.apps
+
+forbidden_modules =
+  server.services
+
+
+[importlinter:contract:server-can-import-settings-directly]
+name = Settings can be directly imported only in settings, use `django.conf`
+type = protected
+
+protected_modules =
+  server.settings.**
+
+allowed_importers =
+  server.settings

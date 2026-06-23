@@ -1,39 +1,64 @@
-x-app: &app
-  build:
-    context: .
-    dockerfile: compose/production/django/Dockerfile
-  restart: unless-stopped
-  environment:
-    - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
-    - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-    - DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}
-    - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-    - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-False}
-    - DJANGO_SERVER_EMAIL=${DJANGO_SERVER_EMAIL}
-    - DJANGO_ACCOUNT_ALLOW_REGISTRATION=${DJANGO_ACCOUNT_ALLOW_REGISTRATION:-False}
-    - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
-    - DATABASE_URL=${DATABASE_URL}
-    - REDIS_URL=${REDIS_URL}
-    - RUSTFS_ENDPOINT_URL=${RUSTFS_ENDPOINT_URL}
-    - RUSTFS_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY_ID}
-    - RUSTFS_SECRET_ACCESS_KEY=${RUSTFS_SECRET_ACCESS_KEY}
-    - RUSTFS_BUCKET_NAME=${RUSTFS_BUCKET_NAME}
-    - RUSTFS_REGION=${RUSTFS_REGION:-us-east-1}
-    - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-    - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
-    - SENTRY_DSN=${SENTRY_DSN}
-    - OPENAI_API_KEY=${OPENAI_API_KEY}
-    - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
-    - FAL_KEY=${FAL_KEY}
-    - CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}
+---
+
+# Default compose file for development and production.
+# Should be used directly in development.
+# Automatically loads `docker-compose.override.yml` if it exists.
+# No extra steps required.
+# Should be used together with `docker/docker-compose.prod.yml`
+# in production.
 
 services:
-  django:
-    <<: *app
-    ports:
-      - "5000:5000"
-    command: /start
+  web:
+    <<: &web
+      # Image name is changed in production:
+      image: "reelforge:dev"
+      build:
+        target: development_build
+        context: .
+        dockerfile: ./docker/django/Dockerfile
+        args:
+          DJANGO_ENV: development
+        cache_from:
+          - "reelforge:dev"
+          - "reelforge:latest"
 
-  celeryworker:
-    <<: *app
-    command: /start-celeryworker
+      volumes:
+        - django-static:/var/www/django/static
+      networks:
+        - backend-net
+      env_file: ./config/.env
+
+    command: python -We -bb manage.py runserver 0.0.0.0:8000
+    healthcheck:
+      test: /bin/sh /code/docker/django/healthcheck.sh
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    <<: *web
+    command: >-
+      python -m taskiq worker server.common.broker:broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks
+      server.apps.pipelines.tasks
+      server.apps.analytics.tasks
+    healthcheck:
+      disable: true
+      test: []
+
+  scheduler:
+    <<: *web
+    command: python -m taskiq scheduler server.common.scheduler:scheduler
+    healthcheck:
+      disable: true
+      test: []
+
+networks:
+  backend-net:
+
+volumes:
+  django-static:
