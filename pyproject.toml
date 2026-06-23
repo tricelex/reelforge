@@ -1,309 +1,362 @@
-# ==== pytest ====
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib"
-python_files = [
-    "tests.py",
-    "test_*.py",
+[project]
+name = "server"
+description = "ReelForge"
+version = "0.1.0"
+requires-python = "==3.13.13"
+readme = "README.md"
+authors = []
+dynamic = ["dependencies", "classifiers"]
+
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry]
+package-mode = false
+classifiers = [
+  "Private :: Do not Upload",
 ]
 
-# ==== Coverage ====
-[tool.coverage.run]
-include = ["***REMOVED***/**"]
-omit = ["*/migrations/*", "*/tests/*"]
-plugins = ["django_coverage_plugin"]
+[tool.poetry.dependencies]
+django = { version = ">=6.0,<6.1", extras = ["argon2"] }
+django-cors-headers = "^4.0"
+django-split-settings = "^1.3"
+django-axes = "^8.0"
+django-csp = "^4.0"
+django-health-check = "^4.3.0"
+django-permissions-policy = "^4.27"
+django-stubs-ext = "^6.0"
+django-modern-rest = { version = "^0.10.0", extras = ["msgspec", "pydantic", "attrs", "jwt", "openapi"] }
+django-unfold = ">=0.40"
+django-json-widget = "^2.0"
+pygments = "^2.19"
 
-# ==== mypy ====
-[tool.mypy]
-python_version = "3.13"
-check_untyped_defs = true
-ignore_missing_imports = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_return_any = true
-warn_unreachable = true
-disallow_any_generics = false
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-disallow_untyped_defs = true
-implicit_reexport = false
-packages = ["***REMOVED***", "tests", "docs", "tools"]
-show_error_codes = true
-strict = true
-plugins = [
-    "mypy_django_plugin.main",
-    "mypy_drf_plugin.main",
-]
-exclude = '''(?x)(
-^build/
-|^dist/
-|^.venv/
-|^node_modules/
-|^migrations/
-|^src/app/server/static/
-)
-'''
+psycopg2-binary = "^2.9"
+gunicorn = "^26.0"
+python-decouple = "^3.8"
+structlog = "^25.4"
+punq = "^0.7"
+taskiq = "^0.11"
+taskiq-aio-pika = "^0.4"
+taskiq-redis = "^1.0"
+sentry-sdk = { version = "^2.62", extras = ["django"] }
+logfire = { version = "^4.37", extras = ["django", "httpx", "redis", "psycopg2",
+  "system-metrics", "requests"] }
+pydantic-ai = "^1.107.0"
+django-storages = { version = "^1.14.6", extras = ["boto3"] }
+fal-client = "^1.0"
+elevenlabs = "^2.0"
+exa-py = "^2.0"
+pillow = "^11.0"
+#openai = "^1.0"
+whisperx = "^3.3"
+scenedetect = { version = "^0.6", extras = ["opencv"] }
 
-[[tool.mypy.overrides]]
-# Django migrations should not produce any errors:
-module = [
-  "sqlalchemy.*",
-  "saq.*",
-  "uvicorn.*",
-  "aiohttp.*",
-  "jsbeautifier",
-  "jsbeautifier.*",
-  "uvloop",
-  "uvloop.*",
-  "nodeenv",
-  "keycloak.*",
-  "*.migrations.*",
-]
-ignore_errors = true
-ignore_missing_imports = true
+[tool.poetry.group.dev.dependencies]
+django-debug-toolbar = "^6.0"
+django-migration-linter = "^6.0"
+django-safe-migrations = "^0.7"
+django-extra-checks = "^0.17"
+django-query-counter = "^0.6"
+django-zeal = "^2.0"
+django-drifter = "^0.1"
 
-[[tool.mypy.overrides]]
-disable_error_code = "attr-defined,type-var,union-attr"
-disallow_untyped_decorators = false
-module = ["tests.*"]
-warn_unused_ignores = false
+wemake-python-styleguide = "^1.6"
+ruff = "^0.15"
 
-[mypy.plugins.django-stubs]
-django_settings_module = "config.settings.local"
+pytest = "^9.0"
+pytest-django = "^4.9"
+pytest-cov = "^7.1"
+covdefaults = "^2.3"
+django-coverage-plugin = "^3.1"
+pytest-randomly = "^4.0"
+pytest-timeout = "^2.3"
+django-test-migrations = "^1.5"
+hypothesis = "^6.152"
+schemathesis = "^4.15"
 
-[tool.django-stubs]
-django_settings_module = "config.settings.test"
+django-stubs = { version = "^6.0,<6.1", extras = ["compatible-mypy"] }
 
-# ==== djLint ====
-[tool.djlint]
-blank_line_after_tag = "load,extends"
-close_void_tags = true
-format_css = true
-format_js = true
-# TODO: remove T002 when fixed https://github.com/djlint/djLint/issues/687
-ignore = "H006,H030,H031,T002"
-include = "H017,H035"
-indent = 2
-max_line_length = 119
-profile = "django"
+djangofmt = "^0.2"
+yamllint = "^1.35"
+safety = "^3.6"
+dotenv-linter = "^0.7"
+import-linter = "^2.10"
+polint = "^0.5"
+dennis = "^1.1"
+dump-env = "^1.5"
+ipython = "^9.5"
+deptry = "^0.25"
 
-[tool.djlint.css]
-indent_size = 2
+[tool.poetry.group.docs]
+optional = true
 
-[tool.djlint.js]
-indent_size = 2
+[tool.poetry.group.docs.dependencies]
+sphinx = "^9.1"
+sphinx-autodoc-typehints = "^3.10"
+myst-parser = "^5.0"
+furo = "^2025.12"
+
 
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
+# Ruff config: https://docs.astral.sh/ruff/settings
+preview = true
 fix = true
-line-length = 120
-src = ["***REMOVED***", "config", "tests"]
-extend-exclude = [
-    "*/migrations/*.py",
-    "staticfiles/*",
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "__pycache__",
-]
+target-version = "py313"
+line-length = 80
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = true
 
 [tool.ruff.lint]
-fixable = ["ALL"]
-select = ["ALL"]
-ignore = [
-  "A003",    # flake8-builtins - class attribute {name} is shadowing a python builtin
-  "A005",    # flake8-builtins - module {name} shadows a Python standard-library module
-  "B010",    # flake8-bugbear - do not call setattr with a constant attribute value
-  "D100",    # pydocstyle - missing docstring in public module
-  "D101",    # pydocstyle - missing docstring in public class
-  "D102",    # pydocstyle - missing docstring in public method
-  "D103",    # pydocstyle - missing docstring in public function
-  "D104",    # pydocstyle - missing docstring in public package
-  "D105",    # pydocstyle - missing docstring in magic method
-  "D106",    # pydocstyle - missing docstring in public nested class
-  "D107",    # pydocstyle - missing docstring in __init__
-  "D202",    # pydocstyle - no blank lines allowed after function docstring
-  "D205",    # pydocstyle - 1 blank line required between summary line and description
-  "D415",    # pydocstyle - first line should end with a period, question mark, or exclamation point
-  "E501",    # pydocstyle line too long, handled by black
-  "PLW2901", # pylint - for loop variable overwritten by assignment target
-  "RUF012",  # Ruff-specific rule - annotated with classvar
-  "ANN401",
-  "FBT",
-  "PLR0913", # too many arguments
-  "PT",
-  "TD",
-  "ARG002",  # ignore for now; investigate
-  "ARG003",  # ignore for now; investigate
-  "PERF203", # ignore for now; investigate
-  "PD011",   # pandas
-  "PLR0912",
-  "ISC001",
-  "COM812",
-  "CPY001",
-  "PGH003",
-  "FA100",
-  "PLC0415", # import should be at the top of the file
-  "PLR0904", # too many public methods
-  "PLR0917",
-  "PGH003",
-  "PLC2701",
-  "PLW3201",
-  "PLR6301",
+select = [
+  "A",    # flake8-builtins
+  "ASYNC",
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "C90",  # maccabe
+  "COM",  # flake8-commas
+  "D",    # pydocstyle
+  "DTZ",  # flake8-datetimez
+  "E",    # pycodestyle
+  "ERA",  # flake8-eradicate
+  "EXE",  # flake8-executable
+  "F",    # pyflakes
+  "FA",   # flake8-future-annotations
+  "FBT",  # flake8-boolean-trap
+  "FLY",  # pyflint
+  "FURB", # refurb
+  "G",    # flake8-logging-format
+  "I",    # isort
+  "ICN",  # flake8-import-conventions
+  "ISC",  # flake8-implicit-str-concat
+  "LOG",  # flake8-logging
+  "N",    # pep8-naming
+  "PERF", # perflint
+  "PIE",  # flake8-pie
+  "PL",   # pylint
+  "PT",   # flake8-pytest-style
+  "PTH",  # flake8-use-pathlib
+  "Q",    # flake8-quotes
+  "RET",  # flake8-return
+  "RSE",  # flake8-raise
+  "RUF",  # ruff
+  "S",    # flake8-bandit
+  "SIM",  # flake8-simpify
+  "SLF",  # flake8-self
+  "SLOT", # flake8-slots
+  "T100", # flake8-debugger
+  "TRY",  # tryceratops
+  "UP",   # pyupgrade
+  "W",    # pycodestyle
+  "YTT",  # flake8-2020
 ]
-dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+ignore = [
+  "A005",   # allow to shadow stdlib and builtin module names
+  # Different doc rules that we don't really care about:
+  "D100",
+  "D104",
+  "D106",
+  "D203",
+  "D212",
+  "D401",
+  "D404",
+  "D405",
+  "ISC001",  # implicit string concat conflicts with `ruff format`
+  "ISC003",  # prefer explicit string concat over implicit concat
+  "PLR09",   # we have our own complexity rules
+  "PLR2004", # do not report magic numbers
+  "PLR6301", # do not require classmethod / staticmethod when self not used
+  "RUF067",  # wps handles `__init__.py` logic better
+  "TRY003",  # long exception messages from `tryceratops`
+]
+external = ["WPS"]
+
+# Plugin configs:
+flake8-quotes.inline-quotes = "single"
+mccabe.max-complexity = 6
+pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-# Tests: ignore asserts, missing type annotations, unused arguments
-"*/tests/*" = ["S101", "ANN", "ARG001"]
-"tests/*" = ["S101", "ANN", "ARG001"]
-"*/conftest.py" = ["ANN", "ARG001"]
-"manage.py" = ["ANN"]
-# Views can use assert for type guards
-"*/views.py" = ["S101"]
-
-[tool.ruff.lint.isort]
-force-single-line = true
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
-[tool.ruff.lint.mccabe]
-max-complexity = 16
-
-[tool.ruff.lint.pep8-naming]
-classmethod-decorators = [
-  "classmethod",
+"server/apps/*/migrations/*.py" = ["D101", "E501", "RUF012"]
+"server/apps/*/management/commands/*.py" = ["E501", "RUF001"]
+"server/common/typing/*.py" = ["F401"]
+"server/implemented.py" = ["PLC0415", "D103"]
+"server/apps/*/apps.py" = ["PLC0415"]
+"tests/*.py" = [
+  "S101",    # asserts are expected in test code
+  "S105",    # hardcoded passwords in test fixtures are fine
+  "S106",    # hardcoded passwords in test fixtures are fine
+  "S108",    # temp file paths in tests are fine
+  "S404",    # subprocess in tests is fine
+  "D103",    # test functions don't need docstrings
+  "E402",    # module-level imports in conftest needed for fixtures
+  "E501",    # long lines in tests are OK
+  "B017",    # broad exception assertions common in tests
+  "B903",    # test dataclass style
+  "B904",    # raise from in tests
+  "FBT001",  # boolean args in test helpers are fine
+  "FBT002",  # boolean default in test helpers are fine
+  "PERF401", # list comprehensions in tests are readable
+  "PLC0415", # inline imports in pytest fixtures/hooks
+  "PLC1901", # empty string comparisons in tests
+  "PLC2701", # private imports for test access
+  "PT011",   # broad pytest.raises in tests
+  "PT017",   # exception variable assertions in tests
+  "PT018",   # compound assertions in tests
+  "RUF029",  # async test helpers without await
+  "RUF069",  # test pattern matching
+  "SIM117",  # nested with in test setup is readable
+  "SLF001",  # private member access for unit testing
 ]
 
-[tool.ruff.lint.flake8-tidy-imports]
-# Disallow all relative imports.
-ban-relative-imports = "all"
 
-[tool.slotscheck]
-strict-imports = false
+[tool.pytest.ini_options]
+# pytest configuration:
+# https://docs.pytest.org/en/stable/customize.html
 
-[tool.codespell]
-ignore-words-list = "alog,selectin,selectinload,asend"
-skip = 'uv.lock,package-lock.json,*/bun.lock,node_modules,.venv,.agent,./src/app/server/static/*,*.txt,*.js,*.css,*.map,*.json,htmlcov'
+# pytest-django configuration:
+# https://pytest-django.readthedocs.io/en/latest/
+DJANGO_SETTINGS_MODULE = "server.settings"
 
+# Timeout for tests, so they can not take longer
+# than this amount of seconds.
+# You should adjust this value to be as low as possible.
+# Configuration:
+# https://pypi.org/project/pytest-timeout/
+timeout = 5
 
+# Strict `@xfail` by default:
+xfail_strict = true
 
-[tool.pyright]
-disableBytesTypePromotions = true
-exclude = ["src/app/db/migrations"]
-include = ["src/app", "src/tests", "tools"]
-pythonVersion = "3.11"
-reportMissingTypeStubs = false
-reportPrivateImportUsage = false
-reportUnknownMemberType = false
-reportUnnecessaryTypeIgnoreComment = true
-reportUnusedFunction = false
-strict = ["src/app/**/*"]
-venv = ".venv"
-venvPath = "."
-
-
-[dependency-groups]
-dev = [
-    "pydevd-pycharm>=241.0",
-    "coverage==7.13.4",
-    "django-coverage-plugin==3.2.0",
-    "django-debug-toolbar==6.2.0",
-    "django-extensions==4.1",
-    "django-stubs[compatible-mypy]==5.2.9",
-    "djangorestframework-stubs==3.16.8",
-    "djlint==1.36.4",
-    "factory-boy==3.3.2",
-    "ipdb==0.13.13",
-    "mypy==1.19.1",
-    "pre-commit==4.5.1",
-    "psycopg[c]==3.3.2",
-    "pytest==9.0.2",
-    "pytest-django==4.12.0",
-    "pytest-sugar==1.1.1",
-    "ruff==0.15.1",
-    "sphinx==9.1.0",
-    "sphinx-autobuild==2025.8.25",
-    "watchfiles==1.1.1",
-    "werkzeug[watchdog]==3.1.5",
-    "debugpy==1.8.20",
-    "honcho>=2.0.0",
+# Directories that are not visited by pytest collector:
+norecursedirs = [
+  "*.egg",
+  ".eggs",
+  "dist",
+  "build",
+  "docs",
+  ".tox",
+  ".git",
+  "__pycache__",
+  ".hypothesis",
+  ".local",
 ]
 
-[project]
-name = "***REMOVED***"
-version = "0.1.0"
-description = "Reelforge is a multi-channel YouTube automation SaaS"
-readme = "README.md"
-
-license = { text = "Not open source" }
-authors = [
-  { name = "Chuckz Okoye", email = "chuckzokoye@gmail.com" },
+# You will need to measure your tests speed with `-n auto` and without it,
+# so you can see whether it gives you any performance gain, or just gives
+# you an overhead. See `docs/template/development-process.rst`.
+addopts = [
+  "--strict-markers",
+  "--strict-config",
+  "--doctest-modules",
+  "--fail-on-template-vars",
+  # Output:
+  "--tb=short",
+  # Coverage:
+  "--cov=server",
+  "--cov=tests",
+  "--cov-branch",
+  "--cov-report=term-missing:skip-covered",
+  "--cov-report=html",
+  "--cov-report=xml",
+  "--cov-fail-under=100",
 ]
-requires-python = "==3.13.*"
-dependencies = [
-    "serpapi>=0.1.5",
-    "argon2-cffi==25.1.0",
-    "celery==5.6.2",
-    "crispy-bootstrap5==2025.6",
-    "django==5.2.11",
-    "django-allauth[mfa]==65.14.3",
-    "django-anymail[mailgun]==14.0",
-    "django-celery-beat==2.8.1",
-    "django-cors-headers==4.9.0",
-    "django-crispy-forms==2.5",
-    "django-environ==0.12.1",
-    "django-fsm-2>=4.1.0",
-    "django-fsm-log>=5.0.2",
-    "django-model-utils==5.0.0",
-    "django-redis==6.0.0",
-    "django-storages[s3]==1.14.6",
-    "django-unfold>=0.80.1",
-    "djangorestframework==3.16.1",
-    "drf-spectacular==0.29.0",
-    "ffmpeg-python>=0.2.0",
-    "flower==2.0.1",
-    "gunicorn==25.1.0",
-    "hiredis==3.3.0",
-    "moviepy>=1.0.3",
-    "mediapipe>=0.10.0; sys_platform != 'linux' or platform_machine != 'aarch64'",
-    "opencv-python-headless>=4.9.0",
-    "pillow==12.1.1",
-    "psycopg[c]==3.3.2",
-    "pydub>=0.25.1",
-    "audioop-lts>=0.2.1",
-    "python-slugify==8.0.4",
-    "redis==7.2.0",
-    "sentry-sdk==2.53.0",
-    "whitenoise==6.11.0",
-    "google-api-python-client>=2.0.0",
-    "google-auth-oauthlib>=1.2.4",
-    "elevenlabs>=2.36.1",
-    "tavily-python>=0.5.0",
-    "yt-dlp>=2024.1.1",
-    "fal-client>=0.10.0",
-    "celery-types>=0.26.0",
-    "django-htmx>=1.27.0",
-    "djangorestframework-simplejwt>=5.5.1",
-    "pyannote-audio>=3.1",
-    "scenedetect[opencv]>=0.6",
-    "pydantic-ai[anthropic,openai]>=1.94.0",
+
+# Fail on warnings:
+filterwarnings = ["error"]
+
+
+[tool.coverage.run]
+# Coverage configuration:
+# https://coverage.readthedocs.io/en/latest/config.html
+plugins = [
+  # Docs: https://github.com/nedbat/django_coverage_plugin
+  "django_coverage_plugin",
+  # Docs: https://pypi.org/project/covdefaults
+  "covdefaults",
+]
+
+omit = [
+  # Is not reported, because is imported during setup:
+  "server/settings/components/logging.py",
+  # ASGI entrypoint — imported only by the application server, not tests:
+  "server/asgi.py",
+  # Production settings — only active in production deployments:
+  "server/settings/environments/production.py",
+  # Django management entry point — runs only as a CLI command, not via tests:
+  "manage.py",
+  # Third-party package metadata (dist-info text files picked up by template plugin):
+  "**/*.dist-info/*",
+  ".local/**",
+  # Sphinx docs templates — not testable Django templates:
+  "docs/*",
+]
+
+
+[tool.mypy]
+# Mypy configuration:
+# https://mypy.readthedocs.io/en/latest/config_file.html
+enable_error_code = [
+  "truthy-bool",
+  "truthy-iterable",
+  "redundant-expr",
+  "unused-awaitable",
+  "ignore-without-code",
+  "possibly-undefined",
+  "redundant-self",
+  "explicit-override",
+  "unimported-reveal",
+  "deprecated",
+  "exhaustive-match",
+]
+
+explicit_package_bases = true
+ignore_missing_imports = true
+extra_checks = true
+strict = true
+strict_equality_for_none = true
+warn_unreachable = true
+
+plugins = ["mypy_django_plugin.main"]
+
+[[tool.mypy.overrides]]
+module = "server.apps.*.migrations.*"
+# Django migrations should not produce any errors (they are tested anyway):
+ignore_errors = true
+
+[tool.django-stubs]
+# Docs: https://github.com/typeddjango/django-stubs
+django_settings_module = "server.settings"
+strict_settings = false
+
+
+# Deptry: https://deptry.com/usage/
+[tool.deptry]
+# Local application package; imports like `from server...` are first-party.
+known_first_party = ["server"]
+
+[tool.deptry.per_rule_ignores]
+# Used via Django settings / deploy
+DEP002 = [
+  "django-axes",               # INSTALLED_APPS, middleware, auth backend
+  "django-cors-headers",       # INSTALLED_APPS + middleware via dotted path
+  "django-permissions-policy", # Permissions-Policy middleware (dotted path)
+  "psycopg2-binary",           # PostgreSQL driver for `ENGINE = ***REMOVED***ql`
+  "gunicorn",                  # production WSGI/ASGI process (docker/, CI)
+  "uvicorn",                   # ASGI worker backend
+  "uvicorn-worker",            # Gunicorn worker class for uvicorn
+]
+# Imported directly but pulled in only as transitive deps
+DEP003 = [
+  "attrs",      # imported directly, provided transitively via django-modern-rest extra
+  "msgspec",    # DTOs (also via django-modern-rest extra)
+  "pydantic",   # payloads/schemas (also via django-modern-rest extra)
+]
+# Dev dependencies referenced from application code
+DEP004 = [
+  "debug_toolbar",     # DEBUG urls/settings
 ]

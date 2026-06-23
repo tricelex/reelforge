@@ -14,12 +14,13 @@
   </component>
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/.local/lib/python3.13/site-packages" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/clip-render-enhancements/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/ui-revamp/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktrees/clipping-backend-v2/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="uv (***REMOVED***)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Docker Compose (web)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">
