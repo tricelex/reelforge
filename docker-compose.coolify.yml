@@ -16,8 +16,8 @@ services:
         DJANGO_ENV: development
     command: python -We -bb manage.py runserver 0.0.0.0:8000
     restart: unless-stopped
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     volumes:
       - django-media:/var/www/django/media
       - django-locale:/code/locale
