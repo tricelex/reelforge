@@ -31,7 +31,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = [
     config('DOMAIN_NAME'),
-    'https://reelforge-frontend-production.up.railway.app'
+    'reelforge-frontend-production.up.railway.app',
     'localhost',
     '0.0.0.0',  # noqa: S104
     '127.0.0.1',
@@ -41,7 +41,7 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost',
     'http://127.0.0.1',
-    'https://reelforge-frontend-production.up.railway.app'
+    'https://reelforge-frontend-production.up.railway.app',
     f'https://{config("DOMAIN_NAME")}',
     f'http://{config("DOMAIN_NAME")}',
 ]
