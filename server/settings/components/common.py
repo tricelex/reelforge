@@ -122,6 +122,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 # Cors headers Settings
 CORS_ALLOWED_ORIGINS = [
     config('FRONTEND_URL', default='http://localhost:3000'),
+    "https://***REMOVED***-frontend-production.up.railway.app",
 ]
 
 CORS_ALLOWED_CREDENTIALS = True
