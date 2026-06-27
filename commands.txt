@@ -1,0 +1,8 @@
+┌───────────────────────────┬─────────────────────────────────────────┬────────────────────────────────────────────────┐
+  │           File            │                 Purpose                 │                    Command                     │
+  ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
+  │ docker-compose.yml        │ Dev — runserver, development_build      │ docker compose up                              │
+  ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
+  │ docker-compose.prod.yml   │ Prod-local — gunicorn, production_build │ docker compose -f docker-compose.prod.yml up   │
+  ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
+  │ docker-compose.worker.yml │ Worker — ML image, separate             │ docker compose -f docker-compose.worker.yml up │
