@@ -21,6 +21,8 @@ _railway_domain: str = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
 
 ALLOWED_HOSTS: list[str] = [
     config('DOMAIN_NAME'),
+    '***REMOVED***-production-9dda.up.railway.app',
+    '***REMOVED***-frontend-production.up.railway.app',
     'localhost',
     '0.0.0.0',  # noqa: S104
     '127.0.0.1',
