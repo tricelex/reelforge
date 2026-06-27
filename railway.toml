@@ -5,7 +5,7 @@ buildTarget = "production_build"
 dockerBuildContext = "."
 
 [deploy]
-startCommand = "/code/docker/django/gunicorn.sh"
+startCommand = "python -We -bb /code/manage.py runserver 0.0.0.0:8000"
 healthcheckPath = "/health/?format=json"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
