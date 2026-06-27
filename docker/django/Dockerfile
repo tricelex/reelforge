@@ -45,8 +45,8 @@ RUN groupadd -g "${GID}" -r web \
 # Copy lockfiles first so this layer is cached when only source changes
 COPY --chown=web:web pyproject.toml poetry.lock ./
 
-# Install production deps only
-RUN poetry sync --only main --no-interaction --no-ansi
+# Install all deps (dev mode — switch to --only main for production)
+RUN poetry sync --no-interaction --no-ansi
 
 # Copy source (this layer invalidates on every code change)
 COPY --chown=web:web . /code

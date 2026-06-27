@@ -4,7 +4,7 @@ dockerfilePath = "docker/django/Dockerfile"
 dockerBuildContext = "."
 
 [deploy]
-startCommand = "python /code/manage.py migrate --noinput && exec gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi"
+startCommand = "python /code/manage.py runserver 0.0.0.0:8000"
 healthcheckPath = "/health/?format=json"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
