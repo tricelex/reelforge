@@ -9,7 +9,5 @@ dockerBuildContext = "."
 
 [deploy]
 startCommand = "gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi"
-healthcheckPath = "/health/?format=json"
-healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
