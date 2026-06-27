@@ -3,7 +3,6 @@ FROM python:3.13.13-slim-bookworm
 ARG UID=1000
 ARG GID=1000
 
-# Python / pip / Poetry env
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONHASHSEED=random \
@@ -19,7 +18,8 @@ ENV PYTHONFAULTHANDLER=1 \
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-# System dependencies (ffmpeg required for video processing)
+# System dependencies — includes ffmpeg (required for video processing)
+# and libsndfile1 (required by speechbrain / soundfile for audio I/O)
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
@@ -31,6 +31,7 @@ RUN apt-get update && apt-get upgrade -y \
         gettext \
         git \
         libpq-dev \
+        libsndfile1 \
     && curl -sSL 'https://install.python-poetry.org' | python - \
     && poetry --version \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
@@ -42,20 +43,20 @@ RUN groupadd -g "${GID}" -r web \
     && useradd -d '/code' -g web -l -r -u "${UID}" web \
     && chown web:web -R '/code'
 
-# Copy lockfiles first so this layer is cached when only source changes
 COPY --chown=web:web pyproject.toml poetry.lock ./
 
-# Install only the main group — no ML libs (torch/CUDA/whisperx/scenedetect).
-# The worker image installs the ml group separately via docker/worker/Dockerfile.
-RUN poetry sync --only main --no-interaction --no-ansi
+# Install main + ml groups. torch + CUDA + whisperx + scenedetect only live here.
+RUN poetry sync --only main --with ml --no-interaction --no-ansi
 
-# Copy source (this layer invalidates on every code change)
 COPY --chown=web:web . /code
 
 USER web
 
-EXPOSE 8000
-
-# Default command for the web service.
-# Worker and scheduler override this via their Railway service settings.
-CMD ["gunicorn", "--config", "/code/docker/django/gunicorn_config.py", "server.wsgi"]
+CMD ["python", "-m", "taskiq", "worker", \
+     "server.common.broker:broker", \
+     "server.common.django_setup", \
+     "server.apps.main.tasks", \
+     "server.apps.assets.tasks", \
+     "server.apps.clips.tasks", \
+     "server.apps.pipelines.tasks", \
+     "server.apps.analytics.tasks"]
