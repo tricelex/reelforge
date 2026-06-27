@@ -43,6 +43,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost',
     'http://127.0.0.1',
     'https://***REMOVED***-frontend-production.up.railway.app',
+    'https://***REMOVED***-production-736a.up.railway.app',
     f'https://{config("DOMAIN_NAME")}',
     f'http://{config("DOMAIN_NAME")}',
 ]
