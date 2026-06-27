@@ -15,7 +15,7 @@ from server.settings.components.api import DMR_SETTINGS
 # Production flags:
 # https://docs.djangoproject.com/en/6.0/howto/deployment/
 
-DEBUG = config('DOMAIN_NAME')
+DEBUG = config('DEBUG')
 
 _railway_domain: str = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
 
