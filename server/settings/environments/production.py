@@ -22,6 +22,9 @@ _railway_domain: str = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
 ALLOWED_HOSTS: list[str] = [
     config('DOMAIN_NAME'),
     'localhost',
+    '0.0.0.0',  # noqa: S104
+    '127.0.0.1',
+    '[::1]',
 ]
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)

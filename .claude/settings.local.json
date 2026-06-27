@@ -57,7 +57,8 @@
       "Bash(ffmpeg -filters)",
       "Bash(ffmpeg -version)",
       "Bash(brew info *)",
-      "Bash(brew search *)"
+      "Bash(brew search *)",
+      "mcp__railway__get_service_config"
     ]
   }
 }

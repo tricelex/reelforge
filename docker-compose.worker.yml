@@ -1,0 +1,26 @@
+---
+
+# Worker compose file — uses the ML image (torch/CUDA/whisperx/scenedetect).
+# Run alongside dev:  docker compose -f docker-compose.worker.yml up
+# Run alongside prod: docker compose -f docker-compose.prod.yml -f docker-compose.worker.yml up
+
+services:
+  worker:
+    image: "reelforge:worker"
+    build:
+      context: .
+      dockerfile: ./docker/worker/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    volumes:
+      - .:/code
+    env_file: ./config/.env
+    command: >-
+      python -m taskiq worker server.common.broker:broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks
+      server.apps.pipelines.tasks
+      server.apps.analytics.tasks

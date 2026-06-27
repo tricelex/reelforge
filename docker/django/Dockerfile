@@ -2,6 +2,9 @@ FROM python:3.13.13-slim-bookworm
 
 ARG UID=1000
 ARG GID=1000
+# Controls which Poetry groups are installed and which Django settings load.
+# Pass --build-arg DJANGO_ENV=development for dev images.
+ARG DJANGO_ENV=production
 
 # Python / pip / Poetry env
 ENV PYTHONFAULTHANDLER=1 \
@@ -15,7 +18,7 @@ ENV PYTHONFAULTHANDLER=1 \
     POETRY_VERSION=2.4.1 \
     POETRY_VIRTUALENVS_CREATE=false \
     POETRY_HOME=/usr/local \
-    DJANGO_ENV=production
+    DJANGO_ENV=${DJANGO_ENV}
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
@@ -45,9 +48,13 @@ RUN groupadd -g "${GID}" -r web \
 # Copy lockfiles first so this layer is cached when only source changes
 COPY --chown=web:web pyproject.toml poetry.lock ./
 
-# Install only the main group — no ML libs (torch/CUDA/whisperx/scenedetect).
-# The worker image installs the ml group separately via docker/worker/Dockerfile.
-RUN poetry sync --only main --no-interaction --no-ansi
+# Dev: install main + dev groups. Prod: main only.
+# ML group (torch/CUDA/whisperx/scenedetect) is never installed here — see docker/worker/Dockerfile.
+RUN if [ "$DJANGO_ENV" = "production" ]; then \
+      poetry sync --only main --no-interaction --no-ansi; \
+    else \
+      poetry sync --without ml --no-interaction --no-ansi; \
+    fi
 
 # Copy source (this layer invalidates on every code change)
 COPY --chown=web:web . /code

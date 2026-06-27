@@ -1,8 +1,9 @@
 ---
 
-# Development compose file.
-# Run with: docker compose up
-# Automatically loads `docker-compose.override.yml` if it exists.
+# Local production-mode compose file — mirrors docker-compose.yml but runs
+# gunicorn with DJANGO_ENV=production so you can test the production config locally.
+#
+# Run with: docker compose -f docker-compose.prod.yml up
 #
 # Only web and scheduler services are here.
 # Worker uses a different image (ML libs) — see docker-compose.worker.yml.
@@ -10,24 +11,19 @@
 services:
   web:
     <<: &web
-      image: "reelforge:dev"
+      image: "reelforge:prod"
       build:
         context: .
         dockerfile: ./docker/django/Dockerfile
         args:
-          DJANGO_ENV: development
+          DJANGO_ENV: production
           UID: ${UID:-1000}
           GID: ${GID:-1000}
-        cache_from:
-          - "reelforge:dev"
-          - "reelforge:latest"
       environment:
-        DJANGO_ENV: development
-      volumes:
-        - .:/code
+        DJANGO_ENV: production
       env_file: ./config/.env
 
-    command: python -We -bb manage.py runserver 0.0.0.0:8000
+    command: gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi
     healthcheck:
       test: /bin/sh /code/docker/django/healthcheck.sh
       interval: 10s
