@@ -76,7 +76,7 @@ COPY --chown=web:web ./poetry.lock ./pyproject.toml /code/
 
 # Project initialization:
 # hadolint ignore=SC2046
-RUN --mount=type=cache,target="$POETRY_CACHE_DIR" \
+RUN --mount=type=cache,id=poetry_cache,target=/var/cache/pypoetry \
   echo "$DJANGO_ENV" \
   && poetry --version && poetry run pip --version \
   && poetry sync \
