@@ -32,6 +32,7 @@ DEBUG = True
 ALLOWED_HOSTS = [
     config('DOMAIN_NAME'),
     'reelforge-frontend-production.up.railway.app',
+    'reelforge-production-736a.up.railway.app',
     'localhost',
     '0.0.0.0',  # noqa: S104
     '127.0.0.1',
