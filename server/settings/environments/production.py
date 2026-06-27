@@ -5,6 +5,8 @@ This file is required and if development.py is present these
 values are overridden.
 """
 
+import os
+
 from dmr.settings import Settings
 
 from server.settings.components import config
@@ -15,12 +17,20 @@ from server.settings.components.api import DMR_SETTINGS
 
 DEBUG = False
 
-ALLOWED_HOSTS = [
-    # TODO: check production hosts
+_railway_domain: str = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+
+ALLOWED_HOSTS: list[str] = [
     config('DOMAIN_NAME'),
-    # We need this value for `healthcheck` to work:
     'localhost',
 ]
+if _railway_domain:
+    ALLOWED_HOSTS.append(_railway_domain)
+
+CSRF_TRUSTED_ORIGINS: list[str] = [
+    f'https://{config("DOMAIN_NAME")}',
+]
+if _railway_domain:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{_railway_domain}')
 
 
 
