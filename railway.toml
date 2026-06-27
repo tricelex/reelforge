@@ -1,10 +1,14 @@
+# Web and scheduler use the lean image (no ML libs — ~1-2 GB).
+# The worker service points to docker/worker/Dockerfile in Railway's
+# service settings (configured separately — not in this file).
+
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "docker/django/Dockerfile"
 dockerBuildContext = "."
 
 [deploy]
-startCommand = "python /code/manage.py runserver 0.0.0.0:8000"
+startCommand = "gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi"
 healthcheckPath = "/health/?format=json"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

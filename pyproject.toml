@@ -51,6 +51,11 @@ elevenlabs = "^2.0"
 exa-py = "^2.0"
 pillow = "^11.0"
 #openai = "^1.0"
+
+[tool.poetry.group.ml]
+optional = true
+
+[tool.poetry.group.ml.dependencies]
 whisperx = "^3.3"
 scenedetect = { version = "^0.6", extras = ["opencv"] }
 
