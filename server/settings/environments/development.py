@@ -53,7 +53,6 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS += (
     # Better debug:
-    'debug_toolbar',
     'zeal',
     # Linting migrations:
     'django_migration_linter',
@@ -80,7 +79,6 @@ INSTALLED_APPS += (
 # https://django-debug-toolbar.readthedocs.io
 
 MIDDLEWARE += (
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
     # https://github.com/conformist-mw/django-query-counter
     # Prints how many queries were executed, useful for the APIs.
     'query_counter.middleware.DjangoQueryCounterMiddleware',
