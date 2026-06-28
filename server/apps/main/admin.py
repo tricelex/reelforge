@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from axes.admin import AccessAttemptAdmin as BaseAccessAttemptAdmin
 from axes.admin import AccessFailureLogAdmin as BaseAccessFailureLogAdmin
 from axes.admin import AccessLogAdmin as BaseAccessLogAdmin
@@ -6,13 +8,34 @@ from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
+from django.db.models import QuerySet
+from django.http import HttpRequest
 from unfold.contrib.filters.admin import (
     BooleanRadioFilter,
     RangeDateFilter,
 )
 
 from server.apps.main.models import BlogPost
+from server.apps.main.tasks import add
 from server.common.admin import ReelForgeAdmin
+from server.common.taskiq_sender import kiq_task
+
+
+@admin.action(
+    description='Smoke-test: add(5, 3) — verify worker connectivity',
+)
+def trigger_smoke_test(
+    modeladmin: admin.ModelAdmin,  # type: ignore[type-arg]
+    request: HttpRequest,
+    queryset: QuerySet,  # type: ignore[type-arg]
+) -> None:
+    """Enqueue the add smoke-test task to verify web→worker connectivity."""
+    kiq_task(add, 5, 3)
+    modeladmin.message_user(
+        request,
+        'Smoke-test task enqueued. Worker logs: add_task_executed result=8',
+    )
+
 
 # Unregister auth and axes models so we can re-register them with Unfold's
 # ModelAdmin base for consistent theming. These models are auto-registered by
@@ -28,6 +51,7 @@ admin.site.unregister(AccessFailureLog)
 class BlogPostAdmin(ReelForgeAdmin):
     """Admin panel for BlogPost with Unfold enhancements."""
 
+    actions: ClassVar = [trigger_smoke_test]
     list_display = ('title', 'created_at', 'updated_at')
     search_fields = ('title', 'body')
     date_hierarchy = 'created_at'

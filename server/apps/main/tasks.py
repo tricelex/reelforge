@@ -12,7 +12,9 @@ logger = structlog.get_logger(__name__)
 @broker.task
 def add(a: int, b: int) -> int:
     """Add two integers. Used for smoke-testing the task queue."""
-    return a + b
+    result = a + b
+    logger.info('add_task_executed', a=a, b=b, result=result)
+    return result
 
 
 @broker.task
