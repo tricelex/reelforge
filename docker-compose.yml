@@ -28,6 +28,9 @@ services:
       env_file: ./config/.env
 
     command: python -We -bb manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_ENV: development
+      LOGFIRE_SERVICE_NAME: ***REMOVED***-web
     healthcheck:
       test: /bin/sh /code/docker/django/healthcheck.sh
       interval: 10s
@@ -42,3 +45,6 @@ services:
   scheduler:
     <<: *web
     command: python -m taskiq scheduler server.common.scheduler:scheduler
+    environment:
+      DJANGO_ENV: development
+      LOGFIRE_SERVICE_NAME: ***REMOVED***-scheduler
