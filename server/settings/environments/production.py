@@ -35,7 +35,9 @@ if _railway_domain:
 CSRF_TRUSTED_ORIGINS: list[str] = [
     f'https://{config("DOMAIN_NAME")}',
     'https://reelforge-production-736a.up.railway.app',
-    'https://reelforge-frontend-production.up.railway.app'
+    'https://reelforge-frontend-production.up.railway.app',
+    'http://localhost',
+    'http://127.0.0.1',
 ]
 if _railway_domain:
     CSRF_TRUSTED_ORIGINS.append(f'https://{_railway_domain}')

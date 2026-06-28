@@ -37,5 +37,9 @@ DMR_SETTINGS: Any = {
 CORS_ALLOWED_ORIGINS = [
     f'https://{config("DOMAIN_NAME")}',
     'https://reelforge-frontend-production.up.railway.app'
+    'http://localhost',
+    'http://127.0.0.1',
+    'https://reelforge-frontend-production.up.railway.app',
+    'https://reelforge-production-736a.up.railway.app',
 ]
 CORS_ALLOW_ALL_ORIGINS = False
