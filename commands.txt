@@ -6,3 +6,11 @@
   │ docker-compose.prod.yml   │ Prod-local — gunicorn, production_build │ docker compose -f docker-compose.prod.yml up   │
   ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
   │ docker-compose.worker.yml │ Worker — ML image, separate             │ docker compose -f docker-compose.worker.yml up │
+
+
+ When run.status == 'AWAITING_REVIEW' and the pending gate is clip_approval_gate, the Next.js frontend must render the clip editor:
+   - Trim timeline (start_sec / end_sec via PATCH /api/clips/candidates/{id}/)
+   - Crop / area selection (PATCH layout/)
+   - Watermark, captions, intro, outro, music (PATCH style/)
+   - Timed overlays
+   - "Approve" button → POST /api/runs/{run_id}/gates/clip_approval_gate/approve/ with {approved_candidate_ids: [...]}

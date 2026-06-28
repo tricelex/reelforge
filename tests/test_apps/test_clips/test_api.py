@@ -238,6 +238,7 @@ def test_candidate_preview_queues_job(
     assert response.status_code == HTTPStatus.ACCEPTED
     parsed = msgspec.convert(response.json(), type=ClipPreviewStatusPayload)
     assert parsed.status == 'queued'
+    assert parsed.config_version > 0
 
     status_response = dmr_client.get(
         reverse(
@@ -252,3 +253,4 @@ def test_candidate_preview_queues_job(
         type=ClipPreviewStatusPayload,
     )
     assert status.status == 'queued'
+    assert status.config_version > 0

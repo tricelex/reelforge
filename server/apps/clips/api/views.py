@@ -6,6 +6,7 @@ from typing import final, override
 import msgspec
 from django.http import HttpResponse
 from dmr import Body, Controller, modify
+from dmr.components import Query
 from dmr.endpoint import Endpoint
 from dmr.errors import ErrorType
 from dmr.metadata import ResponseSpec
@@ -25,11 +26,13 @@ from server.apps.clips.logic.value_objects import (
     ClipPostPayload,
     ClipPreviewStatusPayload,
     ClipRenderPayload,
+    ClipSourceFramePayload,
     ClipStyleConfigPatchPayload,
     ClipStyleConfigPayload,
     ClipTimedOverlayCreatePayload,
     ClipTimedOverlayPatchPayload,
     ClipTimedOverlayPayload,
+    SourceFrameQuery,
 )
 from server.apps.clips.models import (
     ClipCandidate,
@@ -225,8 +228,10 @@ class ClipCandidatePreviewView(
     @modify(status_code=HTTPStatus.ACCEPTED)
     def post(self) -> ClipPreviewStatusPayload:
         """Queue preview render."""
+        force = self.request.GET.get('force', '').lower() == 'true'
         return self.resolve(ClipsService).trigger_preview(
             str(self.kwargs['candidate_id']),
+            force=force,
         )
 
 
@@ -296,6 +301,118 @@ class ClipLayoutConfigView(
                     error_type=ErrorType.not_found,
                 ),
                 status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint,
+            controller,
+            exc,
+        )
+
+
+@final
+class ClipLayoutSmartCropView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Re-run smart crop detection for a candidate."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def post(self) -> ClipLayoutConfigPayload:
+        """Clear manual crop and re-detect speaker framing."""
+        return self.resolve(ClipsService).reset_smart_crop(
+            str(self.kwargs['candidate_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipLayoutConfig.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Layout config not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint,
+            controller,
+            exc,
+        )
+
+
+@final
+class ClipCandidateSourceFrameView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Return a presigned JPEG frame from the source video."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.BAD_REQUEST,
+            ),
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(
+        self,
+        *,
+        parsed_query: Query[SourceFrameQuery],
+    ) -> ClipSourceFramePayload:
+        """Extract one frame at time_sec (clamped to trim range)."""
+        return self.resolve(ClipsService).get_source_frame(
+            str(self.kwargs['candidate_id']),
+            parsed_query.time_sec,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipCandidate.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Candidate not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        if isinstance(exc, ValueError):  # pragma: no branch
+            return self.to_error(
+                self.format_error(str(exc), error_type=ErrorType.value_error),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        if isinstance(exc, RuntimeError):  # pragma: no branch
+            return self.to_error(
+                self.format_error(str(exc), error_type=ErrorType.value_error),
+                status_code=HTTPStatus.BAD_REQUEST,
             )
         return super().handle_error(  # pragma: no cover
             endpoint,

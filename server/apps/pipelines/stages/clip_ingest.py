@@ -91,15 +91,38 @@ class ClipIngestStage(Stage):
 
             video_bytes = await asyncio.to_thread(Path(out_path).read_bytes)
 
+        from server.apps.rendering.ffmpeg import async_ffprobe  # noqa: PLC0415
+        from server.apps.clips.selectors import dimensions_from_probe  # noqa: PLC0415
+
+        width: int | None = None
+        height: int | None = None
+        try:
+            probe = await async_ffprobe(out_path)
+            width, height = dimensions_from_probe(probe)
+        except RuntimeError:
+            pass
+
         asset = await ctx.assets.save(
             kind=AssetKind.VIDEO_SEGMENT,
             content=video_bytes,
             filename='source.mp4',
             mime='video/mp4',
         )
-        return {
+        if width is not None and height is not None:
+            meta = dict(asset.meta)
+            meta['width'] = width
+            meta['height'] = height
+            asset.meta = meta
+            await asset.asave(update_fields=['meta'])
+
+        output: dict[str, Any] = {
             'asset_id': str(asset.id),
             'source_title': title,
             'source_duration_sec': duration_sec,
             'source_url': source_url,
         }
+        if width is not None:
+            output['source_width'] = width
+        if height is not None:
+            output['source_height'] = height
+        return output

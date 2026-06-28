@@ -84,7 +84,6 @@ def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
     from server.apps.pipelines.models import (  # noqa: PLC0415
         RunStatus,
         StageExecution,
-        StageStatus,
     )
 
     StageExecution.objects.create(
@@ -215,8 +214,6 @@ def _try_park_gate_sync(
     key: str,
 ) -> bool:
     """Park an armed gate when deps are terminal; return True if parked."""
-    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
-
     if not node.get('gate'):
         return False
     deps: list[str] = node.get('depends_on', [])
@@ -281,6 +278,24 @@ def _process_node_sync(
     _try_enqueue_stage_sync(node, run, states, to_enqueue, key)
 
 
+def _resolve_armed_gates(
+    run: 'PipelineRun',
+    graph: list[dict[str, Any]],
+    pipeline_kind: str,
+) -> list[str]:
+    """Return the list of gate keys that are armed for this run.
+
+    CLIPPING pipelines always arm every gate node so the approval gate
+    is never accidentally skipped by an empty channel.gates list.
+    """
+    gates: list[str] = list(getattr(run.channel, 'gates', None) or [])
+    if pipeline_kind == 'CLIPPING':
+        for node in graph:
+            if node.get('gate') and node['key'] not in gates:
+                gates.append(node['key'])
+    return gates
+
+
 def _advance_in_transaction(
     run_id: str,
 ) -> tuple[list[str], dict[str, str | None]]:
@@ -300,7 +315,7 @@ def _advance_in_transaction(
         run = (
             PipelineRun.objects
             .select_for_update()
-            .select_related('channel')
+            .select_related('channel', 'blueprint')
             .get(id=uuid.UUID(run_id))
         )
         if run.status in {
@@ -315,9 +330,7 @@ def _advance_in_transaction(
 
         graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
         states = _get_stage_states(run)
-        armed_gates: list[str] = list(
-            getattr(run.channel, 'gates', None) or [],
-        )
+        armed_gates = _resolve_armed_gates(run, graph, run.blueprint.kind)
 
         for node in graph:
             _process_node_sync(

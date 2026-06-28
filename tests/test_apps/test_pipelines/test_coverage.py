@@ -1262,6 +1262,7 @@ def test_all_production_stages_registered() -> None:
         'clip_ingest',
         'clip_transcribe',
         'clip_analyze',
+        'clip_manual_setup',
         'clip_approval_gate',
         'clip_render',
         'clip_distribute',

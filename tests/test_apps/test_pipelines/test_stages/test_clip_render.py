@@ -4,7 +4,10 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from server.apps.pipelines.stages.clip_render import ClipRenderStage
+from server.common.exceptions import FatalProviderError
 
 
 def test_clip_render_attributes() -> None:
@@ -34,18 +37,18 @@ def test_clip_render_fan_out_returns_shards() -> None:
     assert shards[1] == {'candidate_id': 'uuid-2'}
 
 
-def test_clip_render_fan_out_empty_list() -> None:
+def test_clip_render_fan_out_empty_list_raises() -> None:
     ctx = MagicMock()
     ctx.upstream = {'clip_approval_gate': {'approved_candidate_ids': []}}
-    shards = ClipRenderStage().fan_out(ctx)
-    assert shards == []
+    with pytest.raises(FatalProviderError, match='No candidates approved'):
+        ClipRenderStage().fan_out(ctx)
 
 
-def test_clip_render_fan_out_missing_gate_key() -> None:
+def test_clip_render_fan_out_missing_gate_key_raises() -> None:
     ctx = MagicMock()
     ctx.upstream = {}
-    shards = ClipRenderStage().fan_out(ctx)
-    assert shards == []
+    with pytest.raises(FatalProviderError, match='No candidates approved'):
+        ClipRenderStage().fan_out(ctx)
 
 
 def test_clip_render_run() -> None:

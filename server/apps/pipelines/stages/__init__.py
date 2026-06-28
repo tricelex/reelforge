@@ -7,6 +7,7 @@ from server.apps.pipelines.stages import (
     clip_approval_gate,  # noqa: F401
     clip_distribute,  # noqa: F401
     clip_ingest,  # noqa: F401
+    clip_manual_setup,  # noqa: F401
     clip_render,  # noqa: F401
     clip_transcribe,  # noqa: F401
     image_gen,  # noqa: F401

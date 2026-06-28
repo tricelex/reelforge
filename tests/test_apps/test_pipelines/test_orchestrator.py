@@ -972,3 +972,66 @@ def test_advance_pipeline_logs_failed_stage_details(
     log_kwargs = mock_logger.info.call_args.kwargs
     assert log_kwargs['failures'][0]['stage_key'] == 'clip_transcribe'
     assert 'whisperx failed' in log_kwargs['failures'][0]['message']
+
+
+@pytest.mark.django_db(transaction=True)
+def test_clipping_blueprint_always_arms_gates_regardless_of_channel_gates():
+    """CLIPPING blueprints auto-arm all gate nodes even when channel.gates is empty."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+
+    channel = Channel.objects.create(
+        name='Clipping No-Gates Channel',
+        kind=ChannelKind.CLIPPING,
+        gates=[],  # deliberately empty — reproduces the original bug
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='clip_gate_auto_arm_v1',
+        kind=PipelineKind.CLIPPING,
+        graph={
+            'stages': [
+                {
+                    'key': 'clip_approval_gate',
+                    'depends_on': [],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='clipping gate auto-arm test',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.AWAITING_REVIEW, (
+        'CLIPPING blueprint gate must park the run at AWAITING_REVIEW '
+        'even when channel.gates is empty'
+    )
+    exec_ = StageExecution.objects.get(run=run, stage_key='clip_approval_gate')
+    assert exec_.status == StageStatus.NEEDS_INPUT

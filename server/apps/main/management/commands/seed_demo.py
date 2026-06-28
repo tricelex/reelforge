@@ -750,6 +750,21 @@ _CLIPPING_V1_GRAPH: dict[str, object] = {
     ],
 }
 
+_CLIPPING_V1_MANUAL_GRAPH: dict[str, object] = {
+    'stages': [
+        {'key': 'clip_ingest', 'depends_on': []},
+        {'key': 'clip_transcribe', 'depends_on': ['clip_ingest']},
+        {'key': 'clip_manual_setup', 'depends_on': ['clip_transcribe']},
+        {
+            'key': 'clip_approval_gate',
+            'depends_on': ['clip_manual_setup'],
+            'gate': True,
+        },
+        {'key': 'clip_render', 'depends_on': ['clip_approval_gate']},
+        {'key': 'clip_distribute', 'depends_on': ['clip_render']},
+    ],
+}
+
 # ---------------------------------------------------------------------------
 # Demo channel data
 # ---------------------------------------------------------------------------
@@ -917,6 +932,11 @@ class Command(BaseCommand):
             ('longform_v1', PipelineKind.LONGFORM, _LONGFORM_V1_GRAPH),
             ('shorts_v1', PipelineKind.SHORTS, _SHORTS_V1_GRAPH),
             ('clipping_v1', PipelineKind.CLIPPING, _CLIPPING_V1_GRAPH),
+            (
+                'clipping_v1_manual',
+                PipelineKind.CLIPPING,
+                _CLIPPING_V1_MANUAL_GRAPH,
+            ),
         ]
 
         for name, kind, graph in blueprints:

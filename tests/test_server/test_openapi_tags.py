@@ -24,6 +24,10 @@ _TAGGED_OPERATIONS: Final = {
     '/api/runs/{run_id}/cast/': {'get': 'Pipeline Cast'},
     '/api/blueprints/': {'get': 'Blueprints'},
     '/api/candidates/{candidate_id}/layout-config/': {'get': 'Clip Config'},
+    '/api/candidates/{candidate_id}/layout-config/smart-crop/': {
+        'post': 'Clip Config',
+    },
+    '/api/candidates/{candidate_id}/source-frame/': {'get': 'Clip Config'},
     '/api/candidates/{candidate_id}/posts/': {'get': 'Clip Posts'},
     '/api/campaigns/': {'get': 'Campaigns'},
     '/api/clip-sources/': {'get': 'Clip Sources'},
@@ -94,6 +98,35 @@ def test_openapi_operation_has_expected_tag(
     schema = _load_openapi_schema(client)
     tags = _operation_tags(schema, path, method)
     assert expected_tag in tags
+
+
+@pytest.mark.django_db
+def test_openapi_layout_config_has_render_mode_enum(client: Client) -> None:
+    """Layout config schema exposes render_mode enum values."""
+    schema = _load_openapi_schema(client)
+    components = schema.get('components', {}).get('schemas', {})
+    layout = components.get('ClipLayoutConfigPayload', {})
+    props = layout.get('properties', {})
+    render_mode = props.get('render_mode', {})
+    enum_values = set(render_mode.get('enum', []))
+    assert 'SMART_CROP' in enum_values
+    assert 'SPATIAL_STACK' in enum_values
+    assert 'CENTER_CROP' in enum_values
+
+
+@pytest.mark.django_db
+def test_openapi_source_frame_has_time_sec_query_param(client: Client) -> None:
+    """Source frame endpoint documents time_sec query parameter."""
+    schema = _load_openapi_schema(client)
+    operation = schema['paths']['/api/candidates/{candidate_id}/source-frame/'][
+        'get'
+    ]
+    param_names = {
+        p['name']
+        for p in operation.get('parameters', [])
+        if p.get('in') == 'query'
+    }
+    assert 'time_sec' in param_names
 
 
 @pytest.mark.django_db
