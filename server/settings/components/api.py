@@ -37,5 +37,9 @@ DMR_SETTINGS: Any = {
 CORS_ALLOWED_ORIGINS = [
     f'https://{config("DOMAIN_NAME")}',
     'https://***REMOVED***-frontend-production.up.railway.app'
+    'http://localhost',
+    'http://127.0.0.1',
+    'https://***REMOVED***-frontend-production.up.railway.app',
+    'https://***REMOVED***-production-736a.up.railway.app',
 ]
 CORS_ALLOW_ALL_ORIGINS = False
