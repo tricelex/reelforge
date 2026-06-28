@@ -65,6 +65,20 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': False,
         },
+        'server': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,  # StructlogProcessor sends to Logfire; avoid double-send via root LogfireLoggingHandler
+        },
+        'taskiq': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,  # stdlib logging — propagates to root LogfireLoggingHandler
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
     },
 }
 

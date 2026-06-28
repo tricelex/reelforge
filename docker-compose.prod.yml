@@ -24,6 +24,9 @@ services:
       env_file: ./config/.env
 
     command: gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-web
     healthcheck:
       test: /bin/sh /code/docker/django/healthcheck.sh
       interval: 10s
@@ -38,3 +41,6 @@ services:
   scheduler:
     <<: *web
     command: python -m taskiq scheduler server.common.scheduler:scheduler
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-scheduler

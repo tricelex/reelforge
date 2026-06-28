@@ -16,6 +16,8 @@ services:
     volumes:
       - .:/code
     env_file: ./config/.env
+    environment:
+      LOGFIRE_SERVICE_NAME: reelforge-worker
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup

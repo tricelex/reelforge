@@ -22,11 +22,15 @@ services:
   web:
     <<: *base
     command: python -We -bb manage.py runserver 0.0.0.0:8099
+    environment:
+      LOGFIRE_SERVICE_NAME: reelforge-web
     ports:
       - "8099:8099"
 
   worker:
     <<: *base
+    environment:
+      LOGFIRE_SERVICE_NAME: reelforge-worker
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -38,6 +42,8 @@ services:
 
   scheduler:
     <<: *base
+    environment:
+      LOGFIRE_SERVICE_NAME: reelforge-scheduler
     command: python -m taskiq scheduler server.common.scheduler:scheduler
 
 volumes:

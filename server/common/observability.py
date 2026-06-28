@@ -17,6 +17,7 @@ def init_sentry() -> None:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         environment=settings.DJANGO_ENV,
+        server_name=settings.LOGFIRE_SERVICE_NAME,
         integrations=[
             DjangoIntegration(transaction_style='url'),
             LoggingIntegration(
