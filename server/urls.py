@@ -79,44 +79,6 @@ urlpatterns = [
     path('docs/redoc/', RedocView.as_view(schema), name='redoc'),
     path('sentry-debug/', trigger_error),
     # Health checks:
-    path(
-        'health/',
-        HealthCheckView.as_view(
-            checks=[
-                'health_check.Cache',
-                'health_check.Database',
-                'health_check.Storage',
-            ],
-        ),
-        name='health_check',
-    ),
-    path(
-        "wealth/",
-        HealthCheckView.as_view(
-            checks=[  # optional, default is all but 3rd party checks
-                "health_check.Cache",
-                "health_check.DNS",
-                "health_check.Database",
-                "health_check.Mail",
-                "health_check.Storage",
-                # 3rd party checks
-                "health_check.contrib.psutil.Disk",
-                "health_check.contrib.psutil.Memory",
-                (  # tuple with options
-                    "health_check.contrib.rabbitmq.RabbitMQ",
-                    {"amqp_url": config('RABBITMQ_URL', default='amqp://guest:guest@localhost:5672/')},
-                ),
-                (
-                    "health_check.contrib.redis.Redis",
-                    {
-                        "client_factory": lambda: RedisClient.from_url(
-                            config('REDIS_URL', default='redis://localhost:6379/0')
-                        )
-                    },
-                ),
-            ],
-        ),
-    ),
     # django-admin:
     path('admin/doc/', include(admindocs_urls)),
     path('admin/', admin.site.urls),
@@ -140,15 +102,3 @@ urlpatterns = [
     # It is a good practice to have explicit index view:
     path('', index, name='index'),
 ]
-
-if settings.DEBUG:  # pragma: no cover
-    import debug_toolbar
-    from django.conf.urls.static import static
-
-    urlpatterns = [
-        # URLs specific only to django-debug-toolbar:
-        path('__debug__/', include(debug_toolbar.urls)),
-        *urlpatterns,
-        # Serving media files in development only:
-        *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
-    ]
