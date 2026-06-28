@@ -81,12 +81,12 @@ class TrimAndCropStage(RenderStage):
         return [
             'ffmpeg',
             '-y',
+            '-i',
+            str(input_path),
             '-ss',
             str(self.start_sec),
             '-to',
             str(self.end_sec),
-            '-i',
-            str(input_path),
             '-vf',
             (
                 f'crop=ih*9/16:ih,'
@@ -127,12 +127,12 @@ class TrimAndCropStage(RenderStage):
         return [
             'ffmpeg',
             '-y',
+            '-i',
+            str(input_path),
             '-ss',
             str(self.start_sec),
             '-to',
             str(self.end_sec),
-            '-i',
-            str(input_path),
             '-vf',
             vf,
             '-c:v',

@@ -4,6 +4,7 @@ from http import HTTPStatus
 from typing import final, override
 
 import msgspec
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from dmr import Body, Controller, modify
 from dmr.components import Query
@@ -14,6 +15,7 @@ from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
+    ApproveGatePayload,
     ClipCandidateListPayload,
     ClipCandidatePatchPayload,
     ClipCandidatePayload,
@@ -32,6 +34,7 @@ from server.apps.clips.logic.value_objects import (
     ClipTimedOverlayCreatePayload,
     ClipTimedOverlayPatchPayload,
     ClipTimedOverlayPayload,
+    GateApprovalResultPayload,
     SourceFrameQuery,
 )
 from server.apps.clips.models import (
@@ -44,6 +47,7 @@ from server.apps.clips.models import (
 from server.apps.clips.services import ClipsService
 from server.common.auth import JWTAuthenticatedMixin, jwt_sync_auth
 from server.common.di import HasContainer
+from server.common.exceptions import ConflictError
 
 
 class _RejectPayload(msgspec.Struct, frozen=True):
@@ -90,6 +94,67 @@ class ClipCandidateApproveAllView(
         return self.resolve(ClipsService).approve_all(
             str(self.kwargs['run_id']),
         )
+
+
+@final
+class ClipStartRenderView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Resume the clip approval gate and enqueue clip_render."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.BAD_REQUEST,
+            ),
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.CONFLICT,
+            ),
+        ],
+    )
+    def post(
+        self,
+        parsed_body: Body[ApproveGatePayload],
+    ) -> GateApprovalResultPayload:
+        """Approve the clip gate and advance the pipeline to rendering."""
+        return self.resolve(ClipsService).start_render(
+            str(self.kwargs['run_id']),
+            parsed_body.approved_candidate_ids,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        """Map validation and conflict failures to API errors."""
+        if isinstance(exc, ConflictError):
+            return self.to_error(
+                self.format_error(
+                    str(exc),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.CONFLICT,
+            )
+        if isinstance(exc, ValidationError):
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            return self.to_error(
+                self.format_error(
+                    '; '.join(str(m) for m in messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

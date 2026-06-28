@@ -12,6 +12,7 @@ from server.apps.clips.selectors import (
     dimensions_from_probe,
     get_asset_dimensions,
     get_candidate_source_dimensions,
+    get_run_manifest_asset_id,
     get_run_source_asset_id,
 )
 from server.apps.pipelines.models import (
@@ -95,6 +96,29 @@ def test_get_run_source_asset_id(
 ) -> None:
     candidate, asset = candidate_with_ingest
     assert get_run_source_asset_id(str(candidate.run_id)) == str(asset.id)
+
+
+@pytest.mark.django_db
+def test_get_run_manifest_asset_id(
+    candidate_with_ingest: tuple[ClipCandidate, Asset],
+) -> None:
+    candidate, _ = candidate_with_ingest
+    manifest_asset = Asset.objects.create(
+        kind=AssetKind.DOC,
+        file=ContentFile(b'{}', name='manifest.json'),
+        mime='application/json',
+        checksum='manifest',
+        run=candidate.run,
+    )
+    StageExecution.objects.create(
+        run=candidate.run,
+        stage_key='clip_transcribe',
+        status=StageStatus.SUCCEEDED,
+        output={'manifest_asset_id': str(manifest_asset.id)},
+    )
+    assert get_run_manifest_asset_id(str(candidate.run_id)) == str(
+        manifest_asset.id,
+    )
 
 
 @pytest.mark.django_db

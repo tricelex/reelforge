@@ -234,6 +234,164 @@ def test_get_preview_status_ready(candidate: ClipCandidate) -> None:
 
 
 @pytest.mark.django_db
+def test_get_preview_status_ready_prefers_preview_asset(
+    candidate: ClipCandidate,
+) -> None:
+    """Preview asset takes precedence over the full render asset."""
+    from django.core.files.base import ContentFile
+
+    render_asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'render', name='render.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=candidate.run,
+    )
+    preview_asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'preview', name='preview.mp4'),
+        mime='video/mp4',
+        checksum='def',
+        run=candidate.run,
+    )
+    candidate.render_asset_id = render_asset.id
+    candidate.preview_asset_id = preview_asset.id
+    candidate.save(
+        update_fields=['render_asset_id', 'preview_asset_id'],
+    )
+
+    result = _clips_service().get_preview_status(str(candidate.id))
+    assert result.status == 'ready'
+    assert result.url == 'https://storage.example/file'
+
+
+@pytest.mark.django_db
+def test_get_preview_status_failed(candidate: ClipCandidate) -> None:
+    """Preview status is failed when the cache records a failure."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import preview_cache_key
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {'status': 'failed', 'error': 'ffmpeg failed'},
+    )
+
+    result = _clips_service().get_preview_status(str(candidate.id))
+    assert result.status == 'failed'
+    assert result.url is None
+
+
+@pytest.mark.django_db
+def test_trigger_preview_enqueues_task(candidate: ClipCandidate) -> None:
+    """trigger_preview enqueues the render worker task."""
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_preview(str(candidate.id))
+
+    assert result.status == 'queued'
+    mock_kiq.assert_called_once()
+    assert mock_kiq.call_args.args[1] == str(candidate.id)
+
+
+@pytest.mark.django_db
+def test_trigger_preview_skips_when_already_queued(
+    candidate: ClipCandidate,
+) -> None:
+    """trigger_preview does not enqueue a second job while one is active."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import preview_cache_key
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {'status': 'rendering'},
+    )
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_preview(str(candidate.id))
+    assert result.status == 'queued'
+    mock_kiq.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_trigger_preview_skips_when_ready_and_fresh(
+    candidate: ClipCandidate,
+) -> None:
+    """trigger_preview does not enqueue when a fresh preview exists."""
+    from django.core.cache import cache
+    from django.core.files.base import ContentFile
+
+    from server.apps.clips.preview_render import (
+        preview_cache_key,
+        preview_config_version,
+    )
+
+    preview_asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'preview', name='preview.mp4'),
+        mime='video/mp4',
+        checksum='def',
+        run=candidate.run,
+    )
+    candidate.preview_asset_id = preview_asset.id
+    candidate.save(update_fields=['preview_asset_id'])
+    version = preview_config_version(str(candidate.id))
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {'status': 'ready', 'config_version': version},
+    )
+
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_preview(str(candidate.id))
+
+    assert result.status == 'ready'
+    assert result.url == 'https://storage.example/file'
+    mock_kiq.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_trigger_preview_atomic_claim(candidate: ClipCandidate) -> None:
+    """Only the first trigger_preview call enqueues a worker task."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import preview_cache_key
+
+    cache_key = preview_cache_key(str(candidate.id))
+
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        first = _clips_service().trigger_preview(str(candidate.id))
+        second = _clips_service().trigger_preview(str(candidate.id))
+
+    assert first.status == 'queued'
+    assert second.status == 'queued'
+    mock_kiq.assert_called_once()
+    cached = cache.get(cache_key)
+    assert cached is not None
+    assert cached['status'] == 'queued'
+
+
+@pytest.mark.django_db
+def test_patch_layout_invalidates_preview_cache(
+    candidate: ClipCandidate,
+) -> None:
+    """Layout patches clear cached preview state."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import preview_cache_key
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {'status': 'ready', 'config_version': 123},
+    )
+
+    _clips_service().patch_layout(
+        str(candidate.id),
+        ClipLayoutConfigPatchPayload(render_mode='manual_crop'),
+    )
+
+    assert cache.get(preview_cache_key(str(candidate.id))) is None
+
+
+@pytest.mark.django_db
 def test_get_preview_status_idle(candidate: ClipCandidate) -> None:
     """Preview status is idle when no cache entry or render exists."""
     result = _clips_service().get_preview_status(str(candidate.id))
@@ -249,6 +407,8 @@ def test_trigger_preview_force_clears_ready(
     """force=True queues preview even when render asset exists."""
     from django.core.cache import cache
 
+    from server.apps.clips.preview_render import preview_cache_key
+
     asset = Asset.objects.create(
         kind=AssetKind.VIDEO_SEGMENT,
         file=ContentFile(b'video', name='clip.mp4'),
@@ -259,13 +419,14 @@ def test_trigger_preview_force_clears_ready(
     candidate.render_asset_id = asset.id
     candidate.save(update_fields=['render_asset_id'])
 
-    result = _clips_service().trigger_preview(str(candidate.id), force=True)
+    with patch('server.apps.clips.services.kiq_task'):
+        result = _clips_service().trigger_preview(str(candidate.id), force=True)
     assert result.status == 'queued'
     assert result.url is None
 
     status = _clips_service().get_preview_status(str(candidate.id))
     assert status.status == 'queued'
-    cache.delete(f'clip_preview:{candidate.id}')
+    cache.delete(preview_cache_key(str(candidate.id)))
 
 
 @pytest.mark.django_db
@@ -312,6 +473,40 @@ def test_approve_gate_mocks_orchestrator(candidate: ClipCandidate) -> None:
     assert result.status == 'approved'
     assert result.approved_count == 1
     mock_sync.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_start_render_requires_parked_gate(candidate: ClipCandidate) -> None:
+    """start_render rejects runs that are not at clip_approval_gate."""
+    from server.common.exceptions import ConflictError
+
+    with pytest.raises(ConflictError, match='clip approval gate'):
+        _clips_service().start_render(str(candidate.run_id))
+
+
+@pytest.mark.django_db
+def test_start_render_requires_approved_candidates(
+    candidate: ClipCandidate,
+) -> None:
+    """start_render rejects when no candidates are approved."""
+    from django.core.exceptions import ValidationError
+    from server.apps.pipelines.models import RunStatus, StageExecution, StageStatus
+
+    run = candidate.run
+    run.status = RunStatus.AWAITING_REVIEW
+    run.save(update_fields=['status'])
+    StageExecution.objects.create(
+        run=run,
+        stage_key='clip_approval_gate',
+        status=StageStatus.NEEDS_INPUT,
+        input_hash='',
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match='Approve at least one candidate',
+    ):
+        _clips_service().start_render(str(run.id))
 
 
 @pytest.mark.django_db

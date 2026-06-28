@@ -13,4 +13,5 @@
    - Crop / area selection (PATCH layout/)
    - Watermark, captions, intro, outro, music (PATCH style/)
    - Timed overlays
-   - "Approve" button → POST /api/runs/{run_id}/gates/clip_approval_gate/approve/ with {approved_candidate_ids: [...]}
+   - "Approve" button → POST /api/runs/{run_id}/candidates/approve-all/ (marks candidates)
+   - "Start Render" button → POST /api/runs/{run_id}/start-render/ with {approved_candidate_ids: [...]} (optional; auto-collects APPROVED candidates when omitted)

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, final, override
 
 from server.apps.clips.logic.constants import CaptionStyle
 from server.apps.rendering.clip_stages.base import RenderStage
+from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipStyleConfig
@@ -225,6 +226,8 @@ class CaptionStage(RenderStage):
     video_height: int = 1920
     crf: int = 18
     preset: str = 'slow'
+    fps: int = 30
+    audio_bitrate: str = '192k'
 
     @property
     @override
@@ -269,14 +272,12 @@ class CaptionStage(RenderStage):
             str(input_path),
             '-vf',
             f"subtitles='{ass_str}'",
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'copy',
+            *clip_filter_encode_args(
+                crf=self.crf,
+                preset=self.preset,
+                fps=self.fps,
+                audio_bitrate=self.audio_bitrate,
+            ),
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603

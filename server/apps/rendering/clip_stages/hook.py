@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, final, override
 
 from server.apps.rendering.clip_stages.base import RenderStage
+from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipStyleConfig
@@ -27,6 +28,10 @@ class HookStage(RenderStage):
     style_config: ClipStyleConfig | None
     crf: int = 18
     preset: str = 'slow'
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    audio_bitrate: str = '192k'
 
     @property
     @override
@@ -88,14 +93,12 @@ class HookStage(RenderStage):
             str(input_path),
             '-vf',
             drawtext,
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'copy',
+            *clip_filter_encode_args(
+                crf=self.crf,
+                preset=self.preset,
+                fps=self.fps,
+                audio_bitrate=self.audio_bitrate,
+            ),
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
@@ -134,7 +137,7 @@ class HookStage(RenderStage):
             '-f',
             'lavfi',
             '-i',
-            f'color=c=black:s=1080x1920:d={sc.hook_duration_sec}',
+            f'color=c=black:s={self.width}x{self.height}:d={sc.hook_duration_sec}',
             '-vf',
             drawtext,
             '-c:v',

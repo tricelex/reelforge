@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, final, override
 
 from server.apps.rendering.clip_stages.base import RenderStage
+from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipTimedOverlay
@@ -25,6 +26,8 @@ class TimedOverlayStage(RenderStage):
     timed_overlays: list[ClipTimedOverlay] = field(default_factory=list)
     crf: int = 18
     preset: str = 'slow'
+    fps: int = 30
+    audio_bitrate: str = '192k'
 
     @property
     @override
@@ -71,14 +74,12 @@ class TimedOverlayStage(RenderStage):
             str(input_path),
             '-vf',
             vf,
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'copy',
+            *clip_filter_encode_args(
+                crf=self.crf,
+                preset=self.preset,
+                fps=self.fps,
+                audio_bitrate=self.audio_bitrate,
+            ),
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603

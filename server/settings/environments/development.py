@@ -136,6 +136,8 @@ CORS_ALLOWED_ORIGINS.extend([
 MIDDLEWARE = ('zeal.middleware.zeal_middleware', *MIDDLEWARE)
 
 # Logging N+1 requests:
+DQC_ENABLED = False  # disable query counter table and SQL output in logs
+
 ZEAL_RAISE = True  # comment out if you want to allow N+1 requests
 ZEAL_SHOW_ALL_CALLERS = True
 ZEAL_LOGGER = logging.getLogger('django')

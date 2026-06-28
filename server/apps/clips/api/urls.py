@@ -18,6 +18,11 @@ candidate_urlpatterns = [
         name='candidate_approve_all',
     ),
     path(
+        'runs/<uuid:run_id>/start-render/',
+        views.ClipStartRenderView.as_view(),
+        name='start_render',
+    ),
+    path(
         'candidates/<uuid:candidate_id>/',
         views.ClipCandidateDetailView.as_view(),
         name='candidate_detail',

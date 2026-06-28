@@ -1,6 +1,7 @@
 """Tests for the clips API controllers."""
 
 from http import HTTPStatus
+from unittest.mock import patch
 
 import msgspec
 import pytest
@@ -227,18 +228,20 @@ def test_candidate_preview_queues_job(
     auth_headers: dict[str, str],
 ) -> None:
     """Preview POST queues a render job."""
-    response = dmr_client.post(
-        reverse(
-            'clips:candidate_preview',
-            kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
-        ),
-        headers=auth_headers,
-    )
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        response = dmr_client.post(
+            reverse(
+                'clips:candidate_preview',
+                kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+            ),
+            headers=auth_headers,
+        )
 
     assert response.status_code == HTTPStatus.ACCEPTED
     parsed = msgspec.convert(response.json(), type=ClipPreviewStatusPayload)
     assert parsed.status == 'queued'
     assert parsed.config_version > 0
+    mock_kiq.assert_called_once()
 
     status_response = dmr_client.get(
         reverse(

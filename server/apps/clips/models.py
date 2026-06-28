@@ -51,6 +51,7 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
     )
     rejection_reason = models.TextField(blank=True)
     render_asset_id = models.UUIDField(null=True, blank=True)
+    preview_asset_id = models.UUIDField(null=True, blank=True)
     is_manual = models.BooleanField(default=False)
 
     class Meta:
