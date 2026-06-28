@@ -230,6 +230,7 @@ def test_get_preview_status_ready(candidate: ClipCandidate) -> None:
     result = _clips_service().get_preview_status(str(candidate.id))
     assert result.status == 'ready'
     assert result.url == 'https://storage.example/file'
+    assert result.config_version > 0
 
 
 @pytest.mark.django_db
@@ -238,6 +239,57 @@ def test_get_preview_status_idle(candidate: ClipCandidate) -> None:
     result = _clips_service().get_preview_status(str(candidate.id))
     assert result.status == 'idle'
     assert result.url is None
+    assert result.config_version > 0
+
+
+@pytest.mark.django_db
+def test_trigger_preview_force_clears_ready(
+    candidate: ClipCandidate,
+) -> None:
+    """force=True queues preview even when render asset exists."""
+    from django.core.cache import cache
+
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='clip.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=candidate.run,
+    )
+    candidate.render_asset_id = asset.id
+    candidate.save(update_fields=['render_asset_id'])
+
+    result = _clips_service().trigger_preview(str(candidate.id), force=True)
+    assert result.status == 'queued'
+    assert result.url is None
+
+    status = _clips_service().get_preview_status(str(candidate.id))
+    assert status.status == 'queued'
+    cache.delete(f'clip_preview:{candidate.id}')
+
+
+@pytest.mark.django_db
+def test_patch_style_emoji_keyword_map(candidate: ClipCandidate) -> None:
+    """patch_style updates emoji_keyword_map."""
+    result = _clips_service().patch_style(
+        str(candidate.id),
+        ClipStyleConfigPatchPayload(
+            emoji_keyword_map={'win': '🏆'},
+        ),
+    )
+    assert result.emoji_keyword_map == {'win': '🏆'}
+
+
+@pytest.mark.django_db
+def test_get_by_id_includes_channel_and_caption_template(
+    candidate: ClipCandidate,
+) -> None:
+    """get_by_id returns channel_id and caption_template."""
+    candidate.caption_template = 'Caption {word}'
+    candidate.save(update_fields=['caption_template'])
+    result = _clips_service().get_by_id(str(candidate.id))
+    assert result.channel_id == str(candidate.run.channel_id)
+    assert result.caption_template == 'Caption {word}'
 
 
 @pytest.mark.django_db
@@ -260,6 +312,48 @@ def test_approve_gate_mocks_orchestrator(candidate: ClipCandidate) -> None:
     assert result.status == 'approved'
     assert result.approved_count == 1
     mock_sync.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_reset_smart_crop_applies_detection(candidate: ClipCandidate) -> None:
+    """reset_smart_crop clears manual crop and stores detection output."""
+    from server.apps.assets.models import Asset, AssetKind
+    from server.apps.pipelines.models import StageExecution, StageStatus
+
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='source.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=candidate.run,
+        meta={'width': 1920, 'height': 1080},
+    )
+    StageExecution.objects.create(
+        run=candidate.run,
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': str(asset.id)},
+    )
+    layout = candidate.layout_config
+    layout.manual_crop_x = 99
+    layout.save()
+
+    mock_result = MagicMock(
+        crop_x=120,
+        crop_w=600,
+        crop_h=1080,
+        confidence=0.9,
+        face_detected=True,
+    )
+    with patch(
+        'server.apps.rendering.speaker_detection.SpeakerDetectionService.detect',
+        return_value=mock_result,
+    ):
+        result = _clips_service().reset_smart_crop(str(candidate.id))
+
+    assert result.render_mode == 'SMART_CROP'
+    assert result.manual_crop_x == 120
+    assert result.source_width == 1920
 
 
 @pytest.mark.django_db

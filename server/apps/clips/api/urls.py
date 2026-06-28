@@ -56,6 +56,16 @@ config_urlpatterns = [
         name='layout_config',
     ),
     path(
+        'candidates/<uuid:candidate_id>/layout-config/smart-crop/',
+        views.ClipLayoutSmartCropView.as_view(),
+        name='layout_config_smart_crop',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/source-frame/',
+        views.ClipCandidateSourceFrameView.as_view(),
+        name='candidate_source_frame',
+    ),
+    path(
         'candidates/<uuid:candidate_id>/style-config/',
         views.ClipStyleConfigView.as_view(),
         name='style_config',

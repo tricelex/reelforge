@@ -52,6 +52,7 @@ def test_upload_clip_source_create_and_list(
     assert body['title'] == 'Podcast Ep 1'
     assert body['run_id'] is None
     assert body['candidate_count'] == 0
+    assert body['library_asset_id'] == str(asset.id)
 
     list_resp = dmr_client.get(
         reverse('api:clips:clip-source-collection'),
@@ -68,7 +69,9 @@ def test_upload_clip_source_create_and_list(
         headers=auth_headers,
     )
     assert detail_resp.status_code == HTTPStatus.OK
-    assert detail_resp.json()['id'] == body['id']
+    detail = detail_resp.json()
+    assert detail['id'] == body['id']
+    assert detail['library_asset_id'] == str(asset.id)
 
 
 @pytest.mark.django_db

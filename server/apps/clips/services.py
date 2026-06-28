@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, final
 import attrs
 import django.utils.timezone as tz
 
-from server.apps.clips.logic.constants import CandidateStatus, PostStatus
+from server.apps.clips.logic.constants import CandidateStatus, PostStatus, RenderMode
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
     ClipCandidateListPayload,
@@ -23,12 +23,17 @@ from server.apps.clips.logic.value_objects import (
     ClipPostPayload,
     ClipPreviewStatusPayload,
     ClipRenderPayload,
+    ClipSourceFramePayload,
     ClipStyleConfigPatchPayload,
     ClipStyleConfigPayload,
     ClipTimedOverlayCreatePayload,
     ClipTimedOverlayPatchPayload,
     ClipTimedOverlayPayload,
     GateApprovalResultPayload,
+)
+from server.apps.clips.selectors import (
+    get_candidate_source_dimensions,
+    get_run_source_asset_id,
 )
 from server.common.pagination import paginate_queryset
 from server.common.storage import PresignUrlHelper
@@ -73,12 +78,38 @@ def _apply_patch_fields(
     return update_fields
 
 
+def _config_version(candidate_id: str) -> int:
+    """Return a monotonic-ish version from candidate + config timestamps."""
+    from server.apps.clips.models import (  # noqa: PLC0415
+        ClipCandidate,
+        ClipLayoutConfig,
+        ClipStyleConfig,
+    )
+
+    candidate = ClipCandidate.objects.get(id=candidate_id)
+    version = int(candidate.updated_at.timestamp())
+    try:
+        layout = ClipLayoutConfig.objects.get(candidate_id=candidate_id)
+        version += int(layout.updated_at.timestamp())
+    except ClipLayoutConfig.DoesNotExist:
+        pass
+    try:
+        style = ClipStyleConfig.objects.get(candidate_id=candidate_id)
+        version += int(style.updated_at.timestamp())
+    except ClipStyleConfig.DoesNotExist:
+        pass
+    return version
+
+
 def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
+    channel_id = str(candidate.run.channel_id)
     return ClipCandidatePayload(
         id=str(candidate.id),
         run_id=str(candidate.run_id),
+        channel_id=channel_id,
         title=candidate.title,
         hook_text=candidate.hook_text,
+        caption_template=candidate.caption_template,
         start_sec=candidate.start_sec,
         end_sec=candidate.end_sec,
         duration_sec=candidate.duration_sec,
@@ -96,12 +127,19 @@ def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
     )
 
 
-def _to_layout_payload(config: 'ClipLayoutConfig') -> ClipLayoutConfigPayload:
+def _to_layout_payload(
+    config: 'ClipLayoutConfig',
+    *,
+    source_width: int | None = None,
+    source_height: int | None = None,
+) -> ClipLayoutConfigPayload:
     return ClipLayoutConfigPayload(
         id=str(config.id),
         candidate_id=str(config.candidate_id),
         render_mode=config.render_mode,
         render_format=config.render_format,
+        source_width=source_width,
+        source_height=source_height,
         manual_crop_x=config.manual_crop_x,
         manual_crop_y=config.manual_crop_y,
         manual_crop_w=config.manual_crop_w,
@@ -254,7 +292,9 @@ class ClipsService:
         """Return paginated candidates for a run."""
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        qs = ClipCandidate.objects.filter(run_id=uuid.UUID(run_id)).order_by(
+        qs = ClipCandidate.objects.select_related('run').filter(
+            run_id=uuid.UUID(run_id),
+        ).order_by(
             '-created_at',
             '-id',
         )
@@ -275,7 +315,7 @@ class ClipsService:
 
         return [
             _to_candidate_payload(c)
-            for c in ClipCandidate.objects.filter(
+            for c in ClipCandidate.objects.select_related('run').filter(
                 run_id=uuid.UUID(run_id),
                 status=CandidateStatus.APPROVED,
             ).order_by('-relevance_score')
@@ -286,7 +326,7 @@ class ClipsService:
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
         return _to_candidate_payload(
-            ClipCandidate.objects.get(id=candidate_id),
+            ClipCandidate.objects.select_related('run').get(id=candidate_id),
         )
 
     def patch(
@@ -297,7 +337,9 @@ class ClipsService:
         """Update editable candidate fields."""
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        candidate = ClipCandidate.objects.get(id=candidate_id)
+        candidate = ClipCandidate.objects.select_related('run').get(
+            id=candidate_id,
+        )
         update_fields = _apply_patch_fields(
             candidate,
             payload,
@@ -317,7 +359,9 @@ class ClipsService:
         """Mark a candidate as APPROVED."""
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        candidate = ClipCandidate.objects.get(id=candidate_id)
+        candidate = ClipCandidate.objects.select_related('run').get(
+            id=candidate_id,
+        )
         candidate.status = CandidateStatus.APPROVED
         candidate.save(update_fields=['status'])
         return _to_candidate_payload(candidate)
@@ -330,7 +374,9 @@ class ClipsService:
         """Mark a candidate as REJECTED with an optional reason."""
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        candidate = ClipCandidate.objects.get(id=candidate_id)
+        candidate = ClipCandidate.objects.select_related('run').get(
+            id=candidate_id,
+        )
         candidate.status = CandidateStatus.REJECTED
         candidate.rejection_reason = reason
         candidate.save(update_fields=['status', 'rejection_reason'])
@@ -397,7 +443,12 @@ class ClipsService:
         from server.apps.clips.models import ClipLayoutConfig  # noqa: PLC0415
 
         config = ClipLayoutConfig.objects.get(candidate_id=candidate_id)  # type: ignore[misc]
-        return _to_layout_payload(config)
+        source_w, source_h = get_candidate_source_dimensions(candidate_id)
+        return _to_layout_payload(
+            config,
+            source_width=source_w,
+            source_height=source_h,
+        )
 
     def patch_layout(
         self,
@@ -431,7 +482,90 @@ class ClipsService:
         )
         if update_fields:
             config.save(update_fields=update_fields)
-        return _to_layout_payload(config)
+        source_w, source_h = get_candidate_source_dimensions(candidate_id)
+        return _to_layout_payload(
+            config,
+            source_width=source_w,
+            source_height=source_h,
+        )
+
+    def reset_smart_crop(self, candidate_id: str) -> ClipLayoutConfigPayload:
+        """Clear manual crop and re-run speaker-aware smart crop detection."""
+        import tempfile
+        from pathlib import Path
+
+        from server.apps.assets.models import Asset  # noqa: PLC0415
+        from server.apps.clips.models import (  # noqa: PLC0415
+            ClipCandidate,
+            ClipLayoutConfig,
+        )
+        from server.apps.rendering.speaker_detection import (  # noqa: PLC0415
+            SpeakerDetectionService,
+        )
+
+        candidate = ClipCandidate.objects.select_related('run').get(
+            id=candidate_id,
+        )
+        config = ClipLayoutConfig.objects.get(candidate_id=candidate_id)  # type: ignore[misc]
+        config.render_mode = RenderMode.SMART_CROP
+        config.manual_crop_x = None
+        config.manual_crop_y = None
+        config.manual_crop_w = None
+        config.manual_crop_h = None
+        config.face_detected = None
+        config.detection_confidence = None
+
+        asset_id = get_run_source_asset_id(str(candidate.run_id))
+        update_fields = [
+            'render_mode',
+            'manual_crop_x',
+            'manual_crop_y',
+            'manual_crop_w',
+            'manual_crop_h',
+            'face_detected',
+            'detection_confidence',
+        ]
+        if asset_id is not None:
+            asset = Asset.objects.get(id=uuid.UUID(asset_id))
+            with tempfile.NamedTemporaryFile(
+                suffix='.mp4',
+                delete=False,
+            ) as tmp:
+                tmp_path = tmp.name
+            try:
+                with asset.file.open('rb') as fh:
+                    Path(tmp_path).write_bytes(fh.read())
+                result = SpeakerDetectionService().detect(
+                    video_path=Path(tmp_path),
+                    start_sec=candidate.start_sec,
+                    end_sec=candidate.end_sec,
+                )
+                config.manual_crop_x = result.crop_x
+                config.manual_crop_y = 0
+                config.manual_crop_w = result.crop_w
+                config.manual_crop_h = result.crop_h
+                config.face_detected = result.face_detected
+                config.detection_confidence = result.confidence
+                update_fields.extend(
+                    [
+                        'manual_crop_x',
+                        'manual_crop_y',
+                        'manual_crop_w',
+                        'manual_crop_h',
+                        'face_detected',
+                        'detection_confidence',
+                    ],
+                )
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+
+        config.save(update_fields=update_fields)
+        source_w, source_h = get_candidate_source_dimensions(candidate_id)
+        return _to_layout_payload(
+            config,
+            source_width=source_w,
+            source_height=source_h,
+        )
 
     def get_style(self, candidate_id: str) -> ClipStyleConfigPayload:
         """Return style config for a candidate."""
@@ -504,6 +638,9 @@ class ClipsService:
                     uuid.UUID(value) if value else None,
                 )
                 update_fields.append(field_name)
+        if payload.emoji_keyword_map is not None:
+            config.emoji_keyword_map = dict(payload.emoji_keyword_map)
+            update_fields.append('emoji_keyword_map')
         if update_fields:
             config.save(update_fields=update_fields)
         return _to_style_payload(config)
@@ -669,15 +806,23 @@ class ClipsService:
             url=self._presign.presign_get(asset.file.name or ''),
         )
 
-    def trigger_preview(self, candidate_id: str) -> ClipPreviewStatusPayload:
+    def trigger_preview(
+        self,
+        candidate_id: str,
+        *,
+        force: bool = False,
+    ) -> ClipPreviewStatusPayload:
         """Queue a lightweight preview render for one candidate."""
         from django.core.cache import cache  # noqa: PLC0415
 
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
         ClipCandidate.objects.get(id=candidate_id)
+        cache_key = f'clip_preview:{candidate_id}'
+        if force:
+            cache.delete(cache_key)
         cache.set(
-            f'clip_preview:{candidate_id}',
+            cache_key,
             {'status': 'queued'},
             timeout=3600,
         )
@@ -685,6 +830,7 @@ class ClipsService:
             candidate_id=candidate_id,
             status='queued',
             url=None,
+            config_version=_config_version(candidate_id),
         )
 
     def get_preview_status(
@@ -697,25 +843,110 @@ class ClipsService:
         from server.apps.assets.models import Asset  # noqa: PLC0415
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
+        version = _config_version(candidate_id)
         candidate = ClipCandidate.objects.get(id=candidate_id)
+        cached = cache.get(f'clip_preview:{candidate_id}')
+        if isinstance(cached, dict) and cached.get('status') == 'queued':
+            return ClipPreviewStatusPayload(
+                candidate_id=candidate_id,
+                status='queued',
+                url=None,
+                config_version=version,
+            )
         if candidate.render_asset_id is not None:
             asset = Asset.objects.get(id=candidate.render_asset_id)
             return ClipPreviewStatusPayload(
                 candidate_id=candidate_id,
                 status='ready',
                 url=self._presign.presign_get(asset.file.name or ''),
-            )
-        cached = cache.get(f'clip_preview:{candidate_id}')
-        if isinstance(cached, dict) and cached.get('status'):
-            return ClipPreviewStatusPayload(
-                candidate_id=candidate_id,
-                status=str(cached['status']),
-                url=None,
+                config_version=version,
             )
         return ClipPreviewStatusPayload(
             candidate_id=candidate_id,
             status='idle',
             url=None,
+            config_version=version,
+        )
+
+    def get_source_frame(
+        self,
+        candidate_id: str,
+        time_sec: float,
+    ) -> ClipSourceFramePayload:
+        """Extract a JPEG frame from the source video at the given time."""
+        import hashlib
+        import subprocess  # noqa: S404
+        import tempfile
+        from pathlib import Path
+
+        from django.core.files.base import ContentFile  # noqa: PLC0415
+
+        from server.apps.assets.models import Asset, AssetKind  # noqa: PLC0415
+        from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+
+        candidate = ClipCandidate.objects.select_related('run').get(
+            id=candidate_id,
+        )
+        clamped = max(
+            candidate.start_sec,
+            min(time_sec, candidate.end_sec),
+        )
+        asset_id = get_run_source_asset_id(str(candidate.run_id))
+        if asset_id is None:
+            msg = 'Source video not available for this candidate'
+            raise ValueError(msg)
+
+        source_asset = Asset.objects.get(id=uuid.UUID(asset_id))
+        source_w, source_h = get_candidate_source_dimensions(candidate_id)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            video_path = Path(tmpdir) / 'source.mp4'
+            frame_path = Path(tmpdir) / 'frame.jpg'
+            with source_asset.file.open('rb') as fh:
+                video_path.write_bytes(fh.read())
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-ss',
+                f'{clamped:.3f}',
+                '-i',
+                str(video_path),
+                '-frames:v',
+                '1',
+                '-q:v',
+                '2',
+                str(frame_path),
+            ]
+            result = subprocess.run(  # noqa: S603
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                msg = f'Frame extraction failed: {result.stderr[:200]}'
+                raise RuntimeError(msg)
+            frame_bytes = frame_path.read_bytes()
+
+        checksum = hashlib.sha256(frame_bytes).hexdigest()
+        thumb = Asset(
+            kind=AssetKind.THUMBNAIL,
+            mime='image/jpeg',
+            checksum=checksum,
+            run=candidate.run,
+        )
+        thumb.file.save(
+            f'source_frame_{candidate_id}_{int(clamped)}.jpg',
+            ContentFile(frame_bytes),
+            save=False,
+        )
+        thumb.save()
+        return ClipSourceFramePayload(
+            candidate_id=candidate_id,
+            time_sec=clamped,
+            url=self._presign.presign_get(thumb.file.name or ''),
+            width=source_w,
+            height=source_h,
         )
 
     def create_post(

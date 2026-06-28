@@ -10,6 +10,19 @@ from server.apps.pipelines.stages.clip_ingest import (
     _download_with_ytdlp,
 )
 
+_PROBE = {
+    'streams': [
+        {'codec_type': 'video', 'width': 1920, 'height': 1080},
+    ],
+}
+
+
+def _ffprobe_patch() -> patch:
+    return patch(
+        'server.apps.rendering.ffmpeg.async_ffprobe',
+        new=AsyncMock(return_value=_PROBE),
+    )
+
 
 def test_clip_ingest_attributes() -> None:
     assert ClipIngestStage.key == 'clip_ingest'
@@ -37,6 +50,8 @@ def test_clip_ingest_linked_clip_source_uses_ingest_key() -> None:
 
     fake_asset = MagicMock()
     fake_asset.id = 'asset-uuid-1'
+    fake_asset.meta = {}
+    fake_asset.asave = AsyncMock()
     fake_video_bytes = b'fake video bytes'
     fake_source = MagicMock()
     fake_source.title = 'Human Readable Title'
@@ -57,6 +72,7 @@ def test_clip_ingest_linked_clip_source_uses_ingest_key() -> None:
                 'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
                 new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
             ),
+            _ffprobe_patch(),
             patch(
                 'server.apps.assets.models.LibraryAsset',
             ) as mock_lib_cls,
@@ -79,6 +95,8 @@ def test_clip_ingest_http_url() -> None:
 
     fake_asset = MagicMock()
     fake_asset.id = 'asset-uuid-1'
+    fake_asset.meta = {}
+    fake_asset.asave = AsyncMock()
     fake_video_bytes = b'fake video bytes'
 
     async def _inner() -> dict:
@@ -95,6 +113,7 @@ def test_clip_ingest_http_url() -> None:
                     ],
                 ),
             ),
+            _ffprobe_patch(),
         ):
             mock_filter.return_value.afirst = AsyncMock(return_value=None)
             ctx.assets.save = AsyncMock(return_value=fake_asset)
@@ -105,6 +124,8 @@ def test_clip_ingest_http_url() -> None:
     assert result['source_title'] == 'Test Video'
     assert result['source_duration_sec'] == 300.0
     assert result['source_url'] == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    assert result['source_width'] == 1920
+    assert result['source_height'] == 1080
 
 
 def test_clip_ingest_library_asset_uuid() -> None:
@@ -115,6 +136,8 @@ def test_clip_ingest_library_asset_uuid() -> None:
 
     fake_asset = MagicMock()
     fake_asset.id = 'pipeline-asset-uuid'
+    fake_asset.meta = {}
+    fake_asset.asave = AsyncMock()
     fake_lib_asset = MagicMock()
 
     async def _inner() -> dict:
@@ -126,6 +149,7 @@ def test_clip_ingest_library_asset_uuid() -> None:
                 'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
                 new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
             ),
+            _ffprobe_patch(),
             patch(
                 'server.apps.assets.models.LibraryAsset',
             ) as mock_lib_cls,
@@ -148,6 +172,8 @@ def test_clip_ingest_library_asset_default_title() -> None:
 
     fake_asset = MagicMock()
     fake_asset.id = 'x'
+    fake_asset.meta = {}
+    fake_asset.asave = AsyncMock()
     fake_lib_asset = MagicMock()
 
     async def _inner() -> dict:
@@ -159,6 +185,7 @@ def test_clip_ingest_library_asset_default_title() -> None:
                 'server.apps.pipelines.stages.clip_ingest.asyncio.to_thread',
                 new=AsyncMock(side_effect=[b'bytes', None, b'bytes']),
             ),
+            _ffprobe_patch(),
             patch(
                 'server.apps.assets.models.LibraryAsset',
             ) as mock_lib_cls,

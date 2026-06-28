@@ -3,6 +3,7 @@
 
 from server.settings.components import config
 
+REDIS_URL: str = config('REDIS_URL', default='redis://localhost:6379/0')
 REDIS_CACHE_URL: str = config('REDIS_CACHE_URL', default='redis://localhost:6379/1')
 
 CACHES = {

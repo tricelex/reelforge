@@ -1,6 +1,24 @@
 """Value objects (DTOs) for the clips domain."""
 
+from typing import Annotated
+
 import msgspec
+
+from server.apps.clips.logic.types import (
+    CandidateStatusLiteral,
+    CaptionAnimationLiteral,
+    CaptionPositionLiteral,
+    CaptionStyleLiteral,
+    HookStyleLiteral,
+    OverlayTypeLiteral,
+    ProgressBarPositionLiteral,
+    RenderFormatLiteral,
+    RenderModeLiteral,
+    TransitionStyleLiteral,
+    WatermarkPositionLiteral,
+    WatermarkTypeLiteral,
+    _CROP_COORD_DESC,
+)
 
 
 class ClipCandidatePayload(msgspec.Struct, frozen=True):
@@ -8,13 +26,15 @@ class ClipCandidatePayload(msgspec.Struct, frozen=True):
 
     id: str
     run_id: str
+    channel_id: str
     title: str
     hook_text: str
+    caption_template: str
     start_sec: float
     end_sec: float
     duration_sec: float
     relevance_score: float
-    status: str
+    status: CandidateStatusLiteral
     reason: str
     transcript_excerpt: str
     rejection_reason: str
@@ -54,6 +74,23 @@ class ClipPreviewStatusPayload(msgspec.Struct, frozen=True):
     candidate_id: str
     status: str
     url: str | None
+    config_version: int
+
+
+class ClipSourceFramePayload(msgspec.Struct, frozen=True):
+    """Presigned JPEG frame from the source video at a given time."""
+
+    candidate_id: str
+    time_sec: float
+    url: str
+    width: int | None
+    height: int | None
+
+
+class SourceFrameQuery(msgspec.Struct, frozen=True):
+    """Query parameters for source frame extraction."""
+
+    time_sec: float = 0.0
 
 
 class ClipOverlayListPayload(msgspec.Struct, frozen=True):
@@ -96,20 +133,22 @@ class ClipLayoutConfigPayload(msgspec.Struct, frozen=True):
 
     id: str
     candidate_id: str
-    render_mode: str
-    render_format: str
-    manual_crop_x: int | None
-    manual_crop_y: int | None
-    manual_crop_w: int | None
-    manual_crop_h: int | None
-    region_a_x: int | None
-    region_a_y: int | None
-    region_a_w: int | None
-    region_a_h: int | None
-    region_b_x: int | None
-    region_b_y: int | None
-    region_b_w: int | None
-    region_b_h: int | None
+    render_mode: RenderModeLiteral
+    render_format: RenderFormatLiteral
+    source_width: int | None
+    source_height: int | None
+    manual_crop_x: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    manual_crop_y: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    manual_crop_w: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    manual_crop_h: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_a_x: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_a_y: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_a_w: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_a_h: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_b_x: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_b_y: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_b_w: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
+    region_b_h: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
     stack_ratio: float
     face_detected: bool | None
     detection_confidence: float | None
@@ -118,8 +157,8 @@ class ClipLayoutConfigPayload(msgspec.Struct, frozen=True):
 class ClipLayoutConfigPatchPayload(msgspec.Struct, frozen=True):
     """Partial update for layout config."""
 
-    render_mode: str | None = None
-    render_format: str | None = None
+    render_mode: RenderModeLiteral | None = None
+    render_format: RenderFormatLiteral | None = None
     manual_crop_x: int | None = None
     manual_crop_y: int | None = None
     manual_crop_w: int | None = None
@@ -141,36 +180,36 @@ class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
     id: str
     candidate_id: str
     caption_enabled: bool
-    caption_style: str
+    caption_style: CaptionStyleLiteral
     caption_font: str
     caption_size: int
     caption_color: str
     caption_stroke_color: str
     caption_stroke_width: int
     caption_bg_color: str
-    caption_position: str
-    caption_animation: str
+    caption_position: CaptionPositionLiteral
+    caption_animation: CaptionAnimationLiteral
     caption_language: str
     caption_translate_to: str
     emoji_keyword_map: dict[str, str]
     hook_enabled: bool
-    hook_style: str
+    hook_style: HookStyleLiteral
     hook_duration_sec: float
     hook_font: str
     hook_size: int
     hook_color: str
     hook_bg_color: str
-    intro_transition: str
-    outro_transition: str
+    intro_transition: TransitionStyleLiteral
+    outro_transition: TransitionStyleLiteral
     watermark_enabled: bool
-    watermark_type: str
+    watermark_type: WatermarkTypeLiteral
     watermark_text: str
     watermark_image_id: str | None
-    watermark_position: str
+    watermark_position: WatermarkPositionLiteral
     watermark_opacity: float
     watermark_size: int
     progress_bar_enabled: bool
-    progress_bar_position: str
+    progress_bar_position: ProgressBarPositionLiteral
     progress_bar_color: str
     progress_bar_height: int
     intro_asset_id: str | None
@@ -186,35 +225,36 @@ class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
     """Partial update for style config."""
 
     caption_enabled: bool | None = None
-    caption_style: str | None = None
+    caption_style: CaptionStyleLiteral | None = None
     caption_font: str | None = None
     caption_size: int | None = None
     caption_color: str | None = None
     caption_stroke_color: str | None = None
     caption_stroke_width: int | None = None
     caption_bg_color: str | None = None
-    caption_position: str | None = None
-    caption_animation: str | None = None
+    caption_position: CaptionPositionLiteral | None = None
+    caption_animation: CaptionAnimationLiteral | None = None
     caption_language: str | None = None
     caption_translate_to: str | None = None
+    emoji_keyword_map: dict[str, str] | None = None
     hook_enabled: bool | None = None
-    hook_style: str | None = None
+    hook_style: HookStyleLiteral | None = None
     hook_duration_sec: float | None = None
     hook_font: str | None = None
     hook_size: int | None = None
     hook_color: str | None = None
     hook_bg_color: str | None = None
-    intro_transition: str | None = None
-    outro_transition: str | None = None
+    intro_transition: TransitionStyleLiteral | None = None
+    outro_transition: TransitionStyleLiteral | None = None
     watermark_enabled: bool | None = None
-    watermark_type: str | None = None
+    watermark_type: WatermarkTypeLiteral | None = None
     watermark_text: str | None = None
     watermark_image_id: str | None = None
-    watermark_position: str | None = None
+    watermark_position: WatermarkPositionLiteral | None = None
     watermark_opacity: float | None = None
     watermark_size: int | None = None
     progress_bar_enabled: bool | None = None
-    progress_bar_position: str | None = None
+    progress_bar_position: ProgressBarPositionLiteral | None = None
     progress_bar_color: str | None = None
     progress_bar_height: int | None = None
     intro_asset_id: str | None = None
@@ -231,7 +271,7 @@ class ClipTimedOverlayPayload(msgspec.Struct, frozen=True):
 
     id: str
     candidate_id: str
-    overlay_type: str
+    overlay_type: OverlayTypeLiteral
     text: str
     image_asset_id: str | None
     start_sec: float
@@ -246,7 +286,7 @@ class ClipTimedOverlayPayload(msgspec.Struct, frozen=True):
 class ClipTimedOverlayCreatePayload(msgspec.Struct, frozen=True):
     """Create a timed overlay."""
 
-    overlay_type: str = 'TEXT'
+    overlay_type: OverlayTypeLiteral = 'TEXT'
     text: str = ''
     image_asset_id: str | None = None
     start_sec: float = 0.0
@@ -261,7 +301,7 @@ class ClipTimedOverlayCreatePayload(msgspec.Struct, frozen=True):
 class ClipTimedOverlayPatchPayload(msgspec.Struct, frozen=True):
     """Partial update for a timed overlay."""
 
-    overlay_type: str | None = None
+    overlay_type: OverlayTypeLiteral | None = None
     text: str | None = None
     image_asset_id: str | None = None
     start_sec: float | None = None
@@ -395,6 +435,7 @@ class ClipSourcePayload(msgspec.Struct, frozen=True):
     campaign_id: str | None
     source_type: str
     url: str
+    library_asset_id: str | None = None
     error_message: str | None = None
 
 

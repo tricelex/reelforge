@@ -2,13 +2,17 @@
 
 import uuid
 from http import HTTPStatus
+from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.files.base import ContentFile
 from django.urls import reverse
 from dmr.test import DMRClient
 
+from server.apps.assets.models import Asset, AssetKind
 from server.apps.clips.logic.constants import CandidateStatus
 from server.apps.clips.models import ClipCandidate, ClipTimedOverlay
+from server.apps.pipelines.models import StageExecution, StageStatus
 
 
 @pytest.fixture
@@ -85,6 +89,31 @@ def test_patch_candidate(
 
 
 @pytest.mark.django_db
+def test_get_candidate_includes_caption_template_and_channel_id(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    channel: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET candidate returns caption_template and channel_id."""
+    candidate.caption_template = 'Hello {word}'
+    candidate.save(update_fields=['caption_template'])
+
+    response = dmr_client.get(
+        reverse(
+            'clips:candidate_detail',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+    assert data['caption_template'] == 'Hello {word}'
+    assert data['channel_id'] == str(channel.id)  # type: ignore[attr-defined]
+
+
+@pytest.mark.django_db
 def test_approve_all_candidates(
     dmr_client: DMRClient,
     run: object,
@@ -151,6 +180,98 @@ def test_layout_config_get_and_patch(
 
 
 @pytest.mark.django_db
+def test_layout_config_includes_source_dimensions(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    run: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """Layout GET returns source_width/height from clip_ingest asset meta."""
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='source.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=run,  # type: ignore[arg-type]
+        meta={'width': 1920, 'height': 1080},
+    )
+    StageExecution.objects.create(
+        run=run,  # type: ignore[arg-type]
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': str(asset.id)},
+    )
+
+    response = dmr_client.get(
+        reverse(
+            'clips:layout_config',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+    assert data['source_width'] == 1920
+    assert data['source_height'] == 1080
+
+
+@pytest.mark.django_db
+def test_layout_smart_crop_endpoint(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    run: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST smart-crop clears manual crop and applies detection result."""
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='source.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=run,  # type: ignore[arg-type]
+    )
+    StageExecution.objects.create(
+        run=run,  # type: ignore[arg-type]
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': str(asset.id)},
+    )
+    layout = candidate.layout_config
+    layout.manual_crop_x = 50
+    layout.manual_crop_y = 50
+    layout.manual_crop_w = 400
+    layout.manual_crop_h = 400
+    layout.save()
+
+    mock_result = MagicMock(
+        crop_x=120,
+        crop_w=600,
+        crop_h=1080,
+        confidence=0.9,
+        face_detected=True,
+    )
+    with patch(
+        'server.apps.rendering.speaker_detection.SpeakerDetectionService.detect',
+        return_value=mock_result,
+    ):
+        response = dmr_client.post(
+            reverse(
+                'clips:layout_config_smart_crop',
+                kwargs={'candidate_id': candidate.id},
+            ),
+            headers=auth_headers,
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+    assert data['render_mode'] == 'SMART_CROP'
+    assert data['manual_crop_x'] == 120
+    assert data['manual_crop_y'] == 0
+    assert data['face_detected'] is True
+
+
+@pytest.mark.django_db
 def test_style_config_get_and_patch(
     dmr_client: DMRClient,
     candidate: ClipCandidate,
@@ -178,6 +299,29 @@ def test_style_config_get_and_patch(
     assert patch_resp.status_code == HTTPStatus.OK
     assert patch_resp.json()['caption_enabled'] is False
     assert patch_resp.json()['hook_size'] == 72
+
+
+@pytest.mark.django_db
+def test_style_config_patch_emoji_keyword_map(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """Style PATCH accepts emoji_keyword_map."""
+    response = dmr_client.patch(
+        reverse(
+            'clips:style_config',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        data={'emoji_keyword_map': {'money': '💰', 'fire': '🔥'}},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['emoji_keyword_map'] == {
+        'money': '💰',
+        'fire': '🔥',
+    }
 
 
 @pytest.mark.django_db
@@ -301,6 +445,87 @@ def test_layout_config_not_found(
         headers=auth_headers,
     )
     assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_source_frame_endpoint(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    run: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET source-frame returns presigned JPEG URL."""
+    from pathlib import Path
+
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='source.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=run,  # type: ignore[arg-type]
+        meta={'width': 1920, 'height': 1080},
+    )
+    StageExecution.objects.create(
+        run=run,  # type: ignore[arg-type]
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': str(asset.id)},
+    )
+
+    def _fake_ffmpeg(cmd: list[str], **kwargs: object) -> MagicMock:
+        Path(cmd[-1]).write_bytes(b'jpeg-bytes')
+        return MagicMock(returncode=0, stderr='')
+
+    with patch('subprocess.run', side_effect=_fake_ffmpeg):
+        response = dmr_client.get(
+            reverse(
+                'clips:candidate_source_frame',
+                kwargs={'candidate_id': candidate.id},
+            )
+            + '?time_sec=15',
+            headers=auth_headers,
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+    assert data['time_sec'] == 15.0
+    assert data['url']
+    assert data['width'] == 1920
+
+
+@pytest.mark.django_db
+def test_source_frame_missing_source_video(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET source-frame returns 400 when clip_ingest output is missing."""
+    response = dmr_client.get(
+        reverse(
+            'clips:candidate_source_frame',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_source_frame_invalid_time_sec(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET source-frame returns 400 for non-numeric time_sec."""
+    response = dmr_client.get(
+        reverse(
+            'clips:candidate_source_frame',
+            kwargs={'candidate_id': candidate.id},
+        )
+        + '?time_sec=abc',
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.django_db

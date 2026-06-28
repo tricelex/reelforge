@@ -11,6 +11,7 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 
 @register_stage
@@ -29,6 +30,11 @@ class ClipRenderStage(Stage):
             'clip_approval_gate',
             {},
         ).get('approved_candidate_ids', [])
+        if not approved_ids:
+            raise FatalProviderError(
+                'No candidates approved — approve at least one clip first.',
+                provider='reelforge',
+            )
         return [{'candidate_id': cid} for cid in approved_ids]
 
     @override
