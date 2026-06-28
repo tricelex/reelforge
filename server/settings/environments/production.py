@@ -35,6 +35,7 @@ if _railway_domain:
 CSRF_TRUSTED_ORIGINS: list[str] = [
     f'https://{config("DOMAIN_NAME")}',
     'https://***REMOVED***-production-736a.up.railway.app',
+    'https://***REMOVED***-frontend-production.up.railway.app/'
 ]
 if _railway_domain:
     CSRF_TRUSTED_ORIGINS.append(f'https://{_railway_domain}')
