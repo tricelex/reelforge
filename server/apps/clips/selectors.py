@@ -32,6 +32,17 @@ def get_run_source_asset_id(run_id: str) -> str | None:
     return str(asset_id)
 
 
+def get_run_manifest_asset_id(run_id: str) -> str | None:
+    """Return clip_transcribe manifest asset ID for a run, if available."""
+    exec_ = _latest_parent_execution(run_id, 'clip_transcribe')
+    if exec_ is None or exec_.status != StageStatus.SUCCEEDED:
+        return None
+    manifest_id = exec_.output.get('manifest_asset_id')
+    if not manifest_id:
+        return None
+    return str(manifest_id)
+
+
 def dimensions_from_probe(probe: dict[str, Any]) -> tuple[int | None, int | None]:
     for stream in probe.get('streams', []):
         if stream.get('codec_type') != 'video':

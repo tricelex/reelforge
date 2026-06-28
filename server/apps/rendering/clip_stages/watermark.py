@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, final, override
 
 from server.apps.clips.logic.constants import WatermarkType
 from server.apps.rendering.clip_stages.base import RenderStage
+from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipStyleConfig
@@ -27,6 +28,8 @@ class WatermarkStage(RenderStage):
     style_config: ClipStyleConfig | None
     crf: int = 18
     preset: str = 'slow'
+    fps: int = 30
+    audio_bitrate: str = '192k'
 
     @property
     @override
@@ -64,11 +67,11 @@ class WatermarkStage(RenderStage):
         """Convert position name to x:y ffmpeg expressions."""
         positions: dict[str, tuple[str, str]] = {
             'TOP_LEFT': ('20', '20'),
-            'TOP_RIGHT': ('W-w-20', '20'),
-            'BOTTOM_LEFT': ('20', 'H-h-20'),
-            'BOTTOM_RIGHT': ('W-w-20', 'H-h-20'),
+            'TOP_RIGHT': ('w-w-20', '20'),
+            'BOTTOM_LEFT': ('20', 'h-h-20'),
+            'BOTTOM_RIGHT': ('w-w-20', 'h-h-20'),
         }
-        return positions.get(position, ('W-w-20', 'H-h-20'))
+        return positions.get(position, ('w-w-20', 'h-h-20'))
 
     def _text_watermark(self, input_path: Path, sc: ClipStyleConfig) -> Path:
         x, y = self._position_coords(sc.watermark_position)
@@ -88,14 +91,12 @@ class WatermarkStage(RenderStage):
             str(input_path),
             '-vf',
             drawtext,
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'copy',
+            *clip_filter_encode_args(
+                crf=self.crf,
+                preset=self.preset,
+                fps=self.fps,
+                audio_bitrate=self.audio_bitrate,
+            ),
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603
@@ -135,14 +136,12 @@ class WatermarkStage(RenderStage):
             wm_path,
             '-filter_complex',
             overlay,
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'copy',
+            *clip_filter_encode_args(
+                crf=self.crf,
+                preset=self.preset,
+                fps=self.fps,
+                audio_bitrate=self.audio_bitrate,
+            ),
             str(self.output_path),
         ]
         result = subprocess.run(  # noqa: S603

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, final
 
@@ -15,6 +16,12 @@ import structlog
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
+
+
+class _HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return '/health/' not in record.getMessage()
+
 
 LOGGING = {
     'version': 1,
@@ -51,12 +58,18 @@ LOGGING = {
             'formatter': 'json_formatter',
         },
     },
+    'filters': {
+        'exclude_health_check': {
+            '()': _HealthCheckFilter,
+        },
+    },
     # These loggers are required by our app:
     # - django is required when using `logger.getLogger('django')`
     # - security is required by `axes`
     'loggers': {
         'django': {
             'handlers': ['console'],
+            'filters': ['exclude_health_check'],
             'level': 'INFO',
             'propagate': True,
         },

@@ -5,6 +5,7 @@ from typing import Annotated
 import msgspec
 
 from server.apps.clips.logic.types import (
+    _CROP_COORD_DESC,
     CandidateStatusLiteral,
     CaptionAnimationLiteral,
     CaptionPositionLiteral,
@@ -17,7 +18,6 @@ from server.apps.clips.logic.types import (
     TransitionStyleLiteral,
     WatermarkPositionLiteral,
     WatermarkTypeLiteral,
-    _CROP_COORD_DESC,
 )
 
 
@@ -110,9 +110,9 @@ class ClipPostListPayload(msgspec.Struct, frozen=True):
 
 
 class ApproveGatePayload(msgspec.Struct, frozen=True):
-    """Input payload for gate approval API."""
+    """Input payload for gate approval / start-render API."""
 
-    approved_candidate_ids: list[str]
+    approved_candidate_ids: list[str] | None = None
 
 
 class GateApprovalResultPayload(msgspec.Struct, frozen=True):

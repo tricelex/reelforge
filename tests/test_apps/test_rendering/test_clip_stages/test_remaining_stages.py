@@ -691,12 +691,17 @@ def test_progress_bar_run_top(mock_run: MagicMock) -> None:
         output_path=Path('/out.mp4'),
         style_config=sc,
         video_duration_sec=30.0,
+        width=540,
     )
     with patch('server.apps.rendering.clip_stages.progress_bar.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     cmd = mock_run.call_args[0][0]
-    assert 'drawbox' in ' '.join(cmd)
+    fc = cmd[cmd.index('-filter_complex') + 1]
+    assert 'color=c=0xFF0000:size=540x8' in fc
+    assert 'scale=eval=frame' in fc
+    assert '540*t/30.000000' in fc
+    assert 'overlay=x=0:y=0' in fc
 
 
 @patch('server.apps.rendering.clip_stages.progress_bar.subprocess.run')
@@ -710,12 +715,16 @@ def test_progress_bar_run_bottom(mock_run: MagicMock) -> None:
         output_path=Path('/out.mp4'),
         style_config=sc,
         video_duration_sec=30.0,
+        width=540,
     )
     with patch('server.apps.rendering.clip_stages.progress_bar.Path.mkdir'):
         result = stage.run(Path('/in.mp4'))
     assert result == Path('/out.mp4')
     cmd = mock_run.call_args[0][0]
-    assert 'drawbox' in ' '.join(cmd)
+    fc = cmd[cmd.index('-filter_complex') + 1]
+    assert 'color=c=0x00FF00:size=540x4' in fc
+    assert 'scale=eval=frame' in fc
+    assert 'overlay=x=0:y=H-h' in fc
 
 
 @patch('server.apps.rendering.clip_stages.progress_bar.subprocess.run')
@@ -729,6 +738,7 @@ def test_progress_bar_run_ffmpeg_failure(mock_run: MagicMock) -> None:
         output_path=Path('/out.mp4'),
         style_config=sc,
         video_duration_sec=30.0,
+        width=540,
     )
     with patch('server.apps.rendering.clip_stages.progress_bar.Path.mkdir'):
         with pytest.raises(

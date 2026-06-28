@@ -7,8 +7,14 @@ from typing import TYPE_CHECKING, Any, final
 
 import attrs
 import django.utils.timezone as tz
+from django.core.cache import BaseCache
+from django.core.exceptions import ValidationError
 
-from server.apps.clips.logic.constants import CandidateStatus, PostStatus, RenderMode
+from server.apps.clips.logic.constants import (
+    CandidateStatus,
+    PostStatus,
+    RenderMode,
+)
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
     ClipCandidateListPayload,
@@ -31,12 +37,20 @@ from server.apps.clips.logic.value_objects import (
     ClipTimedOverlayPayload,
     GateApprovalResultPayload,
 )
+from server.apps.clips.preview_render import (
+    PREVIEW_CACHE_TIMEOUT,
+    invalidate_preview_cache,
+    preview_cache_key,
+    preview_config_version,
+)
 from server.apps.clips.selectors import (
     get_candidate_source_dimensions,
     get_run_source_asset_id,
 )
+from server.common.exceptions import ConflictError
 from server.common.pagination import paginate_queryset
 from server.common.storage import PresignUrlHelper
+from server.common.taskiq_sender import kiq_task
 
 if TYPE_CHECKING:
     from server.apps.clips.models import (
@@ -80,25 +94,178 @@ def _apply_patch_fields(
 
 def _config_version(candidate_id: str) -> int:
     """Return a monotonic-ish version from candidate + config timestamps."""
-    from server.apps.clips.models import (  # noqa: PLC0415
-        ClipCandidate,
-        ClipLayoutConfig,
-        ClipStyleConfig,
-    )
+    return preview_config_version(candidate_id)
+
+
+def _preview_ready_payload(
+    presign: PresignUrlHelper,
+    candidate_id: str,
+    version: int,
+) -> ClipPreviewStatusPayload:
+    """Build a ready preview status payload with a presigned URL."""
+    from server.apps.assets.models import Asset  # noqa: PLC0415
+    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
     candidate = ClipCandidate.objects.get(id=candidate_id)
-    version = int(candidate.updated_at.timestamp())
-    try:
-        layout = ClipLayoutConfig.objects.get(candidate_id=candidate_id)
-        version += int(layout.updated_at.timestamp())
-    except ClipLayoutConfig.DoesNotExist:
-        pass
-    try:
-        style = ClipStyleConfig.objects.get(candidate_id=candidate_id)
-        version += int(style.updated_at.timestamp())
-    except ClipStyleConfig.DoesNotExist:
-        pass
-    return version
+    asset_id = candidate.preview_asset_id or candidate.render_asset_id
+    if asset_id is None:
+        return ClipPreviewStatusPayload(
+            candidate_id=candidate_id,
+            status='queued',
+            url=None,
+            config_version=version,
+        )
+    asset = Asset.objects.get(id=asset_id)
+    return ClipPreviewStatusPayload(
+        candidate_id=candidate_id,
+        status='ready',
+        url=presign.presign_get(asset.file.name or ''),
+        config_version=version,
+    )
+
+
+def _preview_queued_payload(
+    candidate_id: str,
+    version: int,
+) -> ClipPreviewStatusPayload:
+    return ClipPreviewStatusPayload(
+        candidate_id=candidate_id,
+        status='queued',
+        url=None,
+        config_version=version,
+    )
+
+
+def _preview_status_from_cache(
+    cached: dict[str, object],
+    *,
+    candidate_id: str,
+    version: int,
+    presign: PresignUrlHelper,
+    force: bool,
+) -> ClipPreviewStatusPayload | None:
+    cached_status = cached.get('status')
+    if cached_status in {'queued', 'rendering'}:
+        return _preview_queued_payload(candidate_id, version)
+    if (
+        not force
+        and cached_status == 'ready'
+        and cached.get('config_version') == version
+    ):
+        return _preview_ready_payload(presign, candidate_id, version)
+    return None
+
+
+def _claim_preview_slot(
+    cache: BaseCache,
+    cache_key: str,
+    queued_entry: dict[str, object],
+    *,
+    force: bool,
+) -> bool:
+    if cache.add(cache_key, queued_entry, timeout=PREVIEW_CACHE_TIMEOUT):
+        return True
+    if force:
+        cache.set(cache_key, queued_entry, timeout=PREVIEW_CACHE_TIMEOUT)
+        return True
+    return False
+
+
+def _cached_preview_trigger_response(
+    cache: BaseCache,
+    cache_key: str,
+    *,
+    candidate_id: str,
+    version: int,
+    presign: PresignUrlHelper,
+    force: bool,
+) -> ClipPreviewStatusPayload | None:
+    cached = cache.get(cache_key)
+    if not isinstance(cached, dict):
+        return None
+    return _preview_status_from_cache(
+        cached,
+        candidate_id=candidate_id,
+        version=version,
+        presign=presign,
+        force=force,
+    )
+
+
+def _prepare_preview_cache_state(
+    cache: BaseCache,
+    cache_key: str,
+    candidate_id: str,
+    *,
+    force: bool,
+) -> None:
+    if force:
+        invalidate_preview_cache(candidate_id)
+        return
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict) and cached.get('status') == 'failed':
+        invalidate_preview_cache(candidate_id)
+
+
+def _enqueue_clip_preview(
+    candidate_id: str,
+    presign: PresignUrlHelper,
+    *,
+    force: bool,
+) -> ClipPreviewStatusPayload:
+    from django.core.cache import cache  # noqa: PLC0415
+
+    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+    from server.apps.clips.tasks import (  # noqa: PLC0415
+        render_clip_preview_task,
+    )
+
+    ClipCandidate.objects.get(id=candidate_id)
+    version = _config_version(candidate_id)
+    cache_key = preview_cache_key(candidate_id)
+
+    if not force:
+        short_circuit = _cached_preview_trigger_response(
+            cache,
+            cache_key,
+            candidate_id=candidate_id,
+            version=version,
+            presign=presign,
+            force=force,
+        )
+        if short_circuit is not None:
+            return short_circuit
+    _prepare_preview_cache_state(
+        cache,
+        cache_key,
+        candidate_id,
+        force=force,
+    )
+
+    queued_entry: dict[str, object] = {
+        'status': 'queued',
+        'config_version': version,
+    }
+    if not _claim_preview_slot(
+        cache,
+        cache_key,
+        queued_entry,
+        force=force,
+    ):
+        short_circuit = _cached_preview_trigger_response(
+            cache,
+            cache_key,
+            candidate_id=candidate_id,
+            version=version,
+            presign=presign,
+            force=force,
+        )
+        if short_circuit is not None:
+            return short_circuit
+        return _preview_queued_payload(candidate_id, version)
+
+    kiq_task(render_clip_preview_task, candidate_id)
+    return _preview_queued_payload(candidate_id, version)
 
 
 def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
@@ -353,6 +520,7 @@ class ClipsService:
         )
         if update_fields:
             candidate.save(update_fields=update_fields)
+            invalidate_preview_cache(candidate_id)
         return _to_candidate_payload(candidate)
 
     def approve(self, candidate_id: str) -> ClipCandidatePayload:
@@ -415,6 +583,52 @@ class ClipsService:
             rejection_reason='Not selected at gate',
         )
         return len(approved_candidate_ids)
+
+    def start_render(
+        self,
+        run_id: str,
+        approved_candidate_ids: list[str] | None = None,
+    ) -> GateApprovalResultPayload:
+        """Resume clip_approval_gate and enqueue clip_render."""
+        self._assert_clip_approval_gate_parked(run_id)
+        candidate_ids = self._resolve_start_render_candidate_ids(
+            run_id,
+            approved_candidate_ids,
+        )
+        if not candidate_ids:
+            msg = 'Approve at least one candidate before starting render.'
+            raise ValidationError(msg)
+        return self.approve_gate(run_id, candidate_ids)
+
+    def _resolve_start_render_candidate_ids(
+        self,
+        run_id: str,
+        approved_candidate_ids: list[str] | None,
+    ) -> list[str]:
+        if approved_candidate_ids:
+            return approved_candidate_ids
+        return [payload.id for payload in self.approved_for_run(run_id)]
+
+    def _assert_clip_approval_gate_parked(self, run_id: str) -> None:
+        from server.apps.pipelines.logic.constants import (  # noqa: PLC0415
+            GATE_PARKED_STATUSES,
+        )
+        from server.apps.pipelines.models import (  # noqa: PLC0415
+            PipelineRun,
+            RunStatus,
+            StageExecution,
+        )
+
+        run = PipelineRun.objects.get(id=uuid.UUID(run_id))
+        gate_parked = StageExecution.objects.filter(
+            run=run,
+            stage_key='clip_approval_gate',
+            parent=None,
+            status__in=GATE_PARKED_STATUSES,
+        ).exists()
+        if run.status != RunStatus.AWAITING_REVIEW or not gate_parked:
+            msg = 'Run is not waiting at clip approval gate'
+            raise ConflictError(msg)
 
     def approve_gate(
         self,
@@ -482,6 +696,7 @@ class ClipsService:
         )
         if update_fields:
             config.save(update_fields=update_fields)
+            invalidate_preview_cache(candidate_id)
         source_w, source_h = get_candidate_source_dimensions(candidate_id)
         return _to_layout_payload(
             config,
@@ -560,6 +775,7 @@ class ClipsService:
                 Path(tmp_path).unlink(missing_ok=True)
 
         config.save(update_fields=update_fields)
+        invalidate_preview_cache(candidate_id)
         source_w, source_h = get_candidate_source_dimensions(candidate_id)
         return _to_layout_payload(
             config,
@@ -643,6 +859,7 @@ class ClipsService:
             update_fields.append('emoji_keyword_map')
         if update_fields:
             config.save(update_fields=update_fields)
+            invalidate_preview_cache(candidate_id)
         return _to_style_payload(config)
 
     def list_overlays(
@@ -698,6 +915,7 @@ class ClipsService:
             color=payload.color,
             opacity=payload.opacity,
         )
+        invalidate_preview_cache(candidate_id)
         return _to_overlay_payload(overlay)
 
     def get_overlay(
@@ -751,16 +969,19 @@ class ClipsService:
             update_fields.append('image_asset_id')
         if update_fields:
             overlay.save(update_fields=update_fields)
+            invalidate_preview_cache(candidate_id)
         return _to_overlay_payload(overlay)
 
     def delete_overlay(self, candidate_id: str, overlay_id: str) -> None:
         """Delete a timed overlay."""
         from server.apps.clips.models import ClipTimedOverlay  # noqa: PLC0415
 
-        ClipTimedOverlay.objects.filter(  # type: ignore[misc]
+        deleted, _ = ClipTimedOverlay.objects.filter(  # type: ignore[misc]
             id=overlay_id,
             candidate_id=candidate_id,
         ).delete()
+        if deleted:
+            invalidate_preview_cache(candidate_id)
 
     def list_posts(
         self,
@@ -813,24 +1034,10 @@ class ClipsService:
         force: bool = False,
     ) -> ClipPreviewStatusPayload:
         """Queue a lightweight preview render for one candidate."""
-        from django.core.cache import cache  # noqa: PLC0415
-
-        from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
-
-        ClipCandidate.objects.get(id=candidate_id)
-        cache_key = f'clip_preview:{candidate_id}'
-        if force:
-            cache.delete(cache_key)
-        cache.set(
-            cache_key,
-            {'status': 'queued'},
-            timeout=3600,
-        )
-        return ClipPreviewStatusPayload(
-            candidate_id=candidate_id,
-            status='queued',
-            url=None,
-            config_version=_config_version(candidate_id),
+        return _enqueue_clip_preview(
+            candidate_id,
+            self._presign,
+            force=force,
         )
 
     def get_preview_status(
@@ -845,12 +1052,29 @@ class ClipsService:
 
         version = _config_version(candidate_id)
         candidate = ClipCandidate.objects.get(id=candidate_id)
-        cached = cache.get(f'clip_preview:{candidate_id}')
-        if isinstance(cached, dict) and cached.get('status') == 'queued':
+        cached = cache.get(preview_cache_key(candidate_id))
+        if isinstance(cached, dict):
+            cached_status = cached.get('status')
+            if cached_status in {'queued', 'rendering'}:
+                return ClipPreviewStatusPayload(
+                    candidate_id=candidate_id,
+                    status='queued',
+                    url=None,
+                    config_version=version,
+                )
+            if cached_status == 'failed':
+                return ClipPreviewStatusPayload(
+                    candidate_id=candidate_id,
+                    status='failed',
+                    url=None,
+                    config_version=version,
+                )
+        if candidate.preview_asset_id is not None:
+            asset = Asset.objects.get(id=candidate.preview_asset_id)
             return ClipPreviewStatusPayload(
                 candidate_id=candidate_id,
-                status='queued',
-                url=None,
+                status='ready',
+                url=self._presign.presign_get(asset.file.name or ''),
                 config_version=version,
             )
         if candidate.render_asset_id is not None:
