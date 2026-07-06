@@ -69,6 +69,8 @@ INSTALLED_APPS: tuple[str, ...] = (
 )
 
 MIDDLEWARE: tuple[str, ...] = (
+    # Keep recurring health-check pings out of Logfire traces:
+    'server.common.observability.SuppressHealthCheckObservabilityMiddleware',
     # CORS:
     'corsheaders.middleware.CorsMiddleware',
     # Logging:
