@@ -29,12 +29,16 @@ from server.apps.clips.logic.value_objects import (
     ClipPostPayload,
     ClipPreviewStatusPayload,
     ClipRenderPayload,
+    ClipSfxListPayload,
     ClipSourceFramePayload,
     ClipStyleConfigPatchPayload,
     ClipStyleConfigPayload,
     ClipTimedOverlayCreatePayload,
     ClipTimedOverlayPatchPayload,
     ClipTimedOverlayPayload,
+    ClipTimedSfxCreatePayload,
+    ClipTimedSfxPatchPayload,
+    ClipTimedSfxPayload,
     GateApprovalResultPayload,
 )
 from server.apps.clips.preview_render import (
@@ -59,6 +63,7 @@ if TYPE_CHECKING:
         ClipPost,
         ClipStyleConfig,
         ClipTimedOverlay,
+        ClipTimedSfx,
     )
 
 
@@ -320,6 +325,7 @@ def _to_layout_payload(
         region_b_w=config.region_b_w,
         region_b_h=config.region_b_h,
         stack_ratio=config.stack_ratio,
+        fit_mode=config.fit_mode,
         face_detected=config.face_detected,
         detection_confidence=config.detection_confidence,
     )
@@ -341,6 +347,13 @@ def _to_style_payload(config: 'ClipStyleConfig') -> ClipStyleConfigPayload:
         caption_animation=config.caption_animation,
         caption_language=config.caption_language,
         caption_translate_to=config.caption_translate_to,
+        caption_font_asset_id=(
+            str(config.caption_font_asset_id)
+            if config.caption_font_asset_id is not None
+            else None
+        ),
+        caption_highlight_color=config.caption_highlight_color,
+        caption_uppercase=config.caption_uppercase,
         emoji_keyword_map=dict(config.emoji_keyword_map),
         hook_enabled=config.hook_enabled,
         hook_style=config.hook_style,
@@ -349,8 +362,26 @@ def _to_style_payload(config: 'ClipStyleConfig') -> ClipStyleConfigPayload:
         hook_size=config.hook_size,
         hook_color=config.hook_color,
         hook_bg_color=config.hook_bg_color,
+        hook_font_asset_id=(
+            str(config.hook_font_asset_id)
+            if config.hook_font_asset_id is not None
+            else None
+        ),
+        hook_animation=config.hook_animation,
         intro_transition=config.intro_transition,
         outro_transition=config.outro_transition,
+        intro_transition_duration_sec=config.intro_transition_duration_sec,
+        outro_transition_duration_sec=config.outro_transition_duration_sec,
+        intro_transition_asset_id=(
+            str(config.intro_transition_asset_id)
+            if config.intro_transition_asset_id is not None
+            else None
+        ),
+        outro_transition_asset_id=(
+            str(config.outro_transition_asset_id)
+            if config.outro_transition_asset_id is not None
+            else None
+        ),
         watermark_enabled=config.watermark_enabled,
         watermark_type=config.watermark_type,
         watermark_text=config.watermark_text,
@@ -362,6 +393,13 @@ def _to_style_payload(config: 'ClipStyleConfig') -> ClipStyleConfigPayload:
         watermark_position=config.watermark_position,
         watermark_opacity=config.watermark_opacity,
         watermark_size=config.watermark_size,
+        watermark_color=config.watermark_color,
+        watermark_font=config.watermark_font,
+        watermark_font_asset_id=(
+            str(config.watermark_font_asset_id)
+            if config.watermark_font_asset_id is not None
+            else None
+        ),
         progress_bar_enabled=config.progress_bar_enabled,
         progress_bar_position=config.progress_bar_position,
         progress_bar_color=config.progress_bar_color,
@@ -385,6 +423,16 @@ def _to_style_payload(config: 'ClipStyleConfig') -> ClipStyleConfigPayload:
         music_volume_db=config.music_volume_db,
         music_fade_in_sec=config.music_fade_in_sec,
         music_fade_out_sec=config.music_fade_out_sec,
+        color_filter=config.color_filter,
+        brightness=config.brightness,
+        contrast=config.contrast,
+        saturation=config.saturation,
+        lut_asset_id=(
+            str(config.lut_asset_id)
+            if config.lut_asset_id is not None
+            else None
+        ),
+        playback_speed=config.playback_speed,
     )
 
 
@@ -399,6 +447,12 @@ def _to_overlay_payload(overlay: 'ClipTimedOverlay') -> ClipTimedOverlayPayload:
             if overlay.image_asset_id is not None
             else None
         ),
+        video_asset_id=(
+            str(overlay.video_asset_id)
+            if overlay.video_asset_id is not None
+            else None
+        ),
+        shape=overlay.shape,
         start_sec=overlay.start_sec,
         end_sec=overlay.end_sec,
         x=overlay.x,
@@ -406,6 +460,24 @@ def _to_overlay_payload(overlay: 'ClipTimedOverlay') -> ClipTimedOverlayPayload:
         font_size=overlay.font_size,
         color=overlay.color,
         opacity=overlay.opacity,
+        font=overlay.font,
+        font_asset_id=(
+            str(overlay.font_asset_id)
+            if overlay.font_asset_id is not None
+            else None
+        ),
+        width=overlay.width,
+        animation=overlay.animation,
+    )
+
+
+def _to_sfx_payload(sfx: 'ClipTimedSfx') -> ClipTimedSfxPayload:
+    return ClipTimedSfxPayload(
+        id=str(sfx.id),
+        candidate_id=str(sfx.candidate_id),
+        sfx_asset_id=str(sfx.sfx_asset_id),
+        start_sec=sfx.start_sec,
+        volume_db=sfx.volume_db,
     )
 
 
@@ -692,6 +764,7 @@ class ClipsService:
                 'region_b_w',
                 'region_b_h',
                 'stack_ratio',
+                'fit_mode',
             ),
         )
         if update_fields:
@@ -815,6 +888,8 @@ class ClipsService:
                 'caption_animation',
                 'caption_language',
                 'caption_translate_to',
+                'caption_highlight_color',
+                'caption_uppercase',
                 'hook_enabled',
                 'hook_style',
                 'hook_duration_sec',
@@ -822,14 +897,19 @@ class ClipsService:
                 'hook_size',
                 'hook_color',
                 'hook_bg_color',
+                'hook_animation',
                 'intro_transition',
                 'outro_transition',
+                'intro_transition_duration_sec',
+                'outro_transition_duration_sec',
                 'watermark_enabled',
                 'watermark_type',
                 'watermark_text',
                 'watermark_position',
                 'watermark_opacity',
                 'watermark_size',
+                'watermark_color',
+                'watermark_font',
                 'progress_bar_enabled',
                 'progress_bar_position',
                 'progress_bar_color',
@@ -838,6 +918,11 @@ class ClipsService:
                 'music_volume_db',
                 'music_fade_in_sec',
                 'music_fade_out_sec',
+                'color_filter',
+                'brightness',
+                'contrast',
+                'saturation',
+                'playback_speed',
             ),
         )
         fk_map = {
@@ -845,6 +930,12 @@ class ClipsService:
             'intro_asset_id': payload.intro_asset_id,
             'outro_asset_id': payload.outro_asset_id,
             'music_asset_id': payload.music_asset_id,
+            'caption_font_asset_id': payload.caption_font_asset_id,
+            'hook_font_asset_id': payload.hook_font_asset_id,
+            'intro_transition_asset_id': payload.intro_transition_asset_id,
+            'outro_transition_asset_id': payload.outro_transition_asset_id,
+            'watermark_font_asset_id': payload.watermark_font_asset_id,
+            'lut_asset_id': payload.lut_asset_id,
         }
         for field_name, value in fk_map.items():
             if value is not None:
@@ -907,6 +998,12 @@ class ClipsService:
                 if payload.image_asset_id
                 else None
             ),
+            video_asset_id=(
+                uuid.UUID(payload.video_asset_id)
+                if payload.video_asset_id
+                else None
+            ),
+            shape=payload.shape,
             start_sec=payload.start_sec,
             end_sec=payload.end_sec,
             x=payload.x,
@@ -914,6 +1011,14 @@ class ClipsService:
             font_size=payload.font_size,
             color=payload.color,
             opacity=payload.opacity,
+            font=payload.font,
+            font_asset_id=(
+                uuid.UUID(payload.font_asset_id)
+                if payload.font_asset_id
+                else None
+            ),
+            width=payload.width,
+            animation=payload.animation,
         )
         invalidate_preview_cache(candidate_id)
         return _to_overlay_payload(overlay)
@@ -958,15 +1063,25 @@ class ClipsService:
                 'font_size',
                 'color',
                 'opacity',
+                'shape',
+                'font',
+                'width',
+                'animation',
             ),
         )
-        if payload.image_asset_id is not None:
-            overlay.image_asset_id = (
-                uuid.UUID(payload.image_asset_id)
-                if payload.image_asset_id
-                else None
-            )
-            update_fields.append('image_asset_id')
+        fk_map = {
+            'image_asset_id': payload.image_asset_id,
+            'video_asset_id': payload.video_asset_id,
+            'font_asset_id': payload.font_asset_id,
+        }
+        for field_name, value in fk_map.items():
+            if value is not None:
+                setattr(
+                    overlay,
+                    field_name,
+                    uuid.UUID(value) if value else None,
+                )
+                update_fields.append(field_name)
         if update_fields:
             overlay.save(update_fields=update_fields)
             invalidate_preview_cache(candidate_id)
@@ -978,6 +1093,98 @@ class ClipsService:
 
         deleted, _ = ClipTimedOverlay.objects.filter(  # type: ignore[misc]
             id=overlay_id,
+            candidate_id=candidate_id,
+        ).delete()
+        if deleted:
+            invalidate_preview_cache(candidate_id)
+
+    def list_sfx(
+        self,
+        candidate_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> ClipSfxListPayload:
+        """Return paginated timed SFX drops for a candidate."""
+        from server.apps.clips.models import ClipTimedSfx  # noqa: PLC0415
+
+        qs = ClipTimedSfx.objects.filter(  # type: ignore[misc]
+            candidate_id=candidate_id,
+        ).order_by('start_sec', '-id')
+        rows, next_cursor, total = paginate_queryset(
+            qs,
+            cursor=cursor,
+            limit=limit,
+        )
+        return ClipSfxListPayload(
+            items=[_to_sfx_payload(row) for row in rows],
+            next_cursor=next_cursor,
+            total=total,
+        )
+
+    def create_sfx(
+        self,
+        candidate_id: str,
+        payload: ClipTimedSfxCreatePayload,
+    ) -> ClipTimedSfxPayload:
+        """Create a timed SFX drop on a candidate."""
+        from server.apps.clips.models import (  # noqa: PLC0415
+            ClipCandidate,
+            ClipTimedSfx,
+        )
+
+        ClipCandidate.objects.get(id=candidate_id)
+        sfx = ClipTimedSfx.objects.create(
+            candidate_id=candidate_id,
+            sfx_asset_id=uuid.UUID(payload.sfx_asset_id),
+            start_sec=payload.start_sec,
+            volume_db=payload.volume_db,
+        )
+        invalidate_preview_cache(candidate_id)
+        return _to_sfx_payload(sfx)
+
+    def get_sfx(self, candidate_id: str, sfx_id: str) -> ClipTimedSfxPayload:
+        """Return one timed SFX drop."""
+        from server.apps.clips.models import ClipTimedSfx  # noqa: PLC0415
+
+        sfx = ClipTimedSfx.objects.get(  # type: ignore[misc]
+            id=sfx_id,
+            candidate_id=candidate_id,
+        )
+        return _to_sfx_payload(sfx)
+
+    def patch_sfx(
+        self,
+        candidate_id: str,
+        sfx_id: str,
+        payload: ClipTimedSfxPatchPayload,
+    ) -> ClipTimedSfxPayload:
+        """Update a timed SFX drop."""
+        from server.apps.clips.models import ClipTimedSfx  # noqa: PLC0415
+
+        sfx = ClipTimedSfx.objects.get(  # type: ignore[misc]
+            id=sfx_id,
+            candidate_id=candidate_id,
+        )
+        update_fields = _apply_patch_fields(
+            sfx,
+            payload,
+            ('start_sec', 'volume_db'),
+        )
+        if payload.sfx_asset_id is not None:
+            sfx.sfx_asset_id = uuid.UUID(payload.sfx_asset_id)
+            update_fields.append('sfx_asset_id')
+        if update_fields:
+            sfx.save(update_fields=update_fields)
+            invalidate_preview_cache(candidate_id)
+        return _to_sfx_payload(sfx)
+
+    def delete_sfx(self, candidate_id: str, sfx_id: str) -> None:
+        """Delete a timed SFX drop."""
+        from server.apps.clips.models import ClipTimedSfx  # noqa: PLC0415
+
+        deleted, _ = ClipTimedSfx.objects.filter(  # type: ignore[misc]
+            id=sfx_id,
             candidate_id=candidate_id,
         ).delete()
         if deleted:

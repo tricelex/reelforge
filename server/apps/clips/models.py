@@ -11,11 +11,16 @@ from server.apps.clips.logic.constants import (
     CampaignStatus,
     CandidateStatus,
     CaptionAnimation,
+    CaptionFont,
     CaptionPosition,
     CaptionStyle,
     ClipSourceStatus,
     ClipSourceType,
+    ColorFilterPreset,
+    FitMode,
     HookStyle,
+    OverlayAnimation,
+    OverlayShape,
     OverlayType,
     PostStatus,
     ProgressBarPosition,
@@ -104,6 +109,11 @@ class ClipLayoutConfig(UUIDModel, TimeStampedModel):
     region_b_w = models.PositiveIntegerField(null=True, blank=True)
     region_b_h = models.PositiveIntegerField(null=True, blank=True)
     stack_ratio = models.FloatField(default=0.6)
+    fit_mode = models.CharField(
+        max_length=10,
+        choices=FitMode.choices,
+        default=FitMode.CROP,
+    )
     face_detected = models.BooleanField(null=True, blank=True)
     detection_confidence = models.FloatField(null=True, blank=True)
 
@@ -116,6 +126,10 @@ class ClipLayoutConfig(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='clips_cliplayoutconfig_render_format_valid',
                 condition=models.Q(render_format__in=RenderFormat.values),
+            ),
+            models.CheckConstraint(
+                name='clips_cliplayoutconfig_fit_mode_valid',
+                condition=models.Q(fit_mode__in=FitMode.values),
             ),
         ]
 
@@ -168,7 +182,11 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
         choices=CaptionStyle.choices,
         default=CaptionStyle.CHUNKED,
     )
-    caption_font = models.CharField(max_length=100, default='Montserrat-Bold')
+    caption_font = models.CharField(
+        max_length=30,
+        choices=CaptionFont.choices,
+        default=CaptionFont.MONTSERRAT_BOLD,
+    )
     caption_size = models.PositiveIntegerField(default=52)
     caption_color = models.CharField(max_length=9, default='#FFFFFF')
     caption_stroke_color = models.CharField(max_length=9, default='#000000')
@@ -190,6 +208,18 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
         blank=True,
         default='',
     )
+    caption_font_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    caption_highlight_color = models.CharField(
+        max_length=9,
+        default='#FFD400',
+    )
+    caption_uppercase = models.BooleanField(default=False)
     emoji_keyword_map = models.JSONField(default=dict, blank=True)
     hook_enabled = models.BooleanField(default=True)
     hook_style = models.CharField(
@@ -198,10 +228,26 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
         default=HookStyle.OVERLAY_TOP,
     )
     hook_duration_sec = models.FloatField(default=2.5)
-    hook_font = models.CharField(max_length=100, default='Montserrat-Bold')
+    hook_font = models.CharField(
+        max_length=30,
+        choices=CaptionFont.choices,
+        default=CaptionFont.MONTSERRAT_BOLD,
+    )
     hook_size = models.PositiveIntegerField(default=60)
     hook_color = models.CharField(max_length=9, default='#FFFFFF')
     hook_bg_color = models.CharField(max_length=9, default='#CC000000')
+    hook_animation = models.CharField(
+        max_length=15,
+        choices=OverlayAnimation.choices,
+        default=OverlayAnimation.NONE,
+    )
+    hook_font_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
     intro_transition = models.CharField(
         max_length=20,
         choices=TransitionStyle.choices,
@@ -211,6 +257,22 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
         max_length=20,
         choices=TransitionStyle.choices,
         default=TransitionStyle.NONE,
+    )
+    intro_transition_duration_sec = models.FloatField(default=0.5)
+    outro_transition_duration_sec = models.FloatField(default=0.5)
+    intro_transition_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    outro_transition_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
     )
     watermark_enabled = models.BooleanField(default=False)
     watermark_type = models.CharField(
@@ -233,6 +295,19 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
     )
     watermark_opacity = models.FloatField(default=0.6)
     watermark_size = models.PositiveIntegerField(default=32)
+    watermark_color = models.CharField(max_length=9, default='#FFFFFF')
+    watermark_font = models.CharField(
+        max_length=30,
+        choices=CaptionFont.choices,
+        default=CaptionFont.MONTSERRAT_BOLD,
+    )
+    watermark_font_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
     progress_bar_enabled = models.BooleanField(default=False)
     progress_bar_position = models.CharField(
         max_length=10,
@@ -266,12 +341,32 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
     music_volume_db = models.FloatField(default=-20.0)
     music_fade_in_sec = models.FloatField(default=1.0)
     music_fade_out_sec = models.FloatField(default=1.0)
+    color_filter = models.CharField(
+        max_length=15,
+        choices=ColorFilterPreset.choices,
+        default=ColorFilterPreset.NONE,
+    )
+    brightness = models.FloatField(default=0.0)
+    contrast = models.FloatField(default=0.0)
+    saturation = models.FloatField(default=0.0)
+    lut_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    playback_speed = models.FloatField(default=1.0)
 
     class Meta:
         constraints: ClassVar = [
             models.CheckConstraint(
                 name='clips_clipstyleconfig_caption_style_valid',
                 condition=models.Q(caption_style__in=CaptionStyle.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipstyleconfig_caption_font_valid',
+                condition=models.Q(caption_font__in=CaptionFont.values),
             ),
             models.CheckConstraint(
                 name='clips_clipstyleconfig_caption_position_valid',
@@ -286,6 +381,10 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='clips_clipstyleconfig_hook_style_valid',
                 condition=models.Q(hook_style__in=HookStyle.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipstyleconfig_hook_font_valid',
+                condition=models.Q(hook_font__in=CaptionFont.values),
             ),
             models.CheckConstraint(
                 name='clips_clipstyleconfig_intro_transition_valid',
@@ -310,10 +409,22 @@ class ClipStyleConfig(UUIDModel, TimeStampedModel):
                 ),
             ),
             models.CheckConstraint(
+                name='clips_clipstyleconfig_watermark_font_valid',
+                condition=models.Q(watermark_font__in=CaptionFont.values),
+            ),
+            models.CheckConstraint(
                 name='clips_clipstyleconfig_progress_bar_position_valid',
                 condition=models.Q(
                     progress_bar_position__in=ProgressBarPosition.values,
                 ),
+            ),
+            models.CheckConstraint(
+                name='clips_clipstyleconfig_hook_animation_valid',
+                condition=models.Q(hook_animation__in=OverlayAnimation.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipstyleconfig_color_filter_valid',
+                condition=models.Q(color_filter__in=ColorFilterPreset.values),
             ),
         ]
 
@@ -343,6 +454,18 @@ class ClipTimedOverlay(UUIDModel, TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name='+',
     )
+    video_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    shape = models.CharField(
+        max_length=10,
+        choices=OverlayShape.choices,
+        default=OverlayShape.RECTANGLE,
+    )
     start_sec = models.FloatField()
     end_sec = models.FloatField()
     x = models.IntegerField(default=0)
@@ -350,12 +473,42 @@ class ClipTimedOverlay(UUIDModel, TimeStampedModel):
     font_size = models.PositiveIntegerField(default=40)
     color = models.CharField(max_length=9, default='#FFFFFF')
     opacity = models.FloatField(default=1.0)
+    font = models.CharField(
+        max_length=30,
+        choices=CaptionFont.choices,
+        default=CaptionFont.MONTSERRAT_BOLD,
+    )
+    font_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    width = models.PositiveIntegerField(null=True, blank=True)
+    animation = models.CharField(
+        max_length=15,
+        choices=OverlayAnimation.choices,
+        default=OverlayAnimation.NONE,
+    )
 
     class Meta:
         constraints: ClassVar = [
             models.CheckConstraint(
                 name='clips_cliptimedoverlay_overlay_type_valid',
                 condition=models.Q(overlay_type__in=OverlayType.values),
+            ),
+            models.CheckConstraint(
+                name='clips_cliptimedoverlay_font_valid',
+                condition=models.Q(font__in=CaptionFont.values),
+            ),
+            models.CheckConstraint(
+                name='clips_cliptimedoverlay_shape_valid',
+                condition=models.Q(shape__in=OverlayShape.values),
+            ),
+            models.CheckConstraint(
+                name='clips_cliptimedoverlay_animation_valid',
+                condition=models.Q(animation__in=OverlayAnimation.values),
             ),
         ]
 
@@ -365,6 +518,27 @@ class ClipTimedOverlay(UUIDModel, TimeStampedModel):
             f'Overlay "{self.text[:30]}"'
             f' ({self.start_sec:.1f}s-{self.end_sec:.1f}s)'
         )
+
+
+class ClipTimedSfx(UUIDModel, TimeStampedModel):
+    """A one-shot sound effect dropped at a timestamp on a clip."""
+
+    candidate = models.ForeignKey(
+        ClipCandidate,
+        on_delete=models.CASCADE,
+        related_name='timed_sfx',
+    )
+    sfx_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        on_delete=models.CASCADE,
+        related_name='+',
+    )
+    start_sec = models.FloatField()
+    volume_db = models.FloatField(default=0.0)
+
+    @override
+    def __str__(self) -> str:
+        return f'SFX {self.sfx_asset.name} @{self.start_sec}s'
 
 
 class ClipPost(UUIDModel, TimeStampedModel):

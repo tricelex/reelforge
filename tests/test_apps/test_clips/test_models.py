@@ -14,6 +14,7 @@ from server.apps.clips.models import (
     ClipPost,
     ClipStyleConfig,
     ClipTimedOverlay,
+    ClipTimedSfx,
     Earning,
 )
 from server.apps.pipelines.models import (
@@ -21,6 +22,15 @@ from server.apps.pipelines.models import (
     PipelineKind,
     PipelineRun,
 )
+
+
+def _create_candidate(pipeline_run: PipelineRun) -> ClipCandidate:
+    return ClipCandidate.objects.create(
+        run=pipeline_run,
+        start_sec=10.0,
+        end_sec=70.0,
+        title='T',
+    )
 
 
 @pytest.fixture
@@ -283,3 +293,74 @@ def test_earning_str(pipeline_run: PipelineRun) -> None:
     text = str(earning)
     assert 'youtube' in text
     assert 'Earnings batch' in text
+
+
+@pytest.mark.django_db
+def test_clip_style_config_new_field_defaults(pipeline_run: PipelineRun) -> None:
+    candidate = _create_candidate(pipeline_run)
+    config = ClipStyleConfig.objects.get(candidate=candidate)
+
+    assert config.watermark_color == '#FFFFFF'
+    assert config.watermark_font == 'MONTSERRAT_BOLD'
+    assert config.watermark_font_asset is None
+    assert config.caption_font_asset is None
+    assert config.hook_font_asset is None
+    assert config.intro_transition_duration_sec == 0.5
+    assert config.outro_transition_duration_sec == 0.5
+    assert config.intro_transition_asset is None
+    assert config.outro_transition_asset is None
+    assert config.hook_animation == 'NONE'
+    assert config.caption_highlight_color == '#FFD400'
+    assert config.caption_uppercase is False
+    assert config.color_filter == 'NONE'
+    assert config.brightness == 0.0
+    assert config.contrast == 0.0
+    assert config.saturation == 0.0
+    assert config.lut_asset is None
+    assert config.playback_speed == 1.0
+    assert config.caption_font == 'MONTSERRAT_BOLD'
+    assert config.hook_font == 'MONTSERRAT_BOLD'
+
+
+@pytest.mark.django_db
+def test_clip_layout_config_fit_mode_default(pipeline_run: PipelineRun) -> None:
+    candidate = _create_candidate(pipeline_run)
+    layout = ClipLayoutConfig.objects.get(candidate=candidate)
+    assert layout.fit_mode == 'CROP'
+
+
+@pytest.mark.django_db
+def test_clip_timed_overlay_new_field_defaults(pipeline_run: PipelineRun) -> None:
+    candidate = _create_candidate(pipeline_run)
+    overlay = ClipTimedOverlay.objects.create(
+        candidate=candidate,
+        start_sec=0.0,
+        end_sec=1.0,
+    )
+    assert overlay.font == 'MONTSERRAT_BOLD'
+    assert overlay.font_asset is None
+    assert overlay.width is None
+    assert overlay.animation == 'NONE'
+    assert overlay.video_asset is None
+    assert overlay.shape == 'RECTANGLE'
+
+
+@pytest.mark.django_db
+def test_clip_timed_sfx_creation(pipeline_run: PipelineRun) -> None:
+    from django.core.files.base import ContentFile
+
+    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
+
+    candidate = _create_candidate(pipeline_run)
+    sfx_asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.SFX,
+        name='whoosh.mp3',
+        file=ContentFile(b'audio', name='whoosh.mp3'),
+    )
+    sfx = ClipTimedSfx.objects.create(
+        candidate=candidate,
+        sfx_asset=sfx_asset,
+        start_sec=5.0,
+    )
+    assert sfx.volume_db == 0.0
+    assert str(sfx) == f'SFX {sfx_asset.name} @5.0s'

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
+
 from server.apps.assets.logic.events import LibraryAssetIngested
 from server.common.broker import broker
 from server.common.taskiq_sender import kiq_task
@@ -240,6 +241,18 @@ def ingest_library_asset(asset_id: str) -> None:
                     asset_id=asset_id,
                     error=str(exc),
                 )
+
+        if asset.kind == LibraryAssetKind.FONT:
+            from fontTools.ttLib import TTFont  # noqa: PLC0415
+
+            font = TTFont(tmp_path, lazy=True)
+            name_table = font['name']
+            family = (
+                name_table.getDebugName(4)
+                or name_table.getDebugName(1)
+                or 'Custom Font'
+            )
+            meta['font_family'] = family
 
         if video_streams:
             _create_renditions(asset, tmp_path)

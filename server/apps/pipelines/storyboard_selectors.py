@@ -3,6 +3,7 @@
 import uuid
 from decimal import Decimal
 
+from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.logic.value_objects import (
     PreviewPayload,
     SceneBreakdownPayload,
@@ -11,7 +12,6 @@ from server.apps.pipelines.logic.value_objects import (
     StoryboardSceneImagePayload,
     StoryboardScenePayload,
 )
-from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.models import (
     PipelineRun,
     StageExecution,

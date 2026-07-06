@@ -32,6 +32,7 @@ class TrimAndCropStage(RenderStage):
     crf: int = 18
     preset: str = 'slow'
     audio_bitrate: str = '192k'
+    playback_speed: float = 1.0
     last_speaker_crop_result: Any = field(default=None, init=False)
     _speaker_svc: SpeakerDetectionService = field(
         default_factory=SpeakerDetectionService,
@@ -65,6 +66,43 @@ class TrimAndCropStage(RenderStage):
             )
         return self.output_path
 
+    def _speed_filters(self) -> tuple[str, str]:
+        """Return (video_vf_suffix, audio_af) for playback_speed, or ('', '')."""
+        if self.playback_speed == 1.0:
+            return '', ''
+        video = f',setpts={1 / self.playback_speed:.6f}*PTS'
+        remaining = self.playback_speed
+        atempo_parts = []
+        while remaining > 2.0:
+            atempo_parts.append('atempo=2.0')
+            remaining /= 2.0
+        while remaining < 0.5:
+            atempo_parts.append('atempo=0.5')
+            remaining /= 0.5
+        atempo_parts.append(f'atempo={remaining:.4f}')
+        return video, ','.join(atempo_parts)
+
+    def _encode_tail(self, audio_af: str) -> list[str]:
+        cmd: list[str] = []
+        if audio_af:
+            cmd += ['-af', audio_af]
+        cmd += [
+            '-c:v',
+            'libx264',
+            '-crf',
+            str(self.crf),
+            '-preset',
+            self.preset,
+            '-c:a',
+            'aac',
+            '-b:a',
+            self.audio_bitrate,
+            '-movflags',
+            'faststart',
+            str(self.output_path),
+        ]
+        return cmd
+
     def _build_command(self, input_path: Path) -> list[str]:
         mode = (
             self.layout_config.render_mode
@@ -78,7 +116,26 @@ class TrimAndCropStage(RenderStage):
         return self._center_crop_cmd(input_path)
 
     def _center_crop_cmd(self, input_path: Path) -> list[str]:
-        return [
+        lc = self.layout_config
+        fit_mode = lc.fit_mode if lc else 'CROP'
+        video_suffix, audio_af = self._speed_filters()
+        if fit_mode == 'BLUR_FILL':
+            vf = (
+                f'split=2[bg][fg];'
+                f'[bg]scale={self.width}:{self.height}:'
+                f'force_original_aspect_ratio=increase,'
+                f'crop={self.width}:{self.height},boxblur=20:5[bgblur];'
+                f'[fg]scale={self.width}:{self.height}:'
+                f'force_original_aspect_ratio=decrease[fgfit];'
+                f'[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2,'
+                f'fps={self.fps}{video_suffix}'
+            )
+        else:
+            vf = (
+                f'crop=ih*9/16:ih,scale={self.width}:{self.height},'
+                f'fps={self.fps}{video_suffix}'
+            )
+        cmd = [
             'ffmpeg',
             '-y',
             '-i',
@@ -88,25 +145,10 @@ class TrimAndCropStage(RenderStage):
             '-to',
             str(self.end_sec),
             '-vf',
-            (
-                f'crop=ih*9/16:ih,'
-                f'scale={self.width}:{self.height},'
-                f'fps={self.fps}'
-            ),
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'aac',
-            '-b:a',
-            self.audio_bitrate,
-            '-movflags',
-            'faststart',
-            str(self.output_path),
+            vf,
         ]
+        cmd += self._encode_tail(audio_af)
+        return cmd
 
     def _smart_crop_cmd(self, input_path: Path) -> list[str]:
         lc = self.layout_config
@@ -120,11 +162,12 @@ class TrimAndCropStage(RenderStage):
             manual_crop_h=lc.manual_crop_h if lc else None,
         )
         self.last_speaker_crop_result = result
+        video_suffix, audio_af = self._speed_filters()
         vf = (
             f'crop={result.crop_w}:{result.crop_h}:{result.crop_x}:0,'
-            f'scale={self.width}:{self.height},fps={self.fps}'
+            f'scale={self.width}:{self.height},fps={self.fps}{video_suffix}'
         )
-        return [
+        cmd = [
             'ffmpeg',
             '-y',
             '-i',
@@ -135,20 +178,9 @@ class TrimAndCropStage(RenderStage):
             str(self.end_sec),
             '-vf',
             vf,
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'aac',
-            '-b:a',
-            self.audio_bitrate,
-            '-movflags',
-            'faststart',
-            str(self.output_path),
         ]
+        cmd += self._encode_tail(audio_af)
+        return cmd
 
     def _spatial_stack_cmd(self, input_path: Path) -> list[str]:
         lc = self.layout_config
@@ -160,6 +192,7 @@ class TrimAndCropStage(RenderStage):
         out_w, out_h = self.width, self.height
         a_out_h = int(out_h * lc.stack_ratio)
         b_out_h = out_h - a_out_h
+        video_suffix, audio_af = self._speed_filters()
         filter_complex = (
             f'[0:v]trim=start={self.start_sec}:end={self.end_sec},'
             f'setpts=PTS-STARTPTS,'
@@ -171,9 +204,9 @@ class TrimAndCropStage(RenderStage):
             f'crop={lc.region_b_w}:{lc.region_b_h}'
             f':{lc.region_b_x}:{lc.region_b_y},'
             f'scale={out_w}:{b_out_h}[bottom];'
-            f'[top][bottom]vstack=inputs=2[out]'
+            f'[top][bottom]vstack=inputs=2{video_suffix}[out]'
         )
-        return [
+        cmd = [
             'ffmpeg',
             '-y',
             '-i',
@@ -184,17 +217,6 @@ class TrimAndCropStage(RenderStage):
             '[out]',
             '-map',
             '0:a',
-            '-c:v',
-            'libx264',
-            '-crf',
-            str(self.crf),
-            '-preset',
-            self.preset,
-            '-c:a',
-            'aac',
-            '-b:a',
-            self.audio_bitrate,
-            '-movflags',
-            'faststart',
-            str(self.output_path),
         ]
+        cmd += self._encode_tail(audio_af)
+        return cmd

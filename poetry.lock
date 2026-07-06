@@ -2579,7 +2579,7 @@ version = "4.63.0"
 description = "Tools to manipulate font files"
 optional = false
 python-versions = ">=3.10"
-groups = ["ml"]
+groups = ["main", "ml"]
 files = [
     {file = "fonttools-4.63.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:e3297a6a4059b4acc3a1e9a8b04741f240a80044eef08ebd32e8b5bcdddce75b"},
     {file = "fonttools-4.63.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:b1cd75a03ad8cb5bc40c90bfde68c0c47de423aa19e5c0f362b43520645eea94"},
@@ -10883,4 +10883,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "==3.13.13"
-content-hash = "afde4570037ad87da1658ae6fb3266e70e8341f52d95af3b11489b94ede1b4e3"
+content-hash = "80fa0b79b3f6dba300b08677d5a0435b584347e14d9c171f8472b970bfc410f6"

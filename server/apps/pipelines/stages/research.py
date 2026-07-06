@@ -7,8 +7,8 @@ from django.conf import settings
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.generation.clients import search as search_client
+from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import ResearchOutput
 from server.apps.pipelines.stages.base import (
     Stage,

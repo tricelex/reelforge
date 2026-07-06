@@ -1,4 +1,4 @@
-"""ClipRenderPipeline — orchestrates the 10-stage clip render pipeline."""
+"""ClipRenderPipeline — orchestrates the 11-stage clip render pipeline."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         ClipLayoutConfig,
         ClipStyleConfig,
         ClipTimedOverlay,
+        ClipTimedSfx,
     )
 
 logger = logging.getLogger('reelforge.rendering.clip_render_pipeline')
@@ -28,6 +29,29 @@ class GatePausedException(Exception):  # noqa: N818
         """Store the gate stage order that caused the pause."""
         self.stage_order = stage_order
         super().__init__(f'Render paused at gate after stage {stage_order}')
+
+
+def _scale_transcript(
+    transcript_json: dict[str, Any],
+    *,
+    playback_speed: float,
+) -> dict[str, Any]:
+    """Scale caption/hook timestamps to match a sped-up/slowed-down clip."""
+    if playback_speed == 1.0:
+        return transcript_json
+    factor = 1.0 / playback_speed
+    scaled_segments = []
+    for seg in transcript_json.get('segments', []):
+        new_seg = dict(seg)
+        new_seg['start'] = seg['start'] * factor
+        new_seg['end'] = seg['end'] * factor
+        if 'words' in seg:
+            new_seg['words'] = [
+                {**w, 'start': w['start'] * factor, 'end': w['end'] * factor}
+                for w in seg['words']
+            ]
+        scaled_segments.append(new_seg)
+    return {**transcript_json, 'segments': scaled_segments}
 
 
 @dataclass
@@ -43,6 +67,7 @@ class PipelineRenderConfig:
     layout_config: ClipLayoutConfig | None
     style_config: ClipStyleConfig | None
     timed_overlays: list[ClipTimedOverlay] = field(default_factory=list)
+    timed_sfx: list[ClipTimedSfx] = field(default_factory=list)
     render_id: str = ''
     width: int = 1080
     height: int = 1920
@@ -53,7 +78,7 @@ class PipelineRenderConfig:
 
 
 class ClipRenderPipeline:
-    """Synchronous 10-stage clip render orchestrator.
+    """Synchronous 11-stage clip render orchestrator.
 
     Each stage reads the current working file, processes it, and outputs a new
     file. Stages that return should_run()=False are skipped and the current path
@@ -70,6 +95,12 @@ class ClipRenderPipeline:
         from server.apps.rendering.clip_stages.captions import (  # noqa: PLC0415
             CaptionStage,
             CaptionTranslationStage,
+        )
+        from server.apps.rendering.clip_stages.color_grade import (  # noqa: PLC0415
+            ColorGradeStage,
+        )
+        from server.apps.rendering.clip_stages.fonts import (  # noqa: PLC0415
+            build_fonts_dir,
         )
         from server.apps.rendering.clip_stages.hook import (  # noqa: PLC0415
             HookStage,
@@ -100,6 +131,25 @@ class ClipRenderPipeline:
         tmp = Path(tempfile.gettempdir()) / 'clip_renders' / render_dir
         tmp.mkdir(parents=True, exist_ok=True)
 
+        playback_speed = (
+            c.style_config.playback_speed if c.style_config else 1.0
+        )
+        transcript_json = _scale_transcript(
+            c.transcript_json,
+            playback_speed=playback_speed,
+        )
+        font_assets: list = []
+        if c.style_config is not None:
+            sc = c.style_config
+            font_assets = [
+                sc.caption_font_asset,
+                sc.hook_font_asset,
+                sc.watermark_font_asset,
+            ]
+            for ov in c.timed_overlays:
+                font_assets.append(ov.font_asset)
+        fonts_dir = build_fonts_dir(tmp, font_assets)
+
         return [
             TrimAndCropStage(
                 source_path=c.source_path,
@@ -113,9 +163,18 @@ class ClipRenderPipeline:
                 crf=c.crf,
                 preset=c.preset,
                 audio_bitrate=c.audio_bitrate,
+                playback_speed=playback_speed,
+            ),
+            ColorGradeStage(
+                output_path=tmp / '02_color_grade.mp4',
+                style_config=c.style_config,
+                crf=c.crf,
+                preset=c.preset,
+                fps=c.fps,
+                audio_bitrate=c.audio_bitrate,
             ),
             IntroConcatStage(
-                output_path=tmp / '02_intro.mp4',
+                output_path=tmp / '03_intro.mp4',
                 style_config=c.style_config,
                 width=c.width,
                 height=c.height,
@@ -126,7 +185,7 @@ class ClipRenderPipeline:
             ),
             HookStage(
                 hook_text=c.hook_text,
-                output_path=tmp / '03_hook.mp4',
+                output_path=tmp / '04_hook.mp4',
                 style_config=c.style_config,
                 crf=c.crf,
                 preset=c.preset,
@@ -136,15 +195,16 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             CaptionTranslationStage(
-                transcript_json=c.transcript_json,
-                output_path=tmp / '04_caption_translation.mp4',
+                transcript_json=transcript_json,
+                output_path=tmp / '05_caption_translation.mp4',
                 style_config=c.style_config,
             ),
             CaptionStage(
-                transcript_json=c.transcript_json,
-                output_path=tmp / '05_captions.mp4',
+                transcript_json=transcript_json,
+                output_path=tmp / '06_captions.mp4',
                 ass_path=tmp / 'captions.ass',
                 style_config=c.style_config,
+                fonts_dir=fonts_dir,
                 video_width=c.width,
                 video_height=c.height,
                 crf=c.crf,
@@ -153,7 +213,7 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             WatermarkStage(
-                output_path=tmp / '06_watermark.mp4',
+                output_path=tmp / '07_watermark.mp4',
                 style_config=c.style_config,
                 crf=c.crf,
                 preset=c.preset,
@@ -161,7 +221,7 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             TimedOverlayStage(
-                output_path=tmp / '07_timed_overlays.mp4',
+                output_path=tmp / '08_timed_overlays.mp4',
                 timed_overlays=c.timed_overlays,
                 crf=c.crf,
                 preset=c.preset,
@@ -169,7 +229,7 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             ProgressBarStage(
-                output_path=tmp / '08_progress_bar.mp4',
+                output_path=tmp / '09_progress_bar.mp4',
                 style_config=c.style_config,
                 video_duration_sec=clip_dur,
                 width=c.width,
@@ -179,7 +239,7 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             OutroConcatStage(
-                output_path=tmp / '09_outro.mp4',
+                output_path=tmp / '10_outro.mp4',
                 style_config=c.style_config,
                 width=c.width,
                 height=c.height,
@@ -189,9 +249,10 @@ class ClipRenderPipeline:
                 audio_bitrate=c.audio_bitrate,
             ),
             MusicMixStage(
-                output_path=tmp / '10_music.mp4',
+                output_path=tmp / '11_music_and_sfx.mp4',
                 style_config=c.style_config,
                 video_duration_sec=clip_dur,
+                timed_sfx=c.timed_sfx,
             ),
         ]
 
