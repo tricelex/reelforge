@@ -283,3 +283,6 @@ Update the Next.js frontend's API base URL environment variable on Railway to
 | `scripts/vps-bootstrap.sh` | One-time VPS setup (run manually, once) |
 | `config/.env.template` | Source of truth for which env vars `/opt/reelforge/.env` needs |
 | `server/apps/main/management/commands/trigger_test_task.py` | Worker connectivity smoke test |
+
+For day-2 operations (logs, one-off commands, restarting a stuck service, diagnosing common
+failures) see [vps-operations-guide.md](./vps-operations-guide.md).

@@ -3,9 +3,9 @@
   ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
   │ docker-compose.yml        │ Dev — runserver, development_build      │ docker compose up                              │
   ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
-  │ docker-compose.prod.yml   │ Prod-local — gunicorn, production_build │ docker compose -f docker-compose.prod.yml up   │
-  ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
   │ docker-compose.worker.yml │ Worker — ML image, separate             │ docker compose -f docker-compose.worker.yml up │
+  ├───────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────┤
+  │ docker-compose.vps.yml    │ VPS production deploy (via CI/CD)       │ see docs/deployment/vps-deployment-guide.md    │
 
 
  When run.status == 'AWAITING_REVIEW' and the pending gate is clip_approval_gate, the Next.js frontend must render the clip editor:
