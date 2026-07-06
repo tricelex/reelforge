@@ -1,13 +1,19 @@
 """Sentry and Logfire initialisation helpers."""
 
 import logging
+from collections.abc import Callable
+from typing import final
 
 import logfire
 import sentry_sdk
 from django.conf import settings
+from django.http import HttpRequest, HttpResponse
+from opentelemetry.instrumentation.utils import suppress_instrumentation
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
+
+_HEALTH_CHECK_PATH = '/health/'
 
 
 def init_sentry() -> None:
@@ -40,7 +46,10 @@ def init_logfire() -> None:
         token=settings.LOGFIRE_TOKEN,
         service_name=settings.LOGFIRE_SERVICE_NAME,
     )
-    logfire.instrument_django(capture_headers=False)
+    logfire.instrument_django(
+        capture_headers=False,
+        excluded_urls=_HEALTH_CHECK_PATH,
+    )
     logfire.instrument_psycopg('psycopg2')
     logfire.instrument_redis()
     logfire.instrument_httpx()
@@ -54,3 +63,30 @@ def init_logfire() -> None:
     )
     if not already_added:
         root_logger.addHandler(logfire.LogfireLoggingHandler())
+
+
+@final
+class SuppressHealthCheckObservabilityMiddleware:
+    """Keeps recurring health-check pings out of Logfire traces.
+
+    `excluded_urls` on `logfire.instrument_django()` stops the top-level
+    `GET /health/` request span, but the health check's own DB/cache/storage
+    queries are instrumented independently (psycopg2, redis, ...) and don't
+    know the request was excluded — they'd otherwise show up as orphan
+    "SELECT 1" traces every time the Docker healthcheck polls. Wrapping the
+    whole request in `suppress_instrumentation()` stops those too.
+    """
+
+    def __init__(
+        self,
+        get_response: Callable[[HttpRequest], HttpResponse],
+    ) -> None:
+        """Django's API-compatible constructor."""
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        """Suppress OTel/Logfire instrumentation for health check requests."""
+        if request.path == _HEALTH_CHECK_PATH:
+            with suppress_instrumentation():
+                return self.get_response(request)
+        return self.get_response(request)
