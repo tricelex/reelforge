@@ -1,0 +1,100 @@
+---
+
+# VPS production compose file.
+#
+# Runs against prebuilt images pushed to GHCR by .github/workflows/deploy.yml —
+# no `build:` here, no source bind-mounts. Postgres/Redis/RabbitMQ live on a
+# separate (Coolify-managed) host and are configured entirely via `.env`.
+#
+# Lives on the VPS at /opt/reelforge/docker-compose.yml. Deployed with:
+#   docker compose pull
+#   docker compose run --rm web python manage.py migrate --noinput
+#   docker compose run --rm web python manage.py collectstatic --noinput --clear
+#   docker compose run --rm web python manage.py compilemessages
+#   docker compose up -d --remove-orphans
+#
+# See docs/deployment/vps-deployment-guide.md for the full setup.
+
+services:
+  web:
+    image: "ghcr.io/tricelex/reelforge-web:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-web
+    command: gunicorn --config /code/docker/django/gunicorn_config.py server.wsgi
+    # PyTorch/OpenCV headroom for /dev/shm (default docker limit is 64MB).
+    shm_size: '1gb'
+    mem_limit: 1.5g
+    cpus: 1.0
+    healthcheck:
+      test: /bin/sh /code/docker/django/healthcheck.sh
+      # The Storage check round-trips to R2 on every hit — 30s is plenty.
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    expose:
+      - "8000"
+
+  scheduler:
+    image: "ghcr.io/tricelex/reelforge-web:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-scheduler
+    command: python -m taskiq scheduler server.common.scheduler:scheduler
+    mem_limit: 512m
+    cpus: 0.25
+
+  worker:
+    image: "ghcr.io/tricelex/reelforge-worker:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-worker
+    # Bounded concurrency: whisperx/ffmpeg tasks are memory-heavy, and
+    # taskiq's own defaults (--workers 2 --max-async-tasks 100) would allow
+    # up to 200 concurrent task slots — the likely cause of the Railway OOM
+    # crashes. mem_limit below caps the blast radius: if it OOMs anyway,
+    # only this container dies and `restart: unless-stopped` brings it back,
+    # instead of taking down the whole box.
+    command: >-
+      python -m taskiq worker server.common.broker:broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks
+      server.apps.pipelines.tasks
+      server.apps.analytics.tasks
+      --workers ${TASKIQ_WORKERS:-1}
+      --max-async-tasks ${TASKIQ_MAX_ASYNC_TASKS:-2}
+      --max-prefetch 1
+    shm_size: '1gb'
+    mem_limit: 7g
+    cpus: 4.0
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME}
+      TLS_EMAIL: ${TLS_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      - web
+
+volumes:
+  caddy-data:
+  caddy-config:

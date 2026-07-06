@@ -1,0 +1,109 @@
+name: Deploy
+
+on:
+  push:
+    branches: ['main']
+    paths-ignore: ['docs/**']
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/reelforge-web
+  WORKER_IMAGE: ghcr.io/${{ github.repository_owner }}/reelforge-worker
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Free up runner disk space
+        # The worker image bundles torch/whisperx/opencv — standard runners
+        # are tight on disk for a build this size without freeing space first.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker image prune -af || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push web/scheduler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/django/Dockerfile
+          build-args: |
+            DJANGO_ENV=production
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:latest
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/worker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.WORKER_IMAGE }}:latest
+            ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+      - name: Add VPS to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose file and Caddyfile
+        run: |
+          scp docker-compose.vps.yml "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/reelforge/docker-compose.yml"
+          scp docker/caddy/Caddyfile.vps "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/reelforge/Caddyfile"
+
+      - name: Deploy on VPS
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "
+            set -e
+            cd /opt/reelforge
+            export IMAGE_TAG='${{ github.sha }}'
+            docker compose pull
+            docker compose run --rm web python manage.py migrate --noinput
+            docker compose run --rm web python manage.py collectstatic --noinput --clear
+            docker compose run --rm web python manage.py compilemessages
+            docker compose up -d --remove-orphans
+            docker image prune -af --filter 'until=72h'
+          "
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          curl -fsS "https://reelforge.29signals.net/health/?format=json"
