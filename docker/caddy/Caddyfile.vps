@@ -1,0 +1,38 @@
+# Caddyfile for the VPS deployment.
+#
+# Static and media files are served from Cloudflare R2 (see
+# server/settings/components/storage.py and server/common/s3.py), so unlike
+# docker/caddy/Caddyfile (the legacy docker-swarm example), this one doesn't
+# serve /static/* or /media/* from local volumes — it's a plain reverse
+# proxy + TLS terminator in front of `web`.
+#
+# See https://caddyserver.com/docs
+
+# Email for Let's Encrypt expiration notices
+{
+	email {$TLS_EMAIL}
+}
+
+# "www" redirect to "non-www" version
+www.{$DOMAIN_NAME} {
+	redir https://{$DOMAIN_NAME}{uri}
+}
+
+{$DOMAIN_NAME} {
+	# HTTPS options:
+	header Strict-Transport-Security max-age=31536000;
+
+	# Removing some headers for improved security:
+	header -Server
+
+	# Serve Django app
+	reverse_proxy web:8000
+
+	# Dynamically compress responses with gzip when it makes sense.
+	encode gzip
+
+	# Logs:
+	log {
+		output stdout
+	}
+}

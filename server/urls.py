@@ -8,9 +8,6 @@ It is also a good practice to keep a single URL to the root index page.
 This examples uses Django's default media
 files serving technique in development.
 """
-from decouple import config
-
-from django.conf import settings
 from django.contrib import admin
 from django.contrib.admindocs import urls as admindocs_urls
 from django.http import HttpRequest, HttpResponse
@@ -33,7 +30,6 @@ from server.apps.main import urls as main_urls
 from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
 from server.openapi.routers import build_api_router, build_api_schema
-from redis.asyncio import Redis as RedisClient
 
 
 admin.autodiscover()
@@ -79,6 +75,17 @@ urlpatterns = [
     path('docs/redoc/', RedocView.as_view(schema), name='redoc'),
     path('sentry-debug/', trigger_error),
     # Health checks:
+    path(
+        'health/',
+        HealthCheckView.as_view(
+            checks=[
+                'health_check.checks.Cache',
+                'health_check.checks.Database',
+                'health_check.checks.Storage',
+            ],
+        ),
+        name='health_check',
+    ),
     # django-admin:
     path('admin/doc/', include(admindocs_urls)),
     path('admin/', admin.site.urls),
