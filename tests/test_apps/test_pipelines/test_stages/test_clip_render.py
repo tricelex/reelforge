@@ -71,6 +71,7 @@ def test_clip_render_run() -> None:
     fake_candidate.layout_config = MagicMock()
     fake_candidate.style_config = MagicMock()
     fake_candidate.timed_overlays.all.return_value = _AsyncIter([])
+    fake_candidate.timed_sfx.all.return_value = _AsyncIter([])
     fake_candidate.asave = AsyncMock()
 
     fake_source_asset = MagicMock()

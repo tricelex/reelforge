@@ -5,9 +5,14 @@ from typing import get_args
 from server.apps.clips.logic.constants import (
     CandidateStatus,
     CaptionAnimation,
+    CaptionFont,
     CaptionPosition,
     CaptionStyle,
+    ColorFilterPreset,
+    FitMode,
     HookStyle,
+    OverlayAnimation,
+    OverlayShape,
     OverlayType,
     ProgressBarPosition,
     RenderFormat,
@@ -19,9 +24,14 @@ from server.apps.clips.logic.constants import (
 from server.apps.clips.logic.types import (
     CandidateStatusLiteral,
     CaptionAnimationLiteral,
+    CaptionFontLiteral,
     CaptionPositionLiteral,
     CaptionStyleLiteral,
+    ColorFilterPresetLiteral,
+    FitModeLiteral,
     HookStyleLiteral,
+    OverlayAnimationLiteral,
+    OverlayShapeLiteral,
     OverlayTypeLiteral,
     ProgressBarPositionLiteral,
     RenderFormatLiteral,
@@ -80,3 +90,27 @@ def test_progress_bar_position_literal_matches_choices() -> None:
 
 def test_overlay_type_literal_matches_choices() -> None:
     assert set(get_args(OverlayTypeLiteral)) == set(OverlayType.values)
+
+
+def test_caption_font_literal_matches_enum() -> None:
+    assert set(get_args(CaptionFontLiteral)) == set(CaptionFont.values)
+
+
+def test_overlay_animation_literal_matches_enum() -> None:
+    assert set(get_args(OverlayAnimationLiteral)) == set(
+        OverlayAnimation.values,
+    )
+
+
+def test_color_filter_preset_literal_matches_enum() -> None:
+    assert set(get_args(ColorFilterPresetLiteral)) == set(
+        ColorFilterPreset.values,
+    )
+
+
+def test_fit_mode_literal_matches_enum() -> None:
+    assert set(get_args(FitModeLiteral)) == set(FitMode.values)
+
+
+def test_overlay_shape_literal_matches_enum() -> None:
+    assert set(get_args(OverlayShapeLiteral)) == set(OverlayShape.values)

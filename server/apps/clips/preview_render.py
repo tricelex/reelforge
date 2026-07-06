@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from server.apps.clips.models import (
         ClipCandidate,
         ClipTimedOverlay,
+        ClipTimedSfx,
     )
 
 logger = structlog.get_logger(__name__)
@@ -176,6 +177,7 @@ def _run_preview_pipeline(
     source_asset: 'Asset',
     transcript_json: dict[str, Any],
     timed_overlays: list['ClipTimedOverlay'],
+    timed_sfx: list['ClipTimedSfx'],
 ) -> bytes:
     from server.apps.rendering.clip_render_pipeline import (  # noqa: PLC0415
         ClipRenderPipeline,
@@ -199,6 +201,7 @@ def _run_preview_pipeline(
             layout_config=candidate.layout_config,
             style_config=candidate.style_config,
             timed_overlays=timed_overlays,
+            timed_sfx=timed_sfx,
             render_id=f'preview-{candidate_id}-{uuid.uuid4()}',
             width=PREVIEW_WIDTH,
             height=PREVIEW_HEIGHT,
@@ -277,6 +280,7 @@ def render_clip_preview_sync(candidate_id: str) -> None:
         return
 
     timed_overlays = list(candidate.timed_overlays.all())
+    timed_sfx = list(candidate.timed_sfx.all())
     source_asset = Asset.objects.get(id=uuid.UUID(source_asset_id))
     transcript_json = _load_transcript_json(manifest_asset_id)
 
@@ -294,6 +298,7 @@ def render_clip_preview_sync(candidate_id: str) -> None:
             source_asset=source_asset,
             transcript_json=transcript_json,
             timed_overlays=timed_overlays,
+            timed_sfx=timed_sfx,
         )
     except Exception as exc:
         logger.exception(

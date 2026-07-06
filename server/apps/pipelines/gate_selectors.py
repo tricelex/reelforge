@@ -1,6 +1,9 @@
 """Read-only queries for pipeline review gates."""
 
-from server.apps.pipelines.logic.constants import GATE_CATALOG, GATE_PARKED_STATUSES
+from server.apps.pipelines.logic.constants import (
+    GATE_CATALOG,
+    GATE_PARKED_STATUSES,
+)
 from server.apps.pipelines.logic.value_objects import (
     GateCatalogEntryPayload,
     GateCatalogPayload,

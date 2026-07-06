@@ -11,6 +11,7 @@ from server.apps.rendering.clip_stages.trim_crop import TrimAndCropStage
 def _make_layout(render_mode: str) -> MagicMock:
     lc = MagicMock()
     lc.render_mode = render_mode
+    lc.fit_mode = 'CROP'
     lc.has_manual_smart_crop = False
     lc.manual_crop_x = None
     lc.manual_crop_y = None
@@ -138,3 +139,85 @@ def test_smart_crop_calls_speaker_detection(mock_run: MagicMock) -> None:
     assert result == Path('/out.mp4')
     assert stage.last_speaker_crop_result is mock_result
     assert stage._speaker_svc.detect.called
+
+
+def test_center_crop_cmd_includes_speed_filters_when_not_default() -> None:
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=None,
+        playback_speed=2.0,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    vf = cmd[cmd.index('-vf') + 1]
+    af_index = cmd.index('-af') if '-af' in cmd else None
+    assert 'setpts=0.500000*PTS' in vf
+    assert af_index is not None
+    assert 'atempo=2.0' in cmd[af_index + 1]
+
+
+def test_center_crop_cmd_skips_speed_filters_at_default() -> None:
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=None,
+        playback_speed=1.0,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    assert '-af' not in cmd
+
+
+def test_extreme_speed_chains_multiple_atempo() -> None:
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=None,
+        playback_speed=3.0,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    af_index = cmd.index('-af')
+    assert cmd[af_index + 1].count('atempo=') == 2
+
+
+def test_center_crop_blur_fill_mode() -> None:
+    layout = MagicMock()
+    layout.render_mode = 'CENTER_CROP'
+    layout.fit_mode = 'BLUR_FILL'
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    vf = (
+        cmd[cmd.index('-vf') + 1]
+        if '-vf' in cmd
+        else cmd[cmd.index('-filter_complex') + 1]
+    )
+    assert 'boxblur' in vf
+    assert 'overlay' in vf
+
+
+def test_center_crop_default_fit_mode_unchanged() -> None:
+    layout = MagicMock()
+    layout.render_mode = 'CENTER_CROP'
+    layout.fit_mode = 'CROP'
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    vf = cmd[cmd.index('-vf') + 1]
+    assert 'boxblur' not in vf
+    assert vf == 'crop=ih*9/16:ih,scale=1080:1920,fps=30'

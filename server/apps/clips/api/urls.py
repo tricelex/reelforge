@@ -85,6 +85,16 @@ config_urlpatterns = [
         views.ClipTimedOverlayDetailView.as_view(),
         name='overlay_detail',
     ),
+    path(
+        'candidates/<uuid:candidate_id>/sfx/',
+        views.ClipTimedSfxCollectionView.as_view(),
+        name='sfx_list',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/sfx/<uuid:sfx_id>/',
+        views.ClipTimedSfxDetailView.as_view(),
+        name='sfx_detail',
+    ),
 ]
 
 post_urlpatterns = [

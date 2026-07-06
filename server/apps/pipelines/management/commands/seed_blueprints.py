@@ -1,8 +1,42 @@
-"""Seed the longform_v1 pipeline blueprint (idempotent)."""
+"""Seed pipeline blueprints (idempotent)."""
 
 from typing import override
 
 from django.core.management.base import BaseCommand
+
+_CLIPPING_V1_GRAPH: dict[str, object] = {
+    'stages': [
+        {'key': 'clip_ingest', 'depends_on': []},
+        {'key': 'clip_transcribe', 'depends_on': ['clip_ingest']},
+        {
+            'key': 'clip_analyze',
+            'depends_on': ['clip_transcribe'],
+            'config': {'clips_requested': 5},
+        },
+        {
+            'key': 'clip_approval_gate',
+            'depends_on': ['clip_analyze'],
+            'gate': True,
+        },
+        {'key': 'clip_render', 'depends_on': ['clip_approval_gate']},
+        {'key': 'clip_distribute', 'depends_on': ['clip_render']},
+    ],
+}
+
+_CLIPPING_V1_MANUAL_GRAPH: dict[str, object] = {
+    'stages': [
+        {'key': 'clip_ingest', 'depends_on': []},
+        {'key': 'clip_transcribe', 'depends_on': ['clip_ingest']},
+        {'key': 'clip_manual_setup', 'depends_on': ['clip_transcribe']},
+        {
+            'key': 'clip_approval_gate',
+            'depends_on': ['clip_manual_setup'],
+            'gate': True,
+        },
+        {'key': 'clip_render', 'depends_on': ['clip_approval_gate']},
+        {'key': 'clip_distribute', 'depends_on': ['clip_render']},
+    ],
+}
 
 _LONGFORM_V1_GRAPH: dict[str, object] = {
     'stages': [
@@ -74,25 +108,28 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
 
 
 class Command(BaseCommand):
-    """Seed the longform_v1 pipeline blueprint (idempotent upsert)."""
+    """Seed pipeline blueprints (idempotent upsert)."""
 
-    help = 'Seed the longform_v1 pipeline blueprint (idempotent)'
+    help = 'Seed pipeline blueprints (longform + clipping, idempotent)'
 
     @override
     def handle(self, *args: object, **options: object) -> None:
-        """Create or update the longform_v1 blueprint."""
+        """Create or update the longform_v1 and clipping_v1* blueprints."""
         from server.apps.pipelines.models import (  # noqa: PLC0415
             PipelineBlueprint,
             PipelineKind,
         )
 
-        bp, created = PipelineBlueprint.objects.update_or_create(
-            name='longform_v1',
-            kind=PipelineKind.LONGFORM,
-            defaults={
-                'graph': _LONGFORM_V1_GRAPH,
-                'is_active': True,
-            },
-        )
-        action = 'Created' if created else 'Updated'
-        self.stdout.write(self.style.SUCCESS(f'{action} blueprint: {bp}'))
+        specs = [
+            ('longform_v1', PipelineKind.LONGFORM, _LONGFORM_V1_GRAPH),
+            ('clipping_v1', PipelineKind.CLIPPING, _CLIPPING_V1_GRAPH),
+            ('clipping_v1_manual', PipelineKind.CLIPPING, _CLIPPING_V1_MANUAL_GRAPH),
+        ]
+        for name, kind, graph in specs:
+            bp, created = PipelineBlueprint.objects.update_or_create(
+                name=name,
+                kind=kind,
+                defaults={'graph': graph, 'is_active': True},
+            )
+            action = 'Created' if created else 'Updated'
+            self.stdout.write(self.style.SUCCESS(f'{action} blueprint: {bp}'))

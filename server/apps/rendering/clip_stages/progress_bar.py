@@ -42,7 +42,7 @@ class ProgressBarStage(RenderStage):
     @override
     def order(self) -> int:
         """Execution order (1-indexed)."""
-        return 8
+        return 9
 
     @override
     def should_run(self) -> bool:

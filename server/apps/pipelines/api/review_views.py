@@ -12,8 +12,6 @@ from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.core.auth import require_operator
 from server.apps.pipelines.logic.value_objects import (
-    GateWaitingListPayload,
-    GateWaitingPayload,
     PreviewPayload,
     PublishMetadataPatchPayload,
     PublishMetadataPayload,

@@ -36,6 +36,7 @@ class CaptionStyle(models.TextChoices):
     CHUNKED = 'CHUNKED', 'Chunked Phrases (3-4 words)'
     LOWER_THIRD = 'LOWER_THIRD', 'Lower Third (full segment)'
     EMOJI_ACCENT = 'EMOJI_ACCENT', 'Emoji Accent (chunked + emoji)'
+    KARAOKE_HIGHLIGHT = 'KARAOKE_HIGHLIGHT', 'Karaoke Highlight'
 
 
 class CaptionPosition(models.TextChoices):
@@ -68,6 +69,15 @@ class TransitionStyle(models.TextChoices):
     NONE = 'NONE', 'None (hard cut)'
     CROSSFADE = 'CROSSFADE', 'Crossfade'
     FADE_BLACK = 'FADE_BLACK', 'Fade to Black'
+    FADE_WHITE = 'FADE_WHITE', 'Fade to White'
+    SLIDE_LEFT = 'SLIDE_LEFT', 'Slide Left'
+    SLIDE_RIGHT = 'SLIDE_RIGHT', 'Slide Right'
+    SLIDE_UP = 'SLIDE_UP', 'Slide Up'
+    SLIDE_DOWN = 'SLIDE_DOWN', 'Slide Down'
+    WIPE_LEFT = 'WIPE_LEFT', 'Wipe Left'
+    WIPE_RIGHT = 'WIPE_RIGHT', 'Wipe Right'
+    ZOOM_IN = 'ZOOM_IN', 'Zoom In'
+    CUSTOM_ASSET = 'CUSTOM_ASSET', 'Custom Transition Video'
 
 
 class WatermarkType(models.TextChoices):
@@ -84,6 +94,8 @@ class WatermarkPosition(models.TextChoices):
     TOP_RIGHT = 'TOP_RIGHT', 'Top Right'
     BOTTOM_LEFT = 'BOTTOM_LEFT', 'Bottom Left'
     BOTTOM_RIGHT = 'BOTTOM_RIGHT', 'Bottom Right'
+    CENTER = 'CENTER', 'Center'
+    TILED = 'TILED', 'Tiled'
 
 
 class ProgressBarPosition(models.TextChoices):
@@ -115,6 +127,67 @@ class OverlayType(models.TextChoices):
 
     TEXT = 'TEXT', 'Text'
     IMAGE = 'IMAGE', 'Image'
+    VIDEO = 'VIDEO', 'Video'
+
+
+class CaptionFont(models.TextChoices):
+    """Curated font palette, shared by captions, hook, watermark, overlays."""
+
+    MONTSERRAT_BOLD = 'MONTSERRAT_BOLD', 'Montserrat Bold'
+    POPPINS_BOLD = 'POPPINS_BOLD', 'Poppins Bold'
+    INTER_BOLD = 'INTER_BOLD', 'Inter Bold'
+    ROBOTO_BOLD = 'ROBOTO_BOLD', 'Roboto Bold'
+    OSWALD_BOLD = 'OSWALD_BOLD', 'Oswald Bold'
+    BEBAS_NEUE = 'BEBAS_NEUE', 'Bebas Neue'
+    ANTON = 'ANTON', 'Anton'
+    ARCHIVO_BLACK = 'ARCHIVO_BLACK', 'Archivo Black'
+    BANGERS = 'BANGERS', 'Bangers'
+    PERMANENT_MARKER = 'PERMANENT_MARKER', 'Permanent Marker'
+    CAVEAT_BOLD = 'CAVEAT_BOLD', 'Caveat Bold'
+    LOBSTER = 'LOBSTER', 'Lobster'
+    PLAYFAIR_DISPLAY_BOLD = 'PLAYFAIR_DISPLAY_BOLD', 'Playfair Display Bold'
+    RIGHTEOUS = 'RIGHTEOUS', 'Righteous'
+    LUCKIEST_GUY = 'LUCKIEST_GUY', 'Luckiest Guy'
+    PACIFICO = 'PACIFICO', 'Pacifico'
+
+
+class OverlayAnimation(models.TextChoices):
+    """Entrance/exit animation for a timed overlay or the hook."""
+
+    NONE = 'NONE', 'None'
+    FADE = 'FADE', 'Fade'
+    POP = 'POP', 'Pop'
+    SLIDE_LEFT = 'SLIDE_LEFT', 'Slide Left'
+    SLIDE_RIGHT = 'SLIDE_RIGHT', 'Slide Right'
+    SLIDE_UP = 'SLIDE_UP', 'Slide Up'
+    SLIDE_DOWN = 'SLIDE_DOWN', 'Slide Down'
+
+
+class ColorFilterPreset(models.TextChoices):
+    """Preset color-grade look applied before manual adjustments."""
+
+    NONE = 'NONE', 'None'
+    VIVID = 'VIVID', 'Vivid'
+    MOODY = 'MOODY', 'Moody'
+    WARM = 'WARM', 'Warm'
+    COOL = 'COOL', 'Cool'
+    BLACK_WHITE = 'BLACK_WHITE', 'Black & White'
+    VINTAGE = 'VINTAGE', 'Vintage'
+
+
+class FitMode(models.TextChoices):
+    """How the source video fills a mismatched target aspect ratio."""
+
+    CROP = 'CROP', 'Crop'
+    BLUR_FILL = 'BLUR_FILL', 'Blurred Background Fill'
+
+
+class OverlayShape(models.TextChoices):
+    """Mask shape for image/video overlays."""
+
+    RECTANGLE = 'RECTANGLE', 'Rectangle'
+    CIRCLE = 'CIRCLE', 'Circle'
+    ROUNDED = 'ROUNDED', 'Rounded Rectangle'
 
 
 class ClipSourceStatus(models.TextChoices):

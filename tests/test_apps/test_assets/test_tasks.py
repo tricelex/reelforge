@@ -127,6 +127,30 @@ def test_ingest_loudness_failure_warns_and_continues() -> None:
 
 
 @pytest.mark.django_db
+def test_ingest_font_asset_extracts_family_name() -> None:
+    asset = _make_asset(LibraryAssetKind.FONT, 'Custom Font')
+    probe = {
+        'streams': [],
+        'format': {'duration': '0', 'format_name': 'ttf'},
+    }
+    mock_name_table = MagicMock()
+    mock_name_table.getDebugName.side_effect = (
+        lambda name_id: 'My Custom Font' if name_id == 4 else None
+    )
+    mock_font = MagicMock()
+    mock_font.__getitem__.return_value = mock_name_table
+    with (
+        patch('server.apps.assets.tasks._ffprobe', return_value=probe),
+        patch('fontTools.ttLib.TTFont', return_value=mock_font),
+    ):
+        ingest_library_asset.original_func(str(asset.id))
+
+    asset.refresh_from_db()
+    assert 'font_family' in asset.meta
+    assert asset.meta['font_family'] == 'My Custom Font'
+
+
+@pytest.mark.django_db
 def test_ingest_watermark_valid_png_with_alpha() -> None:
     asset = _make_asset(LibraryAssetKind.WATERMARK, 'Logo')
     with (

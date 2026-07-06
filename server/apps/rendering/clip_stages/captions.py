@@ -18,6 +18,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger('***REMOVED***.rendering.clip_stages')
 
 
+def _uppercase_segments(
+    segments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    result = []
+    for seg in segments:
+        new_seg = dict(seg)
+        if 'text' in new_seg:
+            new_seg['text'] = new_seg['text'].upper()
+        if 'words' in new_seg:
+            new_seg['words'] = [
+                {**w, 'word': w.get('word', '').upper()} for w in new_seg['words']
+            ]
+        result.append(new_seg)
+    return result
+
+
 class ASSGenerator:
     """Generates an .ass subtitle file from Whisper transcript JSON."""
 
@@ -39,7 +55,8 @@ class ASSGenerator:
         sc = self.style_config
         style = sc.caption_style if sc else CaptionStyle.CHUNKED
         segments = self.transcript_json.get('segments', [])
-
+        if sc and sc.caption_uppercase:
+            segments = _uppercase_segments(segments)
         header = self._header()
         dialogues: list[str] = []
 
@@ -52,14 +69,25 @@ class ASSGenerator:
                 segments,
                 emoji_map=sc.emoji_keyword_map if sc else {},
             )
+        elif style == CaptionStyle.KARAOKE_HIGHLIGHT:
+            dialogues = self._karaoke_highlight(segments)
         else:  # CHUNKED (default)
             dialogues = self._chunked(segments)
 
         return header + '\n'.join(dialogues) + '\n'
 
     def _header(self) -> str:
+        from server.apps.rendering.clip_stages.fonts import (  # noqa: PLC0415
+            curated_font_family,
+        )
+
         sc = self.style_config
-        font = sc.caption_font if sc else 'Montserrat-Bold'
+        if sc and sc.caption_font_asset:
+            font = sc.caption_font_asset.meta.get('font_family', 'Custom Font')
+        else:
+            font = curated_font_family(
+                sc.caption_font if sc else 'MONTSERRAT_BOLD',
+            )
         size = sc.caption_size if sc else 52
         color = self._ass_color(sc.caption_color if sc else '#FFFFFF')
         stroke_color = self._ass_color(
@@ -102,10 +130,22 @@ class ASSGenerator:
             return f'&H{a}{b}{g}{r}'
         return '&H00FFFFFF'
 
+    def _animation_tag(self) -> str:
+        sc = self.style_config
+        animation = sc.caption_animation if sc else 'NONE'
+        if animation == 'FADE':
+            return '{\\fad(200,200)}'
+        if animation == 'POP':
+            return (
+                '{\\t(0,150,\\fscx120\\fscy120)\\t(150,250,\\fscx100\\fscy100)}'
+            )
+        return ''
+
     def _dialogue(self, start: float, end: float, text: str) -> str:
+        tag = self._animation_tag()
         return (
             f'Dialogue: 0,{self._ass_time(start)},{self._ass_time(end)},'
-            f'Default,,0,0,0,,{text}'
+            f'Default,,0,0,0,,{tag}{text}'
         )
 
     def _word_by_word(self, segments: list[dict[str, Any]]) -> list[str]:
@@ -178,6 +218,36 @@ class ASSGenerator:
             lines.append(self._dialogue(s, e, text))
         return lines
 
+    def _karaoke_highlight(self, segments: list[dict[str, Any]]) -> list[str]:
+        sc = self.style_config
+        highlight = self._ass_color(
+            sc.caption_highlight_color if sc else '#FFD400',
+        )
+        lines = []
+        for seg in segments:
+            words = seg.get('words', [])
+            if not words:
+                continue
+            full_text = ' '.join(
+                w.get('word', '').strip() for w in words if w.get('word', '').strip()
+            )
+            if not full_text:
+                continue
+            for i, word in enumerate(words):
+                w_start = float(word.get('start', 0))
+                w_end = float(word.get('end', w_start + 0.3))
+                parts = []
+                for j, other in enumerate(words):
+                    token = other.get('word', '').strip()
+                    if not token:
+                        continue
+                    if j == i:
+                        parts.append(f'{{\\c{highlight}}}{token}{{\\c&HFFFFFF&}}')
+                    else:
+                        parts.append(token)
+                lines.append(self._dialogue(w_start, w_end, ' '.join(parts)))
+        return lines
+
 
 @final
 @dataclass
@@ -198,7 +268,7 @@ class CaptionTranslationStage(RenderStage):
     @override
     def order(self) -> int:
         """Execution order (1-indexed)."""
-        return 4
+        return 5
 
     @override
     def should_run(self) -> bool:
@@ -216,12 +286,13 @@ class CaptionTranslationStage(RenderStage):
 @final
 @dataclass
 class CaptionStage(RenderStage):
-    """Stage 5: Burn subtitles into the clip."""
+    """Stage 6: Burn subtitles into the clip."""
 
     transcript_json: dict[str, Any]
     output_path: Path
     ass_path: Path
     style_config: ClipStyleConfig | None
+    fonts_dir: Path
     video_width: int = 1080
     video_height: int = 1920
     crf: int = 18
@@ -239,7 +310,7 @@ class CaptionStage(RenderStage):
     @override
     def order(self) -> int:
         """Execution order (1-indexed)."""
-        return 5
+        return 6
 
     @override
     def should_run(self) -> bool:
@@ -265,13 +336,14 @@ class CaptionStage(RenderStage):
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
         ass_str = str(self.ass_path).replace("'", "\\'").replace(':', '\\:')
+        fonts_dir_str = str(self.fonts_dir).replace("'", "\\'").replace(':', '\\:')
         cmd = [
             'ffmpeg',
             '-y',
             '-i',
             str(input_path),
             '-vf',
-            f"subtitles='{ass_str}'",
+            f"subtitles='{ass_str}':fontsdir='{fonts_dir_str}'",
             *clip_filter_encode_args(
                 crf=self.crf,
                 preset=self.preset,

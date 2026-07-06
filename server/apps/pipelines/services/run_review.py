@@ -8,6 +8,7 @@ import attrs
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.logic.value_objects import (
     PreviewPayload,
     PublishMetadataPatchPayload,
@@ -19,14 +20,13 @@ from server.apps.pipelines.logic.value_objects import (
     StoryboardPayload,
     StoryboardScenePayload,
 )
-from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.models import (
     PipelineRun,
     StageExecution,
     StageStatus,
 )
-from server.apps.pipelines.storyboard_selectors import _gate_stage_keys
 from server.apps.pipelines.storyboard_selectors import (
+    _gate_stage_keys,
     _latest_parent_execution,
     get_preview,
     get_storyboard,

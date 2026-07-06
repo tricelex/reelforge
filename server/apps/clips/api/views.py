@@ -28,12 +28,16 @@ from server.apps.clips.logic.value_objects import (
     ClipPostPayload,
     ClipPreviewStatusPayload,
     ClipRenderPayload,
+    ClipSfxListPayload,
     ClipSourceFramePayload,
     ClipStyleConfigPatchPayload,
     ClipStyleConfigPayload,
     ClipTimedOverlayCreatePayload,
     ClipTimedOverlayPatchPayload,
     ClipTimedOverlayPayload,
+    ClipTimedSfxCreatePayload,
+    ClipTimedSfxPatchPayload,
+    ClipTimedSfxPayload,
     GateApprovalResultPayload,
     SourceFrameQuery,
 )
@@ -43,6 +47,7 @@ from server.apps.clips.models import (
     ClipPost,
     ClipStyleConfig,
     ClipTimedOverlay,
+    ClipTimedSfx,
 )
 from server.apps.clips.services import ClipsService
 from server.common.auth import JWTAuthenticatedMixin, jwt_sync_auth
@@ -634,6 +639,108 @@ class ClipTimedOverlayDetailView(
             return self.to_error(
                 self.format_error(
                     'Overlay not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint,
+            controller,
+            exc,
+        )
+
+
+@final
+class ClipTimedSfxCollectionView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List or create timed SFX drops."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> ClipSfxListPayload:
+        """Return paginated SFX drops for a candidate."""
+        return self.resolve(ClipsService).list_sfx(
+            str(self.kwargs['candidate_id']),
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[ClipTimedSfxCreatePayload],
+    ) -> ClipTimedSfxPayload:
+        """Create a timed SFX drop."""
+        return self.resolve(ClipsService).create_sfx(
+            str(self.kwargs['candidate_id']),
+            parsed_body,
+        )
+
+
+@final
+class ClipTimedSfxDetailView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get, patch, or delete one timed SFX drop."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> ClipTimedSfxPayload:
+        """Return one SFX drop."""
+        return self.resolve(ClipsService).get_sfx(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['sfx_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[ClipTimedSfxPatchPayload],
+    ) -> ClipTimedSfxPayload:
+        """Update one SFX drop."""
+        return self.resolve(ClipsService).patch_sfx(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['sfx_id']),
+            parsed_body,
+        )
+
+    @modify(status_code=HTTPStatus.NO_CONTENT)
+    def delete(self) -> None:
+        """Delete one SFX drop."""
+        self.resolve(ClipsService).delete_sfx(
+            str(self.kwargs['candidate_id']),
+            str(self.kwargs['sfx_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ClipTimedSfx.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'SFX drop not found',
                     error_type=ErrorType.not_found,
                 ),
                 status_code=HTTPStatus.NOT_FOUND,

@@ -11,6 +11,11 @@ from typing import TYPE_CHECKING, final, override
 
 from server.apps.rendering.clip_stages.base import RenderStage
 from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
+from server.apps.rendering.clip_stages.fonts import resolve_drawtext_font
+from server.apps.rendering.clip_stages.timed_overlays import (
+    _animation_alpha_expr,
+    _animation_xy_expr,
+)
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipStyleConfig
@@ -43,7 +48,7 @@ class HookStage(RenderStage):
     @override
     def order(self) -> int:
         """Execution order (1-indexed)."""
-        return 3
+        return 4
 
     @override
     def should_run(self) -> bool:
@@ -72,17 +77,46 @@ class HookStage(RenderStage):
         """Draw hook text as timed overlay at top or center."""
         from server.apps.clips.logic.constants import HookStyle  # noqa: PLC0415
 
-        y_expr = (
-            '(h/2)-(text_h/2)'
-            if sc.hook_style == HookStyle.OVERLAY_CENTER
-            else '20'
-        )
         safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
+        font_path, _family = resolve_drawtext_font(
+            sc.hook_font,
+            sc.hook_font_asset,
+        )
+        safe_font_path = font_path.replace("'", "\\'").replace(':', '\\:')
+        alpha_expr = _animation_alpha_expr(
+            sc.hook_animation,
+            start=0.0,
+            end=sc.hook_duration_sec,
+        )
+        x_expr, y_expr = _animation_xy_expr(
+            sc.hook_animation,
+            base_x=0,
+            base_y=0,
+            start=0.0,
+            end=sc.hook_duration_sec,
+        )
+        if sc.hook_style == HookStyle.OVERLAY_CENTER:
+            y_pos = '(h/2)-(text_h/2)'
+        else:
+            y_pos = '20'
+        if sc.hook_animation in {
+            'SLIDE_LEFT',
+            'SLIDE_RIGHT',
+            'SLIDE_UP',
+            'SLIDE_DOWN',
+        }:
+            x_draw = f'(w-text_w)/2+({x_expr})'
+            y_draw = f'{y_pos}+({y_expr})' if y_pos != '(h/2)-(text_h/2)' else y_expr
+        else:
+            x_draw = '(w-text_w)/2'
+            y_draw = y_pos
         drawtext = (
             f"drawtext=text='{safe_text}'"
+            f':fontfile={safe_font_path}'
             f':fontsize={sc.hook_size}'
             f':fontcolor={sc.hook_color}'
-            f':x=(w-text_w)/2:y={y_expr}'
+            f":alpha='{alpha_expr}'"
+            f":x='{x_draw}':y='{y_draw}'"
             f":enable='between(t,0,{sc.hook_duration_sec})'"
             f':box=1:boxcolor={sc.hook_bg_color}:boxborderw=10'
         )
@@ -120,6 +154,11 @@ class HookStage(RenderStage):
     ) -> Path:
         """Prepend a black title card with the hook text."""
         safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
+        font_path, _family = resolve_drawtext_font(
+            sc.hook_font,
+            sc.hook_font_asset,
+        )
+        safe_font_path = font_path.replace("'", "\\'").replace(':', '\\:')
 
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
             card_path = tmp.name
@@ -127,6 +166,7 @@ class HookStage(RenderStage):
         # Generate title card
         drawtext = (
             f"drawtext=text='{safe_text}'"
+            f':fontfile={safe_font_path}'
             f':fontsize={sc.hook_size}'
             f':fontcolor={sc.hook_color}'
             f':x=(w-text_w)/2:y=(h-text_h)/2'

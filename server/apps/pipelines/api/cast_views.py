@@ -17,8 +17,8 @@ from server.apps.channels.logic.value_objects import (
     CharacterRoundResultPayload,
     CharacterSessionPayload,
 )
-from server.apps.core.auth import require_operator
 from server.apps.channels.models import CharacterGenerationSession
+from server.apps.core.auth import require_operator
 from server.apps.pipelines.logic.value_objects import (
     RunCastApprovePayload,
     RunCastListPayload,

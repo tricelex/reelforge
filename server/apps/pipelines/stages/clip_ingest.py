@@ -91,8 +91,10 @@ class ClipIngestStage(Stage):
 
             video_bytes = await asyncio.to_thread(Path(out_path).read_bytes)
 
+        from server.apps.clips.selectors import (
+            dimensions_from_probe,
+        )
         from server.apps.rendering.ffmpeg import async_ffprobe  # noqa: PLC0415
-        from server.apps.clips.selectors import dimensions_from_probe  # noqa: PLC0415
 
         width: int | None = None
         height: int | None = None

@@ -58,6 +58,7 @@ class ClipRenderStage(Stage):
             'style_config',
         ).aget(id=candidate_id)
         timed_overlays = [o async for o in candidate.timed_overlays.all()]
+        timed_sfx = [s async for s in candidate.timed_sfx.all()]
 
         source_asset = await Asset.objects.aget(id=source_asset_id)
         video_bytes = await asyncio.to_thread(source_asset.file.read)
@@ -83,6 +84,7 @@ class ClipRenderStage(Stage):
                 layout_config=candidate.layout_config,
                 style_config=candidate.style_config,
                 timed_overlays=timed_overlays,
+                timed_sfx=timed_sfx,
                 render_id=str(candidate.id),
             )
             await asyncio.to_thread(ClipRenderPipeline(config).run)

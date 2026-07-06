@@ -1,4 +1,4 @@
-"""WatermarkStage — stage 6: apply text or image watermark."""
+"""WatermarkStage — apply text or image watermark."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, final, override
 from server.apps.clips.logic.constants import WatermarkType
 from server.apps.rendering.clip_stages.base import RenderStage
 from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
+from server.apps.rendering.clip_stages.fonts import resolve_drawtext_font
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipStyleConfig
@@ -22,7 +23,7 @@ logger = logging.getLogger('***REMOVED***.rendering.clip_stages')
 @final
 @dataclass
 class WatermarkStage(RenderStage):
-    """Stage 6: Apply watermark (text or image) to the clip."""
+    """Apply watermark (text or image) to the clip."""
 
     output_path: Path
     style_config: ClipStyleConfig | None
@@ -41,7 +42,7 @@ class WatermarkStage(RenderStage):
     @override
     def order(self) -> int:
         """Execution order (1-indexed)."""
-        return 6
+        return 7
 
     @override
     def should_run(self) -> bool:
@@ -70,20 +71,55 @@ class WatermarkStage(RenderStage):
             'TOP_RIGHT': ('w-w-20', '20'),
             'BOTTOM_LEFT': ('20', 'h-h-20'),
             'BOTTOM_RIGHT': ('w-w-20', 'h-h-20'),
+            'CENTER': ('(w-w)/2', '(h-h)/2'),
         }
         return positions.get(position, ('w-w-20', 'h-h-20'))
 
+    def _tiled_positions(
+        self,
+        watermark_size: int,
+        cols: int = 3,
+        rows: int = 5,
+    ) -> list[tuple[int, int]]:
+        spacing_x = 1080 // cols
+        spacing_y = 1920 // rows
+        return [
+            (c * spacing_x + spacing_x // 4, r * spacing_y + spacing_y // 4)
+            for r in range(rows)
+            for c in range(cols)
+        ]
+
     def _text_watermark(self, input_path: Path, sc: ClipStyleConfig) -> Path:
-        x, y = self._position_coords(sc.watermark_position)
         safe_text = sc.watermark_text.replace("'", "\\'").replace(':', '\\:')
-        # ClipStyleConfig has no watermark_color; fall back to caption_color
-        color = sc.caption_color
-        drawtext = (
-            f"drawtext=text='{safe_text}'"
-            f':fontsize={sc.watermark_size}'
-            f':fontcolor={color}@{sc.watermark_opacity}'
-            f':x={x}:y={y}'
+        font_path, _family = resolve_drawtext_font(
+            sc.watermark_font,
+            sc.watermark_font_asset,
         )
+        safe_font = font_path.replace("'", "\\'").replace(':', '\\:')
+        color = sc.watermark_color
+
+        if sc.watermark_position == 'TILED':
+            positions = self._tiled_positions(sc.watermark_size)
+            parts = [
+                (
+                    f"drawtext=text='{safe_text}'"
+                    f':fontfile={safe_font}'
+                    f':fontsize={sc.watermark_size}'
+                    f':fontcolor={color}@{sc.watermark_opacity}'
+                    f':x={x}:y={y}'
+                )
+                for x, y in positions
+            ]
+            drawtext = ','.join(parts)
+        else:
+            x, y = self._position_coords(sc.watermark_position)
+            drawtext = (
+                f"drawtext=text='{safe_text}'"
+                f':fontfile={safe_font}'
+                f':fontsize={sc.watermark_size}'
+                f':fontcolor={color}@{sc.watermark_opacity}'
+                f':x={x}:y={y}'
+            )
         cmd = [
             'ffmpeg',
             '-y',
@@ -117,16 +153,35 @@ class WatermarkStage(RenderStage):
         sc: ClipStyleConfig,
     ) -> Path:
         wm_bytes: bytes = sc.watermark_image.file.read()  # type: ignore[union-attr]
-        x, y = self._position_coords(sc.watermark_position)
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
             wm_path = tmp.name
         Path(wm_path).write_bytes(wm_bytes)
 
-        overlay = (
-            f'[1:v]scale={sc.watermark_size}:-1,'
-            f'format=rgba,colorchannelmixer=aa={sc.watermark_opacity}[wm];'
-            f'[0:v][wm]overlay={x}:{y}'
-        )
+        if sc.watermark_position == 'TILED':
+            positions = self._tiled_positions(sc.watermark_size)
+            scale = (
+                f'[1:v]scale={sc.watermark_size}:-1,'
+                f'format=rgba,colorchannelmixer=aa={sc.watermark_opacity}[wm];'
+            )
+            overlay_parts = []
+            prev = '[0:v]'
+            for i, (x, y) in enumerate(positions):
+                out_label = f'[v{i}]' if i < len(positions) - 1 else '[out]'
+                overlay_parts.append(
+                    f'{prev}[wm]overlay={x}:{y}{out_label}',
+                )
+                prev = out_label
+            overlay = scale + ';'.join(overlay_parts)
+            map_video = '[out]'
+        else:
+            x, y = self._position_coords(sc.watermark_position)
+            overlay = (
+                f'[1:v]scale={sc.watermark_size}:-1,'
+                f'format=rgba,colorchannelmixer=aa={sc.watermark_opacity}[wm];'
+                f'[0:v][wm]overlay={x}:{y}'
+            )
+            map_video = None
+
         cmd = [
             'ffmpeg',
             '-y',
@@ -136,14 +191,17 @@ class WatermarkStage(RenderStage):
             wm_path,
             '-filter_complex',
             overlay,
-            *clip_filter_encode_args(
-                crf=self.crf,
-                preset=self.preset,
-                fps=self.fps,
-                audio_bitrate=self.audio_bitrate,
-            ),
-            str(self.output_path),
         ]
+        if map_video is not None:
+            cmd += ['-map', map_video, '-map', '0:a']
+        cmd += clip_filter_encode_args(
+            crf=self.crf,
+            preset=self.preset,
+            fps=self.fps,
+            audio_bitrate=self.audio_bitrate,
+        )
+        cmd.append(str(self.output_path))
+
         result = subprocess.run(  # noqa: S603
             cmd,
             capture_output=True,

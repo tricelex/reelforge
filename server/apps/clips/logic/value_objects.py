@@ -8,9 +8,14 @@ from server.apps.clips.logic.types import (
     _CROP_COORD_DESC,
     CandidateStatusLiteral,
     CaptionAnimationLiteral,
+    CaptionFontLiteral,
     CaptionPositionLiteral,
     CaptionStyleLiteral,
+    ColorFilterPresetLiteral,
+    FitModeLiteral,
     HookStyleLiteral,
+    OverlayAnimationLiteral,
+    OverlayShapeLiteral,
     OverlayTypeLiteral,
     ProgressBarPositionLiteral,
     RenderFormatLiteral,
@@ -150,6 +155,7 @@ class ClipLayoutConfigPayload(msgspec.Struct, frozen=True):
     region_b_w: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
     region_b_h: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
     stack_ratio: float
+    fit_mode: FitModeLiteral
     face_detected: bool | None
     detection_confidence: float | None
 
@@ -172,6 +178,7 @@ class ClipLayoutConfigPatchPayload(msgspec.Struct, frozen=True):
     region_b_w: int | None = None
     region_b_h: int | None = None
     stack_ratio: float | None = None
+    fit_mode: FitModeLiteral | None = None
 
 
 class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
@@ -181,7 +188,7 @@ class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
     candidate_id: str
     caption_enabled: bool
     caption_style: CaptionStyleLiteral
-    caption_font: str
+    caption_font: CaptionFontLiteral
     caption_size: int
     caption_color: str
     caption_stroke_color: str
@@ -191,16 +198,25 @@ class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
     caption_animation: CaptionAnimationLiteral
     caption_language: str
     caption_translate_to: str
+    caption_font_asset_id: str | None
+    caption_highlight_color: str
+    caption_uppercase: bool
     emoji_keyword_map: dict[str, str]
     hook_enabled: bool
     hook_style: HookStyleLiteral
     hook_duration_sec: float
-    hook_font: str
+    hook_font: CaptionFontLiteral
     hook_size: int
     hook_color: str
     hook_bg_color: str
+    hook_font_asset_id: str | None
+    hook_animation: OverlayAnimationLiteral
     intro_transition: TransitionStyleLiteral
     outro_transition: TransitionStyleLiteral
+    intro_transition_duration_sec: float
+    outro_transition_duration_sec: float
+    intro_transition_asset_id: str | None
+    outro_transition_asset_id: str | None
     watermark_enabled: bool
     watermark_type: WatermarkTypeLiteral
     watermark_text: str
@@ -208,6 +224,9 @@ class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
     watermark_position: WatermarkPositionLiteral
     watermark_opacity: float
     watermark_size: int
+    watermark_color: str
+    watermark_font: CaptionFontLiteral
+    watermark_font_asset_id: str | None
     progress_bar_enabled: bool
     progress_bar_position: ProgressBarPositionLiteral
     progress_bar_color: str
@@ -219,6 +238,12 @@ class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
     music_volume_db: float
     music_fade_in_sec: float
     music_fade_out_sec: float
+    color_filter: ColorFilterPresetLiteral
+    brightness: float
+    contrast: float
+    saturation: float
+    lut_asset_id: str | None
+    playback_speed: float
 
 
 class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
@@ -226,7 +251,7 @@ class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
 
     caption_enabled: bool | None = None
     caption_style: CaptionStyleLiteral | None = None
-    caption_font: str | None = None
+    caption_font: CaptionFontLiteral | None = None
     caption_size: int | None = None
     caption_color: str | None = None
     caption_stroke_color: str | None = None
@@ -236,16 +261,25 @@ class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
     caption_animation: CaptionAnimationLiteral | None = None
     caption_language: str | None = None
     caption_translate_to: str | None = None
+    caption_font_asset_id: str | None = None
+    caption_highlight_color: str | None = None
+    caption_uppercase: bool | None = None
     emoji_keyword_map: dict[str, str] | None = None
     hook_enabled: bool | None = None
     hook_style: HookStyleLiteral | None = None
     hook_duration_sec: float | None = None
-    hook_font: str | None = None
+    hook_font: CaptionFontLiteral | None = None
     hook_size: int | None = None
     hook_color: str | None = None
     hook_bg_color: str | None = None
+    hook_font_asset_id: str | None = None
+    hook_animation: OverlayAnimationLiteral | None = None
     intro_transition: TransitionStyleLiteral | None = None
     outro_transition: TransitionStyleLiteral | None = None
+    intro_transition_duration_sec: float | None = None
+    outro_transition_duration_sec: float | None = None
+    intro_transition_asset_id: str | None = None
+    outro_transition_asset_id: str | None = None
     watermark_enabled: bool | None = None
     watermark_type: WatermarkTypeLiteral | None = None
     watermark_text: str | None = None
@@ -253,6 +287,9 @@ class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
     watermark_position: WatermarkPositionLiteral | None = None
     watermark_opacity: float | None = None
     watermark_size: int | None = None
+    watermark_color: str | None = None
+    watermark_font: CaptionFontLiteral | None = None
+    watermark_font_asset_id: str | None = None
     progress_bar_enabled: bool | None = None
     progress_bar_position: ProgressBarPositionLiteral | None = None
     progress_bar_color: str | None = None
@@ -264,6 +301,12 @@ class ClipStyleConfigPatchPayload(msgspec.Struct, frozen=True):
     music_volume_db: float | None = None
     music_fade_in_sec: float | None = None
     music_fade_out_sec: float | None = None
+    color_filter: ColorFilterPresetLiteral | None = None
+    brightness: float | None = None
+    contrast: float | None = None
+    saturation: float | None = None
+    lut_asset_id: str | None = None
+    playback_speed: float | None = None
 
 
 class ClipTimedOverlayPayload(msgspec.Struct, frozen=True):
@@ -274,6 +317,8 @@ class ClipTimedOverlayPayload(msgspec.Struct, frozen=True):
     overlay_type: OverlayTypeLiteral
     text: str
     image_asset_id: str | None
+    video_asset_id: str | None
+    shape: OverlayShapeLiteral
     start_sec: float
     end_sec: float
     x: int
@@ -281,6 +326,10 @@ class ClipTimedOverlayPayload(msgspec.Struct, frozen=True):
     font_size: int
     color: str
     opacity: float
+    font: CaptionFontLiteral
+    font_asset_id: str | None
+    width: int | None
+    animation: OverlayAnimationLiteral
 
 
 class ClipTimedOverlayCreatePayload(msgspec.Struct, frozen=True):
@@ -289,6 +338,8 @@ class ClipTimedOverlayCreatePayload(msgspec.Struct, frozen=True):
     overlay_type: OverlayTypeLiteral = 'TEXT'
     text: str = ''
     image_asset_id: str | None = None
+    video_asset_id: str | None = None
+    shape: OverlayShapeLiteral = 'RECTANGLE'
     start_sec: float = 0.0
     end_sec: float = 1.0
     x: int = 0
@@ -296,6 +347,10 @@ class ClipTimedOverlayCreatePayload(msgspec.Struct, frozen=True):
     font_size: int = 40
     color: str = '#FFFFFF'
     opacity: float = 1.0
+    font: CaptionFontLiteral = 'MONTSERRAT_BOLD'
+    font_asset_id: str | None = None
+    width: int | None = None
+    animation: OverlayAnimationLiteral = 'NONE'
 
 
 class ClipTimedOverlayPatchPayload(msgspec.Struct, frozen=True):
@@ -304,6 +359,8 @@ class ClipTimedOverlayPatchPayload(msgspec.Struct, frozen=True):
     overlay_type: OverlayTypeLiteral | None = None
     text: str | None = None
     image_asset_id: str | None = None
+    video_asset_id: str | None = None
+    shape: OverlayShapeLiteral | None = None
     start_sec: float | None = None
     end_sec: float | None = None
     x: int | None = None
@@ -311,6 +368,44 @@ class ClipTimedOverlayPatchPayload(msgspec.Struct, frozen=True):
     font_size: int | None = None
     color: str | None = None
     opacity: float | None = None
+    font: CaptionFontLiteral | None = None
+    font_asset_id: str | None = None
+    width: int | None = None
+    animation: OverlayAnimationLiteral | None = None
+
+
+class ClipTimedSfxPayload(msgspec.Struct, frozen=True):
+    """A one-shot sound effect on a clip candidate."""
+
+    id: str
+    candidate_id: str
+    sfx_asset_id: str
+    start_sec: float
+    volume_db: float
+
+
+class ClipTimedSfxCreatePayload(msgspec.Struct, frozen=True):
+    """Create a timed SFX drop."""
+
+    sfx_asset_id: str
+    start_sec: float = 0.0
+    volume_db: float = 0.0
+
+
+class ClipTimedSfxPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a timed SFX drop."""
+
+    sfx_asset_id: str | None = None
+    start_sec: float | None = None
+    volume_db: float | None = None
+
+
+class ClipSfxListPayload(msgspec.Struct, frozen=True):
+    """Paginated list of timed SFX drops."""
+
+    items: list[ClipTimedSfxPayload]
+    next_cursor: str | None
+    total: int
 
 
 class ClipPostPayload(msgspec.Struct, frozen=True):

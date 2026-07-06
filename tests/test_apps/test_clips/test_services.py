@@ -18,8 +18,11 @@ from server.apps.clips.logic.value_objects import (
     ClipLayoutConfigPatchPayload,
     ClipPostPatchPayload,
     ClipStyleConfigPatchPayload,
+    ClipTimedOverlayPatchPayload,
+    ClipTimedSfxCreatePayload,
+    ClipTimedSfxPatchPayload,
 )
-from server.apps.clips.models import ClipCandidate, ClipPost
+from server.apps.clips.models import ClipCandidate, ClipPost, ClipTimedOverlay
 from server.apps.clips.services import ClipsService
 from server.apps.pipelines.models import (
     PipelineBlueprint,
@@ -385,7 +388,7 @@ def test_patch_layout_invalidates_preview_cache(
 
     _clips_service().patch_layout(
         str(candidate.id),
-        ClipLayoutConfigPatchPayload(render_mode='manual_crop'),
+        ClipLayoutConfigPatchPayload(render_mode='CENTER_CROP'),
     )
 
     assert cache.get(preview_cache_key(str(candidate.id))) is None
@@ -658,3 +661,97 @@ def test_distribution_status_branches(candidate: ClipCandidate) -> None:
         svc.get_post(str(candidate.id), str(posted.id)).distribution_status
         == 'posted'
     )
+
+
+@pytest.mark.django_db
+def test_patch_style_updates_new_font_and_transition_fields(
+    candidate: ClipCandidate,
+) -> None:
+    result = _clips_service().patch_style(
+        str(candidate.id),
+        ClipStyleConfigPatchPayload(
+            watermark_color='#00FF00',
+            watermark_font='POPPINS_BOLD',
+            hook_animation='FADE',
+            intro_transition='CROSSFADE',
+            intro_transition_duration_sec=0.75,
+            caption_uppercase=True,
+            color_filter='VIVID',
+            brightness=0.2,
+            playback_speed=1.5,
+        ),
+    )
+    assert result.watermark_color == '#00FF00'
+    assert result.watermark_font == 'POPPINS_BOLD'
+    assert result.hook_animation == 'FADE'
+    assert result.intro_transition == 'CROSSFADE'
+    assert result.intro_transition_duration_sec == 0.75
+    assert result.caption_uppercase is True
+    assert result.color_filter == 'VIVID'
+    assert result.brightness == 0.2
+    assert result.playback_speed == 1.5
+
+
+@pytest.mark.django_db
+def test_patch_layout_updates_fit_mode(candidate: ClipCandidate) -> None:
+    result = _clips_service().patch_layout(
+        str(candidate.id),
+        ClipLayoutConfigPatchPayload(fit_mode='BLUR_FILL'),
+    )
+    assert result.fit_mode == 'BLUR_FILL'
+
+
+@pytest.mark.django_db
+def test_patch_overlay_updates_font_and_animation(
+    candidate: ClipCandidate,
+) -> None:
+    overlay = ClipTimedOverlay.objects.create(
+        candidate=candidate,
+        start_sec=0.0,
+        end_sec=1.0,
+    )
+    result = _clips_service().patch_overlay(
+        str(candidate.id),
+        str(overlay.id),
+        ClipTimedOverlayPatchPayload(font='OSWALD_BOLD', animation='POP'),
+    )
+    assert result.font == 'OSWALD_BOLD'
+    assert result.animation == 'POP'
+
+
+@pytest.mark.django_db
+def test_sfx_crud_lifecycle(candidate: ClipCandidate) -> None:
+    sfx_asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.SFX,
+        name='whoosh.mp3',
+        file=ContentFile(b'audio', name='whoosh.mp3'),
+    )
+    svc = _clips_service()
+
+    created = svc.create_sfx(
+        str(candidate.id),
+        ClipTimedSfxCreatePayload(
+            sfx_asset_id=str(sfx_asset.id),
+            start_sec=2.0,
+            volume_db=-3.0,
+        ),
+    )
+    assert created.start_sec == 2.0
+    assert created.volume_db == -3.0
+
+    listed = svc.list_sfx(str(candidate.id))
+    assert listed.total == 1
+    assert listed.items[0].id == created.id
+
+    fetched = svc.get_sfx(str(candidate.id), created.id)
+    assert fetched.id == created.id
+
+    patched = svc.patch_sfx(
+        str(candidate.id),
+        created.id,
+        ClipTimedSfxPatchPayload(volume_db=-6.0),
+    )
+    assert patched.volume_db == -6.0
+
+    svc.delete_sfx(str(candidate.id), created.id)
+    assert svc.list_sfx(str(candidate.id)).total == 0

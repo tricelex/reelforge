@@ -1,6 +1,7 @@
 """Tests for ClipRenderPipeline orchestrator."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from server.apps.rendering.clip_render_pipeline import (
     ClipRenderPipeline,
     GatePausedException,
     PipelineRenderConfig,
+    _scale_transcript,
 )
 from server.apps.rendering.clip_stages.base import RenderStageError
 
@@ -27,7 +29,7 @@ def _make_config(tmp_path: Path) -> PipelineRenderConfig:
             has_manual_smart_crop=False,
             manual_crop_x=None,
         ),
-        style_config=MagicMock(
+        style_config=SimpleNamespace(
             caption_enabled=False,
             caption_translate_to='',
             hook_enabled=False,
@@ -37,27 +39,38 @@ def _make_config(tmp_path: Path) -> PipelineRenderConfig:
             intro_asset=None,
             outro_asset=None,
             music_asset=None,
+            playback_speed=1.0,
+            caption_font_asset=None,
+            hook_font_asset=None,
+            watermark_font_asset=None,
+            color_filter='NONE',
+            brightness=0.0,
+            contrast=0.0,
+            saturation=0.0,
+            lut_asset=None,
         ),
         timed_overlays=[],
         render_id='test-render-id',
     )
 
 
-def test_pipeline_builds_10_stages(tmp_path: Path) -> None:
-    config = _make_config(tmp_path)
+def test_build_stages_produces_eleven_stages_in_order(tmp_path: Path) -> None:
+    config = PipelineRenderConfig(
+        source_path=tmp_path / 'src.mp4',
+        output_path=tmp_path / 'out.mp4',
+        start_sec=0.0,
+        end_sec=10.0,
+        hook_text='',
+        transcript_json={'segments': []},
+        layout_config=None,
+        style_config=None,
+    )
     pipeline = ClipRenderPipeline(config)
     stages = pipeline._build_stages()
-    assert len(stages) == 10
-    orders = [s.order for s in stages]
-    assert orders == list(range(1, 11))
-
-
-def test_pipeline_stage_names_in_order(tmp_path: Path) -> None:
-    config = _make_config(tmp_path)
-    stages = ClipRenderPipeline(config)._build_stages()
-    names = [s.name for s in stages]
-    assert names == [
+    assert [s.order for s in stages] == list(range(1, 12))
+    assert [s.name for s in stages] == [
         'trim_and_crop',
+        'color_grade',
         'intro_concat',
         'hook',
         'caption_translation',
@@ -66,8 +79,48 @@ def test_pipeline_stage_names_in_order(tmp_path: Path) -> None:
         'timed_overlays',
         'progress_bar',
         'outro_concat',
-        'music_mix',
+        'music_and_sfx_mix',
     ]
+
+
+def test_pipeline_render_config_accepts_timed_sfx(tmp_path: Path) -> None:
+    sfx = object()
+    config = PipelineRenderConfig(
+        source_path=tmp_path / 'src.mp4',
+        output_path=tmp_path / 'out.mp4',
+        start_sec=0.0,
+        end_sec=10.0,
+        hook_text='',
+        transcript_json={'segments': []},
+        layout_config=None,
+        style_config=None,
+        timed_sfx=[sfx],  # type: ignore[list-item]
+    )
+    assert config.timed_sfx == [sfx]
+
+
+def test_scale_transcript_scales_word_and_segment_timestamps() -> None:
+    transcript = {
+        'segments': [
+            {
+                'start': 2.0,
+                'end': 4.0,
+                'text': 'hi',
+                'words': [{'word': 'hi', 'start': 2.0, 'end': 4.0}],
+            },
+        ],
+    }
+    scaled = _scale_transcript(transcript, playback_speed=2.0)
+    seg = scaled['segments'][0]
+    assert seg['start'] == 1.0
+    assert seg['end'] == 2.0
+    assert seg['words'][0]['start'] == 1.0
+    assert seg['words'][0]['end'] == 2.0
+
+
+def test_scale_transcript_noop_at_default_speed() -> None:
+    transcript = {'segments': [{'start': 2.0, 'end': 4.0, 'text': 'hi'}]}
+    assert _scale_transcript(transcript, playback_speed=1.0) == transcript
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
@@ -105,7 +158,6 @@ def test_pipeline_run_start_from_stage_2_skips_trim(
     with patch('server.apps.rendering.clip_render_pipeline.shutil.copy2'):
         pipeline.run(start_from_stage=2)
 
-    # trim_crop subprocess should not have been called
     mock_run.assert_not_called()
 
 
@@ -171,5 +223,4 @@ def test_pipeline_run_stage_does_not_double_wrap_render_stage_error(
         with pytest.raises(RenderStageError) as exc_info:
             pipeline.run()
 
-    # Should be the same error object, not wrapped in another RenderStageError
     assert exc_info.value is original_error
