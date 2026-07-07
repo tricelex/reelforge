@@ -98,6 +98,7 @@ class PipelineRun(UUIDModel, TimeStampedModel):
         decimal_places=4,
         default=0,
     )
+    script_embedding = models.JSONField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     is_paused = models.BooleanField(default=False)
