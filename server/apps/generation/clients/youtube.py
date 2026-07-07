@@ -113,11 +113,13 @@ async def upload_video(
     category_id: str = '27',
     schedule_at: _Schedulable | None = None,
     made_for_kids: bool = False,  # noqa: FBT001, FBT002
+    contains_synthetic_media: bool = True,  # noqa: FBT001, FBT002
 ) -> str:
     """Resumable upload to YouTube. Returns the youtube_video_id."""
     status: dict[str, object] = {
         'privacyStatus': 'private' if schedule_at else 'public',
         'selfDeclaredMadeForKids': made_for_kids,
+        'containsSyntheticMedia': contains_synthetic_media,
     }
     if schedule_at is not None:
         status['publishAt'] = schedule_at.isoformat()

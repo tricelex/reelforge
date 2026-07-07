@@ -204,3 +204,38 @@ def test_upload_video_with_schedule_at_sets_publish_at() -> None:
 
     result = asyncio.run(_run())
     assert result == 'yt_sched01'
+
+
+def test_upload_video_includes_synthetic_media_disclosure_by_default() -> None:
+    """upload_video's request body declares synthetic media unless overridden."""
+    captured: dict = {}
+
+    async def _fake_post(self, url, **kwargs):
+        captured['body'] = kwargs['json']
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = {'Location': 'https://upload.example.com/resumable'}
+        return resp
+
+    async def _fake_put(self, url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {'id': 'yt_new_video'}
+        return resp
+
+    async def _inner() -> str:
+        with (
+            patch('httpx.AsyncClient.post', new=_fake_post),
+            patch('httpx.AsyncClient.put', new=_fake_put),
+        ):
+            return await upload_video(
+                access_token='tok',
+                video_bytes=b'video',
+                title='Title',
+                description='Desc',
+                tags=['a'],
+            )
+
+    video_id = asyncio.run(_inner())
+    assert video_id == 'yt_new_video'
+    assert captured['body']['status']['containsSyntheticMedia'] is True
