@@ -49,6 +49,7 @@ class OutlineOutput(BaseModel):
 
     chapters: list[Chapter]
     total_target_seconds: int = Field(gt=0)
+    format_key: str = ''
 
 
 class ScriptChapter(BaseModel):

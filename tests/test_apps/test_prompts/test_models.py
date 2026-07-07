@@ -109,3 +109,22 @@ def test_story_format_key_is_unique() -> None:
     )
     with pytest.raises(Exception):
         StoryFormat.objects.create(key='true_crime_case', name='Dupe', beats=[])
+
+
+@pytest.mark.django_db
+def test_story_format_niches_reverse_relation() -> None:
+    """A StoryFormat can be attached to multiple NicheConfigs via format_pool."""
+    from server.apps.channels.models import Channel, ChannelKind, NicheConfig
+
+    channel = Channel.objects.create(
+        name='Niches Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    niche = NicheConfig.objects.create(channel=channel)
+    fmt_a = StoryFormat.objects.create(key='fmt_a', name='Format A', beats=[])
+    fmt_b = StoryFormat.objects.create(key='fmt_b', name='Format B', beats=[])
+    fmt_a.niches.add(niche)
+    fmt_b.niches.add(niche)
+
+    pool_keys = {f.key for f in niche.format_pool.all()}
+    assert pool_keys == {'fmt_a', 'fmt_b'}

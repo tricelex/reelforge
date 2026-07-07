@@ -1,5 +1,6 @@
 """Outline stage — chapter structure generation."""
 
+import random
 from functools import cache
 from typing import Any, override
 
@@ -13,6 +14,46 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+
+
+def _pick_format(
+    pool: list[Any],
+    recent_keys: set[str],
+) -> tuple[list[dict[str, Any]], str]:
+    """Weighted-random pick from pool, avoiding recently-used keys."""
+    if not pool:
+        return [], ''
+    candidates = [f for f in pool if f.key not in recent_keys] or list(pool)
+    chosen = random.choice(candidates)  # noqa: S311
+    return chosen.beats, chosen.key
+
+
+async def _recent_format_keys(
+    channel_id: str,
+    exclude_run_id: str,
+    limit: int = 2,
+) -> set[str]:
+    """format_key values from the channel's recent SUCCEEDED outline runs."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    keys: set[str] = set()
+    async for exec_ in (
+        StageExecution.objects
+        .filter(
+            run__channel_id=channel_id,
+            stage_key='outline',
+            status=StageStatus.SUCCEEDED,
+        )
+        .exclude(run__id=exclude_run_id)
+        .order_by('-finished_at')[:limit]
+    ):
+        key = exec_.output.get('format_key', '')
+        if key:
+            keys.add(key)
+    return keys
 
 
 @cache
@@ -56,8 +97,20 @@ class OutlineStage(Stage):
         brief = research.get('brief', {})
         niche = getattr(ctx.channel, 'niche_config', None)
         beats: list[dict[str, Any]] = []
-        if niche and getattr(niche, 'format', None):
-            beats = getattr(niche.format, 'beats', [])
+        format_key = ''
+        if niche:
+            pool = list(niche.format_pool.filter(is_active=True))
+            if len(pool) > 1:
+                recent_keys = await _recent_format_keys(
+                    str(ctx.channel.id),
+                    str(ctx.run.id),
+                )
+                beats, format_key = _pick_format(pool, recent_keys)
+            elif pool:
+                beats, format_key = pool[0].beats, pool[0].key
+            elif getattr(niche, 'format', None):
+                beats = getattr(niche.format, 'beats', [])
+                format_key = getattr(niche.format, 'key', '')
         total_s = ctx.config.get('total_target_seconds', 1320)
 
         _, usr = await ctx.prompts.render(
@@ -82,4 +135,6 @@ class OutlineStage(Stage):
             ctx,
             stage_key=self.key,
         )
-        return output.model_dump()
+        result = output.model_dump()
+        result['format_key'] = format_key
+        return result
