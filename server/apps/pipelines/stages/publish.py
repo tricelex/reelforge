@@ -60,6 +60,7 @@ class PublishStage(Stage):
             channel=ctx.channel,
             status=PublishStatus.UPLOADING,
             schedule_at=schedule_at,
+            thumbnail_asset_id=thumbnail_asset_id or '',
             metadata_snapshot={
                 'title': meta['title'],
                 'description': meta['description'],
