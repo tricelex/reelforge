@@ -91,6 +91,57 @@ def test_publish_run_creates_publish_job() -> None:
     assert 'publish_job_id' in result
 
 
+def test_publish_run_records_thumbnail_asset_id() -> None:
+    """PublishJob.objects.acreate is called with the chosen thumbnail_asset_id."""
+    ctx = _make_ctx()
+    fake_credential = MagicMock()
+    fake_credential.token_expiry = None
+    fake_job = MagicMock(id='job-thumb')
+    fake_job.asave = AsyncMock()
+
+    async def _inner() -> dict:
+        with (
+            patch(
+                'server.apps.pipelines.stages.publish.YouTubeCredential'
+                '.objects.aget',
+                new=AsyncMock(return_value=fake_credential),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client'
+                '.refresh_token_if_needed',
+                new=AsyncMock(return_value='access_token'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish._download_asset',
+                new=AsyncMock(return_value=b'video bytes'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.upload_video',
+                new=AsyncMock(return_value='yt_abc123'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.set_thumbnail',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.PublishJob.objects.acreate',
+                new=AsyncMock(return_value=fake_job),
+            ) as mock_acreate,
+            patch(
+                'server.apps.pipelines.stages.publish.Asset.objects.aget',
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+        ):
+            result = await PublishStage().run(ctx)
+            assert (
+                mock_acreate.call_args.kwargs['thumbnail_asset_id']
+                == 'asset-thumb'
+            )
+            return result
+
+    asyncio.run(_inner())
+
+
 def test_publish_run_no_thumbnail_when_not_selected() -> None:
     """When review_gate provides no thumbnail_asset_id, set_thumbnail is not called."""
     ctx = _make_ctx()

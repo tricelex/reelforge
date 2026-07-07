@@ -37,6 +37,9 @@ class PublishJob(UUIDModel, TimeStampedModel):
     )
     schedule_at = models.DateTimeField(null=True, blank=True)
     metadata_snapshot = models.JSONField(default=dict)
+    thumbnail_asset_id = models.CharField(max_length=64, blank=True, default='')
+    thumbnail_tested = models.BooleanField(default=False)
+    tested_candidate_ranks = models.JSONField(default=list, blank=True)
     error = models.JSONField(null=True, blank=True)
 
     class Meta:
