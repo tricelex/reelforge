@@ -88,6 +88,11 @@ class StoryFormat(UUIDModel, TimeStampedModel):
     pacing = models.JSONField(default=dict)
     prompt_overrides = models.JSONField(default=dict)
     music_mood_map = models.JSONField(default=dict)
+    niches = models.ManyToManyField(
+        'channels.NicheConfig',
+        related_name='format_pool',
+        blank=True,
+    )
     is_active = models.BooleanField(default=True)
 
     @override
