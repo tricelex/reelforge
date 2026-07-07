@@ -6,6 +6,7 @@ from typing import Any, override
 
 from pydantic_ai import Agent, RunContext
 
+from server.apps.analytics.retention_rollup import compute_soft_spots
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import OutlineOutput
@@ -112,6 +113,7 @@ class OutlineStage(Stage):
                 beats = getattr(niche.format, 'beats', [])
                 format_key = getattr(niche.format, 'key', '')
         total_s = ctx.config.get('total_target_seconds', 1320)
+        soft_spots = compute_soft_spots(str(ctx.channel.id))
 
         _, usr = await ctx.prompts.render(
             'outline',
@@ -120,6 +122,7 @@ class OutlineStage(Stage):
                 'research_brief': brief,
                 'beats': beats,
                 'total_target_seconds': total_s,
+                'soft_spots': soft_spots,
             },
         )
         user_prompt = usr or (
@@ -127,7 +130,8 @@ class OutlineStage(Stage):
             f'Research brief: {brief}\n'
             f'Format beats: {beats}\n'
             f'Target total duration: {total_s}s (~{total_s // 60} min).\n'
-            f'Write a chapter outline with 6-10 chapters.'
+            + (f'{soft_spots}\n' if soft_spots else '')
+            + 'Write a chapter outline with 6-10 chapters.'
         )
         output: OutlineOutput = await llm_client.run_agent(
             _agent(),

@@ -51,6 +51,7 @@ ignore_imports =
   server.apps.pipelines.stages.music_plan -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.thumbnail -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.metadata -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.narrative_qc -> server.apps.generation.clients.llm
   # Pipeline stages save assets and reference AssetKind from the assets app
   server.apps.pipelines.stages.image_gen -> server.apps.assets.models
   server.apps.pipelines.stages.tts -> server.apps.assets.models
@@ -164,6 +165,10 @@ ignore_imports =
   server.apps.pipelines.tasks -> server.apps.analytics.models
   server.apps.pipelines.tasks -> server.apps.channels.models
   server.apps.pipelines.tasks -> server.apps.publishing.models
+  # Milestone 3: outline stage folds retention-curve soft-spot analysis back
+  # into its prompt; the rollup reads PublishJobMetric + StageExecution rows.
+  server.apps.pipelines.stages.outline -> server.apps.analytics.retention_rollup
+  server.apps.analytics.retention_rollup -> server.apps.pipelines.models
 
 
 [importlinter:contract:common-module-is-independent]

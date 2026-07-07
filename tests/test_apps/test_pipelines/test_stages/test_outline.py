@@ -103,9 +103,15 @@ def test_outline_run_returns_chapters() -> None:
     )
 
     async def _inner() -> dict[str, object]:
-        with patch(
-            'server.apps.generation.clients.llm.run_agent',
-            new=AsyncMock(return_value=fake_output),
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.outline.compute_soft_spots',
+                return_value='',
+            ),
         ):
             return await OutlineStage().run(ctx)
 
@@ -144,9 +150,15 @@ def test_outline_run_with_no_niche_config() -> None:
     )
 
     async def _inner() -> dict[str, object]:
-        with patch(
-            'server.apps.generation.clients.llm.run_agent',
-            new=AsyncMock(return_value=fake_output),
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.outline.compute_soft_spots',
+                return_value='',
+            ),
         ):
             return await OutlineStage().run(ctx)
 
@@ -258,6 +270,10 @@ def test_outline_run_uses_format_pool_when_multiple_present() -> None:
                 'server.apps.pipelines.stages.outline._recent_format_keys',
                 new=AsyncMock(return_value=set()),
             ),
+            patch(
+                'server.apps.pipelines.stages.outline.compute_soft_spots',
+                return_value='',
+            ),
         ):
             return await OutlineStage().run(ctx)
 
@@ -287,11 +303,53 @@ def test_outline_run_single_pool_entry_used_directly() -> None:
     )
 
     async def _inner() -> dict[str, object]:
-        with patch(
-            'server.apps.generation.clients.llm.run_agent',
-            new=AsyncMock(return_value=fake_output),
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.outline.compute_soft_spots',
+                return_value='',
+            ),
         ):
             return await OutlineStage().run(ctx)
 
     result = asyncio.run(_inner())
     assert result['format_key'] == 'only_fmt'
+
+
+def test_outline_run_includes_soft_spots_in_prompt_context() -> None:
+    """run() passes compute_soft_spots' output into the prompt render call."""
+    from server.apps.pipelines.schemas import Chapter, OutlineOutput
+
+    ctx = _make_ctx()
+    fake_output = OutlineOutput(
+        chapters=[
+            Chapter(
+                idx=0,
+                title='T',
+                thesis='X',
+                target_seconds=60,
+                device='open_loop',
+            ),
+        ],
+        total_target_seconds=60,
+    )
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.outline.compute_soft_spots',
+                return_value='Known pacing soft spots on this channel: ...',
+            ),
+        ):
+            return await OutlineStage().run(ctx)
+
+    asyncio.run(_inner())
+    render_kwargs = ctx.prompts.render.call_args.args[1]
+    assert 'soft spots' in render_kwargs['soft_spots']
