@@ -62,6 +62,7 @@ def test_script_run_returns_chapters_and_word_count() -> None:
                 text='Rome was great.',
                 word_count=3,
                 closing_line='But it fell.',
+                commentary="I think Rome's fall was avoidable, not inevitable.",
             ),
         ],
         total_word_count=3,
@@ -77,3 +78,44 @@ def test_script_run_returns_chapters_and_word_count() -> None:
     result = asyncio.run(_inner())
     assert 'chapters' in result
     assert result['total_word_count'] == 3
+
+
+def test_script_chapter_requires_commentary() -> None:
+    """ScriptChapter without commentary fails validation."""
+    import pytest
+    from pydantic import ValidationError
+
+    from server.apps.pipelines.schemas import ScriptChapter
+
+    with pytest.raises(ValidationError):
+        ScriptChapter(
+            idx=0,
+            title='Intro',
+            text='Rome was great.',
+            word_count=3,
+            closing_line='But it fell.',
+            commentary='',
+        )
+
+
+def test_script_output_rejects_filler_commentary() -> None:
+    """ScriptOutput construction fails when commentary just echoes narration."""
+    import pytest
+    from pydantic import ValidationError
+
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+
+    with pytest.raises(ValidationError):
+        ScriptOutput(
+            chapters=[
+                ScriptChapter(
+                    idx=0,
+                    title='Intro',
+                    text='Rome was great and powerful for centuries.',
+                    word_count=7,
+                    closing_line='It fell.',
+                    commentary='Rome was great and powerful for centuries.',
+                ),
+            ],
+            total_word_count=7,
+        )

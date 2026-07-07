@@ -3,7 +3,7 @@
 from functools import cache
 from typing import Any, override
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
@@ -35,6 +35,18 @@ def _agent() -> Agent[StageContext, ScriptOutput]:
             'No greetings. Short sentences. Curiosity gaps at chapter ends. '
             'First 30s hooks must restate the core payoff.'
         )
+
+    @a.output_validator
+    def _validate(  # pragma: no cover
+        ctx: RunContext[StageContext],
+        output: ScriptOutput,
+    ) -> ScriptOutput:
+        """Reject scripts whose commentary is filler, not genuine analysis."""
+        try:
+            output.model_validate(output.model_dump())
+        except ValueError as exc:
+            raise ModelRetry(str(exc)) from exc
+        return output
 
     return a
 
@@ -70,7 +82,11 @@ class ScriptStage(Stage):
             f'Chapters: {chapters}\n'
             f'Research: {research.get("brief", {})}\n'
             f'Target WPM: {wpm}. '
-            f'Include a closing_line per chapter for continuity.'
+            f'Include a closing_line per chapter for continuity. '
+            f'For every chapter also write commentary: 1-3 sentences of '
+            f'genuine analysis or a stated opinion — not a restatement of '
+            f'the narration — that reflects a real editorial point of view '
+            f'on the material.'
         )
         output: ScriptOutput = await llm_client.run_agent(
             _agent(),
