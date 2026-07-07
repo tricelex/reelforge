@@ -74,6 +74,8 @@ def _channel_median_ctr(
 ) -> float | None:
     from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
 
+    # One value per job (its latest snapshot) so a job tracked over many
+    # days is not counted repeatedly when computing the channel median.
     raw = (
         PublishJobMetric.objects
         .filter(
@@ -81,6 +83,8 @@ def _channel_median_ctr(
             impressions_ctr__isnull=False,
         )
         .exclude(publish_job_id=exclude_job_id)
+        .order_by('publish_job_id', '-pulled_at')
+        .distinct('publish_job_id')
         .values_list('impressions_ctr', flat=True)
     )
     values = sorted(cast('list[float]', list(raw)))

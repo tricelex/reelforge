@@ -203,6 +203,38 @@ def test_channel_median_ctr_none_and_even_average() -> None:
     assert _channel_median_ctr(channel.id, uuid.uuid4()) == pytest.approx(0.05)
 
 
+@pytest.mark.django_db
+def test_channel_median_ctr_counts_each_job_once() -> None:
+    """A job with several daily snapshots contributes only its latest CTR."""
+    import uuid
+    from datetime import timedelta
+
+    import django.utils.timezone as tz
+
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.pipelines.tasks import _channel_median_ctr
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    channel, _bp, run = _make_channel_with_jobs()
+    job = PublishJob.objects.create(
+        run=run,
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_multi',
+    )
+    old = PublishJobMetric.objects.create(
+        publish_job=job,
+        impressions_ctr=0.02,
+    )
+    PublishJobMetric.objects.filter(id=old.id).update(
+        pulled_at=tz.now() - timedelta(days=3),
+    )
+    PublishJobMetric.objects.create(publish_job=job, impressions_ctr=0.08)
+
+    # Two snapshots for one job must not skew the median toward 0.05.
+    assert _channel_median_ctr(channel.id, uuid.uuid4()) == pytest.approx(0.08)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_maybe_swap_job_skips_when_no_metric() -> None:
     """A job without a CTR metric is skipped (no swap, no state change)."""
