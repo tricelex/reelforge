@@ -17,6 +17,30 @@ from server.apps.pipelines.stages.base import (
 )
 from server.apps.publishing.models import PublishJob, PublishStatus
 
+_CATEGORY_NAME_TO_ID: dict[str, str] = {
+    'film & animation': '1',
+    'autos & vehicles': '2',
+    'music': '10',
+    'pets & animals': '15',
+    'sports': '17',
+    'travel & events': '19',
+    'gaming': '20',
+    'people & blogs': '22',
+    'comedy': '23',
+    'entertainment': '24',
+    'news & politics': '25',
+    'howto & style': '26',
+    'education': '27',
+    'science & technology': '28',
+    'nonprofits & activism': '29',
+}
+_DEFAULT_CATEGORY_ID = '27'  # Education
+
+
+def _category_id_for_name(name: str) -> str:
+    """Map a YouTube category name to its categoryId; unknown -> Education."""
+    return _CATEGORY_NAME_TO_ID.get(name.strip().lower(), _DEFAULT_CATEGORY_ID)
+
 
 async def _download_asset(asset: Any) -> bytes:
     """Download asset bytes via its presigned URL."""
@@ -55,6 +79,8 @@ class PublishStage(Stage):
         final_asset = await Asset.objects.aget(id=final_asset_id)
         video_bytes = await _download_asset(final_asset)
 
+        category_id = _category_id_for_name(meta.get('category', 'Education'))
+
         job = await PublishJob.objects.acreate(
             run=ctx.run,
             channel=ctx.channel,
@@ -75,6 +101,7 @@ class PublishStage(Stage):
             title=meta['title'],
             description=meta['description'],
             tags=meta.get('tags', []),
+            category_id=category_id,
             schedule_at=schedule_at,
             contains_synthetic_media=True,
         )
