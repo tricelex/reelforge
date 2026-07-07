@@ -4,6 +4,8 @@ The views are created in migration 0001_initial. Call
 ``refresh_analytics_views()`` (in tasks.py) to keep them current.
 """
 
+from typing import ClassVar
+
 from django.db import models
 
 
@@ -63,3 +65,25 @@ class StagePerformance(models.Model):
     class Meta:
         managed = False
         db_table = 'analytics_stage_performance'
+
+
+class PublishJobMetric(models.Model):
+    """One YouTube Analytics snapshot for a PublishJob, pulled daily."""
+
+    id = models.BigAutoField(primary_key=True)
+    publish_job = models.ForeignKey(
+        'publishing.PublishJob',
+        on_delete=models.CASCADE,
+        related_name='metrics',
+    )
+    pulled_at = models.DateTimeField(auto_now_add=True)
+    views = models.IntegerField(default=0)
+    avg_view_duration_s = models.FloatField(default=0.0)
+    avg_view_percentage = models.FloatField(default=0.0)
+    impressions = models.IntegerField(null=True, blank=True)
+    impressions_ctr = models.FloatField(null=True, blank=True)
+    retention_curve = models.JSONField(default=list)
+
+    class Meta:
+        db_table = 'analytics_publish_job_metric'
+        ordering: ClassVar = ['-pulled_at']

@@ -47,7 +47,8 @@ _YOUTUBE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 _YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
 _YOUTUBE_SCOPES = (
     'https://www.googleapis.com/auth/youtube.upload '
-    'https://www.googleapis.com/auth/youtube'
+    'https://www.googleapis.com/auth/youtube '
+    'https://www.googleapis.com/auth/yt-analytics.readonly'
 )
 _GRADUATION_REQUIRED_RUNS = 10
 
