@@ -673,7 +673,15 @@ class ClipTimedSfxCollectionView(
             limit=limit,
         )
 
-    @modify(status_code=HTTPStatus.CREATED)
+    @modify(
+        status_code=HTTPStatus.CREATED,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.BAD_REQUEST,
+            ),
+        ],
+    )
     def post(
         self,
         parsed_body: Body[ClipTimedSfxCreatePayload],
@@ -682,6 +690,28 @@ class ClipTimedSfxCollectionView(
         return self.resolve(ClipsService).create_sfx(
             str(self.kwargs['candidate_id']),
             parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ValidationError):  # pragma: no branch
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            return self.to_error(
+                self.format_error(
+                    '; '.join(str(m) for m in messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint,
+            controller,
+            exc,
         )
 
 
@@ -737,13 +767,22 @@ class ClipTimedSfxDetailView(
         controller: Controller[MsgspecSerializer],
         exc: Exception,
     ) -> HttpResponse:
-        if isinstance(exc, ClipTimedSfx.DoesNotExist):  # pragma: no branch
+        if isinstance(exc, ClipTimedSfx.DoesNotExist):
             return self.to_error(
                 self.format_error(
                     'SFX drop not found',
                     error_type=ErrorType.not_found,
                 ),
                 status_code=HTTPStatus.NOT_FOUND,
+            )
+        if isinstance(exc, ValidationError):  # pragma: no branch
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            return self.to_error(
+                self.format_error(
+                    '; '.join(str(m) for m in messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.BAD_REQUEST,
             )
         return super().handle_error(  # pragma: no cover
             endpoint,

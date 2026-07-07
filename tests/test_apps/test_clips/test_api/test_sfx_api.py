@@ -121,3 +121,39 @@ def test_create_and_list_sfx(
         headers=auth_headers,
     )
     assert delete_resp.status_code == HTTPStatus.NO_CONTENT
+
+
+@pytest.mark.django_db
+def test_create_sfx_rejects_empty_asset_id(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST with an empty sfx_asset_id returns 400 instead of crashing."""
+    response = dmr_client.post(
+        reverse(
+            'clips:sfx_list',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        data={'sfx_asset_id': '', 'start_sec': 0},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_create_sfx_rejects_malformed_asset_id(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST with a malformed sfx_asset_id returns 400."""
+    response = dmr_client.post(
+        reverse(
+            'clips:sfx_list',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        data={'sfx_asset_id': 'not-a-uuid', 'start_sec': 0},
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
