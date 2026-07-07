@@ -38,22 +38,32 @@ def _agent() -> Agent[StageContext, MusicPlanOutput]:
 
 
 async def _fetch_music_library(channel_id: str) -> list[dict[str, Any]]:
-    """Query LibraryAsset for MUSIC kind, scoped to channel then global."""
+    """Query LibraryAsset MUSIC with a verified license, channel then global."""
+    from django.db import models  # noqa: PLC0415
+
     from server.apps.assets.models import (  # noqa: PLC0415
         LibraryAsset,
         LibraryAssetKind,
+        LibraryAssetLicense,
     )
 
-    channel_qs = LibraryAsset.objects.filter(
-        kind=LibraryAssetKind.MUSIC,
-        is_active=True,
-        channel__id=channel_id,
-    )
+    licensed = ~models.Q(license_type=LibraryAssetLicense.UNSPECIFIED)
     global_qs = LibraryAsset.objects.filter(
+        licensed,
         kind=LibraryAssetKind.MUSIC,
         is_active=True,
         channel__isnull=True,
     )
+    if channel_id:
+        channel_qs = LibraryAsset.objects.filter(
+            licensed,
+            kind=LibraryAssetKind.MUSIC,
+            is_active=True,
+            channel__id=channel_id,
+        )
+        combined = channel_qs | global_qs
+    else:
+        combined = global_qs
     return [
         {
             'id': str(asset.id),
@@ -61,7 +71,7 @@ async def _fetch_music_library(channel_id: str) -> list[dict[str, Any]]:
             'tags': asset.tags,
             'meta': asset.meta,
         }
-        async for asset in (channel_qs | global_qs).order_by('name')[:50]
+        async for asset in combined.order_by('name')[:50]
     ]
 
 

@@ -1,9 +1,31 @@
 """Tests for the music_plan stage."""
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from server.apps.pipelines.stages.music_plan import MusicPlanStage
+
+
+def _run(coro: Coroutine[Any, Any, Any]) -> Any:
+    from asgiref.sync import sync_to_async
+
+    @sync_to_async
+    def _close_connections() -> None:
+        from django.db import connections
+
+        connections.close_all()
+
+    async def _wrapped() -> Any:
+        try:
+            return await coro
+        finally:
+            await _close_connections()
+
+    return asyncio.run(_wrapped())
 
 
 def _make_ctx() -> MagicMock:
@@ -85,6 +107,27 @@ def test_music_plan_run_returns_entries() -> None:
     result = asyncio.run(_inner())
     assert 'entries' in result
     assert result['entries'][0]['chapter_idx'] == 0  # type: ignore[index]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_fetch_music_library_excludes_unspecified_license() -> None:
+    """Tracks with license_type=UNSPECIFIED are excluded from the music pool."""
+    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
+    from server.apps.pipelines.stages.music_plan import _fetch_music_library
+
+    LibraryAsset.objects.create(
+        kind=LibraryAssetKind.MUSIC,
+        name='Unverified track',
+    )
+    LibraryAsset.objects.create(
+        kind=LibraryAssetKind.MUSIC,
+        name='Verified track',
+        license_type='ROYALTY_FREE_VERIFIED',
+    )
+
+    library = _run(_fetch_music_library(channel_id=''))
+    names = {track['name'] for track in library}
+    assert names == {'Verified track'}
 
 
 def test_fetch_music_library_returns_empty_list_when_no_assets() -> None:
