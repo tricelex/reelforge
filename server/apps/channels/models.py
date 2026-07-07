@@ -73,11 +73,14 @@ class Channel(UUIDModel, TimeStampedModel):
         null=True,
         blank=True,
     )
+    max_publishes_per_day = models.PositiveSmallIntegerField(default=1)
     voice_id = models.CharField(max_length=100, blank=True)
     stability = models.FloatField(default=0.5)
     similarity_boost = models.FloatField(default=0.75)
     wpm = models.PositiveIntegerField(default=158)
-    default_blueprint_name = models.CharField(max_length=100, blank=True, default='')
+    default_blueprint_name = models.CharField(
+        max_length=100, blank=True, default=''
+    )
     provider_daily_caps = models.JSONField(default=list, blank=True)
     config_overrides = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)

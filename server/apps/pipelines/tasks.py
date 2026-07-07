@@ -21,3 +21,29 @@ async def advance_pipeline(run_id: str) -> None:
     )
 
     await advance_pipeline_impl(run_id)
+
+
+@broker.task(retry_on_error=False, queue='api')
+async def resume_publish_held_runs() -> None:
+    """Resume every PUBLISH_HOLD run — called once daily by a scheduler.
+
+    Uses ``resume_run_impl`` (not ``advance_pipeline_impl``) so the run
+    transitions out of PUBLISH_HOLD back to RUNNING before the DAG is
+    re-evaluated; a run still over its daily cap re-parks at PUBLISH_HOLD.
+    """
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        resume_run_impl,
+    )
+
+    run_ids = [
+        str(run_id)
+        async for run_id in PipelineRun.objects.filter(
+            status=RunStatus.PUBLISH_HOLD,
+        ).values_list('id', flat=True)
+    ]
+    for run_id in run_ids:
+        await resume_run_impl(run_id)

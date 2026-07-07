@@ -20,6 +20,7 @@ class RunStatus(models.TextChoices):
     RUNNING = 'RUNNING', 'Running'
     AWAITING_REVIEW = 'AWAITING_REVIEW', 'Awaiting review'
     BUDGET_HOLD = 'BUDGET_HOLD', 'Budget hold'
+    PUBLISH_HOLD = 'PUBLISH_HOLD', 'Publish hold'
     PUBLISHING = 'PUBLISHING', 'Publishing'
     COMPLETED = 'COMPLETED', 'Completed'
     FAILED = 'FAILED', 'Failed'
