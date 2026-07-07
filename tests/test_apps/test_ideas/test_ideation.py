@@ -86,6 +86,47 @@ def test_build_prompt_includes_niche_and_remix_fields() -> None:
     assert 'unknown' in remix_prompt
 
 
+def test_build_prompt_includes_trending_block_when_outliers_present() -> None:
+    """Niche-only mode includes a TRENDING block when outliers are supplied."""
+    from server.apps.ideas.logic.schemas import OutlierVideo
+
+    context = IdeationContext(
+        audience='history buffs',
+        angle='ancient empires',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+    )
+    outliers = [
+        OutlierVideo(
+            video_id='v1',
+            title='Why Rome Really Fell',
+            channel_title='History Hub',
+            view_count=2_000_000,
+            published_at='2026-06-01T00:00:00Z',
+            outlier_score=3.2,
+        ),
+    ]
+
+    prompt = _build_prompt(context, None, count=3, outliers=outliers)
+    assert 'TRENDING IN YOUR NICHE' in prompt
+    assert 'Why Rome Really Fell' in prompt
+
+
+def test_build_prompt_omits_trending_block_when_no_outliers() -> None:
+    context = IdeationContext(
+        audience='a',
+        angle='b',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+    )
+    prompt = _build_prompt(context, None, count=3, outliers=None)
+    assert 'TRENDING IN YOUR NICHE' not in prompt
+
+
 def test_run_ideation_agent_delegates_to_cached_agent() -> None:
     """run_ideation_agent returns structured output from the agent."""
     context = IdeationContext(
@@ -367,3 +408,46 @@ def test_generate_raises_when_all_filtered(
             str(niche.id),
             IdeaGeneratePayload(count=1),
         )
+
+
+@pytest.mark.django_db
+def test_generate_passes_cached_outliers_to_agent(niche: NicheConfig) -> None:
+    """Niche-only generate() calls run_ideation_agent with cached outliers."""
+    from server.apps.ideas.models import NicheOutlierScan
+
+    NicheOutlierScan.objects.create(
+        niche=niche,
+        query='ancient empires history buffs',
+        results=[
+            {
+                'video_id': 'v1',
+                'title': 'Cached Outlier',
+                'channel_title': 'c',
+                'view_count': 1,
+                'published_at': '2026-01-01T00:00:00Z',
+                'outlier_score': 1.0,
+            }
+        ],
+    )
+    service = IdeationService(runs=MagicMock(spec=PipelineRunService))
+    mock_output = IdeationOutput(
+        ideas=[
+            TopicCandidate(
+                title='Rome supply lines',
+                topic='Roman logistics',
+                score=0.9,
+                remix_strategy='a',
+                hook_pattern='b',
+                differentiation='c',
+            ),
+        ],
+    )
+
+    with patch(
+        'server.apps.ideas.services.run_ideation_agent',
+        return_value=mock_output,
+    ) as mock_run:
+        service.generate(str(niche.id), IdeaGeneratePayload(count=1))
+
+    call_kwargs = mock_run.call_args.kwargs
+    assert call_kwargs['outliers'][0].title == 'Cached Outlier'
