@@ -19,6 +19,7 @@ from server.apps.ideas.logic.value_objects import (
     TopicIdeaPatchPayload,
     TopicIdeaPayload,
 )
+from server.apps.ideas.outlier_scan import get_cached_scan
 from server.apps.ideas.selectors import (
     _idea_to_payload,
     build_ideation_context,
@@ -142,10 +143,14 @@ class IdeationService:
         source = (
             ingest_youtube(payload.source_url) if payload.source_url else None
         )
+        outliers = None
+        if source is None:
+            outliers = get_cached_scan(str(niche.id))
         output = run_ideation_agent(
             context,
             source=source,
             count=count,
+            outliers=outliers,
         )
         filtered = filter_ideation_candidates(
             output.ideas,
