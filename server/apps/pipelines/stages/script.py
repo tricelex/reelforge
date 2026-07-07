@@ -114,7 +114,8 @@ async def _recent_script_embeddings(
     return [
         cast('list[float]', run.script_embedding)
         async for run in (
-            PipelineRun.objects.filter(
+            PipelineRun.objects
+            .filter(
                 channel_id=channel_id,
                 status=RunStatus.COMPLETED,
                 script_embedding__isnull=False,

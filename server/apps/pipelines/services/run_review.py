@@ -182,7 +182,9 @@ class RunReviewService:
             )
         meta = meta_exec.output
         tags_raw = meta.get('tags', [])
-        tags = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+        tags = (
+            [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+        )
         thumb = meta.get('thumbnail_asset_id')
         return PublishMetadataPayload(
             title=str(meta.get('title', '')),

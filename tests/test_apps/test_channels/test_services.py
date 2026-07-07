@@ -17,16 +17,26 @@ def test_graduation_status_counts_consecutive_clean_completed_runs() -> None:
 
     channel = Channel.objects.create(name='Grad Ch', kind=ChannelKind.LONGFORM)
     bp = PipelineBlueprint.objects.create(
-        name='grad_test_v1', kind=PipelineKind.LONGFORM, graph={'stages': []},
+        name='grad_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
     )
     for _ in range(3):
         PipelineRun.objects.create(
-            channel=channel, blueprint=bp, blueprint_snapshot={}, topic='clean',
-            status=RunStatus.COMPLETED, had_manual_edits=False,
+            channel=channel,
+            blueprint=bp,
+            blueprint_snapshot={},
+            topic='clean',
+            status=RunStatus.COMPLETED,
+            had_manual_edits=False,
         )
     PipelineRun.objects.create(
-        channel=channel, blueprint=bp, blueprint_snapshot={}, topic='dirty',
-        status=RunStatus.COMPLETED, had_manual_edits=True,
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='dirty',
+        status=RunStatus.COMPLETED,
+        had_manual_edits=True,
     )
 
     status = ChannelService().graduation_status(str(channel.id))
@@ -46,14 +56,23 @@ def test_graduation_status_eligible_at_threshold() -> None:
         RunStatus,
     )
 
-    channel = Channel.objects.create(name='Grad Ch 2', kind=ChannelKind.LONGFORM)
+    channel = Channel.objects.create(
+        name='Grad Ch 2',
+        kind=ChannelKind.LONGFORM,
+    )
     bp = PipelineBlueprint.objects.create(
-        name='grad_test_v2', kind=PipelineKind.LONGFORM, graph={'stages': []},
+        name='grad_test_v2',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
     )
     for _ in range(10):
         PipelineRun.objects.create(
-            channel=channel, blueprint=bp, blueprint_snapshot={}, topic='clean',
-            status=RunStatus.COMPLETED, had_manual_edits=False,
+            channel=channel,
+            blueprint=bp,
+            blueprint_snapshot={},
+            topic='clean',
+            status=RunStatus.COMPLETED,
+            had_manual_edits=False,
         )
 
     status = ChannelService().graduation_status(str(channel.id))

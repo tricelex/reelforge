@@ -194,7 +194,8 @@ def _branding_warnings(
     if is_all_default:
         return []
     others = (
-        ChannelBranding.objects.exclude(channel_id=channel.id)
+        ChannelBranding.objects
+        .exclude(channel_id=channel.id)
         .select_related('channel')
         .prefetch_related('fonts')
     )
