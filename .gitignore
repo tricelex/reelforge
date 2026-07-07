@@ -260,3 +260,4 @@ artifacts/
 .safety/
 
 design_handoff_reelforge/
+.local/

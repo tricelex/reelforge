@@ -97,6 +97,19 @@ def _apply_patch_fields(
     return update_fields
 
 
+def _require_asset_uuid(value: str, field_name: str) -> uuid.UUID:
+    """Parse a required asset UUID, raising ValidationError when invalid."""
+    trimmed = value.strip()
+    if not trimmed:
+        msg = f'{field_name} is required'
+        raise ValidationError(msg)
+    try:
+        return uuid.UUID(trimmed)
+    except ValueError as exc:
+        msg = f'Invalid {field_name}: {value}'
+        raise ValidationError(msg) from exc
+
+
 def _config_version(candidate_id: str) -> int:
     """Return a monotonic-ish version from candidate + config timestamps."""
     return preview_config_version(candidate_id)
@@ -1133,10 +1146,14 @@ class ClipsService:
             ClipTimedSfx,
         )
 
+        sfx_asset_uuid = _require_asset_uuid(
+            payload.sfx_asset_id,
+            'sfx_asset_id',
+        )
         ClipCandidate.objects.get(id=candidate_id)
         sfx = ClipTimedSfx.objects.create(
             candidate_id=candidate_id,
-            sfx_asset_id=uuid.UUID(payload.sfx_asset_id),
+            sfx_asset_id=sfx_asset_uuid,
             start_sec=payload.start_sec,
             volume_db=payload.volume_db,
         )
@@ -1172,7 +1189,10 @@ class ClipsService:
             ('start_sec', 'volume_db'),
         )
         if payload.sfx_asset_id is not None:
-            sfx.sfx_asset_id = uuid.UUID(payload.sfx_asset_id)
+            sfx.sfx_asset_id = _require_asset_uuid(
+                payload.sfx_asset_id,
+                'sfx_asset_id',
+            )
             update_fields.append('sfx_asset_id')
         if update_fields:
             sfx.save(update_fields=update_fields)

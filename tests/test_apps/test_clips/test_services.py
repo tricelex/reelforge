@@ -755,3 +755,53 @@ def test_sfx_crud_lifecycle(candidate: ClipCandidate) -> None:
 
     svc.delete_sfx(str(candidate.id), created.id)
     assert svc.list_sfx(str(candidate.id)).total == 0
+
+
+@pytest.mark.django_db
+def test_create_sfx_rejects_empty_asset_id(candidate: ClipCandidate) -> None:
+    """create_sfx raises ValidationError for an empty sfx_asset_id."""
+    from django.core.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        _clips_service().create_sfx(
+            str(candidate.id),
+            ClipTimedSfxCreatePayload(sfx_asset_id='', start_sec=0.0),
+        )
+
+
+@pytest.mark.django_db
+def test_create_sfx_rejects_malformed_asset_id(
+    candidate: ClipCandidate,
+) -> None:
+    """create_sfx raises ValidationError for a malformed sfx_asset_id."""
+    from django.core.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        _clips_service().create_sfx(
+            str(candidate.id),
+            ClipTimedSfxCreatePayload(sfx_asset_id='not-a-uuid'),
+        )
+
+
+@pytest.mark.django_db
+def test_patch_sfx_rejects_empty_asset_id(candidate: ClipCandidate) -> None:
+    """patch_sfx raises ValidationError for an empty sfx_asset_id."""
+    from django.core.exceptions import ValidationError
+
+    sfx_asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.SFX,
+        name='whoosh.mp3',
+        file=ContentFile(b'audio', name='whoosh.mp3'),
+    )
+    svc = _clips_service()
+    created = svc.create_sfx(
+        str(candidate.id),
+        ClipTimedSfxCreatePayload(sfx_asset_id=str(sfx_asset.id)),
+    )
+
+    with pytest.raises(ValidationError):
+        svc.patch_sfx(
+            str(candidate.id),
+            created.id,
+            ClipTimedSfxPatchPayload(sfx_asset_id=''),
+        )
