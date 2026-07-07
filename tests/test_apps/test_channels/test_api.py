@@ -731,3 +731,56 @@ def test_graduation_status_endpoint(
     assert body['clean_run_count'] == 0
     assert body['required_count'] == 10
     assert body['eligible'] is False
+
+
+@pytest.mark.django_db
+def test_branding_warns_when_identical_to_another_channel(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    from server.apps.channels.models import ChannelBranding
+
+    channel_a = Channel.objects.create(name='Warn A', kind=ChannelKind.LONGFORM)
+    channel_b = Channel.objects.create(name='Warn B', kind=ChannelKind.LONGFORM)
+    ChannelBranding.objects.create(
+        channel=channel_a,
+        watermark_position='top_left',
+    )
+    ChannelBranding.objects.create(
+        channel=channel_b,
+        watermark_position='top_left',
+    )
+
+    response = dmr_client.get(
+        reverse(
+            'api:channels_api:channel-branding',
+            kwargs={'channel_id': str(channel_b.id)},
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    body = response.json()
+    assert body['warnings']
+    assert 'Warn A' in body['warnings'][0]
+
+
+@pytest.mark.django_db
+def test_branding_no_warning_for_default_empty_branding(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """Two channels with no branding set (all-default) should not warn each other."""
+    other = Channel.objects.create(name='Other Default', kind=ChannelKind.LONGFORM)
+    from server.apps.channels.models import ChannelBranding
+
+    ChannelBranding.objects.create(channel=other)
+
+    response = dmr_client.get(
+        reverse(
+            'api:channels_api:channel-branding',
+            kwargs={'channel_id': str(channel.id)},
+        ),
+        headers=auth_headers,
+    )
+    assert response.json()['warnings'] == []
