@@ -134,6 +134,14 @@ class SceneBreakdownOutput(BaseModel):
         return self
 
 
+class NarrativeQCOutput(BaseModel):
+    """LLM-judge score for a script + scene breakdown, before render spend."""
+
+    passed: bool
+    score: float = Field(ge=0.0, le=1.0)
+    issues: list[str] = Field(default_factory=list)
+
+
 class VisualPrompt(BaseModel):
     """An image generation prompt for one scene."""
 

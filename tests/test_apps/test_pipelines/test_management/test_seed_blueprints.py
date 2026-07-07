@@ -54,3 +54,17 @@ def test_seed_blueprints_still_creates_longform_v1() -> None:
 
     call_command('seed_blueprints')
     assert PipelineBlueprint.objects.filter(name='longform_v1').exists()
+
+
+def test_longform_v1_graph_includes_narrative_qc_between_breakdown_and_visuals() -> (
+    None
+):
+    from server.apps.pipelines.management.commands.seed_blueprints import (
+        _LONGFORM_V1_GRAPH,
+    )
+
+    stages: list[dict[str, object]] = _LONGFORM_V1_GRAPH['stages']  # type: ignore[assignment]
+    by_key = {node['key']: node for node in stages}
+    assert by_key['narrative_qc']['depends_on'] == ['scene_breakdown']
+    assert by_key['visual_prompts']['depends_on'] == ['narrative_qc']
+    assert by_key['tts']['depends_on'] == ['narrative_qc']
