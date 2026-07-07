@@ -122,6 +122,24 @@ class Channel(UUIDModel, TimeStampedModel):
             return []
         return list(style.camera_movements)
 
+    @property
+    def assembly_style_transition_styles(self) -> list[str]:
+        """Transition-style pool from the AssemblyStyleConfig, or []."""
+        try:
+            style = self.assembly_style
+        except AssemblyStyleConfig.DoesNotExist:
+            return []
+        return list(style.transition_styles)
+
+    @property
+    def assembly_style_sfx_pool_tags(self) -> list[str]:
+        """SFX tag pool from the AssemblyStyleConfig, or []."""
+        try:
+            style = self.assembly_style
+        except AssemblyStyleConfig.DoesNotExist:
+            return []
+        return list(style.sfx_pool_tags)
+
 
 class NicheConfig(UUIDModel, TimeStampedModel):
     """Content configuration for one channel: audience, angle, format, lore."""

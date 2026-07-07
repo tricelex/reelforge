@@ -12,6 +12,16 @@ from server.apps.pipelines.stages.base import (
     register_stage,
 )
 
+_DEFAULT_TRANSITION = 'hard_cut'
+_TRANSITION_DURATION_S = 0.5
+
+
+def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
+    """Cycle through the channel's transition-style pool by chapter index."""
+    if not pool:
+        return _DEFAULT_TRANSITION
+    return pool[chapter_idx % len(pool)]
+
 
 def _group_scenes_by_chapter(
     scenes: list[dict[str, Any]],
@@ -125,6 +135,7 @@ async def _build_chapter_files(
     scene_groups: dict[int, list[dict[str, Any]]],
     scene_asset_map: dict[int, str],
     chapter_audio_files: dict[int, str],
+    transition_pool: list[str],
 ) -> list[str]:
     """Mux scenes per chapter and concat; return ordered chapter file paths."""
     from server.apps.rendering import ffmpeg  # noqa: PLC0415
@@ -153,8 +164,14 @@ async def _build_chapter_files(
                 out_path=str(mezz_file),
             )
             scene_mezz_files.append(str(mezz_file))
+        transition = _pick_transition_style(transition_pool, ch_idx)
         chapter_file = tmp / f'ch_{ch_idx:03d}_concat.mp4'
-        await ffmpeg.concat_chapter(scene_mezz_files, str(chapter_file))
+        await ffmpeg.concat_chapter_with_transition(
+            scene_mezz_files,
+            transition,
+            _TRANSITION_DURATION_S,
+            str(chapter_file),
+        )
         chapter_files.append(str(chapter_file))
     return chapter_files
 
@@ -177,6 +194,40 @@ async def _build_music_paths(
         music_paths.append(str(music_file))
         music_gains.append(float(entry.get('gain_db', 0.0)))
     return music_paths, music_gains
+
+
+_SFX_GAIN_DB = -12.0
+_SFX_LIMIT = 3
+
+
+async def _build_sfx_paths(
+    tmp: Path,
+    ctx: StageContext,
+) -> tuple[list[str], list[float]]:
+    """Download up to 3 SFX tracks matching the channel's sfx_pool_tags."""
+    from server.apps.assets.models import (  # noqa: PLC0415
+        LibraryAsset,
+        LibraryAssetKind,
+    )
+
+    tags = getattr(ctx.channel, 'assembly_style_sfx_pool_tags', [])
+    if not tags:
+        return [], []
+    assets_qs = LibraryAsset.objects.filter(
+        kind=LibraryAssetKind.SFX,
+        is_active=True,
+        tags__overlap=tags,
+    ).order_by('name')[:_SFX_LIMIT]
+
+    sfx_paths: list[str] = []
+    sfx_gains: list[float] = []
+    async for asset in assets_qs:
+        sfx_bytes = await _fetch_library_bytes(str(asset.id))
+        sfx_file = tmp / f'sfx_{asset.id}.mp3'
+        await asyncio.to_thread(sfx_file.write_bytes, sfx_bytes)
+        sfx_paths.append(str(sfx_file))
+        sfx_gains.append(_SFX_GAIN_DB)
+    return sfx_paths, sfx_gains
 
 
 @register_stage
@@ -226,17 +277,24 @@ class AssemblyStage(Stage):
                 tmp,
                 chapter_audio_map,
             )
+            transition_pool = getattr(
+                ctx.channel,
+                'assembly_style_transition_styles',
+                [],
+            )
             chapter_files = await _build_chapter_files(
                 tmp,
                 scene_groups,
                 scene_asset_map,
                 chapter_audio_files,
+                transition_pool,
             )
             music_paths, music_gains = await _build_music_paths(
                 tmp,
                 scene_groups,
                 music_map,
             )
+            sfx_paths, sfx_gains = await _build_sfx_paths(tmp, ctx)
 
             final_file = tmp / 'final.mp4'
             await ffmpeg.final_pass(
@@ -247,6 +305,8 @@ class AssemblyStage(Stage):
                 watermark_path=watermark_path,
                 out_path=str(final_file),
                 watermark_opacity=watermark_opacity,
+                sfx_paths=sfx_paths,
+                sfx_gains_db=sfx_gains,
             )
 
             probe = await ffmpeg.async_ffprobe(str(final_file))

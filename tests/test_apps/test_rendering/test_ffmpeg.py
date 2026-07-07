@@ -517,10 +517,146 @@ def test_final_pass_raises_on_ffmpeg_failure() -> None:
 from server.apps.rendering.ffmpeg import (
     _build_complex_filter,
     _build_final_pass_cmd,
+    _build_xfade_filter,
     _final_encode_args,
     _loudnorm_audio_filter,
     _run_ffmpeg_cmd,
+    concat_chapter_with_transition,
 )
+
+
+def test_concat_chapter_with_transition_hard_cut_uses_stream_copy() -> None:
+    """hard_cut delegates to concat_chapter (stream copy, no re-encode)."""
+
+    async def _run() -> None:
+        with patch(
+            'server.apps.rendering.ffmpeg.concat_chapter',
+            new=AsyncMock(),
+        ) as mock_concat:
+            await concat_chapter_with_transition(
+                ['/tmp/a.mp4', '/tmp/b.mp4'],
+                'hard_cut',
+                0.5,
+                '/tmp/out.mp4',
+            )
+            mock_concat.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_concat_chapter_with_transition_single_segment_delegates() -> None:
+    """A single segment can't cross-fade, so it delegates to concat_chapter."""
+
+    async def _run() -> None:
+        with patch(
+            'server.apps.rendering.ffmpeg.concat_chapter',
+            new=AsyncMock(),
+        ) as mock_concat:
+            await concat_chapter_with_transition(
+                ['/tmp/a.mp4'],
+                'cross_dissolve',
+                0.5,
+                '/tmp/out.mp4',
+            )
+            mock_concat.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_concat_chapter_with_transition_cross_dissolve_builds_xfade() -> None:
+    """cross_dissolve re-encodes with an xfade/acrossfade filter_complex."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg._probe_duration',
+                new=AsyncMock(return_value=6.0),
+            ),
+        ):
+            await concat_chapter_with_transition(
+                ['/tmp/a.mp4', '/tmp/b.mp4'],
+                'cross_dissolve',
+                0.5,
+                '/tmp/out.mp4',
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'xfade' in cmd
+    assert 'acrossfade' in cmd
+    assert '/tmp/out.mp4' in cmd
+
+
+def test_probe_duration_returns_container_duration() -> None:
+    from server.apps.rendering.ffmpeg import _probe_duration
+
+    fake_probe = {'format': {'duration': '12.5'}, 'streams': []}
+
+    async def _run() -> float:
+        with patch(
+            'server.apps.rendering.ffmpeg.async_ffprobe',
+            new=AsyncMock(return_value=fake_probe),
+        ):
+            return await _probe_duration('/tmp/a.mp4')
+
+    assert asyncio.run(_run()) == 12.5
+
+
+def test_build_xfade_filter_chains_across_inputs() -> None:
+    fc, v_out, a_out = _build_xfade_filter([5.0, 6.0, 7.0], 0.5)
+    assert 'xfade=transition=fade' in fc
+    assert 'acrossfade' in fc
+    assert v_out == '[v2]'
+    assert a_out == '[a2]'
+
+
+def test_final_pass_includes_sfx_in_amix() -> None:
+    """SFX tracks are mixed alongside narration via amix."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured: list[str] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured.extend(args)
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.loudnorm_pass1',
+                new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter',
+                new=AsyncMock(),
+            ),
+        ):
+            await final_pass(
+                chapter_paths=['/tmp/ch0.mp4'],
+                music_paths=[],
+                music_gains_db=[],
+                ass_path=None,
+                watermark_path=None,
+                out_path='/tmp/final.mp4',
+                sfx_paths=['/tmp/sfx.mp3'],
+                sfx_gains_db=[-12.0],
+            )
+
+    asyncio.run(_run())
+    cmd = ' '.join(captured)
+    assert 'amix' in cmd
+    assert '/tmp/sfx.mp3' in cmd
 
 
 def test_loudnorm_audio_filter_builds_string() -> None:
@@ -533,6 +669,8 @@ def test_build_complex_filter_watermark_and_music() -> None:
     fc, vmap, aout = _build_complex_filter(
         music_paths=['/tmp/music.mp3'],
         music_gains_db=[-3.0],
+        sfx_paths=[],
+        sfx_gains_db=[],
         ass_path='/tmp/subs.ass',
         watermark_path='/tmp/wm.png',
         wm_idx=2,
@@ -550,6 +688,8 @@ def test_build_final_pass_cmd_simple_vf_path() -> None:
         inputs=['-i', '/tmp/concat.mp4'],
         music_paths=[],
         music_gains_db=[],
+        sfx_paths=[],
+        sfx_gains_db=[],
         ass_path='/tmp/subs.ass',
         watermark_path=None,
         loudnorm_af='loudnorm=I=-14',
@@ -583,9 +723,12 @@ def test_final_pass_temp_file_cleanup() -> None:
 
     async def _run() -> None:
         with (
-            patch('asyncio.create_subprocess_exec', new=AsyncMock(
-                return_value=mock_proc,
-            )),
+            patch(
+                'asyncio.create_subprocess_exec',
+                new=AsyncMock(
+                    return_value=mock_proc,
+                ),
+            ),
             patch(
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
