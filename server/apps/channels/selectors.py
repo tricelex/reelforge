@@ -18,6 +18,13 @@ from server.apps.pipelines.models import RunStatus
 from server.apps.publishing.models import PublishStatus
 from server.common.pagination import paginate_queryset
 
+# Mirrors ChannelBranding.watermark_position's model default. A branding row
+# left entirely at defaults must not warn against other default rows, so the
+# "all default" fingerprint check compares against this value rather than the
+# row's own position (which would make any watermark-only customization look
+# default).
+_DEFAULT_WATERMARK_POSITION = 'bottom_right'
+
 _IN_FLIGHT_STATUSES = {
     RunStatus.PENDING,
     RunStatus.RUNNING,
@@ -161,6 +168,47 @@ def get_channel_detail(channel_id: str) -> ChannelDetailPayload:
     )
 
 
+def _branding_fingerprint(branding: ChannelBranding) -> tuple[object, ...]:
+    return (
+        branding.intro_id,
+        branding.outro_id,
+        branding.watermark_id,
+        branding.watermark_position,
+        tuple(sorted(str(f.id) for f in branding.fonts.all())),
+    )
+
+
+def _branding_warnings(
+    channel: Channel,
+    branding: ChannelBranding,
+) -> list[str]:
+    """Warn when another channel's branding is fingerprint-identical."""
+    fingerprint = _branding_fingerprint(branding)
+    is_all_default = fingerprint == (
+        None,
+        None,
+        None,
+        _DEFAULT_WATERMARK_POSITION,
+        (),
+    )
+    if is_all_default:
+        return []
+    others = (
+        ChannelBranding.objects.exclude(channel_id=channel.id)
+        .select_related('channel')
+        .prefetch_related('fonts')
+    )
+    return [
+        (
+            f'Branding matches channel "{other.channel.name}" exactly — '
+            'consider varying watermark, fonts, or intro/outro to reduce '
+            'operator-linkage risk between channels.'
+        )
+        for other in others
+        if _branding_fingerprint(other) == fingerprint
+    ]
+
+
 def get_channel_branding(channel_id: str) -> ChannelBrandingPayload:
     """Return branding config, creating defaults if missing."""
     channel = Channel.objects.get(id=channel_id)
@@ -182,6 +230,7 @@ def get_channel_branding(channel_id: str) -> ChannelBrandingPayload:
         font_asset_ids=[str(f.id) for f in branding.fonts.all()],
         music_pool_tags=list(branding.music_pool_tags),
         thumbnail_palette=dict(branding.thumbnail_palette),
+        warnings=_branding_warnings(channel, branding),
     )
 
 

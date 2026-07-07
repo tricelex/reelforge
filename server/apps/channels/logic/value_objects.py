@@ -119,6 +119,7 @@ class ChannelBrandingPayload(msgspec.Struct, frozen=True):
     font_asset_ids: list[str]
     music_pool_tags: list[str]
     thumbnail_palette: dict[str, str]
+    warnings: list[str]
 
 
 class GraduationStatusPayload(msgspec.Struct, frozen=True):
