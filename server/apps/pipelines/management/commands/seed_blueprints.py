@@ -45,8 +45,13 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
         {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
         {
-            'key': 'visual_prompts',
+            'key': 'narrative_qc',
             'depends_on': ['scene_breakdown'],
+            'queue': 'api',
+        },
+        {
+            'key': 'visual_prompts',
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
         },
         {
@@ -61,7 +66,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'tts',
-            'depends_on': ['scene_breakdown'],
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
             'fan_out': 'chapters',
             'config': {'provider': 'elevenlabs'},
@@ -123,7 +128,11 @@ class Command(BaseCommand):
         specs = [
             ('longform_v1', PipelineKind.LONGFORM, _LONGFORM_V1_GRAPH),
             ('clipping_v1', PipelineKind.CLIPPING, _CLIPPING_V1_GRAPH),
-            ('clipping_v1_manual', PipelineKind.CLIPPING, _CLIPPING_V1_MANUAL_GRAPH),
+            (
+                'clipping_v1_manual',
+                PipelineKind.CLIPPING,
+                _CLIPPING_V1_MANUAL_GRAPH,
+            ),
         ]
         for name, kind, graph in specs:
             bp, created = PipelineBlueprint.objects.update_or_create(
