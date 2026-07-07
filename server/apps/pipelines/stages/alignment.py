@@ -54,6 +54,25 @@ def _fmt_ass_time(seconds: float) -> str:
     return f'{h}:{m:02d}:{s:05.2f}'
 
 
+def _fmt_srt_time(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = round((seconds - int(seconds)) * 1000)
+    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
+
+
+def _build_srt_content(segments: list[dict[str, Any]]) -> bytes:
+    """Build a standard SRT file from WhisperX segment list."""
+    blocks: list[str] = []
+    for i, seg in enumerate(segments, start=1):
+        start = _fmt_srt_time(seg['start'])
+        end = _fmt_srt_time(seg['end'])
+        text = seg['text'].strip()
+        blocks.append(f'{i}\n{start} --> {end}\n{text}')
+    return '\n\n'.join(blocks).encode()
+
+
 @register_stage
 class AlignmentStage(Stage):
     """Stage 9: WhisperX forced alignment and ASS subtitle generation."""
@@ -108,7 +127,15 @@ class AlignmentStage(Stage):
             filename='captions.ass',
             mime='text/x-ssa',
         )
+        srt_bytes = _build_srt_content(all_segments)
+        srt_asset = await ctx.assets.save(
+            kind=AssetKind.SUBTITLE,
+            content=srt_bytes,
+            filename='captions.srt',
+            mime='application/x-subrip',
+        )
         return {
             'scenes': all_scenes,
             'ass_asset_id': str(ass_asset.id),
+            'srt_asset_id': str(srt_asset.id),
         }

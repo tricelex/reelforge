@@ -86,6 +86,47 @@ def test_build_prompt_includes_niche_and_remix_fields() -> None:
     assert 'unknown' in remix_prompt
 
 
+def test_build_prompt_includes_trending_block_when_outliers_present() -> None:
+    """Niche-only mode includes a TRENDING block when outliers are supplied."""
+    from server.apps.ideas.logic.schemas import OutlierVideo
+
+    context = IdeationContext(
+        audience='history buffs',
+        angle='ancient empires',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+    )
+    outliers = [
+        OutlierVideo(
+            video_id='v1',
+            title='Why Rome Really Fell',
+            channel_title='History Hub',
+            view_count=2_000_000,
+            published_at='2026-06-01T00:00:00Z',
+            outlier_score=3.2,
+        ),
+    ]
+
+    prompt = _build_prompt(context, None, count=3, outliers=outliers)
+    assert 'TRENDING IN YOUR NICHE' in prompt
+    assert 'Why Rome Really Fell' in prompt
+
+
+def test_build_prompt_omits_trending_block_when_no_outliers() -> None:
+    context = IdeationContext(
+        audience='a',
+        angle='b',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+    )
+    prompt = _build_prompt(context, None, count=3, outliers=None)
+    assert 'TRENDING IN YOUR NICHE' not in prompt
+
+
 def test_run_ideation_agent_delegates_to_cached_agent() -> None:
     """run_ideation_agent returns structured output from the agent."""
     context = IdeationContext(
@@ -113,6 +154,66 @@ def test_build_ideation_context_reads_niche(niche: NicheConfig) -> None:
     context = build_ideation_context(niche)
     assert context.audience == 'history buffs'
     assert 'crypto' in context.banned_topics
+
+
+@pytest.mark.django_db
+def test_build_ideation_context_includes_performance_notes(
+    niche: NicheConfig,
+) -> None:
+    """Context summarizes trailing AVD% for the channel's completed runs."""
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    bp = PipelineBlueprint.objects.create(
+        name='perf_ctx_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=niche.channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='t',
+        status=RunStatus.COMPLETED,
+    )
+    job = PublishJob.objects.create(
+        run=run,
+        channel=niche.channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt1',
+    )
+    PublishJobMetric.objects.create(
+        publish_job=job,
+        views=1000,
+        avg_view_duration_s=200.0,
+        avg_view_percentage=55.0,
+    )
+
+    context = build_ideation_context(niche)
+    assert (
+        '55.0%' in context.performance_notes
+        or '55.0' in context.performance_notes
+    )
+
+
+def test_build_prompt_includes_performance_notes() -> None:
+    context = IdeationContext(
+        audience='a',
+        angle='b',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+        performance_notes="This channel's last 5 videos averaged 61.2% AVD.",
+    )
+    prompt = _build_prompt(context, None, count=3)
+    assert '61.2%' in prompt
 
 
 @pytest.mark.django_db
@@ -367,3 +468,46 @@ def test_generate_raises_when_all_filtered(
             str(niche.id),
             IdeaGeneratePayload(count=1),
         )
+
+
+@pytest.mark.django_db
+def test_generate_passes_cached_outliers_to_agent(niche: NicheConfig) -> None:
+    """Niche-only generate() calls run_ideation_agent with cached outliers."""
+    from server.apps.ideas.models import NicheOutlierScan
+
+    NicheOutlierScan.objects.create(
+        niche=niche,
+        query='ancient empires history buffs',
+        results=[
+            {
+                'video_id': 'v1',
+                'title': 'Cached Outlier',
+                'channel_title': 'c',
+                'view_count': 1,
+                'published_at': '2026-01-01T00:00:00Z',
+                'outlier_score': 1.0,
+            },
+        ],
+    )
+    service = IdeationService(runs=MagicMock(spec=PipelineRunService))
+    mock_output = IdeationOutput(
+        ideas=[
+            TopicCandidate(
+                title='Rome supply lines',
+                topic='Roman logistics',
+                score=0.9,
+                remix_strategy='a',
+                hook_pattern='b',
+                differentiation='c',
+            ),
+        ],
+    )
+
+    with patch(
+        'server.apps.ideas.services.run_ideation_agent',
+        return_value=mock_output,
+    ) as mock_run:
+        service.generate(str(niche.id), IdeaGeneratePayload(count=1))
+
+    call_kwargs = mock_run.call_args.kwargs
+    assert call_kwargs['outliers'][0].title == 'Cached Outlier'

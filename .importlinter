@@ -148,6 +148,22 @@ ignore_imports =
   server.apps.pipelines.api.review_views -> server.apps.core.auth
   server.apps.pipelines.api.views -> server.apps.core.auth
   server.apps.prompts.api.views -> server.apps.core.auth
+  # Milestone 2 (money loop): niche outlier scan reads the YouTube Data API
+  # client and the channel's niche config; deferred runtime imports.
+  server.apps.ideas.outlier_scan -> server.apps.generation.clients.youtube_search
+  # Milestone 2: ideation context summarises recent publish performance.
+  server.apps.ideas.selectors -> server.apps.analytics.models
+  # Milestone 2: analytics pulls YouTube performance for published jobs.
+  server.apps.analytics.tasks -> server.apps.generation.clients.youtube
+  server.apps.analytics.tasks -> server.apps.generation.clients.youtube_analytics
+  server.apps.analytics.tasks -> server.apps.channels.models
+  server.apps.analytics.tasks -> server.apps.publishing.models
+  # Milestone 2: thumbnail early-swap task reads metrics and swaps via YouTube.
+  server.apps.pipelines.tasks -> server.apps.generation.clients.youtube
+  server.apps.pipelines.tasks -> server.apps.assets.models
+  server.apps.pipelines.tasks -> server.apps.analytics.models
+  server.apps.pipelines.tasks -> server.apps.channels.models
+  server.apps.pipelines.tasks -> server.apps.publishing.models
 
 
 [importlinter:contract:common-module-is-independent]

@@ -40,3 +40,14 @@ class SourceSnapshot(pydantic.BaseModel):
     duration_sec: float
     view_count: int | None
     caption_text: str
+
+
+class OutlierVideo(pydantic.BaseModel):
+    """One over-performing video surfaced by a niche outlier scan."""
+
+    video_id: str
+    title: str
+    channel_title: str
+    view_count: int
+    published_at: str
+    outlier_score: float
