@@ -23,6 +23,11 @@ channel_urlpatterns = [
         name='channel-branding',
     ),
     path(
+        'channels/<uuid:channel_id>/graduation-status/',
+        views.ChannelGraduationStatusController.as_view(),
+        name='channel-graduation-status',
+    ),
+    path(
         'channels/<uuid:channel_id>/niche/',
         character_views.NicheConfigController.as_view(),
         name='channel-niche',

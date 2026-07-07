@@ -102,6 +102,7 @@ class PipelineRun(UUIDModel, TimeStampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     is_paused = models.BooleanField(default=False)
+    had_manual_edits = models.BooleanField(default=False)
     source_idea = models.ForeignKey(
         'ideas.TopicIdea',
         null=True,

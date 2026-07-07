@@ -121,6 +121,14 @@ class ChannelBrandingPayload(msgspec.Struct, frozen=True):
     thumbnail_palette: dict[str, str]
 
 
+class GraduationStatusPayload(msgspec.Struct, frozen=True):
+    """Review-to-auto graduation progress for a channel."""
+
+    clean_run_count: int
+    required_count: int
+    eligible: bool
+
+
 class ChannelBrandingPatchPayload(msgspec.Struct, frozen=True):
     """Partial branding update."""
 

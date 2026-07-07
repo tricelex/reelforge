@@ -19,6 +19,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelCreatePayload,
     ChannelDetailPayload,
     ChannelPatchPayload,
+    GraduationStatusPayload,
     NicheConfigPatchPayload,
     NicheConfigPayload,
     ProviderDailyCapPayload,
@@ -48,6 +49,7 @@ _YOUTUBE_SCOPES = (
     'https://www.googleapis.com/auth/youtube.upload '
     'https://www.googleapis.com/auth/youtube'
 )
+_GRADUATION_REQUIRED_RUNS = 10
 
 
 def _apply_patch_fields(
@@ -293,6 +295,32 @@ class ChannelService:
         if update_fields:
             niche.save(update_fields=update_fields)
         return get_niche_config(str(channel.id))
+
+    def graduation_status(self, channel_id: str) -> GraduationStatusPayload:
+        """Count consecutive trailing clean COMPLETED runs for a channel."""
+        from server.apps.pipelines.models import (  # noqa: PLC0415
+            PipelineRun,
+            RunStatus,
+        )
+
+        clean_count = 0
+        runs = (
+            PipelineRun.objects.filter(
+                channel_id=uuid.UUID(channel_id),
+                status=RunStatus.COMPLETED,
+            )
+            .order_by('-finished_at')
+            .values_list('had_manual_edits', flat=True)
+        )
+        for had_edits in runs:
+            if had_edits:
+                break
+            clean_count += 1
+        return GraduationStatusPayload(
+            clean_run_count=clean_count,
+            required_count=_GRADUATION_REQUIRED_RUNS,
+            eligible=clean_count >= _GRADUATION_REQUIRED_RUNS,
+        )
 
     def youtube_connect_url(
         self,

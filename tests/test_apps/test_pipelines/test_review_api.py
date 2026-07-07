@@ -225,6 +225,66 @@ def test_patch_scene(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_patch_scene_sets_had_manual_edits(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    scene_breakdown_stage: StageExecution,
+    visual_prompts_stage: StageExecution,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH scene marks the run as having had a manual edit."""
+    assert run.had_manual_edits is False
+
+    response = dmr_client.patch(
+        reverse(
+            'api:pipelines_api:run-scene-detail',
+            kwargs={'run_id': run.id, 'scene_idx': 0},
+        ),
+        data={'narration_text': 'Updated narration text here now'},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    run.refresh_from_db()
+    assert run.had_manual_edits is True
+
+
+@pytest.mark.django_db
+def test_publish_metadata_patch_sets_had_manual_edits(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH publish-metadata marks the run as having had a manual edit."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='metadata',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'title': 'Original title',
+            'description': 'Original description',
+            'tags': ['history'],
+            'category': 'Education',
+        },
+    )
+    assert run.had_manual_edits is False
+
+    response = dmr_client.patch(
+        reverse(
+            'api:pipelines_api:run-publish-metadata',
+            kwargs={'run_id': run.id},
+        ),
+        data={'title': 'Updated title'},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    run.refresh_from_db()
+    assert run.had_manual_edits is True
+
+
+@pytest.mark.django_db(transaction=True)
 def test_preview(
     dmr_client: DMRClient,
     run: PipelineRun,
