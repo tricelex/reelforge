@@ -17,6 +17,26 @@ class ResearchSource(BaseModel):
     key_facts: list[str]
 
 
+_MIN_CORROBORATING_SOURCES = 2
+_OVERLAP_THRESHOLD = 0.4
+
+
+def _corroboration_count(fact: str, sources: list[ResearchSource]) -> int:
+    """Count distinct sources whose key_facts overlap this brief-level fact."""
+    fact_words = set(fact.lower().split())
+    count = 0
+    for source in sources:
+        for source_fact in source.key_facts:
+            source_words = set(source_fact.lower().split())
+            if not fact_words or not source_words:
+                continue
+            overlap = len(fact_words & source_words) / len(fact_words)
+            if overlap >= _OVERLAP_THRESHOLD:
+                count += 1
+                break
+    return count
+
+
 class ResearchBrief(BaseModel):
     """Synthesised research brief for the topic."""
 
@@ -25,6 +45,25 @@ class ResearchBrief(BaseModel):
     sources: list[ResearchSource]
     narrative_angles: list[str]
     hooks: list[str]
+
+    @model_validator(mode='after')
+    def enforce_corroboration(self) -> ResearchBrief:
+        """At least half of key_facts must have >=2 corroborating sources."""
+        if not self.key_facts:
+            return self
+        corroborated = sum(
+            1
+            for fact in self.key_facts
+            if _corroboration_count(fact, self.sources)
+            >= _MIN_CORROBORATING_SOURCES
+        )
+        if corroborated < len(self.key_facts) / 2:
+            msg = (
+                'at least half of key_facts must have 2+ corroborating '
+                'sources (matching entries in sources[].key_facts)'
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ResearchOutput(BaseModel):

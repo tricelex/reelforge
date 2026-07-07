@@ -4,7 +4,7 @@ from functools import cache
 from typing import Any, override
 
 from django.conf import settings
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.clients import search as search_client
@@ -47,6 +47,18 @@ def _agent() -> Agent[StageContext, ResearchOutput]:
         api_key: str = getattr(settings, 'EXA_API_KEY', '')
         return await search_client.search(query, api_key=api_key)
 
+    @a.output_validator
+    def _validate(  # pragma: no cover
+        ctx: RunContext[StageContext],
+        output: ResearchOutput,
+    ) -> ResearchOutput:
+        """Reject briefs with mostly single-sourced key facts."""
+        try:
+            output.brief.model_validate(output.brief.model_dump())
+        except ValueError as exc:
+            raise ModelRetry(str(exc)) from exc
+        return output
+
     return a
 
 
@@ -78,7 +90,11 @@ class ResearchStage(Stage):
             f'Target audience: {audience or "general"}. '
             f'Angle: {angle or "factual overview"}. '
             f'Find 6-10 key facts with sources, identify 3-5 narrative angles, '
-            f'and surface 2-3 surprising hooks.'
+            f'and surface 2-3 surprising hooks. '
+            f'For each key fact in the brief, at least 2 of your sources must '
+            f'independently state it (put the matching wording in that '
+            f"source's own key_facts list) — prefer primary/archival/academic "
+            f'sources when available.'
         )
         output: ResearchOutput = await llm_client.run_agent(
             _agent(),
