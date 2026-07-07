@@ -37,9 +37,13 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
 
 @pytest.fixture
 def niche(db) -> NicheConfig:  # type: ignore[no-untyped-def]
-    channel = Channel.objects.create(name='Outlier Ch', kind=ChannelKind.LONGFORM)
+    channel = Channel.objects.create(
+        name='Outlier Ch', kind=ChannelKind.LONGFORM,
+    )
     return NicheConfig.objects.create(
-        channel=channel, audience='history buffs', angle='ancient empires',
+        channel=channel,
+        audience='history buffs',
+        angle='ancient empires',
     )
 
 
@@ -100,9 +104,16 @@ def test_get_cached_scan_returns_none_when_stale_or_missing(
     stale = NicheOutlierScan.objects.create(
         niche=niche,
         query='ancient empires',
-        results=[{'video_id': 'v1', 'title': 't', 'channel_title': 'c',
-                  'view_count': 1, 'published_at': '2026-01-01T00:00:00Z',
-                  'outlier_score': 1.0}],
+        results=[
+            {
+                'video_id': 'v1',
+                'title': 't',
+                'channel_title': 'c',
+                'view_count': 1,
+                'published_at': '2026-01-01T00:00:00Z',
+                'outlier_score': 1.0,
+            },
+        ],
     )
     stale.created_at = tz.now() - timedelta(hours=25)
     stale.save(update_fields=['created_at'])
@@ -113,15 +124,22 @@ def test_get_cached_scan_returns_none_when_stale_or_missing(
 @pytest.mark.django_db
 def test_get_cached_scan_returns_results_within_24h(niche: NicheConfig) -> None:
     """get_cached_scan returns the parsed results of a scan from the last 24h."""
-    NicheOutlierScan.objects.create(
+    scan = NicheOutlierScan.objects.create(
         niche=niche,
         query='ancient empires',
-        results=[{
-            'video_id': 'v1', 'title': 'Fresh', 'channel_title': 'c',
-            'view_count': 100, 'published_at': '2026-07-01T00:00:00Z',
-            'outlier_score': 2.5,
-        }],
+        results=[
+            {
+                'video_id': 'v1',
+                'title': 'Fresh',
+                'channel_title': 'c',
+                'view_count': 100,
+                'published_at': '2026-07-01T00:00:00Z',
+                'outlier_score': 2.5,
+            },
+        ],
     )
+
+    assert str(niche.id) in str(scan)
 
     cached = get_cached_scan(str(niche.id))
     assert cached is not None

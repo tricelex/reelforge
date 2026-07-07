@@ -331,6 +331,33 @@ def test_next_untested_candidate_returns_none_without_stage() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_next_untested_candidate_when_current_asset_not_in_candidates() -> None:
+    """A job whose current thumbnail is absent from candidates still swaps."""
+    from server.apps.pipelines.models import StageExecution, StageStatus
+    from server.apps.pipelines.tasks import _next_untested_candidate
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    channel, _bp, run = _make_channel_with_jobs()
+    StageExecution.objects.create(
+        run=run,
+        stage_key='thumbnail',
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
+        output={'candidates': [{'rank': 0, 'asset_id': 'a'}]},
+    )
+    job = PublishJob.objects.create(
+        run=run,
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_orphan',
+        thumbnail_asset_id='not-a-candidate',
+    )
+
+    result = _run(_next_untested_candidate(job))
+    assert result == {'rank': 0, 'asset_id': 'a'}
+
+
+@pytest.mark.django_db(transaction=True)
 def test_apply_thumbnail_swap_skips_without_credential() -> None:
     """A channel with no YouTubeCredential silently skips the swap."""
     from server.apps.pipelines.tasks import _apply_thumbnail_swap
