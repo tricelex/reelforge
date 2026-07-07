@@ -31,6 +31,7 @@ class IdeationContext:
     banned_topics: list[str]
     format_name: str
     existing_topics: set[str]
+    performance_notes: str = ''
 
 
 def _iso(dt: datetime) -> str:
@@ -74,6 +75,27 @@ def existing_topics(channel_id: uuid.UUID) -> set[str]:
     return {value.lower().strip() for value in (*run_topics, *idea_topics)}
 
 
+def _performance_notes(channel_id: uuid.UUID) -> str:
+    """Summarize trailing average-view-percentage across the channel's runs."""
+    from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
+
+    values = list(
+        PublishJobMetric.objects
+        .filter(
+            publish_job__channel_id=channel_id,
+        )
+        .order_by('-pulled_at')
+        .values_list('avg_view_percentage', flat=True)[:20],
+    )
+    if not values:
+        return ''
+    avg = sum(values) / len(values)
+    return (
+        f"This channel's last {len(values)} tracked videos averaged "
+        f'{avg:.1f}% average-view-percentage.'
+    )
+
+
 def build_ideation_context(niche: 'NicheConfig') -> IdeationContext:
     """Build the pre-fetch bundle for one niche ideation call."""
     story_format = niche.format
@@ -85,6 +107,7 @@ def build_ideation_context(niche: 'NicheConfig') -> IdeationContext:
         banned_topics=list(niche.banned_topics),
         format_name=format_name,
         existing_topics=existing_topics(niche.channel_id),
+        performance_notes=_performance_notes(niche.channel_id),
     )
 
 
