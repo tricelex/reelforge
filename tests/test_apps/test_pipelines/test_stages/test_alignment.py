@@ -66,6 +66,21 @@ def test_build_ass_content_produces_dialogue_lines() -> None:
     assert 'Dialogue: 0,0:00:02.60,0:00:05.00,Default,Then it fell.' in content
 
 
+def test_build_srt_content_formats_timestamps() -> None:
+    """_build_srt_content emits numbered SRT blocks with comma-ms timestamps."""
+    from server.apps.pipelines.stages.alignment import _build_srt_content
+
+    segments = [
+        {'start': 0.0, 'end': 2.5, 'text': 'In 476 AD,'},
+        {'start': 2.5, 'end': 7.4, 'text': 'the last Roman emperor fell.'},
+    ]
+    srt = _build_srt_content(segments).decode()
+    assert '1\n00:00:00,000 --> 00:00:02,500\nIn 476 AD,' in srt
+    assert (
+        '2\n00:00:02,500 --> 00:00:07,400\nthe last Roman emperor fell.' in srt
+    )
+
+
 def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     """run() returns dict with 'scenes' and 'ass_asset_id'."""
     ctx = _make_ctx()

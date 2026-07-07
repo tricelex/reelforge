@@ -89,6 +89,16 @@ class Asset(UUIDModel, TimeStampedModel):
         return f'{self.kind} {self.id}'
 
 
+class LibraryAssetLicense(models.TextChoices):
+    """Licensing basis for a human-curated library asset (esp. music/SFX)."""
+
+    UNSPECIFIED = 'UNSPECIFIED', 'Unspecified'
+    OWNED = 'OWNED', 'Owned / original'
+    LICENSED = 'LICENSED', 'Licensed (paid)'
+    CREATIVE_COMMONS = 'CREATIVE_COMMONS', 'Creative Commons'
+    ROYALTY_FREE_VERIFIED = 'ROYALTY_FREE_VERIFIED', 'Royalty-free (verified)'
+
+
 class LibraryAsset(UUIDModel, TimeStampedModel):
     """Human-curated, reusable, versioned asset (music, watermark, font…)."""
 
@@ -107,6 +117,12 @@ class LibraryAsset(UUIDModel, TimeStampedModel):
     is_active = models.BooleanField(default=True)
     version = models.PositiveIntegerField(default=1)
     meta = models.JSONField(default=dict)
+    license_type = models.CharField(
+        max_length=25,
+        choices=LibraryAssetLicense.choices,
+        default=LibraryAssetLicense.UNSPECIFIED,
+    )
+    license_note = models.TextField(blank=True)
 
     class Meta:
         """Meta options for LibraryAsset."""
@@ -115,6 +131,12 @@ class LibraryAsset(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='assets_libraryasset_kind_valid',
                 condition=models.Q(kind__in=LibraryAssetKind.values),
+            ),
+            models.CheckConstraint(
+                name='assets_libraryasset_license_type_valid',
+                condition=models.Q(
+                    license_type__in=LibraryAssetLicense.values,
+                ),
             ),
         ]
 

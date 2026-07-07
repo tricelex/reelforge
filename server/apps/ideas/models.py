@@ -53,3 +53,22 @@ class TopicIdea(UUIDModel, TimeStampedModel):
     @override
     def __str__(self) -> str:
         return self.title[:60]
+
+
+class NicheOutlierScan(UUIDModel, TimeStampedModel):
+    """A cached outlier-video scan for one niche, refreshed at most daily."""
+
+    niche = models.ForeignKey(
+        'channels.NicheConfig',
+        on_delete=models.CASCADE,
+        related_name='outlier_scans',
+    )
+    query = models.CharField(max_length=200)
+    results = models.JSONField(default=list)
+
+    class Meta:
+        ordering: ClassVar = ['-created_at']
+
+    @override
+    def __str__(self) -> str:
+        return f'Outlier scan for {self.niche_id} ({self.created_at})'

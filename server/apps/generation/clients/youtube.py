@@ -1,5 +1,6 @@
 """YouTube Data API v3 client — upload video and set thumbnail."""
 
+import json
 from datetime import timedelta
 from typing import Any, Protocol, runtime_checkable
 
@@ -15,6 +16,7 @@ _AUTH_REASONS = {'authError', 'forbidden', 'insufficientPermissions'}
 _OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
 _UPLOAD_URL = 'https://www.googleapis.com/upload/youtube/v3/videos'
 _THUMBNAIL_URL = 'https://www.googleapis.com/upload/youtube/v3/thumbnails/set'
+_CAPTIONS_URL = 'https://www.googleapis.com/upload/youtube/v3/captions'
 
 
 @runtime_checkable
@@ -174,5 +176,38 @@ async def set_thumbnail(
                 'Content-Type': 'image/jpeg',
             },
             content=thumbnail_bytes,
+        )
+    _classify_response(resp)
+
+
+async def upload_caption_track(
+    access_token: str,
+    video_id: str,
+    srt_bytes: bytes,
+    language: str = 'en',
+    name: str = 'English',
+) -> None:
+    """Upload an SRT caption track for an existing YouTube video."""
+    metadata = json.dumps({
+        'snippet': {
+            'videoId': video_id,
+            'language': language,
+            'name': name,
+            'isDraft': False,
+        },
+    })
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            _CAPTIONS_URL,
+            params={'part': 'snippet', 'uploadType': 'multipart'},
+            headers={'Authorization': f'Bearer {access_token}'},
+            files={
+                'metadata': (None, metadata, 'application/json'),
+                'file': (
+                    'captions.srt',
+                    srt_bytes,
+                    'application/octet-stream',
+                ),
+            },
         )
     _classify_response(resp)
