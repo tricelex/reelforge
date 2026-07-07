@@ -305,7 +305,8 @@ class ChannelService:
 
         clean_count = 0
         runs = (
-            PipelineRun.objects.filter(
+            PipelineRun.objects
+            .filter(
                 channel_id=uuid.UUID(channel_id),
                 status=RunStatus.COMPLETED,
             )

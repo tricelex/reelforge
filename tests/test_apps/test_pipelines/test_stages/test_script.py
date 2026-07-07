@@ -1,9 +1,32 @@
 """Tests for the script stage."""
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import django.utils.timezone
+import pytest
+
 from server.apps.pipelines.stages.script import ScriptStage
+
+
+def _run(coro: Coroutine[Any, Any, Any]) -> Any:
+    from asgiref.sync import sync_to_async
+
+    @sync_to_async
+    def _close_connections() -> None:
+        from django.db import connections
+
+        connections.close_all()
+
+    async def _wrapped() -> Any:
+        try:
+            return await coro
+        finally:
+            await _close_connections()
+
+    return asyncio.run(_wrapped())
 
 
 def _make_ctx() -> MagicMock:
@@ -150,8 +173,12 @@ def test_script_run_auto_channel_retries_once_on_similarity() -> None:
     first = ScriptOutput(
         chapters=[
             ScriptChapter(
-                idx=0, title='Intro', text='Rome was great.', word_count=3,
-                closing_line='But it fell.', commentary='I think this was avoidable.',
+                idx=0,
+                title='Intro',
+                text='Rome was great.',
+                word_count=3,
+                closing_line='But it fell.',
+                commentary='I think this was avoidable.',
             ),
         ],
         total_word_count=3,
@@ -159,7 +186,10 @@ def test_script_run_auto_channel_retries_once_on_similarity() -> None:
     second = ScriptOutput(
         chapters=[
             ScriptChapter(
-                idx=0, title='Intro', text='A different take entirely.', word_count=4,
+                idx=0,
+                title='Intro',
+                text='A different take entirely.',
+                word_count=4,
                 closing_line='Or was it?',
                 commentary='Actually I disagree with the usual take.',
             ),
@@ -189,6 +219,53 @@ def test_script_run_auto_channel_retries_once_on_similarity() -> None:
     result = asyncio.run(_inner())
     assert result['similarity_flag'] is False
     assert result['chapters'][0]['text'] == 'A different take entirely.'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_recent_script_embeddings_reads_recent_completed_runs() -> None:
+    """_recent_script_embeddings returns embeddings from recent COMPLETED runs."""
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+    )
+    from server.apps.pipelines.stages.script import _recent_script_embeddings
+
+    channel = Channel.objects.create(name='Emb Ch', kind=ChannelKind.LONGFORM)
+    bp = PipelineBlueprint.objects.create(
+        name='emb_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    now = django.utils.timezone.now()
+    completed = [
+        PipelineRun.objects.create(
+            channel=channel,
+            blueprint=bp,
+            blueprint_snapshot={},
+            topic=f'topic {i}',
+            status=RunStatus.COMPLETED,
+            script_embedding=[float(i), 0.0],
+            finished_at=now,
+        )
+        for i in range(2)
+    ]
+    PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='no embedding',
+        status=RunStatus.COMPLETED,
+        script_embedding=None,
+        finished_at=now,
+    )
+
+    vecs = _run(
+        _recent_script_embeddings(str(channel.id), str(completed[0].id)),
+    )
+    assert vecs == [[1.0, 0.0]]
 
 
 def test_script_chapter_requires_commentary() -> None:

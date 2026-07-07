@@ -742,6 +742,7 @@ def test_branding_warns_when_identical_to_another_channel(
 
     channel_a = Channel.objects.create(name='Warn A', kind=ChannelKind.LONGFORM)
     channel_b = Channel.objects.create(name='Warn B', kind=ChannelKind.LONGFORM)
+    channel_c = Channel.objects.create(name='Warn C', kind=ChannelKind.LONGFORM)
     ChannelBranding.objects.create(
         channel=channel_a,
         watermark_position='top_left',
@@ -749,6 +750,10 @@ def test_branding_warns_when_identical_to_another_channel(
     ChannelBranding.objects.create(
         channel=channel_b,
         watermark_position='top_left',
+    )
+    ChannelBranding.objects.create(
+        channel=channel_c,
+        watermark_position='bottom_left',
     )
 
     response = dmr_client.get(
@@ -771,7 +776,10 @@ def test_branding_no_warning_for_default_empty_branding(
     auth_headers: dict[str, str],
 ) -> None:
     """Two channels with no branding set (all-default) should not warn each other."""
-    other = Channel.objects.create(name='Other Default', kind=ChannelKind.LONGFORM)
+    other = Channel.objects.create(
+        name='Other Default',
+        kind=ChannelKind.LONGFORM,
+    )
     from server.apps.channels.models import ChannelBranding
 
     ChannelBranding.objects.create(channel=other)
