@@ -1,17 +1,25 @@
 """Script stage — full narration script generation."""
 
 from functools import cache
-from typing import Any, override
+from typing import Any, cast, override
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
+from server.apps.generation.clients.embeddings import embed_text
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.pipelines.logic.similarity import is_too_similar
 from server.apps.pipelines.schemas import ScriptOutput
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
+)
+
+_SIMILARITY_RETRY_HINT = (
+    'Your previous draft was too similar to a recent video on this '
+    'channel. Use a different structure, different examples, and '
+    'different phrasing throughout.'
 )
 
 
@@ -36,7 +44,86 @@ def _agent() -> Agent[StageContext, ScriptOutput]:
             'First 30s hooks must restate the core payoff.'
         )
 
+    @a.output_validator
+    def _validate(  # pragma: no cover
+        ctx: RunContext[StageContext],
+        output: ScriptOutput,
+    ) -> ScriptOutput:
+        """Reject scripts whose commentary is filler, not genuine analysis."""
+        try:
+            output.model_validate(output.model_dump())
+        except ValueError as exc:
+            raise ModelRetry(str(exc)) from exc
+        return output
+
     return a
+
+
+async def _generate_script(
+    ctx: StageContext,
+    extra_hint: str = '',
+) -> ScriptOutput:
+    """Build the script prompt and run the agent once."""
+    outline = ctx.upstream.get('outline', {})
+    research = ctx.upstream.get('research', {})
+    chapters = outline.get('chapters', [])
+    wpm = getattr(ctx.channel, 'wpm', 158)
+
+    _, usr = await ctx.prompts.render(
+        'script',
+        {
+            'topic': ctx.run.topic,
+            'chapters': chapters,
+            'research': research,
+            'wpm': wpm,
+        },
+    )
+    user_prompt = usr or (
+        f'Write the full script for "{ctx.run.topic}".\n'
+        f'Chapters: {chapters}\n'
+        f'Research: {research.get("brief", {})}\n'
+        f'Target WPM: {wpm}. '
+        f'Include a closing_line per chapter for continuity. '
+        f'For every chapter also write commentary: 1-3 sentences of '
+        f'genuine analysis or a stated opinion — not a restatement of '
+        f'the narration — that reflects a real editorial point of view '
+        f'on the material.'
+    )
+    if extra_hint:
+        user_prompt = f'{user_prompt}\n\n{extra_hint}'
+    output: ScriptOutput = await llm_client.run_agent(
+        _agent(),
+        user_prompt,
+        ctx,
+        stage_key=ScriptStage.key,
+    )
+    return output
+
+
+async def _recent_script_embeddings(
+    channel_id: str,
+    exclude_run_id: str,
+    limit: int = 5,
+) -> list[list[float]]:
+    """script_embedding values from the channel's recent COMPLETED runs."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        RunStatus,
+    )
+
+    return [
+        cast('list[float]', run.script_embedding)
+        async for run in (
+            PipelineRun.objects
+            .filter(
+                channel_id=channel_id,
+                status=RunStatus.COMPLETED,
+                script_embedding__isnull=False,
+            )
+            .exclude(id=exclude_run_id)
+            .order_by('-finished_at')[:limit]
+        )
+    ]
 
 
 @register_stage
@@ -51,31 +138,27 @@ class ScriptStage(Stage):
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Write a full script for all chapters from outline + research."""
-        outline = ctx.upstream.get('outline', {})
-        research = ctx.upstream.get('research', {})
-        chapters = outline.get('chapters', [])
-        wpm = getattr(ctx.channel, 'wpm', 158)
+        output = await _generate_script(ctx)
+        combined_text = ' '.join(ch.text for ch in output.chapters)
+        new_vec = await embed_text(combined_text)
+        recent_vecs = await _recent_script_embeddings(
+            str(ctx.channel.id),
+            str(ctx.run.id),
+        )
+        too_similar = is_too_similar(new_vec, recent_vecs)
 
-        _, usr = await ctx.prompts.render(
-            'script',
-            {
-                'topic': ctx.run.topic,
-                'chapters': chapters,
-                'research': research,
-                'wpm': wpm,
-            },
-        )
-        user_prompt = usr or (
-            f'Write the full script for "{ctx.run.topic}".\n'
-            f'Chapters: {chapters}\n'
-            f'Research: {research.get("brief", {})}\n'
-            f'Target WPM: {wpm}. '
-            f'Include a closing_line per chapter for continuity.'
-        )
-        output: ScriptOutput = await llm_client.run_agent(
-            _agent(),
-            user_prompt,
-            ctx,
-            stage_key=self.key,
-        )
-        return output.model_dump()
+        if too_similar and getattr(ctx.channel, 'publish_mode', '') == 'auto':
+            output = await _generate_script(
+                ctx,
+                extra_hint=_SIMILARITY_RETRY_HINT,
+            )
+            combined_text = ' '.join(ch.text for ch in output.chapters)
+            new_vec = await embed_text(combined_text)
+            too_similar = is_too_similar(new_vec, recent_vecs)
+
+        ctx.run.script_embedding = new_vec
+        await ctx.run.asave(update_fields=['script_embedding'])
+
+        result = output.model_dump()
+        result['similarity_flag'] = too_similar
+        return result

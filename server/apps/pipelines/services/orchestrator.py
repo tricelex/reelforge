@@ -196,6 +196,26 @@ def _node_should_skip(
     return bool(node.get('conditional')) and not _eval_condition(node, run)
 
 
+def _publish_rate_limited(run: 'PipelineRun') -> bool:
+    """True when the channel already hit its max_publishes_per_day today."""
+    from server.apps.publishing.models import (  # noqa: PLC0415
+        PublishJob,
+        PublishStatus,
+    )
+
+    channel = run.channel
+    cap = channel.max_publishes_per_day
+    if not cap:
+        return False
+    today_start = tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    published_today = PublishJob.objects.filter(
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        created_at__gte=today_start,
+    ).count()
+    return published_today >= cap
+
+
 _TERMINAL_STAGE_STATES = frozenset({'SUCCEEDED', 'SKIPPED'})
 
 
@@ -260,7 +280,10 @@ def _process_node_sync(
     to_enqueue: list[str],
 ) -> None:
     """Evaluate one blueprint node; enqueue, skip, or ignore (sync)."""
-    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        RunStatus,
+        StageStatus,
+    )
 
     key = node['key']
     current = states.get(key)
@@ -270,6 +293,11 @@ def _process_node_sync(
     if _node_should_skip(node, run, armed_gates):
         _mark_skipped_sync(run, key)
         states[key] = StageStatus.SKIPPED
+        return
+
+    if key == 'publish' and _publish_rate_limited(run):
+        run.status = RunStatus.PUBLISH_HOLD
+        run.save(update_fields=['status'])
         return
 
     if _try_park_gate_sync(node, run, states, key):
@@ -552,6 +580,7 @@ def _resume_run_sync(run_id: str) -> None:
             RunStatus.PENDING,
             RunStatus.AWAITING_REVIEW,
             RunStatus.BUDGET_HOLD,
+            RunStatus.PUBLISH_HOLD,
         }:
             run.status = RunStatus.RUNNING
         run.save(update_fields=['is_paused', 'status'])
