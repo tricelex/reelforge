@@ -75,6 +75,7 @@ class PublishStage(Stage):
             description=meta['description'],
             tags=meta.get('tags', []),
             schedule_at=schedule_at,
+            contains_synthetic_media=True,
         )
 
         if thumbnail_asset_id:
