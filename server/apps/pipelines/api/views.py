@@ -33,14 +33,20 @@ from server.apps.pipelines.logic.value_objects import (
     RunDetailPayload,
     RunListPayload,
     SseTokenPayload,
+    StageOutputPayload,
     TranscriptPayload,
 )
+from server.apps.pipelines.models import PipelineRun
 from server.apps.pipelines.run_asset_selectors import (
     list_blueprints,
     list_run_assets,
 )
 from server.apps.pipelines.selectors import get_run_detail, list_runs
 from server.apps.pipelines.services import PipelineRunService
+from server.apps.pipelines.stage_output_selectors import (
+    StageNotFound,
+    get_stage_output,
+)
 from server.common.auth import (
     JWTAuthenticatedMixin,
     get_request_user,
@@ -341,6 +347,52 @@ class RunAssetsController(
             cursor=cursor,
             limit=limit,
         )
+
+
+@final
+class RunStageOutputController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Return the rendered output of a single pipeline stage."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> StageOutputPayload:
+        """Return the stage output payload."""
+        return get_stage_output(
+            str(self.kwargs['run_id']),
+            str(self.kwargs['stage_key']),
+            self.resolve(PresignUrlHelper),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        """Map missing run or unknown stage to a 404."""
+        if isinstance(exc, (PipelineRun.DoesNotExist, StageNotFound)):
+            return self.to_error(
+                self.format_error(
+                    'Run or stage not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

@@ -63,6 +63,11 @@ run_urlpatterns = [
         name='stage-rerun',
     ),
     path(
+        'runs/<uuid:run_id>/stages/<str:stage_key>/output/',
+        views.RunStageOutputController.as_view(),
+        name='run-stage-output',
+    ),
+    path(
         'runs/<uuid:run_id>/transcript/',
         views.RunTranscriptController.as_view(),
         name='run-transcript',
