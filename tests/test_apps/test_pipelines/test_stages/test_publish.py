@@ -238,6 +238,63 @@ def test_publish_passes_category_id_from_metadata() -> None:
     asyncio.run(_inner())
 
 
+def test_publish_uploads_caption_track_when_srt_present() -> None:
+    """When alignment provides an srt_asset_id, the captions track is uploaded."""
+    ctx = _make_ctx()
+    ctx.upstream['alignment'] = {'srt_asset_id': 'asset-srt'}
+    fake_job = MagicMock(id='job-srt')
+    fake_job.asave = AsyncMock()
+    fake_srt_asset = MagicMock()
+    fake_srt_asset.file.read.return_value = b'srt content'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.stages.publish.YouTubeCredential'
+                '.objects.aget',
+                new=AsyncMock(return_value=MagicMock(token_expiry=None)),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client'
+                '.refresh_token_if_needed',
+                new=AsyncMock(return_value='tok'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish._download_asset',
+                new=AsyncMock(return_value=b'video'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.upload_video',
+                new=AsyncMock(return_value='yt_srt_test'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.set_thumbnail',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client'
+                '.upload_caption_track',
+                new=AsyncMock(),
+            ) as mock_captions,
+            patch(
+                'server.apps.pipelines.stages.publish.PublishJob.objects.acreate',
+                new=AsyncMock(return_value=fake_job),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.Asset.objects.aget',
+                new=AsyncMock(return_value=fake_srt_asset),
+            ),
+        ):
+            await PublishStage().run(ctx)
+            mock_captions.assert_awaited_once_with(
+                'tok',
+                'yt_srt_test',
+                b'srt content',
+            )
+
+    asyncio.run(_inner())
+
+
 def test_category_id_for_name_unknown_defaults_to_education() -> None:
     """Known category names map to their id; unknown names fall back to Education."""
     from server.apps.pipelines.stages.publish import _category_id_for_name

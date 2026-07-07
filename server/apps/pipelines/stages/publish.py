@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any, override
 
@@ -113,6 +114,17 @@ class PublishStage(Stage):
                 access_token,
                 youtube_video_id,
                 thumbnail_bytes,
+            )
+
+        alignment = ctx.upstream.get('alignment', {})
+        srt_asset_id = alignment.get('srt_asset_id')
+        if srt_asset_id:
+            srt_asset = await Asset.objects.aget(id=srt_asset_id)
+            srt_bytes = await asyncio.to_thread(srt_asset.file.read)
+            await yt_client.upload_caption_track(
+                access_token,
+                youtube_video_id,
+                srt_bytes,
             )
 
         job.youtube_video_id = youtube_video_id
