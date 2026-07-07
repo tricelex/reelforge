@@ -55,6 +55,33 @@ async def _query_report(
     return dict(resp.json())
 
 
+async def _fetch_impressions(
+    access_token: str,
+    channel_youtube_id: str,
+    video_id: str,
+) -> tuple[int | None, float | None]:
+    """Best-effort impressions + CTR; None when the API has no data yet.
+
+    Impressions/CTR belong to a separate Analytics metric set with its own
+    reporting availability, so a provider error or empty result is treated
+    as "not enough data yet" rather than failing the whole report.
+    """
+    try:
+        report = await _query_report(
+            access_token,
+            channel_youtube_id,
+            video_id,
+            metrics='impressions,impressionsClickThroughRate',
+        )
+    except (FatalProviderError, RetryableProviderError):
+        return None, None
+    rows = report.get('rows', [])
+    if not rows:
+        return None, None
+    impressions, ctr = rows[0]
+    return int(impressions), float(ctr)
+
+
 async def fetch_video_report(
     access_token: str,
     channel_youtube_id: str,
@@ -88,9 +115,17 @@ async def fetch_video_report(
         for row in retention.get('rows', [])
     ]
 
+    impressions, impressions_ctr = await _fetch_impressions(
+        access_token,
+        channel_youtube_id,
+        video_id,
+    )
+
     return {
         'views': int(views),
         'avg_view_duration_s': float(avg_duration),
         'avg_view_percentage': float(avg_pct),
         'retention_curve': retention_curve,
+        'impressions': impressions,
+        'impressions_ctr': impressions_ctr,
     }

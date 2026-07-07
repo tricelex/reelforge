@@ -93,6 +93,19 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
         status=PublishStatus.COMPLETED,
         youtube_video_id='yt_vid_1',
     )
+    # A second job on the SAME channel exercises the channel-ID cache.
+    run2 = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='t2',
+    )
+    job2 = PublishJob.objects.create(
+        run=run2,
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_vid_2',
+    )
 
     fake_report = {
         'views': 500,
@@ -105,7 +118,11 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
                 'relative_performance': 0.5,
             },
         ],
+        'impressions': 8000,
+        'impressions_ctr': 0.0625,
     }
+
+    mock_channel_id = AsyncMock(return_value='UC123')
 
     async def _inner() -> None:
         with (
@@ -119,7 +136,7 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
             ),
             patch(
                 'server.apps.analytics.tasks._get_channel_youtube_id',
-                new=AsyncMock(return_value='UC123'),
+                new=mock_channel_id,
             ),
         ):
             await pull_publish_job_metrics()
@@ -130,6 +147,11 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
     assert metric.views == 500
     assert metric.avg_view_percentage == 45.0
     assert metric.retention_curve[0]['watch_ratio'] == 0.9
+    assert metric.impressions == 8000
+    assert metric.impressions_ctr == 0.0625
+    assert PublishJobMetric.objects.filter(publish_job=job2).exists()
+    # Both jobs share a channel -> the channel-ID is resolved only once.
+    assert mock_channel_id.await_count == 1
 
 
 @pytest.mark.django_db(transaction=True)

@@ -1,5 +1,7 @@
 """TaskIQ tasks for analytics view maintenance."""
 
+from typing import Any
+
 from server.apps.generation.clients import youtube as yt_client
 from server.apps.generation.clients.youtube_analytics import fetch_video_report
 from server.common.broker import broker
@@ -68,6 +70,8 @@ async def pull_publish_job_metrics() -> None:
             created_at__gte=cutoff,
         ).select_related('channel')
     ]
+    # Resolve each channel's own YouTube ID at most once (quota discipline).
+    channel_youtube_ids: dict[Any, str] = {}
     for job in jobs:
         try:
             credential = await YouTubeCredential.objects.aget(
@@ -76,7 +80,10 @@ async def pull_publish_job_metrics() -> None:
         except YouTubeCredential.DoesNotExist:
             continue
         access_token = await yt_client.refresh_token_if_needed(credential)
-        channel_youtube_id = await _get_channel_youtube_id(access_token)
+        channel_youtube_id = channel_youtube_ids.get(job.channel_id)
+        if channel_youtube_id is None:
+            channel_youtube_id = await _get_channel_youtube_id(access_token)
+            channel_youtube_ids[job.channel_id] = channel_youtube_id
         report = await fetch_video_report(
             access_token,
             channel_youtube_id,
@@ -88,4 +95,6 @@ async def pull_publish_job_metrics() -> None:
             avg_view_duration_s=report['avg_view_duration_s'],
             avg_view_percentage=report['avg_view_percentage'],
             retention_curve=report['retention_curve'],
+            impressions=report['impressions'],
+            impressions_ctr=report['impressions_ctr'],
         )
