@@ -195,6 +195,88 @@ async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
         )
 
 
+_MIN_TRANSITION_SEGMENTS = 2
+
+
+async def _probe_duration(path: str) -> float:
+    """Return the container duration in seconds for a media file."""
+    probe = await async_ffprobe(path)
+    return float(probe.get('format', {}).get('duration', 0.0))
+
+
+def _build_xfade_filter(
+    durations: list[float],
+    transition_duration_s: float,
+) -> tuple[str, str, str]:
+    """Cascading xfade/acrossfade filter_complex chain across N inputs.
+
+    Returns (filter_complex, video_out_label, audio_out_label).
+    """
+    parts: list[str] = []
+    cum = durations[0]
+    v_prev = '[0:v]'
+    a_prev = '[0:a]'
+    for i in range(1, len(durations)):
+        offset = max(cum - transition_duration_s, 0.0)
+        v_out = f'[v{i}]'
+        a_out = f'[a{i}]'
+        v_str = (
+            f'{v_prev}[{i}:v]xfade=transition=fade:'
+            f'duration={transition_duration_s}:offset={offset:.3f}{v_out}'
+        )
+        a_str = f'{a_prev}[{i}:a]acrossfade=d={transition_duration_s}{a_out}'
+        parts.extend((v_str, a_str))
+        v_prev, a_prev = v_out, a_out
+        cum += durations[i] - transition_duration_s
+    return ';'.join(parts), v_prev, a_prev
+
+
+async def concat_chapter_with_transition(
+    segment_paths: list[str],
+    transition: str,
+    transition_duration_s: float,
+    out_path: str,
+) -> None:
+    """Concatenate chapter files with a named transition between each pair.
+
+    transition='hard_cut' delegates to the existing stream-copy concat_chapter
+    (fast path, no re-encode). Any other transition name re-encodes using a
+    cascading xfade/acrossfade filter_complex chain.
+
+    Raises:
+        RuntimeError: If FFmpeg exits with non-zero return code.
+    """
+    if (
+        transition == 'hard_cut'
+        or len(segment_paths) < _MIN_TRANSITION_SEGMENTS
+    ):
+        await concat_chapter(segment_paths, out_path)
+        return
+
+    durations = [await _probe_duration(p) for p in segment_paths]
+    filter_complex, v_out, a_out = _build_xfade_filter(
+        durations,
+        transition_duration_s,
+    )
+    inputs: list[str] = []
+    for p in segment_paths:
+        inputs += ['-i', p]
+
+    cmd = [
+        'ffmpeg',
+        '-y',
+        *inputs,
+        '-filter_complex',
+        filter_complex,
+        '-map',
+        v_out,
+        '-map',
+        a_out,
+        *_final_encode_args(out_path),
+    ]
+    await _run_ffmpeg_cmd(cmd)
+
+
 _LOUDNORM_I = -14.0
 _LOUDNORM_TP = -1.0
 _LOUDNORM_LRA = 11.0
@@ -282,6 +364,8 @@ def _build_complex_filter(
     *,
     music_paths: list[str],
     music_gains_db: list[float],
+    sfx_paths: list[str],
+    sfx_gains_db: list[float],
     ass_path: str | None,
     watermark_path: str | None,
     wm_idx: int,
@@ -301,12 +385,14 @@ def _build_complex_filter(
         filter_parts.append(f"{v_out}subtitles='{ass_path}'[vout]")
         v_out = '[vout]'
 
-    if music_paths:
-        for i, gain_db in enumerate(music_gains_db, start=1):
+    extra_paths = music_paths + sfx_paths
+    extra_gains = music_gains_db + sfx_gains_db
+    if extra_paths:
+        for i, gain_db in enumerate(extra_gains, start=1):
             gain_linear = 10 ** (gain_db / 20.0)
             filter_parts.append(f'[{i}:a]volume={gain_linear:.4f}[m{i}]')
-        music_refs = ''.join(f'[m{i}]' for i in range(1, len(music_paths) + 1))
-        n = 1 + len(music_paths)
+        music_refs = ''.join(f'[m{i}]' for i in range(1, len(extra_paths) + 1))
+        n = 1 + len(extra_paths)
         filter_parts.append(
             f'[0:a]{music_refs}amix=inputs={n}:duration=first,'
             f'{loudnorm_af}[aout]',
@@ -325,19 +411,23 @@ def _build_final_pass_cmd(
     inputs: list[str],
     music_paths: list[str],
     music_gains_db: list[float],
+    sfx_paths: list[str],
+    sfx_gains_db: list[float],
     ass_path: str | None,
     watermark_path: str | None,
     loudnorm_af: str,
     out_path: str,
 ) -> list[str]:
     """Assemble the ffmpeg argv for the final encode pass."""
-    use_complex = bool(music_paths or watermark_path)
-    wm_idx = 1 + len(music_paths)
+    use_complex = bool(music_paths or sfx_paths or watermark_path)
+    wm_idx = 1 + len(music_paths) + len(sfx_paths)
 
     if use_complex:
         fc, vmap, a_out = _build_complex_filter(
             music_paths=music_paths,
             music_gains_db=music_gains_db,
+            sfx_paths=sfx_paths,
+            sfx_gains_db=sfx_gains_db,
             ass_path=ass_path,
             watermark_path=watermark_path,
             wm_idx=wm_idx,
@@ -394,18 +484,22 @@ async def final_pass(
     watermark_path: str | None,
     out_path: str,
     watermark_opacity: float = 0.6,
+    sfx_paths: list[str] | None = None,
+    sfx_gains_db: list[float] | None = None,
 ) -> None:
-    """Produce final video with loudnorm, watermark, subtitles, and music.
+    """Produce final video with loudnorm, watermark, subtitles, music, SFX.
 
     Steps:
     1. Concat chapter files to a temp intermediate (stream copy).
     2. Loudnorm pass 1 to measure integrated loudness.
-    3. Build filter graph for watermark, subtitles, and music mix.
+    3. Build filter graph for watermark, subtitles, music, and SFX mix.
     4. Encode: libx264 CRF 18 slow, AAC 384k 48kHz, +faststart, -14 LUFS.
 
     Raises:
         RuntimeError: If any FFmpeg call exits non-zero.
     """
+    sfx_paths = sfx_paths or []
+    sfx_gains_db = sfx_gains_db or []
     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
         concat_tmp = f.name
 
@@ -416,6 +510,8 @@ async def final_pass(
         inputs = ['-i', concat_tmp]
         for mp in music_paths:
             inputs += ['-i', mp]
+        for sp in sfx_paths:
+            inputs += ['-i', sp]
         if watermark_path:
             inputs += ['-i', watermark_path]
 
@@ -423,6 +519,8 @@ async def final_pass(
             inputs=inputs,
             music_paths=music_paths,
             music_gains_db=music_gains_db,
+            sfx_paths=sfx_paths,
+            sfx_gains_db=sfx_gains_db,
             ass_path=ass_path,
             watermark_path=watermark_path,
             loudnorm_af=_loudnorm_audio_filter(stats),

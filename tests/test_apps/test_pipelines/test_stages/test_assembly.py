@@ -92,7 +92,24 @@ def _make_ctx() -> MagicMock:
     ctx.assets = AsyncMock()
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='final-uuid'))
     ctx.channel.branding = None
+    ctx.channel.assembly_style_transition_styles = []
+    ctx.channel.assembly_style_sfx_pool_tags = []
     return ctx
+
+
+def test_pick_transition_style_cycles_by_chapter_index() -> None:
+    from server.apps.pipelines.stages.assembly import _pick_transition_style
+
+    pool = ['hard_cut', 'cross_dissolve']
+    assert _pick_transition_style(pool, chapter_idx=0) == 'hard_cut'
+    assert _pick_transition_style(pool, chapter_idx=1) == 'cross_dissolve'
+    assert _pick_transition_style(pool, chapter_idx=2) == 'hard_cut'
+
+
+def test_pick_transition_style_empty_pool_returns_hard_cut() -> None:
+    from server.apps.pipelines.stages.assembly import _pick_transition_style
+
+    assert _pick_transition_style([], chapter_idx=0) == 'hard_cut'
 
 
 def test_assembly_run_returns_asset_id_and_duration() -> None:
@@ -353,6 +370,55 @@ def test_fetch_library_bytes_reads_file() -> None:
 
     result = asyncio.run(_run())
     assert result == b'library-bytes'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_sfx_paths_downloads_matching_sfx(tmp_path: object) -> None:
+    """_build_sfx_paths fetches active SFX assets overlapping channel tags."""
+    from pathlib import Path
+
+    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
+    from server.apps.pipelines.stages.assembly import _build_sfx_paths
+
+    LibraryAsset.objects.create(
+        kind=LibraryAssetKind.SFX,
+        name='whoosh',
+        tags=['whoosh', 'impact'],
+        file='library/whoosh.mp3',
+    )
+    ctx = MagicMock()
+    ctx.channel.assembly_style_sfx_pool_tags = ['whoosh']
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        with (
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+                new=AsyncMock(return_value=b'sfx-bytes'),
+            ),
+            patch('asyncio.to_thread', new=AsyncMock()),
+        ):
+            return await _build_sfx_paths(Path(str(tmp_path)), ctx)
+
+    paths, gains = _run_async(_inner())  # type: ignore[misc]
+    assert len(paths) == 1
+    assert gains == [-12.0]
+
+
+def test_build_sfx_paths_empty_tags_returns_empty() -> None:
+    """No sfx_pool_tags → no SFX tracks fetched."""
+    from pathlib import Path
+
+    from server.apps.pipelines.stages.assembly import _build_sfx_paths
+
+    ctx = MagicMock()
+    ctx.channel.assembly_style_sfx_pool_tags = []
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        return await _build_sfx_paths(Path('/tmp'), ctx)
+
+    paths, gains = asyncio.run(_inner())
+    assert paths == []
+    assert gains == []
 
 
 # ---------------------------------------------------------------------------

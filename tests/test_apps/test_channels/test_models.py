@@ -75,6 +75,23 @@ def test_channel_assembly_style_camera_movements_property() -> None:
 
 
 @pytest.mark.django_db
+def test_channel_assembly_style_transition_and_sfx_properties() -> None:
+    from server.apps.channels.models import AssemblyStyleConfig
+
+    channel = Channel.objects.create(name='TS Ch', kind=ChannelKind.LONGFORM)
+    assert channel.assembly_style_transition_styles == []
+    assert channel.assembly_style_sfx_pool_tags == []
+    AssemblyStyleConfig.objects.create(
+        channel=channel,
+        transition_styles=['cross_dissolve'],
+        sfx_pool_tags=['whoosh', 'impact'],
+    )
+    channel.refresh_from_db()
+    assert channel.assembly_style_transition_styles == ['cross_dissolve']
+    assert channel.assembly_style_sfx_pool_tags == ['whoosh', 'impact']
+
+
+@pytest.mark.django_db
 def test_character_defaults_persisted() -> None:
     from decimal import Decimal
 
