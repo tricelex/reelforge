@@ -68,7 +68,8 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
     from server.apps.publishing.models import PublishJob, PublishStatus
 
     channel = Channel.objects.create(
-        name='Metrics Ch', kind=ChannelKind.LONGFORM,
+        name='Metrics Ch',
+        kind=ChannelKind.LONGFORM,
     )
     YouTubeCredential.objects.create(
         channel=channel,
@@ -129,3 +130,43 @@ def test_pull_publish_job_metrics_writes_metric_rows() -> None:
     assert metric.views == 500
     assert metric.avg_view_percentage == 45.0
     assert metric.retention_curve[0]['watch_ratio'] == 0.9
+
+
+@pytest.mark.django_db(transaction=True)
+def test_pull_publish_job_metrics_skips_jobs_without_credential() -> None:
+    """A completed job whose channel has no credential is skipped, not written."""
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.analytics.tasks import pull_publish_job_metrics
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    channel = Channel.objects.create(
+        name='No Cred Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='no_cred_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='t',
+    )
+    job = PublishJob.objects.create(
+        run=run,
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_no_cred',
+    )
+
+    _run(pull_publish_job_metrics())
+
+    assert not PublishJobMetric.objects.filter(publish_job=job).exists()
