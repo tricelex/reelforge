@@ -239,3 +239,28 @@ def test_upload_video_includes_synthetic_media_disclosure_by_default() -> None:
     video_id = asyncio.run(_inner())
     assert video_id == 'yt_new_video'
     assert captured['body']['status']['containsSyntheticMedia'] is True
+
+
+def test_upload_caption_track_posts_multipart() -> None:
+    """upload_caption_track posts snippet metadata and the SRT file part."""
+    from server.apps.generation.clients.youtube import upload_caption_track
+
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+
+    async def _inner() -> None:
+        with patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=fake_resp),
+        ) as mock_post:
+            await upload_caption_track(
+                access_token='tok',
+                video_id='yt_vid1',
+                srt_bytes=b'1\n00:00:00,000 --> 00:00:01,000\nHi\n',
+            )
+            call_kwargs = mock_post.call_args.kwargs
+            assert call_kwargs['params']['part'] == 'snippet'
+            assert 'metadata' in call_kwargs['files']
+            assert 'file' in call_kwargs['files']
+
+    asyncio.run(_inner())
