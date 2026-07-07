@@ -9,6 +9,7 @@ from unfold.admin import TabularInline
 from unfold.contrib.filters.admin import (
     AutocompleteSelectFilter,
     ChoicesCheckboxFilter,
+    RangeDateTimeFilter,
 )
 
 from server.apps.assets.models import Asset, AssetRendition, LibraryAsset
@@ -97,11 +98,19 @@ class AssetAdmin(ReelForgeAdmin):
     list_display = (
         'kind',
         'mime',
+        'run',
+        'stage_execution',
         'checksum',
         'created_at',
     )
-    list_filter = (('kind', ChoicesCheckboxFilter),)
-    search_fields = ('checksum',)
+    list_filter = (
+        ('kind', ChoicesCheckboxFilter),
+        ('run', AutocompleteSelectFilter),
+        ('stage_execution', AutocompleteSelectFilter),
+        ('created_at', RangeDateTimeFilter),
+    )
+    search_fields = ('checksum', 'run__topic')
+    list_select_related: ClassVar = ('run', 'stage_execution')
     readonly_fields: ClassVar = (
         'kind',
         'file',
