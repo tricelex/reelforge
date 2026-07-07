@@ -50,6 +50,31 @@ def test_channel_creation_persists() -> None:
 
 
 @pytest.mark.django_db
+def test_assembly_style_config_defaults_and_str() -> None:
+    from server.apps.channels.models import AssemblyStyleConfig
+
+    channel = Channel.objects.create(name='Style Ch', kind=ChannelKind.LONGFORM)
+    style = AssemblyStyleConfig.objects.create(channel=channel)
+    assert style.min_cuts_per_minute == 4
+    assert style.max_cuts_per_minute == 8
+    assert 'Style Ch' in str(style)
+
+
+@pytest.mark.django_db
+def test_channel_assembly_style_camera_movements_property() -> None:
+    from server.apps.channels.models import AssemblyStyleConfig
+
+    channel = Channel.objects.create(name='Prop Ch', kind=ChannelKind.LONGFORM)
+    assert channel.assembly_style_camera_movements == []
+    AssemblyStyleConfig.objects.create(
+        channel=channel,
+        camera_movements=['pan_left', 'push_in'],
+    )
+    channel.refresh_from_db()
+    assert channel.assembly_style_camera_movements == ['pan_left', 'push_in']
+
+
+@pytest.mark.django_db
 def test_character_defaults_persisted() -> None:
     from decimal import Decimal
 

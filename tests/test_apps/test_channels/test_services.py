@@ -77,3 +77,60 @@ def test_graduation_status_eligible_at_threshold() -> None:
 
     status = ChannelService().graduation_status(str(channel.id))
     assert status.eligible is True
+
+
+@pytest.mark.django_db
+def test_get_assembly_style_creates_defaults() -> None:
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.channels.services import ChannelService
+
+    channel = Channel.objects.create(
+        name='Get Style Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    payload = ChannelService().get_assembly_style(str(channel.id))
+    assert payload.camera_movements == [
+        'push_in',
+        'pan_left',
+        'pan_right',
+        'static_hold',
+    ]
+    assert payload.transition_styles == ['hard_cut', 'cross_dissolve']
+
+
+@pytest.mark.django_db
+def test_patch_assembly_style_updates_pool() -> None:
+    from server.apps.channels.logic.value_objects import (
+        AssemblyStyleConfigPatchPayload,
+    )
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.channels.services import ChannelService
+
+    channel = Channel.objects.create(
+        name='Patch Style Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    result = ChannelService().patch_assembly_style(
+        str(channel.id),
+        AssemblyStyleConfigPatchPayload(camera_movements=['push_in']),
+    )
+    assert result.camera_movements == ['push_in']
+
+
+@pytest.mark.django_db
+def test_patch_assembly_style_empty_payload_is_noop() -> None:
+    from server.apps.channels.logic.value_objects import (
+        AssemblyStyleConfigPatchPayload,
+    )
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.channels.services import ChannelService
+
+    channel = Channel.objects.create(
+        name='Noop Style Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    result = ChannelService().patch_assembly_style(
+        str(channel.id),
+        AssemblyStyleConfigPatchPayload(),
+    )
+    assert result.camera_movements == []

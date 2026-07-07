@@ -79,7 +79,9 @@ class Channel(UUIDModel, TimeStampedModel):
     similarity_boost = models.FloatField(default=0.75)
     wpm = models.PositiveIntegerField(default=158)
     default_blueprint_name = models.CharField(
-        max_length=100, blank=True, default=''
+        max_length=100,
+        blank=True,
+        default='',
     )
     provider_daily_caps = models.JSONField(default=list, blank=True)
     config_overrides = models.JSONField(default=dict, blank=True)
@@ -110,6 +112,15 @@ class Channel(UUIDModel, TimeStampedModel):
     def __str__(self) -> str:
         """Return channel name."""
         return self.name
+
+    @property
+    def assembly_style_camera_movements(self) -> list[str]:
+        """Camera-movement pool from the AssemblyStyleConfig, or []."""
+        try:
+            style = self.assembly_style
+        except AssemblyStyleConfig.DoesNotExist:
+            return []
+        return list(style.camera_movements)
 
 
 class NicheConfig(UUIDModel, TimeStampedModel):
@@ -220,6 +231,42 @@ class ChannelBranding(UUIDModel):
     def __str__(self) -> str:
         """Return branding reference."""
         return f'Branding for {self.channel}'
+
+
+_DEFAULT_CAMERA_MOVEMENTS = ['push_in', 'pan_left', 'pan_right', 'static_hold']
+_DEFAULT_TRANSITION_STYLES = ['hard_cut', 'cross_dissolve']
+
+
+class AssemblyStyleConfig(UUIDModel):
+    """Per-channel cinematic fingerprint: movement, transitions, SFX, pacing."""
+
+    channel = models.OneToOneField(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name='assembly_style',
+    )
+    camera_movements = ArrayField(
+        models.CharField(max_length=30),
+        default=list,
+        blank=True,
+    )
+    transition_styles = ArrayField(
+        models.CharField(max_length=30),
+        default=list,
+        blank=True,
+    )
+    sfx_pool_tags = ArrayField(
+        models.CharField(max_length=40),
+        default=list,
+        blank=True,
+    )
+    min_cuts_per_minute = models.PositiveSmallIntegerField(default=4)
+    max_cuts_per_minute = models.PositiveSmallIntegerField(default=8)
+
+    @override
+    def __str__(self) -> str:
+        """Return assembly style reference."""
+        return f'AssemblyStyleConfig for {self.channel}'
 
 
 class Character(UUIDModel, TimeStampedModel):

@@ -14,6 +14,8 @@ from django.core.exceptions import ValidationError
 
 from server.apps.assets.models import LibraryAsset
 from server.apps.channels.logic.value_objects import (
+    AssemblyStyleConfigPatchPayload,
+    AssemblyStyleConfigPayload,
     ChannelBrandingPatchPayload,
     ChannelBrandingPayload,
     ChannelCreatePayload,
@@ -29,6 +31,9 @@ from server.apps.channels.logic.value_objects import (
     YouTubeStatusPayload,
 )
 from server.apps.channels.models import (
+    _DEFAULT_CAMERA_MOVEMENTS,
+    _DEFAULT_TRANSITION_STYLES,
+    AssemblyStyleConfig,
     Channel,
     ChannelBranding,
     NicheConfig,
@@ -274,6 +279,51 @@ class ChannelService:
                 [uuid.UUID(value) for value in payload.font_asset_ids],  # type: ignore[misc]
             )
         return get_channel_branding(str(channel.id))
+
+    def get_assembly_style(
+        self,
+        channel_id: str,
+    ) -> AssemblyStyleConfigPayload:
+        """Return the channel's assembly style config, creating defaults."""
+        channel = Channel.objects.get(id=uuid.UUID(channel_id))
+        style, _ = AssemblyStyleConfig.objects.get_or_create(
+            channel=channel,
+            defaults={
+                'camera_movements': list(_DEFAULT_CAMERA_MOVEMENTS),
+                'transition_styles': list(_DEFAULT_TRANSITION_STYLES),
+            },
+        )
+        return AssemblyStyleConfigPayload(
+            channel_id=str(channel.id),
+            camera_movements=list(style.camera_movements),
+            transition_styles=list(style.transition_styles),
+            sfx_pool_tags=list(style.sfx_pool_tags),
+            min_cuts_per_minute=style.min_cuts_per_minute,
+            max_cuts_per_minute=style.max_cuts_per_minute,
+        )
+
+    def patch_assembly_style(
+        self,
+        channel_id: str,
+        payload: AssemblyStyleConfigPatchPayload,
+    ) -> AssemblyStyleConfigPayload:
+        """Update a channel's assembly style pool."""
+        channel = Channel.objects.get(id=uuid.UUID(channel_id))
+        style, _ = AssemblyStyleConfig.objects.get_or_create(channel=channel)
+        update_fields = _apply_patch_fields(
+            style,
+            payload,
+            (
+                'camera_movements',
+                'transition_styles',
+                'sfx_pool_tags',
+                'min_cuts_per_minute',
+                'max_cuts_per_minute',
+            ),
+        )
+        if update_fields:
+            style.save(update_fields=update_fields)
+        return self.get_assembly_style(channel_id)
 
     def patch_niche(
         self,
