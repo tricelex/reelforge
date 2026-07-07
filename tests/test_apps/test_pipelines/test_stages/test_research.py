@@ -39,6 +39,7 @@ def test_research_run_returns_brief_and_sources() -> None:
     from server.apps.pipelines.schemas import (
         ResearchBrief,
         ResearchOutput,
+        ResearchSource,
     )
 
     ctx = _make_ctx()
@@ -46,7 +47,18 @@ def test_research_run_returns_brief_and_sources() -> None:
         brief=ResearchBrief(
             topic='The fall of Rome',
             key_facts=['Rome fell in 476 AD'],
-            sources=[],
+            sources=[
+                ResearchSource(
+                    url='https://a.example.com',
+                    title='A',
+                    key_facts=['Rome fell in 476 AD'],
+                ),
+                ResearchSource(
+                    url='https://b.example.com',
+                    title='B',
+                    key_facts=['Rome fell in the year 476 AD'],
+                ),
+            ],
             narrative_angles=['economic decline'],
             hooks=['What really ended Rome?'],
         ),
@@ -64,3 +76,90 @@ def test_research_run_returns_brief_and_sources() -> None:
     assert 'brief' in result
     assert 'sources' in result
     assert result['brief']['topic'] == 'The fall of Rome'
+
+
+def test_research_brief_empty_key_facts_is_allowed() -> None:
+    from server.apps.pipelines.schemas import ResearchBrief
+
+    brief = ResearchBrief(
+        topic='Rome',
+        key_facts=[],
+        sources=[],
+        narrative_angles=[],
+        hooks=[],
+    )
+    assert brief.key_facts == []
+
+
+def test_research_brief_ignores_empty_source_facts() -> None:
+    from server.apps.pipelines.schemas import ResearchBrief, ResearchSource
+
+    brief = ResearchBrief(
+        topic='Rome',
+        key_facts=['Rome fell in 476 AD'],
+        sources=[
+            ResearchSource(
+                url='https://a.example.com',
+                title='A',
+                key_facts=['', 'Rome fell in 476 AD'],
+            ),
+            ResearchSource(
+                url='https://b.example.com',
+                title='B',
+                key_facts=['Rome fell in 476 AD'],
+            ),
+        ],
+        narrative_angles=[],
+        hooks=[],
+    )
+    assert brief.key_facts == ['Rome fell in 476 AD']
+
+
+def test_research_brief_rejects_majority_uncorroborated_facts() -> None:
+    """A brief where most key_facts have < 2 corroborating sources is rejected."""
+    import pytest
+    from pydantic import ValidationError
+
+    from server.apps.pipelines.schemas import ResearchBrief, ResearchSource
+
+    with pytest.raises(ValidationError, match='corroborat'):
+        ResearchBrief(
+            topic='Rome',
+            key_facts=[
+                'Rome fell in 476 AD',
+                'Odoacer deposed Romulus Augustulus',
+            ],
+            sources=[
+                ResearchSource(
+                    url='https://a.example.com',
+                    title='A',
+                    key_facts=['Rome fell in 476 AD'],
+                ),
+            ],
+            narrative_angles=[],
+            hooks=[],
+        )
+
+
+def test_research_brief_accepts_well_corroborated_facts() -> None:
+    from server.apps.pipelines.schemas import ResearchBrief, ResearchSource
+
+    brief = ResearchBrief(
+        topic='Rome',
+        key_facts=['Rome fell in 476 AD'],
+        sources=[
+            ResearchSource(
+                url='https://a.example.com',
+                title='A',
+                key_facts=['Rome fell in 476 AD'],
+            ),
+            ResearchSource(
+                url='https://b.example.com',
+                title='B',
+                key_facts=['The city of Rome fell in the year 476 AD'],
+            ),
+        ],
+        narrative_angles=[],
+        hooks=[],
+    )
+    assert brief.key_facts == ['Rome fell in 476 AD']
