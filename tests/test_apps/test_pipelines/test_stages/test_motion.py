@@ -52,6 +52,7 @@ def _make_ctx() -> MagicMock:
     ctx.assets = AsyncMock()
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='video-uuid'))
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.channel.assembly_style_camera_movements = []
     return ctx
 
 
@@ -142,6 +143,65 @@ def test_motion_non_hero_scene_runs_ken_burns() -> None:
     assert result['scene_idx'] == 1
     assert result['method'] == 'ken_burns'
     assert 'asset_id' in result
+
+
+def test_pick_camera_movement_cycles_through_pool_by_scene_idx() -> None:
+    from server.apps.pipelines.stages.motion import _pick_camera_movement
+
+    pool = ['push_in', 'pan_left', 'static_hold']
+    assert _pick_camera_movement(pool, scene_idx=0) == 'push_in'
+    assert _pick_camera_movement(pool, scene_idx=1) == 'pan_left'
+    assert _pick_camera_movement(pool, scene_idx=3) == 'push_in'
+
+
+def test_pick_camera_movement_empty_pool_returns_default() -> None:
+    from server.apps.pipelines.stages.motion import _pick_camera_movement
+
+    assert _pick_camera_movement([], scene_idx=0) == 'push_in'
+
+
+def test_motion_run_hero_scene_uses_channel_camera_movement() -> None:
+    import httpx
+
+    ctx = _make_ctx()
+    ctx.channel.assembly_style_camera_movements = ['pan_right']
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'parent'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'is_hero': True,
+        'est_seconds': 5.0,
+        'image_url': 'https://img.example.com/0.jpg',
+        'visual_concept': 'aerial shot',
+    }
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.fal.generate_video_kling',
+                new=AsyncMock(
+                    return_value={'video_url': 'https://v.example.com/0.mp4'},
+                ),
+            ) as mock_kling,
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        spec=httpx.Response,
+                        is_success=True,
+                        content=b'video',
+                    ),
+                ),
+            ),
+        ):
+            result = await MotionStage().run(ctx)
+            prompt = mock_kling.call_args.kwargs['prompt']
+            assert (
+                'pan_right' in prompt.lower() or 'pan right' in prompt.lower()
+            )
+            return result
+
+    asyncio.run(_inner())
 
 
 def test_run_ken_burns_returns_video_bytes() -> None:

@@ -144,6 +144,27 @@ class ChannelBrandingPatchPayload(msgspec.Struct, frozen=True):
     thumbnail_palette: dict[str, str] | None = None
 
 
+class AssemblyStyleConfigPayload(msgspec.Struct, frozen=True):
+    """Per-channel cinematic style pool."""
+
+    channel_id: str
+    camera_movements: list[str]
+    transition_styles: list[str]
+    sfx_pool_tags: list[str]
+    min_cuts_per_minute: int
+    max_cuts_per_minute: int
+
+
+class AssemblyStyleConfigPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a channel's assembly style config."""
+
+    camera_movements: list[str] | None = None
+    transition_styles: list[str] | None = None
+    sfx_pool_tags: list[str] | None = None
+    min_cuts_per_minute: int | None = None
+    max_cuts_per_minute: int | None = None
+
+
 class YouTubeConnectPayload(msgspec.Struct, frozen=True):
     """OAuth authorization URL for YouTube connect."""
 

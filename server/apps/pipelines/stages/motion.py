@@ -22,6 +22,21 @@ _KEN_BURNS_PRESETS = [
     "zoompan=x='iw-(iw/zoom/2)-on*2':z=1.05:d=150:s=1920x1080",
 ]
 
+_DEFAULT_CAMERA_MOVEMENT = 'push_in'
+_MOVEMENT_PROMPT_PHRASES = {
+    'push_in': 'Slow cinematic push-in',
+    'pan_left': 'Smooth pan left',
+    'pan_right': 'Smooth pan right',
+    'static_hold': 'Static hold with subtle parallax',
+}
+
+
+def _pick_camera_movement(pool: list[str], scene_idx: int) -> str:
+    """Cycle through the channel's camera-movement pool by scene index."""
+    if not pool:
+        return _DEFAULT_CAMERA_MOVEMENT
+    return pool[scene_idx % len(pool)]
+
 
 async def _run_ken_burns(
     image_url: str,
@@ -134,9 +149,19 @@ class MotionStage(Stage):
                 'i2v_model',
                 'fal-ai/kling-video/v2.1/standard/image-to-video',
             )
+            movement_pool = getattr(
+                ctx.channel,
+                'assembly_style_camera_movements',
+                [],
+            )
+            movement = _pick_camera_movement(movement_pool, scene_idx)
+            phrase = _MOVEMENT_PROMPT_PHRASES.get(
+                movement,
+                _MOVEMENT_PROMPT_PHRASES[_DEFAULT_CAMERA_MOVEMENT],
+            )
             result = await fal_client.generate_video_kling(
                 image_url=image_url,
-                prompt=f'Smooth cinematic motion. {visual_concept}',
+                prompt=f'{phrase}. Cinematic motion. {visual_concept}',
                 duration=5,
                 model=model,
             )
