@@ -1,5 +1,7 @@
 """API DTOs for pipeline run operations."""
 
+from typing import Any
+
 import msgspec
 
 
@@ -55,6 +57,8 @@ class RunDetailPayload(msgspec.Struct, frozen=True):
     stages: list[StageSummaryPayload]
     source_idea_id: str | None = None
     source_id: str | None = None
+    watch_url: str | None = None
+    external_video_id: str | None = None
 
 
 class RunCreatePayload(msgspec.Struct, frozen=True):
@@ -134,6 +138,8 @@ class RunAssetPayload(msgspec.Struct, frozen=True):
     kind: str
     mime: str
     url: str
+    stage_key: str | None = None
+    label: str | None = None
 
 
 class RunAssetListPayload(msgspec.Struct, frozen=True):
@@ -142,6 +148,18 @@ class RunAssetListPayload(msgspec.Struct, frozen=True):
     items: list[RunAssetPayload]
     next_cursor: str | None
     total: int
+
+
+class StageOutputPayload(msgspec.Struct, frozen=True):
+    """Rendered output of a single pipeline stage for the frontend."""
+
+    stage_key: str
+    status: str
+    kind: str
+    summary: str | None
+    text: str | None
+    data: dict[str, Any] | None
+    assets: list[RunAssetPayload]
 
 
 class BlueprintSummaryPayload(msgspec.Struct, frozen=True):

@@ -141,10 +141,25 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
         if stage.stage_key not in latest:
             latest[stage.stage_key] = stage
 
-    source_id = ClipSource.objects.filter(run_id=run.id).values_list(
-        'id',
-        flat=True,
-    ).first()
+    source_id = (
+        ClipSource.objects
+        .filter(run_id=run.id)
+        .values_list(
+            'id',
+            flat=True,
+        )
+        .first()
+    )
+
+    publish_stage = latest.get('publish')
+    video_id = (
+        publish_stage.output.get('youtube_video_id')
+        if publish_stage is not None
+        else None
+    )
+    watch_url = (
+        f'https://www.youtube.com/watch?v={video_id}' if video_id else None
+    )
 
     return RunDetailPayload(
         id=str(run.id),
@@ -163,4 +178,6 @@ def get_run_detail(run_id: str) -> RunDetailPayload:
             str(run.source_idea_id) if run.source_idea_id else None
         ),
         source_id=str(source_id) if source_id else None,
+        watch_url=watch_url,
+        external_video_id=video_id or None,
     )
