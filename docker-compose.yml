@@ -26,6 +26,9 @@ services:
       volumes:
         - .:/code
       env_file: ./config/.env
+      depends_on:
+        db:
+          condition: service_healthy
 
     command: python -We -bb manage.py runserver 0.0.0.0:8000
     environment:
@@ -48,3 +51,24 @@ services:
     environment:
       DJANGO_ENV: development
       LOGFIRE_SERVICE_NAME: ***REMOVED***-scheduler
+
+  # Local PostgreSQL — used ONLY for running the test suite fast.
+  # The app itself (web/scheduler/worker) connects to the remote DB via
+  # config/.env; tests override the DB host to `db` (see tests/conftest.py).
+  # Data lives in tmpfs (RAM) so it is fast and wiped on restart.
+  db:
+    image: ***REMOVED***:16-alpine
+    environment:
+      POSTGRES_DB: ***REMOVED***_test
+      POSTGRES_USER: ***REMOVED***
+      POSTGRES_PASSWORD: ***REMOVED***
+    tmpfs:
+      - /var/lib/***REMOVED***ql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ***REMOVED*** -d ***REMOVED***_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    expose:
+      - "5432"

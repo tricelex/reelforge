@@ -8,6 +8,7 @@ For the full list of settings and their config, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import sys
 from typing import Any
 
 from django.contrib.staticfiles.storage import staticfiles_storage
@@ -118,6 +119,26 @@ DATABASES = {
     },
 }
 
+# During the test suite, target the local `db` Postgres service instead of the
+# remote production database. Detected by pytest being importable in the running
+# process — the app runtime (runserver, manage.py, taskiq) never imports pytest,
+# so this leaves normal operation on the remote DB untouched. CI or other
+# environments can point elsewhere via the TEST_* environment variables.
+if 'pytest' in sys.modules:  # pragma: no branch
+    DATABASES['default'].update(
+        {
+            'NAME': config('TEST_POSTGRES_DB', default='***REMOVED***_test'),
+            'USER': config('TEST_POSTGRES_USER', default='***REMOVED***'),
+            'PASSWORD': config('TEST_POSTGRES_PASSWORD', default='***REMOVED***'),
+            'HOST': config('TEST_DATABASE_HOST', default='db'),
+            'PORT': config('TEST_DATABASE_PORT', default=5432, cast=int),
+            'OPTIONS': {
+                'connect_timeout': 10,
+                'sslmode': config('TEST_DATABASE_SSLMODE', default='disable'),
+            },
+        },
+    )
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
@@ -125,7 +146,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 # Cors headers Settings
 CORS_ALLOWED_ORIGINS = [
     config('FRONTEND_URL', default='http://localhost:3000'),
-    "https://***REMOVED***-frontend-production.up.railway.app",
+    'https://***REMOVED***-frontend-production.up.railway.app',
 ]
 
 CORS_ALLOWED_CREDENTIALS = True
