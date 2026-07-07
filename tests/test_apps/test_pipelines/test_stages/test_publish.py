@@ -191,6 +191,62 @@ def test_publish_run_no_thumbnail_when_not_selected() -> None:
     assert result['youtube_video_id'] == 'yt_def456'
 
 
+def test_publish_passes_category_id_from_metadata() -> None:
+    """upload_video receives the numeric category_id mapped from meta['category']."""
+    ctx = _make_ctx()
+    ctx.upstream['metadata']['category'] = 'Entertainment'
+    fake_job = MagicMock(id='job-cat')
+    fake_job.asave = AsyncMock()
+
+    async def _inner() -> dict:
+        with (
+            patch(
+                'server.apps.pipelines.stages.publish.YouTubeCredential'
+                '.objects.aget',
+                new=AsyncMock(return_value=MagicMock(token_expiry=None)),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client'
+                '.refresh_token_if_needed',
+                new=AsyncMock(return_value='tok'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish._download_asset',
+                new=AsyncMock(return_value=b'video'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.upload_video',
+                new=AsyncMock(return_value='yt_cat'),
+            ) as mock_upload,
+            patch(
+                'server.apps.pipelines.stages.publish.yt_client.set_thumbnail',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.PublishJob.objects.acreate',
+                new=AsyncMock(return_value=fake_job),
+            ),
+            patch(
+                'server.apps.pipelines.stages.publish.Asset.objects.aget',
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+        ):
+            result = await PublishStage().run(ctx)
+            assert mock_upload.call_args.kwargs['category_id'] == '24'
+            return result
+
+    asyncio.run(_inner())
+
+
+def test_category_id_for_name_unknown_defaults_to_education() -> None:
+    """Known category names map to their id; unknown names fall back to Education."""
+    from server.apps.pipelines.stages.publish import _category_id_for_name
+
+    assert _category_id_for_name('Education') == '27'
+    assert _category_id_for_name('Entertainment') == '24'
+    assert _category_id_for_name('Some Unmapped Category') == '27'
+
+
 # ---------------------------------------------------------------------------
 # _download_asset
 # ---------------------------------------------------------------------------
