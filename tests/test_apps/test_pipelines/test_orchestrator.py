@@ -988,7 +988,9 @@ def test_clipping_blueprint_always_arms_gates_regardless_of_channel_gates():
         StageExecution,
         StageStatus,
     )
-    from server.apps.pipelines.services.orchestrator import advance_pipeline_impl
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
 
     channel = Channel.objects.create(
         name='Clipping No-Gates Channel',
@@ -1035,3 +1037,142 @@ def test_clipping_blueprint_always_arms_gates_regardless_of_channel_gates():
     )
     exec_ = StageExecution.objects.get(run=run, stage_key='clip_approval_gate')
     assert exec_.status == StageStatus.NEEDS_INPUT
+
+
+@pytest.fixture
+def publish_blueprint() -> PipelineBlueprint:
+    """A 1-stage blueprint whose only node is the real 'publish' stage key."""
+    return PipelineBlueprint.objects.create(
+        name='publish_hold_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [{'key': 'publish', 'depends_on': [], 'queue': 'api'}],
+        },
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_parks_run_at_publish_hold_when_daily_cap_reached(
+    publish_blueprint: PipelineBlueprint,
+    orch_channel,
+) -> None:
+    """Publish stage does not enqueue once today's PublishJob count hits the cap."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    orch_channel.max_publishes_per_day = 1
+    orch_channel.save(update_fields=['max_publishes_per_day'])
+
+    prior_run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=publish_blueprint,
+        blueprint_snapshot=publish_blueprint.graph,
+        topic='already published today',
+    )
+    PublishJob.objects.create(
+        run=prior_run,
+        channel=orch_channel,
+        status=PublishStatus.COMPLETED,
+    )
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=publish_blueprint,
+        blueprint_snapshot=publish_blueprint.graph,
+        topic='second video today',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.PUBLISH_HOLD
+    assert not run.stages.filter(stage_key='publish').exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_enqueues_publish_when_under_cap(
+    publish_blueprint: PipelineBlueprint,
+    orch_channel,
+) -> None:
+    """Publish stage enqueues normally when today's PublishJob count is under the cap."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.models import StageStatus
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    orch_channel.max_publishes_per_day = 1
+    orch_channel.save(update_fields=['max_publishes_per_day'])
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=publish_blueprint,
+        blueprint_snapshot=publish_blueprint.graph,
+        topic='first video today',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    assert run.stages.filter(
+        stage_key='publish',
+        status=StageStatus.QUEUED,
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resume_publish_held_runs_advances_each_held_run(
+    publish_blueprint: PipelineBlueprint,
+    orch_channel,
+) -> None:
+    """The daily task resumes runs parked at PUBLISH_HOLD."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.tasks import resume_publish_held_runs
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=publish_blueprint,
+        blueprint_snapshot=publish_blueprint.graph,
+        topic='held run',
+        status=RunStatus.PUBLISH_HOLD,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(resume_publish_held_runs())
+
+    run.refresh_from_db()
+    assert run.status != RunStatus.PUBLISH_HOLD

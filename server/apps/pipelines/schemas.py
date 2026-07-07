@@ -49,6 +49,17 @@ class OutlineOutput(BaseModel):
 
     chapters: list[Chapter]
     total_target_seconds: int = Field(gt=0)
+    format_key: str = ''
+
+
+def _word_overlap_ratio(text_a: str, text_b: str) -> float:
+    """Fraction of text_b words that also appear in text_a (lowercased)."""
+    words_a = set(text_a.lower().split())
+    words_b = text_b.lower().split()
+    if not words_b:
+        return 1.0
+    overlap = sum(1 for w in words_b if w in words_a)
+    return overlap / len(words_b)
 
 
 class ScriptChapter(BaseModel):
@@ -59,6 +70,7 @@ class ScriptChapter(BaseModel):
     text: str
     word_count: int = Field(ge=1)
     closing_line: str
+    commentary: str = Field(min_length=1)
 
 
 class ScriptOutput(BaseModel):
@@ -66,6 +78,24 @@ class ScriptOutput(BaseModel):
 
     chapters: list[ScriptChapter]
     total_word_count: int = Field(ge=1)
+
+    @model_validator(mode='after')
+    def enforce_commentary_distinct(self) -> ScriptOutput:
+        """Half the chapters must have commentary distinct from narration."""
+        if not self.chapters:
+            return self
+        distinct_count = sum(
+            1
+            for ch in self.chapters
+            if _word_overlap_ratio(ch.text, ch.commentary) < 0.8
+        )
+        if distinct_count < len(self.chapters) / 2:
+            msg = (
+                'commentary must read as genuine analysis distinct from '
+                'narration in at least half the chapters'
+            )
+            raise ValueError(msg)
+        return self
 
 
 class Scene(BaseModel):
