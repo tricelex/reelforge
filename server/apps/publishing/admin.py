@@ -39,7 +39,9 @@ class PublishJobAdmin(ReelForgeAdmin):
         ('channel', AutocompleteSelectFilter),
         ('created_at', RangeDateFilter),
     )
+    search_fields = ('youtube_video_id', 'run__topic', 'channel__name')
     autocomplete_fields = ('run', 'channel')
+    list_select_related = ('channel', 'run')
     readonly_fields = (
         'id',
         'metadata_snapshot',

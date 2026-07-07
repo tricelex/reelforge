@@ -27,6 +27,7 @@ from server.apps.clips.models import (
     ClipSource,
     ClipStyleConfig,
     ClipTimedOverlay,
+    ClipTimedSfx,
     Earning,
 )
 from server.common.admin import ReelForgeAdmin
@@ -88,6 +89,16 @@ class ClipTimedOverlayInline(TabularInline):  # type: ignore[misc]
     fields = ('overlay_type', 'text', 'start_sec', 'end_sec', 'opacity')
 
 
+class ClipTimedSfxInline(TabularInline):  # type: ignore[misc]
+    """Inline for timed sound effects on a ClipCandidate."""
+
+    model = ClipTimedSfx
+    extra = 0
+    tab = True
+    fields = ('sfx_asset', 'start_sec', 'volume_db')
+    autocomplete_fields = ('sfx_asset',)
+
+
 class ClipPostInline(TabularInline):  # type: ignore[misc]
     """Inline for posts on a ClipCandidate."""
 
@@ -117,11 +128,17 @@ class ClipCandidateAdmin(ReelForgeAdmin):
     search_fields = ('title', 'hook_text', 'run__topic')
     autocomplete_fields = ('run',)
     list_select_related = ('run',)
-    readonly_fields = ('render_asset_id', 'created_at', 'updated_at')
+    readonly_fields = (
+        'render_asset_id',
+        'preview_asset_id',
+        'created_at',
+        'updated_at',
+    )
     inlines: ClassVar = [
         ClipLayoutConfigInline,
         ClipStyleConfigInline,
         ClipTimedOverlayInline,
+        ClipTimedSfxInline,
         ClipPostInline,
     ]
     fieldsets = (
@@ -138,6 +155,7 @@ class ClipCandidateAdmin(ReelForgeAdmin):
                     'end_sec',
                     'hook_text',
                     'render_asset_id',
+                    'preview_asset_id',
                 ),
             },
         ),
@@ -182,7 +200,7 @@ class ClipLayoutConfigAdmin(ReelForgeAdmin):
 
 @admin.register(ClipStyleConfig)
 class ClipStyleConfigAdmin(ReelForgeAdmin):
-    """Admin for ClipStyleConfig."""
+    """Admin for ClipStyleConfig — full render style configuration."""
 
     list_display = (
         'candidate',
@@ -190,33 +208,150 @@ class ClipStyleConfigAdmin(ReelForgeAdmin):
         'caption_style',
         'hook_enabled',
         'watermark_enabled',
+        'music_enabled',
     )
     list_filter = (
         ('caption_style', ChoicesCheckboxFilter),
+        ('caption_position', ChoicesCheckboxFilter),
         ('hook_style', ChoicesCheckboxFilter),
         ('watermark_enabled', ChoicesCheckboxFilter),
+        ('music_enabled', ChoicesCheckboxFilter),
+        ('color_filter', ChoicesCheckboxFilter),
     )
-    autocomplete_fields = ('candidate',)
+    search_fields = ('candidate__title',)
+    autocomplete_fields = (
+        'candidate',
+        'caption_font_asset',
+        'hook_font_asset',
+        'intro_transition_asset',
+        'outro_transition_asset',
+        'intro_asset',
+        'outro_asset',
+        'watermark_image',
+        'watermark_font_asset',
+        'music_asset',
+        'lut_asset',
+    )
+    readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
         (
             None,
             {
+                'fields': ('candidate', 'created_at', 'updated_at'),
+            },
+        ),
+        (
+            _('Captions'),
+            {
+                'classes': ('tab',),
                 'fields': (
-                    'candidate',
                     'caption_enabled',
                     'caption_style',
-                    'hook_enabled',
-                    'hook_style',
-                    'watermark_enabled',
-                    'music_enabled',
+                    'caption_font',
+                    'caption_font_asset',
+                    'caption_size',
+                    'caption_color',
+                    'caption_stroke_color',
+                    'caption_stroke_width',
+                    'caption_bg_color',
+                    'caption_highlight_color',
+                    'caption_position',
+                    'caption_animation',
+                    'caption_uppercase',
+                    'caption_language',
+                    'caption_translate_to',
+                    'emoji_keyword_map',
                 ),
             },
         ),
         (
-            _('Emoji map'),
+            _('Hook'),
             {
                 'classes': ('tab',),
-                'fields': ('emoji_keyword_map',),
+                'fields': (
+                    'hook_enabled',
+                    'hook_style',
+                    'hook_font',
+                    'hook_font_asset',
+                    'hook_size',
+                    'hook_color',
+                    'hook_bg_color',
+                    'hook_duration_sec',
+                    'hook_animation',
+                ),
+            },
+        ),
+        (
+            _('Transitions & bumpers'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'intro_transition',
+                    'intro_transition_duration_sec',
+                    'intro_transition_asset',
+                    'outro_transition',
+                    'outro_transition_duration_sec',
+                    'outro_transition_asset',
+                    'intro_asset',
+                    'outro_asset',
+                ),
+            },
+        ),
+        (
+            _('Watermark'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'watermark_enabled',
+                    'watermark_type',
+                    'watermark_text',
+                    'watermark_image',
+                    'watermark_position',
+                    'watermark_opacity',
+                    'watermark_size',
+                    'watermark_color',
+                    'watermark_font',
+                    'watermark_font_asset',
+                ),
+            },
+        ),
+        (
+            _('Progress bar'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'progress_bar_enabled',
+                    'progress_bar_position',
+                    'progress_bar_color',
+                    'progress_bar_height',
+                ),
+            },
+        ),
+        (
+            _('Music'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'music_enabled',
+                    'music_asset',
+                    'music_volume_db',
+                    'music_fade_in_sec',
+                    'music_fade_out_sec',
+                ),
+            },
+        ),
+        (
+            _('Color grade'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'color_filter',
+                    'brightness',
+                    'contrast',
+                    'saturation',
+                    'lut_asset',
+                    'playback_speed',
+                ),
             },
         ),
     )
@@ -227,9 +362,70 @@ class ClipTimedOverlayAdmin(ReelForgeAdmin):
     """Admin for ClipTimedOverlay."""
 
     list_display = ('candidate', 'overlay_type', 'text', 'start_sec', 'end_sec')
-    list_filter = (('overlay_type', ChoicesCheckboxFilter),)
-    search_fields = ('text',)
-    autocomplete_fields = ('candidate',)
+    list_filter = (
+        ('overlay_type', ChoicesCheckboxFilter),
+        ('shape', ChoicesCheckboxFilter),
+        ('animation', ChoicesCheckboxFilter),
+    )
+    search_fields = ('text', 'candidate__title')
+    autocomplete_fields = (
+        'candidate',
+        'image_asset',
+        'video_asset',
+        'font_asset',
+    )
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        (
+            None,
+            {
+                'fields': (
+                    'candidate',
+                    'overlay_type',
+                    'text',
+                    'shape',
+                    'start_sec',
+                    'end_sec',
+                    'x',
+                    'y',
+                    'width',
+                    'opacity',
+                    'animation',
+                ),
+            },
+        ),
+        (
+            _('Text style'),
+            {
+                'classes': ('tab',),
+                'fields': ('font', 'font_asset', 'font_size', 'color'),
+            },
+        ),
+        (
+            _('Media'),
+            {
+                'classes': ('tab',),
+                'fields': ('image_asset', 'video_asset'),
+            },
+        ),
+        (
+            _('Timestamps'),
+            {
+                'classes': ('tab',),
+                'fields': ('created_at', 'updated_at'),
+            },
+        ),
+    )
+
+
+@admin.register(ClipTimedSfx)
+class ClipTimedSfxAdmin(ReelForgeAdmin):
+    """Admin for ClipTimedSfx."""
+
+    list_display = ('candidate', 'sfx_asset', 'start_sec', 'volume_db')
+    search_fields = ('candidate__title', 'sfx_asset__name')
+    autocomplete_fields = ('candidate', 'sfx_asset')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(ClipPost)
@@ -248,9 +444,10 @@ class ClipPostAdmin(ReelForgeAdmin):
         ('status', ChoicesCheckboxFilter),
         ('scheduled_at', RangeDateTimeFilter),
     )
-    search_fields = ('platform', 'platform_post_id')
+    search_fields = ('platform', 'platform_post_id', 'candidate__title')
     autocomplete_fields = ('candidate',)
-    readonly_fields = ('hashtags',)
+    list_select_related = ('candidate',)
+    readonly_fields = ('hashtags', 'created_at', 'updated_at')
     fieldsets = (
         (
             None,
@@ -274,6 +471,26 @@ class ClipPostAdmin(ReelForgeAdmin):
             {
                 'classes': ('tab',),
                 'fields': ('hashtags',),
+            },
+        ),
+        (
+            _('Metrics'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'views',
+                    'likes',
+                    'comments',
+                    'shares',
+                    'revenue_est_usd',
+                ),
+            },
+        ),
+        (
+            _('Timestamps'),
+            {
+                'classes': ('tab',),
+                'fields': ('created_at', 'updated_at'),
             },
         ),
     )
