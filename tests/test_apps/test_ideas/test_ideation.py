@@ -157,6 +157,66 @@ def test_build_ideation_context_reads_niche(niche: NicheConfig) -> None:
 
 
 @pytest.mark.django_db
+def test_build_ideation_context_includes_performance_notes(
+    niche: NicheConfig,
+) -> None:
+    """Context summarizes trailing AVD% for the channel's completed runs."""
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    bp = PipelineBlueprint.objects.create(
+        name='perf_ctx_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=niche.channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='t',
+        status=RunStatus.COMPLETED,
+    )
+    job = PublishJob.objects.create(
+        run=run,
+        channel=niche.channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt1',
+    )
+    PublishJobMetric.objects.create(
+        publish_job=job,
+        views=1000,
+        avg_view_duration_s=200.0,
+        avg_view_percentage=55.0,
+    )
+
+    context = build_ideation_context(niche)
+    assert (
+        '55.0%' in context.performance_notes
+        or '55.0' in context.performance_notes
+    )
+
+
+def test_build_prompt_includes_performance_notes() -> None:
+    context = IdeationContext(
+        audience='a',
+        angle='b',
+        lore_document='',
+        banned_topics=[],
+        format_name='',
+        existing_topics=set(),
+        performance_notes="This channel's last 5 videos averaged 61.2% AVD.",
+    )
+    prompt = _build_prompt(context, None, count=3)
+    assert '61.2%' in prompt
+
+
+@pytest.mark.django_db
 def test_get_idea_returns_empty_metadata_default(
     niche: NicheConfig,
 ) -> None:
@@ -426,7 +486,7 @@ def test_generate_passes_cached_outliers_to_agent(niche: NicheConfig) -> None:
                 'view_count': 1,
                 'published_at': '2026-01-01T00:00:00Z',
                 'outlier_score': 1.0,
-            }
+            },
         ],
     )
     service = IdeationService(runs=MagicMock(spec=PipelineRunService))

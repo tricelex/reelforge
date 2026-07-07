@@ -42,6 +42,8 @@ def _context_lines(context: 'IdeationContext') -> list[str]:
     lines: list[str] = []
     if context.format_name:
         lines.append(f'Story format: {context.format_name}')
+    if context.performance_notes:
+        lines.append(f'Performance history: {context.performance_notes}')
     if context.lore_document:
         lines.append(f'Channel lore:\n{context.lore_document[:2000]}')
     if context.banned_topics:
