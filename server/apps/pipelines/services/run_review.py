@@ -44,6 +44,12 @@ _TERMINAL = {
 }
 
 
+def _mark_manual_edit_sync(run_id: str) -> None:
+    PipelineRun.objects.filter(id=uuid.UUID(run_id)).update(
+        had_manual_edits=True,
+    )
+
+
 def _stale_downstream_sync(run_id: str, from_stage_key: str) -> None:
     from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
         _downstream_stage_keys,
@@ -209,6 +215,7 @@ class RunReviewService:
             meta['thumbnail_asset_id'] = payload.thumbnail_asset_id
         meta_exec.output = meta
         meta_exec.save(update_fields=['output'])
+        _mark_manual_edit_sync(run_id)
         return self.get_publish_metadata(run_id)
 
     def patch_scene(
@@ -238,6 +245,7 @@ class RunReviewService:
             stale_from = _sync_visual_prompts(run_id, scene_idx, payload)
             _stale_downstream_sync(run_id, stale_from)
 
+        _mark_manual_edit_sync(run_id)
         board = get_storyboard(run_id, self._presign)
         for row in board.scenes:
             if row.idx == scene_idx:

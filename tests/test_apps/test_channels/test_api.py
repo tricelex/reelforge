@@ -711,3 +711,23 @@ def test_channel_summary_includes_default_blueprint_name(
         if item['id'] == str(channel.id)
     )
     assert row['default_blueprint_name'] == 'longform_v1'
+
+
+@pytest.mark.django_db
+def test_graduation_status_endpoint(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    response = dmr_client.get(
+        reverse(
+            'api:channels_api:channel-graduation-status',
+            kwargs={'channel_id': str(channel.id)},
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.OK
+    body = response.json()
+    assert body['clean_run_count'] == 0
+    assert body['required_count'] == 10
+    assert body['eligible'] is False

@@ -18,6 +18,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelDetailPayload,
     ChannelListPayload,
     ChannelPatchPayload,
+    GraduationStatusPayload,
     YouTubeCallbackPayload,
     YouTubeConnectPayload,
     YouTubeConnectResultPayload,
@@ -162,6 +163,23 @@ class ChannelBrandingController(
         return self.resolve(ChannelService).patch_branding(
             str(self.kwargs['channel_id']),
             parsed_body,
+        )
+
+
+@final
+class ChannelGraduationStatusController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Return review-to-auto graduation progress for a channel."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> GraduationStatusPayload:
+        """Return graduation status; does not change publish_mode."""
+        return self.resolve(ChannelService).graduation_status(
+            str(self.kwargs['channel_id']),
         )
 
 
