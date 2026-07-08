@@ -56,6 +56,10 @@ services:
     environment:
       DJANGO_ENV: production
       LOGFIRE_SERVICE_NAME: reelforge-worker
+    volumes:
+      # Netscape-format YouTube cookies for yt-dlp bot checks.
+      # Created by scripts/vps-setup-youtube.sh on the VPS host.
+      - ./secrets/youtube-cookies.txt:/run/secrets/youtube-cookies.txt:ro
     # Bounded concurrency: whisperx/ffmpeg tasks are memory-heavy, and
     # taskiq's own defaults (--workers 2 --max-async-tasks 100) would allow
     # up to 200 concurrent task slots — the likely cause of the Railway OOM
