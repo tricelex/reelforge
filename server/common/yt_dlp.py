@@ -7,12 +7,17 @@ from typing import Any
 from django.conf import settings
 
 _COOKIE_CACHE_PATH: Path | None = None
+_COOKIE_CACHE_KEY: str | None = None
 
 
-def _materialize_netscape_cookies(content: str) -> str:
-    """Write Netscape cookie content to a process-local temp file."""
-    global _COOKIE_CACHE_PATH  # noqa: PLW0603
-    if _COOKIE_CACHE_PATH is not None and _COOKIE_CACHE_PATH.is_file():
+def _materialize_cookie_content(content: str, cache_key: str) -> str:
+    """Write cookie content to a writable process-local temp file."""
+    global _COOKIE_CACHE_PATH, _COOKIE_CACHE_KEY  # noqa: PLW0603
+    if (
+        _COOKIE_CACHE_PATH is not None
+        and _COOKIE_CACHE_PATH.is_file()
+        and _COOKIE_CACHE_KEY == cache_key
+    ):
         return str(_COOKIE_CACHE_PATH)
 
     with tempfile.NamedTemporaryFile(
@@ -25,20 +30,23 @@ def _materialize_netscape_cookies(content: str) -> str:
         handle.write(content)
         path = Path(handle.name)
     _COOKIE_CACHE_PATH = path
+    _COOKIE_CACHE_KEY = cache_key
     return str(path)
 
 
 def resolve_yt_dlp_cookie_file() -> str | None:
-    """Return a cookie file path when configured and available."""
+    """Return a writable cookie file path when configured and available."""
     configured = getattr(settings, 'YTDLP_COOKIE_FILE', '')
     if configured:
         path = Path(configured)
         if path.is_file():
-            return str(path)
+            content = path.read_text(encoding='utf-8')
+            cache_key = f'file:{path}:{path.stat().st_mtime_ns}'
+            return _materialize_cookie_content(content, cache_key)
 
     netscape = getattr(settings, 'YTDLP_COOKIES_NETSCAPE', '')
     if netscape.strip():
-        return _materialize_netscape_cookies(netscape)
+        return _materialize_cookie_content(netscape, f'env:{hash(netscape)}')
     return None
 
 
@@ -56,7 +64,5 @@ def build_yt_dlp_opts(**overrides: Any) -> dict[str, Any]:
     cookie_file = resolve_yt_dlp_cookie_file()
     if cookie_file:
         opts['cookiefile'] = cookie_file
-        # Cookie file is mounted read-only on the VPS worker.
-        opts['no_cookies_update'] = True
     opts.update(overrides)
     return opts
