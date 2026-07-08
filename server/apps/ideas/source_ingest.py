@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from django.core.exceptions import ValidationError
 
 from server.apps.ideas.logic.schemas import SourceSnapshot
+from server.common.yt_dlp import build_yt_dlp_opts
 
 _CAPTION_CHAR_CAP = 4000
 _YOUTUBE_HOSTS = frozenset({
@@ -88,11 +89,7 @@ def _fetch_caption_text(info: dict[str, Any]) -> str:
 def _extract_info(url: str) -> dict[str, Any]:
     import yt_dlp  # noqa: PLC0415
 
-    ydl_opts = {
-        'skip_download': True,
-        'quiet': True,
-        'no_warnings': True,
-    }
+    ydl_opts = build_yt_dlp_opts(skip_download=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         raw_info = ydl.extract_info(url, download=False)
     if raw_info is None:

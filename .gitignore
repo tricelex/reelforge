@@ -223,6 +223,10 @@ media/
 *.env
 .env
 
+# Local secrets (YouTube cookies, etc.):
+config/secrets/
+secrets/
+
 # Local settings files:
 *local.py
 

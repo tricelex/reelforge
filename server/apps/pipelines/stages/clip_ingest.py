@@ -12,17 +12,17 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.yt_dlp import build_yt_dlp_opts
 
 
 def _download_with_ytdlp(url: str, out_path: str) -> dict[str, Any]:
     """Download via yt-dlp; returns {'title', 'duration_sec'}."""
     import yt_dlp  # noqa: PLC0415
 
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': out_path,
-        'quiet': True,
-    }
+    ydl_opts = build_yt_dlp_opts(
+        format='bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        outtmpl=out_path,
+    )
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
     return {

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.test import override_settings
 
 from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 from server.apps.channels.models import Channel, ChannelKind
@@ -251,13 +252,16 @@ def test_resolve_ingest_key_upload_missing_asset(clipping_channel: Channel) -> N
 
 
 def test_probe_youtube_or_rss() -> None:
-    """probe_youtube_or_rss delegates to yt-dlp."""
+    """probe_youtube_or_rss delegates to yt-dlp when API metadata is unavailable."""
     mock_ytdlp = MagicMock()
     mock_ytdlp.YoutubeDL.return_value.__enter__.return_value.extract_info.return_value = {
         'title': 'Probe Title',
         'duration': 90,
     }
-    with patch.dict(sys.modules, {'yt_dlp': mock_ytdlp}):
+    with (
+        override_settings(YOUTUBE_DATA_API_KEY=''),
+        patch.dict(sys.modules, {'yt_dlp': mock_ytdlp}),
+    ):
         info = probe_youtube_or_rss('https://example.com/v')
     assert info['title'] == 'Probe Title'
     assert info['duration_sec'] == 90.0

@@ -535,6 +535,12 @@ YOUTUBE_CLIENT_ID: str = config('YOUTUBE_CLIENT_ID', default='')
 YOUTUBE_CLIENT_SECRET: str = config('YOUTUBE_CLIENT_SECRET', default='')
 YOUTUBE_DATA_API_KEY: str = config('YOUTUBE_DATA_API_KEY', default='')
 
+# yt-dlp cookies — required for YouTube downloads when bot checks trigger.
+# Set YTDLP_COOKIE_FILE to a Netscape cookie file path, or
+# YTDLP_COOKIES_NETSCAPE to the raw file contents (Railway secret).
+YTDLP_COOKIE_FILE: str = config('YTDLP_COOKIE_FILE', default='')
+YTDLP_COOKIES_NETSCAPE: str = config('YTDLP_COOKIES_NETSCAPE', default='')
+
 # Provider API keys
 OPENAI_API_KEY: str = config('OPENAI_API_KEY', default='')
 HUGGINGFACE_TOKEN: str = config('HUGGINGFACE_TOKEN', default='')
