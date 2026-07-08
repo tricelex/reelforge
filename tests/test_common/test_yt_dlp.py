@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import structlog.testing
 from django.test import override_settings
 
 from server.common.yt_dlp import (
@@ -68,6 +69,24 @@ def test_structlog_ytdlp_logger_forwards_all_levels() -> None:
     logger.info('info message')
     logger.warning('warning message')
     logger.error('error message')
+
+
+def test_structlog_ytdlp_logger_debug_logs_at_info_level() -> None:
+    """debug() logs at info, since the 'server' namespace runs at INFO.
+
+    yt-dlp's own PO token/playability diagnostics are emitted via
+    `to_screen` (routed to our `debug()`), so logging them at debug would
+    have them silently dropped before reaching Logfire in production.
+    """
+    with structlog.testing.capture_logs() as captured:
+        _StructlogYtDlpLogger().debug('[debug] some diagnostic')
+    assert captured == [
+        {
+            'event': 'yt_dlp',
+            'message': '[debug] some diagnostic',
+            'log_level': 'info',
+        },
+    ]
 
 
 @pytest.mark.django_db

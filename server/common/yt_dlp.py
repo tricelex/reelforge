@@ -60,10 +60,16 @@ class _StructlogYtDlpLogger:
     configured `logger` before honoring `quiet`/`no_warnings`, so this is
     the only way to see PO token provider diagnostics (e.g. bgutil-provider
     unreachable, PO token rejected) without dropping `quiet` entirely.
+
+    Logged at info, not debug: the 'server' logger namespace runs at
+    INFO in production (see settings/components/logging.py), so anything
+    logged at debug here — including yt-dlp's own `[debug] ...` messages,
+    which is where the PO token/playability diagnostics actually live —
+    is silently dropped before it ever reaches Logfire.
     """
 
     def debug(self, message: str) -> None:
-        _logger.debug('yt_dlp', message=message)
+        _logger.info('yt_dlp', message=message)
 
     def info(self, message: str) -> None:
         _logger.info('yt_dlp', message=message)
