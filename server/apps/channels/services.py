@@ -194,6 +194,7 @@ class ChannelService:
             default_blueprint_name=blueprint_name or '',
             provider_daily_caps=provider_caps,
             config_overrides=config_overrides,
+            max_publishes_per_day=payload.max_publishes_per_day,
         )
         ChannelBranding.objects.get_or_create(channel=channel)
         if payload.niche is not None:
@@ -231,6 +232,7 @@ class ChannelService:
                 'similarity_boost',
                 'wpm',
                 'is_active',
+                'max_publishes_per_day',
             ),
         )
         update_fields.extend(

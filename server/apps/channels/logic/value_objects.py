@@ -49,6 +49,7 @@ class ChannelDetailPayload(msgspec.Struct, frozen=True):
     default_blueprint_name: str | None
     provider_daily_caps: list[ProviderDailyCapPayload]
     config_overrides: dict[str, Any]
+    max_publishes_per_day: int
 
 
 class NicheCreatePayload(msgspec.Struct, frozen=True):
@@ -78,6 +79,7 @@ class ChannelCreatePayload(msgspec.Struct, frozen=True):
     provider_daily_caps: list[ProviderDailyCapPayload] | None = None
     config_overrides: dict[str, Any] | None = None
     niche: NicheCreatePayload | None = None
+    max_publishes_per_day: int = 1
 
 
 class ChannelPatchPayload(msgspec.Struct, frozen=True):
@@ -91,6 +93,7 @@ class ChannelPatchPayload(msgspec.Struct, frozen=True):
     voice_id: str | None = None
     stability: float | None = None
     similarity_boost: float | None = None
+    max_publishes_per_day: int | None = None
     wpm: int | None = None
     is_active: bool | None = None
     default_blueprint_name: str | None = None

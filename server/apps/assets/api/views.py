@@ -13,6 +13,7 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from server.apps.assets.logic.value_objects import (
     LibraryAssetCreatePayload,
     LibraryAssetListPayload,
+    LibraryAssetPatchPayload,
     LibraryAssetPayload,
     PresignUploadPayload,
     PresignUploadResultPayload,
@@ -105,6 +106,25 @@ class LibraryAssetDetailController(
         """Return library asset detail."""
         return self.resolve(LibraryAssetService).get_by_id(
             str(self.kwargs['asset_id']),
+        )
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def patch(
+        self,
+        parsed_body: Body[LibraryAssetPatchPayload],
+    ) -> LibraryAssetPayload:
+        """Update a library asset's licensing fields."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(LibraryAssetService).patch(
+            str(self.kwargs['asset_id']),
+            parsed_body,
         )
 
     @override

@@ -30,6 +30,8 @@ class LibraryAssetPayload(msgspec.Struct, frozen=True):
     is_active: bool
     version: int
     meta: dict[str, str | int | float | bool | None]
+    license_type: str
+    license_note: str
 
 
 class LibraryAssetCreatePayload(msgspec.Struct, frozen=True):
@@ -41,6 +43,15 @@ class LibraryAssetCreatePayload(msgspec.Struct, frozen=True):
     mime: str | None = None
     tags: list[str] | None = None
     channel_id: str | None = None
+    license_type: str | None = None
+    license_note: str | None = None
+
+
+class LibraryAssetPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a library asset — currently licensing only."""
+
+    license_type: str | None = None
+    license_note: str | None = None
 
 
 class LibraryAssetListPayload(msgspec.Struct, frozen=True):

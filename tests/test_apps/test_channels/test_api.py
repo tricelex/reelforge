@@ -129,6 +129,77 @@ def test_get_and_patch_channel(
 
 
 @pytest.mark.django_db
+def test_create_and_patch_channel_max_publishes_per_day(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """max_publishes_per_day round-trips through create, get, and patch."""
+    create_response = dmr_client.post(
+        reverse('api:channels_api:channel-collection'),
+        data={
+            'name': 'Cadence Channel',
+            'kind': ChannelKind.LONGFORM,
+            'max_publishes_per_day': 3,
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == HTTPStatus.CREATED
+    body = create_response.json()
+    assert body['max_publishes_per_day'] == 3
+
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': body['id']},
+    )
+    get_response = dmr_client.get(detail_url, headers=auth_headers)
+    assert get_response.json()['max_publishes_per_day'] == 3
+
+    patch_response = dmr_client.patch(
+        detail_url,
+        data={'max_publishes_per_day': 0},
+        headers=auth_headers,
+    )
+    assert patch_response.status_code == HTTPStatus.OK
+    assert patch_response.json()['max_publishes_per_day'] == 0
+
+
+@pytest.mark.django_db
+def test_channel_assembly_style_get_creates_defaults_and_patch(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    url = reverse(
+        'api:channels_api:channel-assembly-style',
+        kwargs={'channel_id': channel.id},
+    )
+    get_response = dmr_client.get(url, headers=auth_headers)
+    assert get_response.status_code == HTTPStatus.OK
+    body = get_response.json()
+    assert body['channel_id'] == str(channel.id)
+    assert body['camera_movements']
+    assert body['transition_styles']
+
+    patch_response = dmr_client.patch(
+        url,
+        data={
+            'camera_movements': ['push_in', 'parallax'],
+            'min_cuts_per_minute': 4,
+            'max_cuts_per_minute': 12,
+        },
+        headers=auth_headers,
+    )
+    assert patch_response.status_code == HTTPStatus.OK
+    patch_body = patch_response.json()
+    assert patch_body['camera_movements'] == ['push_in', 'parallax']
+    assert patch_body['min_cuts_per_minute'] == 4
+    assert patch_body['max_cuts_per_minute'] == 12
+
+    get_again = dmr_client.get(url, headers=auth_headers)
+    assert get_again.json()['camera_movements'] == ['push_in', 'parallax']
+
+
+@pytest.mark.django_db
 def test_channel_branding_get_and_patch(
     dmr_client: DMRClient,
     channel: Channel,
