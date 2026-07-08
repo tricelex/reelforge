@@ -16,6 +16,14 @@ from sentry_sdk.integrations.redis import RedisIntegration
 _HEALTH_CHECK_PATH = '/health/'
 
 
+def scrubbing_callback(m: logfire.ScrubMatch):
+    if (
+        m.path == ('attributes', 'exception')
+        and m.pattern_match.group(0) == 'cookie'
+    ):
+        return m.value
+
+
 def init_sentry() -> None:
     """Initialise Sentry SDK. No-op when SENTRY_DSN is not configured."""
     if not settings.SENTRY_DSN:
@@ -45,6 +53,7 @@ def init_logfire() -> None:
     logfire.configure(
         token=settings.LOGFIRE_TOKEN,
         service_name=settings.LOGFIRE_SERVICE_NAME,
+        scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback)
     )
     logfire.instrument_django(
         capture_headers=False,
