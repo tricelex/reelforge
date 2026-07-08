@@ -535,10 +535,19 @@ YOUTUBE_CLIENT_ID: str = config('YOUTUBE_CLIENT_ID', default='')
 YOUTUBE_CLIENT_SECRET: str = config('YOUTUBE_CLIENT_SECRET', default='')
 YOUTUBE_DATA_API_KEY: str = config('YOUTUBE_DATA_API_KEY', default='')
 
+# yt-dlp cookies — anonymous (cookie-less) requests from the VPS's
+# datacenter IP get a LOGIN_REQUIRED playability status from YouTube's
+# player API even for ordinary public videos. A PO token provider alone
+# doesn't help here — that only covers the later GVS/format-URL step.
+# Set YTDLP_COOKIE_FILE to a Netscape cookie file path, or
+# YTDLP_COOKIES_NETSCAPE to the raw file contents (Railway secret).
+YTDLP_COOKIE_FILE: str = config('YTDLP_COOKIE_FILE', default='')
+YTDLP_COOKIES_NETSCAPE: str = config('YTDLP_COOKIES_NETSCAPE', default='')
+
 # Base URL of a bgutil-ytdlp-pot-provider HTTP server, used to mint the
-# PO (proof-of-origin) tokens YouTube now requires for extraction — this
-# is what stops YouTube treating server IPs as bot traffic. Empty disables
-# the provider (yt-dlp falls back to no PO token, which YouTube may reject).
+# PO (proof-of-origin) tokens YouTube requires alongside cookies for the
+# GVS/format-URL step. Empty disables the provider (yt-dlp falls back to
+# no PO token, which YouTube may reject).
 YTDLP_POT_PROVIDER_BASE_URL: str = config(
     'YTDLP_POT_PROVIDER_BASE_URL',
     default='',
