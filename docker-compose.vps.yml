@@ -49,6 +49,16 @@ services:
     mem_limit: 512m
     cpus: 0.25
 
+  bgutil-provider:
+    # Mints PO (proof-of-origin) tokens yt-dlp needs for authenticated
+    # YouTube extraction — this is what actually stops YouTube treating
+    # the VPS's datacenter IP as bot traffic.
+    # See https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
+
   worker:
     image: "ghcr.io/tricelex/***REMOVED***-worker:${IMAGE_TAG:-latest}"
     restart: unless-stopped
@@ -56,10 +66,9 @@ services:
     environment:
       DJANGO_ENV: production
       LOGFIRE_SERVICE_NAME: ***REMOVED***-worker
-    volumes:
-      # Netscape-format YouTube cookies for yt-dlp bot checks.
-      # Created by scripts/vps-setup-youtube.sh on the VPS host.
-      - ./secrets/youtube-cookies.txt:/run/secrets/youtube-cookies.txt:ro
+      YTDLP_POT_PROVIDER_BASE_URL: http://bgutil-provider:4416
+    depends_on:
+      - bgutil-provider
     # Bounded concurrency: whisperx/ffmpeg tasks are memory-heavy, and
     # taskiq's own defaults (--workers 2 --max-async-tasks 100) would allow
     # up to 200 concurrent task slots — the likely cause of the Railway OOM
