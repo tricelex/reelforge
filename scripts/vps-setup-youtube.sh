@@ -77,7 +77,7 @@ echo "==> Syncing docker-compose.yml (cookie volume mount)"
 scp ../docker-compose.vps.yml "${VPS_USER}@${VPS_HOST}:${VPS_APP_DIR}/docker-compose.yml"
 
 echo "==> Restarting worker"
-vps_ssh "cd '${VPS_APP_DIR}' && docker compose up -d worker"
+vps_ssh "cd '${VPS_APP_DIR}' && docker compose pull worker && docker compose up -d worker"
 
 echo "==> Verifying cookie file inside worker"
 vps_ssh "cd '${VPS_APP_DIR}' && docker compose exec -T worker test -f '${CONTAINER_COOKIE_PATH}'"
