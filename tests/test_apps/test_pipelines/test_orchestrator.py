@@ -1051,6 +1051,29 @@ def publish_blueprint() -> PipelineBlueprint:
     )
 
 
+@pytest.mark.django_db
+def test_publish_rate_limited_false_when_cap_is_zero(
+    publish_blueprint: PipelineBlueprint,
+    orch_channel,
+) -> None:
+    """max_publishes_per_day=0 means unlimited — never rate-limited."""
+    from server.apps.pipelines.services.orchestrator import (
+        _publish_rate_limited,
+    )
+
+    orch_channel.max_publishes_per_day = 0
+    orch_channel.save(update_fields=['max_publishes_per_day'])
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=publish_blueprint,
+        blueprint_snapshot=publish_blueprint.graph,
+        topic='unlimited cap',
+    )
+
+    assert _publish_rate_limited(run) is False
+
+
 @pytest.mark.django_db(transaction=True)
 def test_advance_parks_run_at_publish_hold_when_daily_cap_reached(
     publish_blueprint: PipelineBlueprint,
@@ -1084,6 +1107,88 @@ def test_advance_parks_run_at_publish_hold_when_daily_cap_reached(
         blueprint=publish_blueprint,
         blueprint_snapshot=publish_blueprint.graph,
         topic='second video today',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.PUBLISH_HOLD
+    assert not run.stages.filter(stage_key='publish').exists()
+
+
+@pytest.fixture
+def multi_stage_publish_blueprint() -> PipelineBlueprint:
+    """A 2-stage blueprint (qc -> publish).
+
+    So PUBLISH_HOLD isn't the only entry `states` could ever hold —
+    reproduces the overwrite bug that a 1-node blueprint's empty `states`
+    dict accidentally hides.
+    """
+    return PipelineBlueprint.objects.create(
+        name='publish_hold_multi_stage_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {'key': 'qc', 'depends_on': [], 'queue': 'render'},
+                {'key': 'publish', 'depends_on': ['qc'], 'queue': 'api'},
+            ],
+        },
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_does_not_overwrite_publish_hold_with_completed(
+    multi_stage_publish_blueprint: PipelineBlueprint,
+    orch_channel,
+) -> None:
+    """A run with every upstream stage SUCCEEDED stays PUBLISH_HOLD.
+
+    Not COMPLETED, when the only remaining node ('publish') is rate-limited.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.models import StageExecution, StageStatus
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    orch_channel.max_publishes_per_day = 1
+    orch_channel.save(update_fields=['max_publishes_per_day'])
+
+    prior_run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=multi_stage_publish_blueprint,
+        blueprint_snapshot=multi_stage_publish_blueprint.graph,
+        topic='already published today',
+    )
+    PublishJob.objects.create(
+        run=prior_run,
+        channel=orch_channel,
+        status=PublishStatus.COMPLETED,
+    )
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=multi_stage_publish_blueprint,
+        blueprint_snapshot=multi_stage_publish_blueprint.graph,
+        topic='second video today, qc already done',
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='qc',
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
     )
 
     with (

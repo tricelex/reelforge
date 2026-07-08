@@ -1,5 +1,6 @@
 """TaskIQ broker tasks for pipeline execution."""
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
@@ -61,11 +62,17 @@ async def resume_publish_held_runs() -> None:
         await resume_run_impl(run_id)
 
 
-async def _download_thumbnail_bytes(asset_id: str) -> bytes:  # pragma: no cover
+async def _download_thumbnail_bytes(asset_id: str) -> bytes:
+    """Download thumbnail bytes without blocking the event loop.
+
+    asset.file.read() is a blocking storage-backend call (potentially a
+    network round-trip to S3/GCS) — run it in a thread, matching the
+    equivalent SRT-read path in stages/publish.py.
+    """
     from server.apps.assets.models import Asset  # noqa: PLC0415
 
     asset = await Asset.objects.aget(id=asset_id)
-    return asset.file.read()  # type: ignore[no-any-return]
+    return await asyncio.to_thread(asset.file.read)
 
 
 def _channel_median_ctr(
@@ -169,8 +176,18 @@ async def _apply_thumbnail_swap(
     )
 
 
-async def _maybe_swap_job(job: 'PublishJob') -> None:
-    """Swap one job's thumbnail if its CTR is below the channel median."""
+async def _maybe_swap_job(
+    job: 'PublishJob',
+    medians: dict[uuid.UUID, float | None],
+) -> None:
+    """Swap one job's thumbnail if its CTR is below the channel median.
+
+    `medians` is a per-channel_id cache shared across a single
+    swap_underperforming_thumbnails() run — a channel rarely has more than
+    one eligible job in the same 24-48h sweep given the daily publish cap,
+    but when it does, this avoids recomputing the same DISTINCT-ON query
+    once per job.
+    """
     from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
 
     metric = await (
@@ -184,7 +201,12 @@ async def _maybe_swap_job(job: 'PublishJob') -> None:
     )
     if metric is None:
         return
-    median = await sync_to_async(_channel_median_ctr)(job.channel_id, job.id)
+    if job.channel_id not in medians:
+        medians[job.channel_id] = await sync_to_async(_channel_median_ctr)(
+            job.channel_id,
+            job.id,
+        )
+    median = medians[job.channel_id]
     ctr = cast('float', metric.impressions_ctr)
     if median is None or ctr >= median:
         return
@@ -223,5 +245,6 @@ async def swap_underperforming_thumbnails() -> None:
             created_at__lte=window_end,
         ).select_related('channel', 'run')
     ]
+    medians: dict[uuid.UUID, float | None] = {}
     for job in jobs:
-        await _maybe_swap_job(job)
+        await _maybe_swap_job(job, medians)

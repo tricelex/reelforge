@@ -6,11 +6,16 @@ import tempfile
 from pathlib import Path
 from typing import Any, ClassVar, override
 
+import structlog
+
+from server.apps.pipelines.logic.pool_rotation import pick_cyclic
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
 )
+
+logger = structlog.get_logger(__name__)
 
 _DEFAULT_TRANSITION = 'hard_cut'
 _TRANSITION_DURATION_S = 0.5
@@ -18,9 +23,7 @@ _TRANSITION_DURATION_S = 0.5
 
 def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
     """Cycle through the channel's transition-style pool by chapter index."""
-    if not pool:
-        return _DEFAULT_TRANSITION
-    return pool[chapter_idx % len(pool)]
+    return pick_cyclic(pool, chapter_idx, _DEFAULT_TRANSITION)
 
 
 def _group_scenes_by_chapter(
@@ -181,14 +184,30 @@ async def _build_music_paths(
     scene_groups: dict[int, list[dict[str, Any]]],
     music_map: dict[int, dict[str, Any]],
 ) -> tuple[list[str], list[float]]:
-    """Download music library assets; return paths and per-track gain_db."""
+    """Download music library assets; return paths and per-track gain_db.
+
+    Skips (rather than crashes the render on) a chapter whose
+    library_asset_id doesn't resolve to a real LibraryAsset — e.g. the
+    music_plan LLM hallucinated an ID because the selectable library was
+    empty for this channel.
+    """
+    from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
+
     music_paths: list[str] = []
     music_gains: list[float] = []
     for ch_idx in sorted(scene_groups.keys()):
         entry = music_map.get(ch_idx)
         if not entry:
             continue
-        music_bytes = await _fetch_library_bytes(entry['library_asset_id'])
+        try:
+            music_bytes = await _fetch_library_bytes(entry['library_asset_id'])
+        except ObjectDoesNotExist:
+            logger.warning(
+                'assembly_music_asset_missing',
+                chapter_idx=ch_idx,
+                library_asset_id=entry.get('library_asset_id'),
+            )
+            continue
         music_file = tmp / f'music_{ch_idx:03d}.mp3'
         await asyncio.to_thread(music_file.write_bytes, music_bytes)
         music_paths.append(str(music_file))

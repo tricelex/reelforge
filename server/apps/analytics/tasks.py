@@ -2,9 +2,13 @@
 
 from typing import Any
 
+import structlog
+
 from server.apps.generation.clients import youtube as yt_client
 from server.apps.generation.clients.youtube_analytics import fetch_video_report
 from server.common.broker import broker
+
+logger = structlog.get_logger(__name__)
 
 
 @broker.task(retry_on_error=False, queue='api')
@@ -48,6 +52,78 @@ async def _get_channel_youtube_id(access_token: str) -> str:  # pragma: no cover
     return str(resp.json()['items'][0]['id'])
 
 
+async def _resolve_channel_access(
+    job: Any,
+    access_tokens: dict[Any, str],
+    channel_youtube_ids: dict[Any, str],
+) -> tuple[str, str] | None:
+    """Return (access_token, channel_youtube_id) for job's channel, cached
+    per channel_id so a batch of jobs on the same channel only refreshes the
+    token / resolves the YouTube channel ID once. Returns None (and logs) if
+    the channel has no usable credential.
+    """
+    from server.apps.channels.models import YouTubeCredential  # noqa: PLC0415
+
+    access_token = access_tokens.get(job.channel_id)
+    if access_token is None:
+        try:
+            credential = await YouTubeCredential.objects.aget(
+                channel=job.channel,
+            )
+        except YouTubeCredential.DoesNotExist:
+            logger.warning(
+                'publish_job_metric_no_credential',
+                channel_id=str(job.channel_id),
+            )
+            return None
+        access_token = await yt_client.refresh_token_if_needed(credential)
+        access_tokens[job.channel_id] = access_token
+
+    channel_youtube_id = channel_youtube_ids.get(job.channel_id)
+    if channel_youtube_id is None:
+        channel_youtube_id = await _get_channel_youtube_id(access_token)
+        channel_youtube_ids[job.channel_id] = channel_youtube_id
+    return access_token, channel_youtube_id
+
+
+async def _pull_one_job_metric(
+    job: Any,
+    access_tokens: dict[Any, str],
+    channel_youtube_ids: dict[Any, str],
+) -> None:
+    """Fetch and persist one PublishJobMetric row for `job`.
+
+    Isolated per job so one channel's failure (stale credential missing the
+    yt-analytics.readonly scope, a transient API error, etc.) doesn't abort
+    metric collection for every other channel in the same batch.
+    """
+    from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
+
+    resolved = await _resolve_channel_access(
+        job,
+        access_tokens,
+        channel_youtube_ids,
+    )
+    if resolved is None:
+        return
+    access_token, channel_youtube_id = resolved
+
+    report = await fetch_video_report(
+        access_token,
+        channel_youtube_id,
+        job.youtube_video_id,
+    )
+    await PublishJobMetric.objects.acreate(
+        publish_job=job,
+        views=report['views'],
+        avg_view_duration_s=report['avg_view_duration_s'],
+        avg_view_percentage=report['avg_view_percentage'],
+        retention_curve=report['retention_curve'],
+        impressions=report['impressions'],
+        impressions_ctr=report['impressions_ctr'],
+    )
+
+
 @broker.task(retry_on_error=False, queue='api')
 async def pull_publish_job_metrics() -> None:
     """Pull YouTube Analytics for PublishJobs completed in the last 30 days."""
@@ -55,8 +131,6 @@ async def pull_publish_job_metrics() -> None:
 
     import django.utils.timezone as tz  # noqa: PLC0415
 
-    from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
-    from server.apps.channels.models import YouTubeCredential  # noqa: PLC0415
     from server.apps.publishing.models import (  # noqa: PLC0415
         PublishJob,
         PublishStatus,
@@ -70,31 +144,17 @@ async def pull_publish_job_metrics() -> None:
             created_at__gte=cutoff,
         ).select_related('channel')
     ]
-    # Resolve each channel's own YouTube ID at most once (quota discipline).
+    # Cached per channel_id (quota discipline + avoid redundant token refresh).
+    access_tokens: dict[Any, str] = {}
     channel_youtube_ids: dict[Any, str] = {}
     for job in jobs:
         try:
-            credential = await YouTubeCredential.objects.aget(
-                channel=job.channel,
+            await _pull_one_job_metric(job, access_tokens, channel_youtube_ids)
+        except Exception:
+            logger.warning(
+                'publish_job_metric_pull_failed',
+                job_id=str(job.id),
+                channel_id=str(job.channel_id),
+                exc_info=True,
             )
-        except YouTubeCredential.DoesNotExist:
             continue
-        access_token = await yt_client.refresh_token_if_needed(credential)
-        channel_youtube_id = channel_youtube_ids.get(job.channel_id)
-        if channel_youtube_id is None:
-            channel_youtube_id = await _get_channel_youtube_id(access_token)
-            channel_youtube_ids[job.channel_id] = channel_youtube_id
-        report = await fetch_video_report(
-            access_token,
-            channel_youtube_id,
-            job.youtube_video_id,
-        )
-        await PublishJobMetric.objects.acreate(
-            publish_job=job,
-            views=report['views'],
-            avg_view_duration_s=report['avg_view_duration_s'],
-            avg_view_percentage=report['avg_view_percentage'],
-            retention_curve=report['retention_curve'],
-            impressions=report['impressions'],
-            impressions_ctr=report['impressions_ctr'],
-        )

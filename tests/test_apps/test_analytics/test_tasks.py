@@ -192,3 +192,100 @@ def test_pull_publish_job_metrics_skips_jobs_without_credential() -> None:
     _run(pull_publish_job_metrics())
 
     assert not PublishJobMetric.objects.filter(publish_job=job).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_pull_publish_job_metrics_one_channel_failure_does_not_abort_others() -> None:
+    """A stale/erroring credential on one channel doesn't block other channels."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.analytics.tasks import pull_publish_job_metrics
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+        YouTubeCredential,
+    )
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    bad_channel = Channel.objects.create(name='Bad Ch', kind=ChannelKind.LONGFORM)
+    YouTubeCredential.objects.create(
+        channel=bad_channel,
+        access_token='stale',
+        refresh_token='stale_r',
+    )
+    good_channel = Channel.objects.create(name='Good Ch', kind=ChannelKind.LONGFORM)
+    YouTubeCredential.objects.create(
+        channel=good_channel,
+        access_token='tok',
+        refresh_token='rtok',
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='partial_failure_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    bad_run = PipelineRun.objects.create(
+        channel=bad_channel, blueprint=bp, blueprint_snapshot={}, topic='bad',
+    )
+    bad_job = PublishJob.objects.create(
+        run=bad_run,
+        channel=bad_channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_bad',
+    )
+    good_run = PipelineRun.objects.create(
+        channel=good_channel, blueprint=bp, blueprint_snapshot={}, topic='good',
+    )
+    good_job = PublishJob.objects.create(
+        run=good_run,
+        channel=good_channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_good',
+    )
+
+    fake_report = {
+        'views': 10,
+        'avg_view_duration_s': 5.0,
+        'avg_view_percentage': 50.0,
+        'retention_curve': [],
+        'impressions': None,
+        'impressions_ctr': None,
+    }
+
+    async def _fake_fetch_video_report(
+        access_token: str,
+        channel_youtube_id: str,
+        video_id: str,
+    ) -> dict[str, object]:
+        if video_id == 'yt_bad':
+            msg = 'YouTube Analytics 403: missing scope'
+            raise RuntimeError(msg)
+        return fake_report
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.analytics.tasks.yt_client.refresh_token_if_needed',
+                new=AsyncMock(return_value='fresh_tok'),
+            ),
+            patch(
+                'server.apps.analytics.tasks.fetch_video_report',
+                new=AsyncMock(side_effect=_fake_fetch_video_report),
+            ),
+            patch(
+                'server.apps.analytics.tasks._get_channel_youtube_id',
+                new=AsyncMock(return_value='UC999'),
+            ),
+        ):
+            await pull_publish_job_metrics()
+
+    _run(_inner())
+
+    assert not PublishJobMetric.objects.filter(publish_job=bad_job).exists()
+    assert PublishJobMetric.objects.filter(publish_job=good_job).exists()

@@ -11,6 +11,24 @@ import pytest
 from server.apps.pipelines.stages.outline import OutlineStage
 
 
+class _AsyncIter:
+    """Minimal async iterator wrapping a plain list.
+
+    For mocking `async for` iteration over a queryset-like mock return value.
+    """
+
+    def __init__(self, items: list[Any]) -> None:
+        self._items = list(items)
+
+    def __aiter__(self) -> '_AsyncIter':
+        return self
+
+    async def __anext__(self) -> Any:
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     from asgiref.sync import sync_to_async
 
@@ -36,7 +54,7 @@ def _make_ctx() -> MagicMock:
     ctx.run.prompt_snapshot = {}
     ctx.channel.id = 'chan-outline-1'
     ctx.channel.niche_config = MagicMock()
-    ctx.channel.niche_config.format_pool.filter.return_value = []
+    ctx.channel.niche_config.format_pool.filter.return_value = _AsyncIter([])
     ctx.channel.niche_config.format = MagicMock()
     ctx.channel.niche_config.format.beats = [
         {'key': 'intro', 'pct': 0.1, 'purpose': 'hook'},
@@ -110,7 +128,7 @@ def test_outline_run_returns_chapters() -> None:
             ),
             patch(
                 'server.apps.pipelines.stages.outline.compute_soft_spots',
-                return_value='',
+                new=AsyncMock(return_value=''),
             ),
         ):
             return await OutlineStage().run(ctx)
@@ -157,7 +175,7 @@ def test_outline_run_with_no_niche_config() -> None:
             ),
             patch(
                 'server.apps.pipelines.stages.outline.compute_soft_spots',
-                return_value='',
+                new=AsyncMock(return_value=''),
             ),
         ):
             return await OutlineStage().run(ctx)
@@ -245,7 +263,9 @@ def test_outline_run_uses_format_pool_when_multiple_present() -> None:
     ctx = _make_ctx()
     fmt_a = MagicMock(key='fmt_a', beats=[{'name': 'a'}])
     fmt_b = MagicMock(key='fmt_b', beats=[{'name': 'b'}])
-    ctx.channel.niche_config.format_pool.filter.return_value = [fmt_a, fmt_b]
+    ctx.channel.niche_config.format_pool.filter.return_value = _AsyncIter(
+        [fmt_a, fmt_b],
+    )
 
     fake_output = OutlineOutput(
         chapters=[
@@ -272,7 +292,7 @@ def test_outline_run_uses_format_pool_when_multiple_present() -> None:
             ),
             patch(
                 'server.apps.pipelines.stages.outline.compute_soft_spots',
-                return_value='',
+                new=AsyncMock(return_value=''),
             ),
         ):
             return await OutlineStage().run(ctx)
@@ -287,7 +307,9 @@ def test_outline_run_single_pool_entry_used_directly() -> None:
 
     ctx = _make_ctx()
     fmt_only = MagicMock(key='only_fmt', beats=[{'name': 'solo'}])
-    ctx.channel.niche_config.format_pool.filter.return_value = [fmt_only]
+    ctx.channel.niche_config.format_pool.filter.return_value = _AsyncIter(
+        [fmt_only],
+    )
 
     fake_output = OutlineOutput(
         chapters=[
@@ -310,7 +332,7 @@ def test_outline_run_single_pool_entry_used_directly() -> None:
             ),
             patch(
                 'server.apps.pipelines.stages.outline.compute_soft_spots',
-                return_value='',
+                new=AsyncMock(return_value=''),
             ),
         ):
             return await OutlineStage().run(ctx)
@@ -345,7 +367,9 @@ def test_outline_run_includes_soft_spots_in_prompt_context() -> None:
             ),
             patch(
                 'server.apps.pipelines.stages.outline.compute_soft_spots',
-                return_value='Known pacing soft spots on this channel: ...',
+                new=AsyncMock(
+                    return_value='Known pacing soft spots on this channel: ...',
+                ),
             ),
         ):
             return await OutlineStage().run(ctx)

@@ -9,7 +9,7 @@ from unfold.contrib.filters.admin import (
 )
 
 from server.apps.ideas.logic.constants import IdeaStatus
-from server.apps.ideas.models import TopicIdea
+from server.apps.ideas.models import NicheOutlierScan, TopicIdea
 from server.common.admin import ReelForgeAdmin
 from server.common.admin_display import (
     STANDARD_STATUS_COLORS,
@@ -79,3 +79,31 @@ class TopicIdeaAdmin(ReelForgeAdmin):
         _IDEA_STATUS_COLORS,
         description=_('Status'),
     )
+
+
+@admin.register(NicheOutlierScan)
+class NicheOutlierScanAdmin(ReelForgeAdmin):
+    """Admin panel for cached niche outlier scans (read-only)."""
+
+    list_display = ('niche', 'query', 'result_count', 'created_at')
+    list_filter = (('niche', AutocompleteSelectFilter),)
+    search_fields = ('query', 'niche__channel__name')
+    autocomplete_fields = ('niche',)
+    readonly_fields = ('niche', 'query', 'results', 'created_at', 'updated_at')
+
+    @admin.display(description=_('Results'))
+    def result_count(self, obj: NicheOutlierScan) -> int:
+        """Number of outlier videos captured in this scan."""
+        return len(obj.results)
+
+    def has_add_permission(self, request: object) -> bool:
+        """Scans are created by the daily outlier-scan task only."""
+        return False
+
+    def has_change_permission(
+        self,
+        request: object,
+        obj: NicheOutlierScan | None = None,
+    ) -> bool:
+        """Scans are immutable snapshots."""
+        return False

@@ -49,39 +49,58 @@ def _chapter_boundaries_from_outline(
     return boundaries
 
 
-def compute_soft_spots(channel_id: str) -> str:
-    """Summarize which retention devices underperform for this channel.
-
-    Returns '' when there isn't enough data (fewer than _MIN_SAMPLES points
-    for every device) to say anything meaningful yet.
-    """
+async def _fetch_recent_metrics(channel_id: str) -> list[Any]:
+    """Latest metrics with a non-empty retention curve, most recent first."""
     from server.apps.analytics.models import PublishJobMetric  # noqa: PLC0415
+
+    return [
+        metric
+        async for metric in (
+            PublishJobMetric.objects
+            .filter(publish_job__channel_id=channel_id)
+            .select_related('publish_job__run')
+            .order_by('-pulled_at')[:_RECENT_METRICS_LIMIT]
+        )
+        if metric.retention_curve
+    ]
+
+
+async def _fetch_stage_executions_by_run(
+    run_ids: set[Any],
+) -> tuple[dict[Any, Any], dict[Any, Any]]:
+    """One batched query for outline+assembly executions across all run_ids."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
         StageExecution,
         StageStatus,
     )
 
+    outline_by_run: dict[Any, Any] = {}
+    assembly_by_run: dict[Any, Any] = {}
+    async for execution in StageExecution.objects.filter(
+        run_id__in=run_ids,
+        stage_key__in=('outline', 'assembly'),
+        status=StageStatus.SUCCEEDED,
+    ):
+        by_run = (
+            outline_by_run
+            if execution.stage_key == 'outline'
+            else assembly_by_run
+        )
+        by_run.setdefault(execution.run_id, execution)
+    return outline_by_run, assembly_by_run
+
+
+def _aggregate_buckets(
+    metrics: list[Any],
+    outline_by_run: dict[Any, Any],
+    assembly_by_run: dict[Any, Any],
+) -> dict[str, list[float]]:
+    """Merge per-metric device buckets across every metric in `metrics`."""
     all_buckets: dict[str, list[float]] = {}
-    metrics = (
-        PublishJobMetric.objects
-        .filter(publish_job__channel_id=channel_id)
-        .select_related('publish_job__run')
-        .order_by('-pulled_at')[:_RECENT_METRICS_LIMIT]
-    )
     for metric in metrics:
-        if not metric.retention_curve:
-            continue
         run_id = metric.publish_job.run_id
-        outline_exec = StageExecution.objects.filter(
-            run_id=run_id,
-            stage_key='outline',
-            status=StageStatus.SUCCEEDED,
-        ).first()
-        assembly_exec = StageExecution.objects.filter(
-            run_id=run_id,
-            stage_key='assembly',
-            status=StageStatus.SUCCEEDED,
-        ).first()
+        outline_exec = outline_by_run.get(run_id)
+        assembly_exec = assembly_by_run.get(run_id)
         if outline_exec is None or assembly_exec is None:
             continue
         chapters = outline_exec.output.get('chapters', [])
@@ -94,6 +113,28 @@ def compute_soft_spots(channel_id: str) -> str:
         )
         for device, values in buckets.items():
             all_buckets.setdefault(device, []).extend(values)
+    return all_buckets
+
+
+async def compute_soft_spots(channel_id: str) -> str:
+    """Summarize which retention devices underperform for this channel.
+
+    Returns '' when there isn't enough data (fewer than _MIN_SAMPLES points
+    for every device) to say anything meaningful yet.
+
+    Uses async ORM iteration throughout (this is called from an async
+    pipeline stage) and batches the outline/assembly StageExecution lookups
+    into a single query instead of two per metric.
+    """
+    metrics = await _fetch_recent_metrics(channel_id)
+    if not metrics:
+        return ''
+
+    run_ids = {metric.publish_job.run_id for metric in metrics}
+    outline_by_run, assembly_by_run = await _fetch_stage_executions_by_run(
+        run_ids,
+    )
+    all_buckets = _aggregate_buckets(metrics, outline_by_run, assembly_by_run)
 
     soft_spots = [
         (device, sum(values) / len(values))

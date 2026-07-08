@@ -9,6 +9,7 @@ import httpx
 
 from server.apps.assets.models import AssetKind
 from server.apps.generation.clients import fal as fal_client
+from server.apps.pipelines.logic.pool_rotation import pick_cyclic
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -33,9 +34,7 @@ _MOVEMENT_PROMPT_PHRASES = {
 
 def _pick_camera_movement(pool: list[str], scene_idx: int) -> str:
     """Cycle through the channel's camera-movement pool by scene index."""
-    if not pool:
-        return _DEFAULT_CAMERA_MOVEMENT
-    return pool[scene_idx % len(pool)]
+    return pick_cyclic(pool, scene_idx, _DEFAULT_CAMERA_MOVEMENT)
 
 
 async def _run_ken_burns(

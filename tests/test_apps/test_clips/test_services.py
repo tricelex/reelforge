@@ -493,7 +493,12 @@ def test_start_render_requires_approved_candidates(
 ) -> None:
     """start_render rejects when no candidates are approved."""
     from django.core.exceptions import ValidationError
-    from server.apps.pipelines.models import RunStatus, StageExecution, StageStatus
+
+    from server.apps.pipelines.models import (
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
 
     run = candidate.run
     run.status = RunStatus.AWAITING_REVIEW

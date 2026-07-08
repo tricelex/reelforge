@@ -81,6 +81,20 @@ def test_build_srt_content_formats_timestamps() -> None:
     )
 
 
+def test_fmt_srt_time_carries_millisecond_rounding_into_seconds() -> None:
+    """A fractional part that rounds up to 1000ms carries into the next second.
+
+    Instead of emitting an invalid 4-digit millisecond field.
+    """
+    from server.apps.pipelines.stages.alignment import _fmt_srt_time
+
+    assert _fmt_srt_time(1.9996) == '00:00:02,000'
+    assert _fmt_srt_time(59.9997) == '00:01:00,000'
+    assert _fmt_srt_time(3599.9996) == '01:00:00,000'
+    assert _fmt_srt_time(0.0) == '00:00:00,000'
+    assert _fmt_srt_time(61.234) == '00:01:01,234'
+
+
 def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     """run() returns dict with 'scenes' and 'ass_asset_id'."""
     ctx = _make_ctx()

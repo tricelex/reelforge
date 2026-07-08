@@ -5,8 +5,8 @@ from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.http import HttpResponse
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse
 from django.urls import reverse
 from dmr.endpoint import Endpoint
 from dmr.test import DMRClient
@@ -40,6 +40,10 @@ from server.apps.clips.api.source_views import (
     ClipSourceDetailController,
 )
 from server.apps.clips.models import ClipCampaign, ClipSource
+from server.apps.ideas.api.views import (
+    ChannelIdeaGenerateController,
+    IdeaCollectionController,
+)
 from server.apps.pipelines.api.cast_views import (
     RunCastApproveController,
     RunCastDetailController,
@@ -73,10 +77,6 @@ from server.apps.prompts.api.views import (
     PromptTemplateDetailController,
     PromptVersionActivateController,
     StoryFormatDetailController,
-)
-from server.apps.ideas.api.views import (
-    ChannelIdeaGenerateController,
-    IdeaCollectionController,
 )
 from server.common.storage import PresignUrlHelper
 
@@ -395,8 +395,6 @@ def test_earning_collection_validation_error() -> None:
 
 def test_campaign_list_invalid_limit_parsing() -> None:
     """Campaign list coerces invalid limit query values."""
-    from server.apps.clips.api.campaign_views import CampaignCollectionController
-
     controller = CampaignCollectionController()
     controller.request = MagicMock()
     controller.request.GET.get = lambda key, default='20': (

@@ -17,6 +17,7 @@ from server.apps.pipelines.stages.assembly import (
     AssemblyStage,
     _build_chapter_audio_map,
     _build_music_map,
+    _build_music_paths,
     _build_scene_asset_map,
     _fetch_asset_bytes,
     _fetch_library_bytes,
@@ -55,6 +56,50 @@ def test_build_music_map() -> None:
     result = _build_music_map(entries)
     assert result[0]['library_asset_id'] == 'uuid-a'
     assert result[1]['gain_db'] == -6.0
+
+
+def test_build_music_paths_downloads_each_chapter_track(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A resolvable library_asset_id downloads and is included in the output."""
+    scene_groups = {0: [], 1: []}
+    music_map = {
+        0: {'library_asset_id': 'uuid-a', 'gain_db': -3.0},
+        1: {'library_asset_id': 'uuid-b', 'gain_db': -6.0},
+    }
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        with patch(
+            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+            new=AsyncMock(return_value=b'music bytes'),
+        ):
+            return await _build_music_paths(tmp_path, scene_groups, music_map)
+
+    paths, gains = asyncio.run(_inner())
+    assert len(paths) == 2
+    assert gains == [-3.0, -6.0]
+
+
+def test_build_music_paths_skips_chapter_with_missing_asset(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A library_asset_id with no matching row is skipped, not a crash."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    scene_groups = {0: [], 1: []}
+    music_map = {
+        0: {'library_asset_id': 'hallucinated-id', 'gain_db': -3.0},
+        1: {'library_asset_id': 'uuid-b', 'gain_db': -6.0},
+    }
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        with patch(
+            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+            new=AsyncMock(
+                side_effect=[ObjectDoesNotExist(), b'music bytes'],
+            ),
+        ):
+            return await _build_music_paths(tmp_path, scene_groups, music_map)
+
+    paths, gains = asyncio.run(_inner())
+    assert len(paths) == 1
+    assert gains == [-6.0]
 
 
 def _make_ctx() -> MagicMock:

@@ -14,7 +14,10 @@ from server.apps.prompts.models import (
     StoryFormat,
 )
 from server.common.admin import ReelForgeAdmin
-from server.common.admin_display import make_badge_method, make_boolean_badge_method
+from server.common.admin_display import (
+    make_badge_method,
+    make_boolean_badge_method,
+)
 
 
 class PromptVersionInline(TabularInline):  # type: ignore[misc]

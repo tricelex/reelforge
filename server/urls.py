@@ -31,7 +31,6 @@ from server.apps.main.api import urls as main_api_urls
 from server.apps.main.views import index
 from server.openapi.routers import build_api_router, build_api_schema
 
-
 admin.autodiscover()
 
 

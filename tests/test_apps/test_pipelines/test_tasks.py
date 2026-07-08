@@ -27,6 +27,36 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     return asyncio.run(_wrapped())
 
 
+def test_download_thumbnail_bytes_reads_file_off_the_event_loop() -> None:
+    """Reads via asyncio.to_thread, not a direct blocking call.
+
+    Matches the equivalent SRT-read path in publish.py.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from server.apps.pipelines.tasks import _download_thumbnail_bytes
+
+    fake_asset = MagicMock()
+
+    async def _inner() -> bytes:
+        with (
+            patch(
+                'server.apps.assets.models.Asset.objects.aget',
+                new=AsyncMock(return_value=fake_asset),
+            ),
+            patch(
+                'asyncio.to_thread',
+                new=AsyncMock(return_value=b'thumbnail bytes'),
+            ) as mock_to_thread,
+        ):
+            result = await _download_thumbnail_bytes('asset-uuid')
+            mock_to_thread.assert_awaited_once_with(fake_asset.file.read)
+            return result
+
+    result = asyncio.run(_inner())
+    assert result == b'thumbnail bytes'
+
+
 @pytest.mark.django_db(transaction=True)
 def test_swap_underperforming_thumbnails_swaps_below_median_ctr() -> None:
     """A job with below-median CTR and an untested candidate gets swapped once."""
@@ -147,6 +177,129 @@ def test_swap_underperforming_thumbnails_swaps_below_median_ctr() -> None:
     assert job.tested_candidate_ranks == [1]
 
 
+@pytest.mark.django_db(transaction=True)
+def test_swap_underperforming_thumbnails_caches_median_per_channel() -> None:
+    """Two eligible jobs on the same channel compute the median only once."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.analytics.models import PublishJobMetric
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+        YouTubeCredential,
+    )
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.tasks import swap_underperforming_thumbnails
+    from server.apps.publishing.models import PublishJob, PublishStatus
+
+    channel = Channel.objects.create(
+        name='Shared Median Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    YouTubeCredential.objects.create(
+        channel=channel,
+        access_token='tok',
+        refresh_token='rtok',
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='shared_median_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+
+    good_run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={},
+        topic='good',
+    )
+    good_job = PublishJob.objects.create(
+        run=good_run,
+        channel=channel,
+        status=PublishStatus.COMPLETED,
+        youtube_video_id='yt_good',
+    )
+    PublishJob.objects.filter(id=good_job.id).update(
+        created_at=tz.now() - timedelta(days=10),
+    )
+    PublishJobMetric.objects.create(
+        publish_job=good_job,
+        views=1000,
+        impressions_ctr=0.06,
+    )
+
+    eligible_jobs = []
+    for i in range(2):
+        run = PipelineRun.objects.create(
+            channel=channel,
+            blueprint=bp,
+            blueprint_snapshot={},
+            topic=f'u{i}',
+        )
+        StageExecution.objects.create(
+            run=run,
+            stage_key='thumbnail',
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+            output={
+                'candidates': [
+                    {'rank': 0, 'asset_id': f'thumb-{i}-0'},
+                    {'rank': 1, 'asset_id': f'thumb-{i}-1'},
+                ],
+            },
+        )
+        job = PublishJob.objects.create(
+            run=run,
+            channel=channel,
+            status=PublishStatus.COMPLETED,
+            youtube_video_id=f'yt_under_{i}',
+            thumbnail_asset_id=f'thumb-{i}-0',
+        )
+        PublishJob.objects.filter(id=job.id).update(
+            created_at=tz.now() - timedelta(hours=30),
+        )
+        PublishJobMetric.objects.create(
+            publish_job=job,
+            views=500,
+            impressions_ctr=0.02,
+        )
+        eligible_jobs.append(job)
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.tasks.yt_client.refresh_token_if_needed',
+                new=AsyncMock(return_value='fresh_tok'),
+            ),
+            patch(
+                'server.apps.pipelines.tasks.yt_client.set_thumbnail',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.tasks._download_thumbnail_bytes',
+                new=AsyncMock(return_value=b'thumb bytes'),
+            ),
+            patch(
+                'server.apps.pipelines.tasks._channel_median_ctr',
+                return_value=0.06,
+            ) as mock_median,
+        ):
+            await swap_underperforming_thumbnails()
+            assert mock_median.call_count == 1
+
+    _run(_inner())
+
+    for job in eligible_jobs:
+        job.refresh_from_db()
+        assert job.thumbnail_tested is True
+
+
 def _make_channel_with_jobs() -> tuple[Any, Any, Any]:
     """Create a channel + blueprint and return (channel, blueprint, run)."""
     from server.apps.channels.models import Channel, ChannelKind
@@ -249,7 +402,7 @@ def test_maybe_swap_job_skips_when_no_metric() -> None:
         youtube_video_id='yt_nometric',
     )
 
-    _run(_maybe_swap_job(job))
+    _run(_maybe_swap_job(job, {}))
 
     job.refresh_from_db()
     assert job.thumbnail_tested is False
@@ -287,7 +440,7 @@ def test_maybe_swap_job_skips_when_at_or_above_median() -> None:
     )
     PublishJobMetric.objects.create(publish_job=job, impressions_ctr=0.09)
 
-    _run(_maybe_swap_job(job))
+    _run(_maybe_swap_job(job, {}))
 
     job.refresh_from_db()
     assert job.thumbnail_tested is False
@@ -337,7 +490,7 @@ def test_maybe_swap_job_marks_tested_when_candidates_exhausted() -> None:
     )
     PublishJobMetric.objects.create(publish_job=job, impressions_ctr=0.01)
 
-    _run(_maybe_swap_job(job))
+    _run(_maybe_swap_job(job, {}))
 
     job.refresh_from_db()
     assert job.thumbnail_tested is True

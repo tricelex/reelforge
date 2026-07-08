@@ -196,6 +196,14 @@ def _node_should_skip(
     return bool(node.get('conditional')) and not _eval_condition(node, run)
 
 
+# Sentinel recorded in `states` for a rate-limited 'publish' node. Not a real
+# StageStatus value (no StageExecution row is created) — it only exists so
+# _update_run_status_sync's terminal-status recompute doesn't see the node as
+# absent (which would look like "no dependency left, run must be COMPLETE")
+# and overwrite the PUBLISH_HOLD status that was just set on the run.
+_PUBLISH_HOLD_STATE_SENTINEL = 'PUBLISH_HOLD_PENDING'
+
+
 def _publish_rate_limited(run: 'PipelineRun') -> bool:
     """True when the channel already hit its max_publishes_per_day today."""
     from server.apps.publishing.models import (  # noqa: PLC0415
@@ -298,6 +306,7 @@ def _process_node_sync(
     if key == 'publish' and _publish_rate_limited(run):
         run.status = RunStatus.PUBLISH_HOLD
         run.save(update_fields=['status'])
+        states[key] = _PUBLISH_HOLD_STATE_SENTINEL
         return
 
     if _try_park_gate_sync(node, run, states, key):

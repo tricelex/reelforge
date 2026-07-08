@@ -40,15 +40,14 @@ async def _empty_async_gen() -> AsyncGenerator[bytes]:  # pragma: no cover
 
 @pytest.fixture(autouse=True)
 def _taskiq_in_memory() -> Generator[None]:
-    import server.common.broker as broker_module
-    import server.common.taskiq_sender as sender_module
-
     # Import every task module so they register with the broker.
     import server.apps.analytics.tasks  # noqa: F401
     import server.apps.assets.tasks  # noqa: F401
     import server.apps.clips.tasks  # noqa: F401
     import server.apps.main.tasks  # noqa: F401
     import server.apps.pipelines.tasks  # noqa: F401
+    import server.common.broker as broker_module
+    import server.common.taskiq_sender as sender_module
 
     no_op = _NoOpBroker()
     original_broker = broker_module.broker

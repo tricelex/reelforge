@@ -1,5 +1,9 @@
 """Tests for retention-curve aggregation by chapter retention device."""
 
+import asyncio
+from collections.abc import Coroutine
+from typing import Any
+
 import pytest
 
 from server.apps.analytics.retention_rollup import (
@@ -7,6 +11,24 @@ from server.apps.analytics.retention_rollup import (
     _chapter_boundaries_from_outline,
     compute_soft_spots,
 )
+
+
+def _run(coro: Coroutine[Any, Any, Any]) -> Any:
+    from asgiref.sync import sync_to_async
+
+    @sync_to_async
+    def _close_connections() -> None:
+        from django.db import connections
+
+        connections.close_all()
+
+    async def _wrapped() -> Any:
+        try:
+            return await coro
+        finally:
+            await _close_connections()
+
+    return asyncio.run(_wrapped())
 
 
 def test_bucket_curve_by_device_maps_elapsed_ratio_to_chapter_device() -> None:
@@ -39,7 +61,7 @@ def test_bucket_curve_by_device_skips_points_outside_any_chapter() -> None:
         },
     ]
     chapter_boundaries = [
-        {'device': 'open_loop', 'start_s': 0.0, 'end_s': 10.0}
+        {'device': 'open_loop', 'start_s': 0.0, 'end_s': 10.0},
     ]
 
     buckets = _bucket_curve_by_device(
@@ -57,7 +79,7 @@ def test_bucket_curve_by_device_zero_duration_returns_empty() -> None:
                 'elapsed_ratio': 0.5,
                 'watch_ratio': 0.5,
                 'relative_performance': 0.5,
-            }
+            },
         ],
         [{'device': 'open_loop', 'start_s': 0.0, 'end_s': 10.0}],
         total_duration_s=0.0,
@@ -138,7 +160,7 @@ def _seed_run_with_metric(
     return str(channel.id)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_compute_soft_spots_flags_underperforming_device() -> None:
     channel_id = _seed_run_with_metric(
         retention_curve=[
@@ -149,12 +171,12 @@ def test_compute_soft_spots_flags_underperforming_device() -> None:
         chapters=[{'device': 'open_loop', 'target_seconds': 100}],
         duration_s=100.0,
     )
-    summary = compute_soft_spots(channel_id)
+    summary = _run(compute_soft_spots(channel_id))
     assert 'open_loop' in summary
     assert 'soft spots' in summary
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_compute_soft_spots_empty_when_device_performs_well() -> None:
     channel_id = _seed_run_with_metric(
         retention_curve=[
@@ -165,20 +187,20 @@ def test_compute_soft_spots_empty_when_device_performs_well() -> None:
         chapters=[{'device': 'payoff', 'target_seconds': 100}],
         duration_s=100.0,
     )
-    assert compute_soft_spots(channel_id) == ''
+    assert _run(compute_soft_spots(channel_id)) == ''
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_compute_soft_spots_skips_metric_with_empty_curve() -> None:
     channel_id = _seed_run_with_metric(
         retention_curve=[],
         chapters=[{'device': 'open_loop', 'target_seconds': 100}],
         duration_s=100.0,
     )
-    assert compute_soft_spots(channel_id) == ''
+    assert _run(compute_soft_spots(channel_id)) == ''
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_compute_soft_spots_ignores_devices_with_too_few_samples() -> None:
     channel_id = _seed_run_with_metric(
         retention_curve=[
@@ -188,10 +210,10 @@ def test_compute_soft_spots_ignores_devices_with_too_few_samples() -> None:
         chapters=[{'device': 'open_loop', 'target_seconds': 100}],
         duration_s=100.0,
     )
-    assert compute_soft_spots(channel_id) == ''
+    assert _run(compute_soft_spots(channel_id)) == ''
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_compute_soft_spots_skips_run_missing_stage_executions() -> None:
     channel_id = _seed_run_with_metric(
         retention_curve=[
@@ -203,4 +225,4 @@ def test_compute_soft_spots_skips_run_missing_stage_executions() -> None:
         duration_s=0.0,
         add_execs=False,
     )
-    assert compute_soft_spots(channel_id) == ''
+    assert _run(compute_soft_spots(channel_id)) == ''
