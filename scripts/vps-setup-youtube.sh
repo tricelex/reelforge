@@ -7,7 +7,7 @@
 # Prerequisites:
 #   - scripts/vps.env configured (VPS_HOST, VPS_USER, VPS_APP_DIR)
 #   - config/secrets/youtube-cookies.txt (run export-youtube-cookies.sh first)
-#   - Optional: YOUTUBE_DATA_API_KEY in config/.env for metadata probing fallback
+#   - Optional: YOUTUBE_DATA_API_KEY env var or in config/.env for API fallback
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -25,8 +25,8 @@ if [ ! -s "${COOKIE_SRC}" ]; then
 fi
 
 LOCAL_ENV="../config/.env"
-API_KEY_VALUE=""
-if [ -f "${LOCAL_ENV}" ]; then
+API_KEY_VALUE="${YOUTUBE_DATA_API_KEY:-}"
+if [ -z "${API_KEY_VALUE}" ] && [ -f "${LOCAL_ENV}" ]; then
   API_KEY_VALUE="$(grep -E '^YOUTUBE_DATA_API_KEY=' "${LOCAL_ENV}" | head -1 | cut -d= -f2- || true)"
 fi
 

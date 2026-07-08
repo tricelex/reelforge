@@ -19,8 +19,9 @@ ENV PYTHONFAULTHANDLER=1 \
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-# System dependencies — includes ffmpeg (required for video processing)
-# and libsndfile1 (required by speechbrain / soundfile for audio I/O)
+# System dependencies — includes ffmpeg (required for video processing),
+# libsndfile1 (required by speechbrain / soundfile for audio I/O), and
+# deno (yt-dlp JavaScript runtime for YouTube extraction).
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
@@ -33,6 +34,8 @@ RUN apt-get update && apt-get upgrade -y \
         git \
         libpq-dev \
         libsndfile1 \
+        unzip \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && curl -sSL 'https://install.python-poetry.org' | python - \
     && poetry --version \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
