@@ -56,5 +56,7 @@ def build_yt_dlp_opts(**overrides: Any) -> dict[str, Any]:
     cookie_file = resolve_yt_dlp_cookie_file()
     if cookie_file:
         opts['cookiefile'] = cookie_file
+        # Cookie file is mounted read-only on the VPS worker.
+        opts['no_cookies_update'] = True
     opts.update(overrides)
     return opts

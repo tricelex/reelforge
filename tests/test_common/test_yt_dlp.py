@@ -58,6 +58,7 @@ def test_build_yt_dlp_opts_uses_cookie_file(tmp_path: Path) -> None:
     ):
         opts = build_yt_dlp_opts()
     assert opts['cookiefile'] == str(cookie_path)
+    assert opts['no_cookies_update'] is True
 
 
 @pytest.mark.django_db
