@@ -73,6 +73,48 @@ def test_library_asset_register_and_list(
     assert detail_body['name'] == 'API Track'
     assert detail_body['url'].startswith('http')
     assert detail_body['mime'] == 'audio/mpeg'
+    assert detail_body['license_type'] == 'UNSPECIFIED'
+    assert detail_body['license_note'] == ''
+
+
+@pytest.mark.django_db
+def test_library_asset_register_with_license_and_patch(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """license_type/license_note round-trip through create, get, and patch."""
+    create_response = dmr_client.post(
+        reverse('api:assets_api:library-asset-collection'),
+        data={
+            'kind': LibraryAssetKind.MUSIC,
+            'name': 'Licensed Track',
+            'storage_key': 'uploads/test/licensed.mp3',
+            'license_type': 'OWNED',
+            'license_note': 'Composed in-house',
+        },
+        headers=auth_headers,
+    )
+    assert create_response.status_code == HTTPStatus.CREATED
+    body = create_response.json()
+    assert body['license_type'] == 'OWNED'
+    assert body['license_note'] == 'Composed in-house'
+
+    detail_url = reverse(
+        'api:assets_api:library-asset-detail',
+        kwargs={'asset_id': body['id']},
+    )
+    patch_response = dmr_client.patch(
+        detail_url,
+        data={'license_type': 'LICENSED', 'license_note': 'Paid license #42'},
+        headers=auth_headers,
+    )
+    assert patch_response.status_code == HTTPStatus.OK
+    patch_body = patch_response.json()
+    assert patch_body['license_type'] == 'LICENSED'
+    assert patch_body['license_note'] == 'Paid license #42'
+
+    get_response = dmr_client.get(detail_url, headers=auth_headers)
+    assert get_response.json()['license_type'] == 'LICENSED'
 
 
 @pytest.mark.django_db
@@ -92,7 +134,9 @@ def test_library_asset_detail_includes_presigned_url(
     )
     asset_id = create_response.json()['id']
     mock_presign = MagicMock()
-    mock_presign.presign_get.return_value = 'https://storage.example/preview.mp3'
+    mock_presign.presign_get.return_value = (
+        'https://storage.example/preview.mp3'
+    )
     with patch.object(
         PresignUrlHelper,
         'presign_get',

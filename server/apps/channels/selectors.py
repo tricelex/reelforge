@@ -166,6 +166,7 @@ def get_channel_detail(channel_id: str) -> ChannelDetailPayload:
         default_blueprint_name=_default_blueprint_name(channel),
         provider_daily_caps=_provider_daily_caps(channel),
         config_overrides=_config_overrides(channel),
+        max_publishes_per_day=channel.max_publishes_per_day,
     )
 
 

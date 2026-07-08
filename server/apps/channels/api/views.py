@@ -12,6 +12,8 @@ from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.channels.logic.value_objects import (
+    AssemblyStyleConfigPatchPayload,
+    AssemblyStyleConfigPayload,
     ChannelBrandingPatchPayload,
     ChannelBrandingPayload,
     ChannelCreatePayload,
@@ -161,6 +163,35 @@ class ChannelBrandingController(
         """Update branding."""
         require_operator(get_request_user(self.request))
         return self.resolve(ChannelService).patch_branding(
+            str(self.kwargs['channel_id']),
+            parsed_body,
+        )
+
+
+@final
+class ChannelAssemblyStyleController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get or patch a channel's per-channel cinematic style pool."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> AssemblyStyleConfigPayload:
+        """Return the assembly style config, creating defaults."""
+        return self.resolve(ChannelService).get_assembly_style(
+            str(self.kwargs['channel_id']),
+        )
+
+    @modify(status_code=HTTPStatus.OK)
+    def patch(
+        self,
+        parsed_body: Body[AssemblyStyleConfigPatchPayload],
+    ) -> AssemblyStyleConfigPayload:
+        """Update the assembly style pool."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(ChannelService).patch_assembly_style(
             str(self.kwargs['channel_id']),
             parsed_body,
         )

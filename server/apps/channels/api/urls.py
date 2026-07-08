@@ -23,6 +23,11 @@ channel_urlpatterns = [
         name='channel-branding',
     ),
     path(
+        'channels/<uuid:channel_id>/assembly-style/',
+        views.ChannelAssemblyStyleController.as_view(),
+        name='channel-assembly-style',
+    ),
+    path(
         'channels/<uuid:channel_id>/graduation-status/',
         views.ChannelGraduationStatusController.as_view(),
         name='channel-graduation-status',

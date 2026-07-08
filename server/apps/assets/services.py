@@ -10,6 +10,7 @@ from server.apps.assets.logic.events import LibraryAssetIngested
 from server.apps.assets.logic.value_objects import (
     LibraryAssetCreatePayload,
     LibraryAssetListPayload,
+    LibraryAssetPatchPayload,
     LibraryAssetPayload,
     PresignUploadPayload,
     PresignUploadResultPayload,
@@ -49,6 +50,8 @@ def _to_payload(
         is_active=asset.is_active,
         version=asset.version,
         meta=meta,
+        license_type=asset.license_type,
+        license_note=asset.license_note,
     )
 
 
@@ -122,7 +125,10 @@ class LibraryAssetService:
         payload: LibraryAssetCreatePayload,
     ) -> LibraryAssetPayload:
         """Register a presigned-uploaded object and queue ingest."""
-        from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
+        from server.apps.assets.models import (  # noqa: PLC0415
+            LibraryAsset,
+            LibraryAssetLicense,
+        )
 
         asset = LibraryAsset.objects.create(
             kind=payload.kind,
@@ -133,6 +139,30 @@ class LibraryAssetService:
             ),
             file=payload.storage_key,
             mime=payload.mime or _guess_mime(payload.storage_key),
+            license_type=(
+                payload.license_type or LibraryAssetLicense.UNSPECIFIED
+            ),
+            license_note=payload.license_note or '',
         )
         self._events.emit(LibraryAssetIngested(asset_id=str(asset.id)))
+        return _to_payload(asset, self._presign)
+
+    def patch(
+        self,
+        asset_id: str,
+        payload: LibraryAssetPatchPayload,
+    ) -> LibraryAssetPayload:
+        """Update a library asset's licensing fields."""
+        from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
+
+        asset = LibraryAsset.objects.get(id=uuid.UUID(asset_id))
+        update_fields: list[str] = []
+        if payload.license_type is not None:
+            asset.license_type = payload.license_type
+            update_fields.append('license_type')
+        if payload.license_note is not None:
+            asset.license_note = payload.license_note
+            update_fields.append('license_note')
+        if update_fields:
+            asset.save(update_fields=update_fields)
         return _to_payload(asset, self._presign)
