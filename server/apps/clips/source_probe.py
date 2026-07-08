@@ -11,10 +11,12 @@ from server.common.yt_dlp import build_yt_dlp_opts
 
 def probe_youtube_or_rss(url: str) -> dict[str, Any]:
     """Extract title and duration via YouTube API or yt-dlp."""
-    if extract_youtube_video_id(url):
+    video_id = extract_youtube_video_id(url)
+    if video_id:
         api_info = fetch_youtube_metadata(url)
         if api_info is not None:
             return api_info
+        url = f'https://www.youtube.com/watch?v={video_id}'
 
     import yt_dlp  # noqa: PLC0415
 

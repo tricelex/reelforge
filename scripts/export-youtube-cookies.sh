@@ -4,7 +4,8 @@
 # Usage:
 #   ./scripts/export-youtube-cookies.sh [browser]
 #
-# Browser defaults to "chrome". Other common values: safari, firefox, brave, edge.
+# Browser defaults to "firefox" on macOS (Chrome cookies often rotate
+# immediately). Other values: chrome, safari, brave, edge.
 # Output: config/secrets/youtube-cookies.txt (gitignored)
 #
 # Requires a logged-in YouTube session in the chosen browser.
@@ -12,7 +13,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-BROWSER="${1:-chrome}"
+BROWSER="${1:-firefox}"
 OUT_DIR="config/secrets"
 OUT_FILE="${OUT_DIR}/youtube-cookies.txt"
 PROBE_URL="https://www.youtube.com/watch?v=jNQXAC9IVRw"
