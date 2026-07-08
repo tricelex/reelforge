@@ -23,14 +23,17 @@ def test_build_yt_dlp_opts_without_cookies() -> None:
 
 @pytest.mark.django_db
 def test_resolve_yt_dlp_cookie_file_from_path(tmp_path: Path) -> None:
-    """Configured cookie file path is returned when present."""
+    """Configured cookie file path is copied to a writable temp file."""
     cookie_path = tmp_path / 'cookies.txt'
     cookie_path.write_text('# Netscape HTTP Cookie File\n', encoding='utf-8')
     with override_settings(
         YTDLP_COOKIE_FILE=str(cookie_path),
         YTDLP_COOKIES_NETSCAPE='',
     ):
-        assert resolve_yt_dlp_cookie_file() == str(cookie_path)
+        resolved = resolve_yt_dlp_cookie_file()
+    assert resolved is not None
+    assert resolved != str(cookie_path)
+    assert Path(resolved).is_file()
 
 
 @pytest.mark.django_db
@@ -48,17 +51,18 @@ def test_resolve_yt_dlp_cookie_file_from_netscape_content() -> None:
 
 
 @pytest.mark.django_db
-def test_build_yt_dlp_opts_uses_cookie_file(tmp_path: Path) -> None:
-    """Cookie file path is injected into yt-dlp options."""
+def test_resolve_yt_dlp_cookie_file_copies_to_writable_temp(tmp_path: Path) -> None:
+    """Mounted read-only cookie files are copied to a writable temp path."""
     cookie_path = tmp_path / 'cookies.txt'
     cookie_path.write_text('# Netscape HTTP Cookie File\n', encoding='utf-8')
     with override_settings(
         YTDLP_COOKIE_FILE=str(cookie_path),
         YTDLP_COOKIES_NETSCAPE='',
     ):
-        opts = build_yt_dlp_opts()
-    assert opts['cookiefile'] == str(cookie_path)
-    assert opts['no_cookies_update'] is True
+        resolved = resolve_yt_dlp_cookie_file()
+    assert resolved is not None
+    assert resolved != str(cookie_path)
+    assert Path(resolved).is_file()
 
 
 @pytest.mark.django_db
