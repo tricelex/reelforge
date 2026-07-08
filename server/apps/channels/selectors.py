@@ -30,6 +30,7 @@ _IN_FLIGHT_STATUSES = {
     RunStatus.RUNNING,
     RunStatus.AWAITING_REVIEW,
     RunStatus.BUDGET_HOLD,
+    RunStatus.PUBLISH_HOLD,
     RunStatus.PUBLISHING,
 }
 

@@ -268,7 +268,6 @@ def test_caption_stage_runs_when_enabled() -> None:
     assert stage.name == 'captions'
 
 
-
 # --- ASSGenerator ---
 
 

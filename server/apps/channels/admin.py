@@ -12,6 +12,7 @@ from unfold.contrib.filters.admin import (
 from unfold.contrib.forms.widgets import ArrayWidget
 
 from server.apps.channels.models import (
+    AssemblyStyleConfig,
     Channel,
     ChannelBranding,
     Character,
@@ -54,6 +55,14 @@ class ChannelBrandingInline(StackedInline):  # type: ignore[misc]
     tab = True
 
 
+class AssemblyStyleConfigInline(StackedInline):  # type: ignore[misc]
+    """Inline editor for the channel's cinematic style pool."""
+
+    model = AssemblyStyleConfig
+    extra = 0
+    tab = True
+
+
 @admin.register(Channel)
 class ChannelAdmin(ReelForgeAdmin):
     """Admin panel for Channel."""
@@ -70,7 +79,11 @@ class ChannelAdmin(ReelForgeAdmin):
         ('is_active', ChoicesCheckboxFilter),
     )
     search_fields = ('name',)
-    inlines: ClassVar = [NicheConfigInline, ChannelBrandingInline]
+    inlines: ClassVar = [
+        NicheConfigInline,
+        ChannelBrandingInline,
+        AssemblyStyleConfigInline,
+    ]
     fieldsets = (
         (
             None,
@@ -149,6 +162,21 @@ class NicheConfigAdmin(ReelForgeAdmin):
         form = super().get_form(request, obj, change=change, **kwargs)
         form.base_fields['banned_topics'].widget = ArrayWidget()
         return form  # type: ignore[no-any-return]
+
+
+@admin.register(AssemblyStyleConfig)
+class AssemblyStyleConfigAdmin(ReelForgeAdmin):
+    """Admin panel for AssemblyStyleConfig."""
+
+    list_display = (
+        'channel',
+        'camera_movements',
+        'transition_styles',
+        'min_cuts_per_minute',
+        'max_cuts_per_minute',
+    )
+    search_fields = ('channel__name',)
+    autocomplete_fields = ('channel',)
 
 
 @admin.register(YouTubeCredential)

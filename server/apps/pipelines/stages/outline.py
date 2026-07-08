@@ -100,7 +100,10 @@ class OutlineStage(Stage):
         beats: list[dict[str, Any]] = []
         format_key = ''
         if niche:
-            pool = list(niche.format_pool.filter(is_active=True))
+            pool = [
+                fmt
+                async for fmt in niche.format_pool.filter(is_active=True)
+            ]
             if len(pool) > 1:
                 recent_keys = await _recent_format_keys(
                     str(ctx.channel.id),
@@ -113,7 +116,7 @@ class OutlineStage(Stage):
                 beats = getattr(niche.format, 'beats', [])
                 format_key = getattr(niche.format, 'key', '')
         total_s = ctx.config.get('total_target_seconds', 1320)
-        soft_spots = compute_soft_spots(str(ctx.channel.id))
+        soft_spots = await compute_soft_spots(str(ctx.channel.id))
 
         _, usr = await ctx.prompts.render(
             'outline',

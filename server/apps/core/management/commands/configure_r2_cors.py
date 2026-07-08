@@ -33,8 +33,8 @@ class Command(BaseCommand):
                     'AllowedHeaders': ['*'],
                     'ExposeHeaders': [],
                     'MaxAgeSeconds': 86400,
-                }
-            ]
+                },
+            ],
         }
 
         client.put_bucket_cors(
@@ -44,5 +44,5 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f'CORS policy set on bucket "{bucket}":\n'
-            + json.dumps(cors_config, indent=2)
+            + json.dumps(cors_config, indent=2),
         )

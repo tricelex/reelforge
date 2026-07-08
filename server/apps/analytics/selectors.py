@@ -255,6 +255,7 @@ def get_dashboard() -> dict[str, object]:
         RunStatus.RUNNING,
         RunStatus.AWAITING_REVIEW,
         RunStatus.BUDGET_HOLD,
+        RunStatus.PUBLISH_HOLD,
         RunStatus.PUBLISHING,
     }
     runs_in_flight = PipelineRun.objects.filter(

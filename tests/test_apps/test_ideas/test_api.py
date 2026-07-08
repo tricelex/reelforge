@@ -2,7 +2,7 @@
 
 import uuid
 from http import HTTPStatus
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse

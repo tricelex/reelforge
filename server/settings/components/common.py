@@ -314,6 +314,13 @@ UNFOLD: dict[str, Any] = {
                             'admin:channels_youtubecredential_changelist',
                         ),
                     },
+                    {
+                        'title': 'Assembly Styles',
+                        'icon': 'movie_filter',
+                        'link': reverse_lazy(
+                            'admin:channels_assemblystyleconfig_changelist',
+                        ),
+                    },
                 ],
             },
             {
@@ -325,6 +332,13 @@ UNFOLD: dict[str, Any] = {
                         'icon': 'lightbulb',
                         'link': reverse_lazy(
                             'admin:ideas_topicidea_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Outlier Scans',
+                        'icon': 'trending_up',
+                        'link': reverse_lazy(
+                            'admin:ideas_nicheoutlierscan_changelist',
                         ),
                     },
                 ],
@@ -399,6 +413,19 @@ UNFOLD: dict[str, Any] = {
                         'icon': 'payments',
                         'link': reverse_lazy(
                             'admin:pipelines_costrecord_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'Analytics',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Publish Job Metrics',
+                        'icon': 'monitoring',
+                        'link': reverse_lazy(
+                            'admin:analytics_publishjobmetric_changelist',
                         ),
                     },
                 ],

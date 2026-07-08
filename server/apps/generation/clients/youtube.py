@@ -7,11 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 import django.utils.timezone as tz
 import httpx
 
-from server.common.exceptions import FatalProviderError, RetryableProviderError
-
-_RETRYABLE_CODES = {429, 500, 502, 503, 504}
-_QUOTA_REASONS = {'quotaExceeded', 'dailyLimitExceeded'}
-_AUTH_REASONS = {'authError', 'forbidden', 'insufficientPermissions'}
+from server.apps.generation.clients._google_api_common import classify_response
 
 _OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
 _UPLOAD_URL = 'https://www.googleapis.com/upload/youtube/v3/videos'
@@ -32,34 +28,7 @@ class _OAuthCredential(Protocol):
 
 def _classify_response(resp: httpx.Response) -> None:
     """Raise the appropriate error for non-2xx responses."""
-    if resp.status_code in {200, 201}:
-        return
-    if resp.status_code in _RETRYABLE_CODES:
-        raise RetryableProviderError(
-            f'YouTube API {resp.status_code}',
-            provider='youtube',
-            status_code=resp.status_code,
-        )
-    try:
-        reason: str = resp.json()['error']['errors'][0]['reason']
-    except (KeyError, IndexError, ValueError):
-        reason = ''
-    if reason in _QUOTA_REASONS:
-        raise FatalProviderError(
-            f'YouTube quota exceeded: {reason}',
-            provider='youtube',
-            error_code='QUOTA_EXCEEDED',
-        )
-    if reason in _AUTH_REASONS:
-        raise FatalProviderError(
-            f'YouTube auth error: {reason}',
-            provider='youtube',
-            error_code='AUTH_ERROR',
-        )
-    raise FatalProviderError(
-        f'YouTube API error {resp.status_code}: {reason}',
-        provider='youtube',
-    )
+    classify_response(resp, provider='youtube')
 
 
 def _save_token_sync(

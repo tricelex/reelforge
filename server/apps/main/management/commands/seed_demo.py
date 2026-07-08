@@ -341,7 +341,14 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             '4. Three compelling narrative angles\n'
             '5. Five emotional hooks suitable for an opening\n'
             '6. Primary and secondary sources with relevance scores\n'
-            '7. Lesser-known details most viewers will not know'
+            '7. Lesser-known details most viewers will not know\n\n'
+            'Corroboration requirement: for every entry in key_facts, at '
+            'least 2 of your listed sources must independently state that '
+            'same fact — put the matching wording in each corroborating '
+            "source's own key_facts list, not just the brief's key_facts. "
+            'Prefer primary/archival/academic sources when available. A '
+            'fact with only one supporting source should either be dropped '
+            'or you should find a second source before including it.'
         ),
     },
     {
@@ -393,7 +400,10 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             'sounds authentic when read aloud. Vary sentence length. Use vivid, '
             'concrete language and avoid academic jargon unless immediately explained. '
             'Every chapter must end with a closing line that drives viewers to continue '
-            'watching. Return structured JSON.'
+            'watching. Every chapter also needs commentary: 1-3 sentences of genuine '
+            'analysis or a stated opinion, distinct from the narration, reflecting a '
+            'real editorial point of view on the material — not a restatement of what '
+            'was just narrated. Return structured JSON.'
         ),
         'user_prompt': (
             'Write a complete narration script for:\n\n'
@@ -408,7 +418,9 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             '- index (matching outline)\n'
             '- title\n'
             '- narration (complete spoken text — natural, conversational)\n'
-            '- closing_line (the last sentence that hooks the viewer into the next chapter)'
+            '- closing_line (the last sentence that hooks the viewer into the next chapter)\n'
+            '- commentary (1-3 sentences of genuine analysis or a stated '
+            'opinion — not a restatement of the narration)'
         ),
     },
     {
@@ -619,8 +631,13 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
         {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
         {
-            'key': 'visual_prompts',
+            'key': 'narrative_qc',
             'depends_on': ['scene_breakdown'],
+            'queue': 'api',
+        },
+        {
+            'key': 'visual_prompts',
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
         },
         {
@@ -635,7 +652,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'tts',
-            'depends_on': ['scene_breakdown'],
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
             'fan_out': 'chapters',
             'config': {'provider': 'elevenlabs'},
@@ -689,8 +706,13 @@ _SHORTS_V1_GRAPH: dict[str, object] = {
         {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
         {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
         {
-            'key': 'visual_prompts',
+            'key': 'narrative_qc',
             'depends_on': ['scene_breakdown'],
+            'queue': 'api',
+        },
+        {
+            'key': 'visual_prompts',
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
         },
         {
@@ -705,7 +727,7 @@ _SHORTS_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'tts',
-            'depends_on': ['scene_breakdown'],
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
             'fan_out': 'chapters',
             'config': {'provider': 'elevenlabs'},

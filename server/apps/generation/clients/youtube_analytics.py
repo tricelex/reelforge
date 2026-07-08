@@ -8,25 +8,14 @@ from typing import Any
 
 import httpx
 
+from server.apps.generation.clients._google_api_common import classify_response
 from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 _REPORTS_URL = 'https://youtubeanalytics.googleapis.com/v2/reports'
-_RETRYABLE_CODES = {429, 500, 502, 503, 504}
 
 
 def _classify_response(resp: httpx.Response) -> None:
-    if resp.status_code == httpx.codes.OK:
-        return
-    if resp.status_code in _RETRYABLE_CODES:
-        raise RetryableProviderError(
-            f'YouTube Analytics API {resp.status_code}',
-            provider='youtube_analytics',
-            status_code=resp.status_code,
-        )
-    raise FatalProviderError(
-        f'YouTube Analytics API error {resp.status_code}: {resp.text[:300]}',
-        provider='youtube_analytics',
-    )
+    classify_response(resp, provider='youtube_analytics')
 
 
 async def _query_report(

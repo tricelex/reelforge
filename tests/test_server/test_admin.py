@@ -8,7 +8,9 @@ from django.db.models import Model
 from django.test import Client
 from django.urls import reverse
 
+from server.apps.analytics.models import PublishJobMetric
 from server.apps.assets.models import Asset
+from server.apps.ideas.models import NicheOutlierScan
 from server.apps.main.models import BlogPost
 
 # Models that should have restricted (FORBIDDEN) admin add pages
@@ -17,6 +19,8 @@ _RESTRICTED_ADMIN_ADD_MODELS = frozenset((
     AccessLog,
     AccessFailureLog,
     Asset,
+    PublishJobMetric,
+    NicheOutlierScan,
 ))
 
 # Creates a list of tuples containing all registered admin sites,

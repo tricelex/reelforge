@@ -1,6 +1,6 @@
 """Tests for IdeationService."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError

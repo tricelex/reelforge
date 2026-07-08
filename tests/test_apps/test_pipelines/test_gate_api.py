@@ -1,6 +1,5 @@
 """Tests for the gate approval API endpoint."""
 
-from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

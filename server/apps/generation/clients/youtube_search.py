@@ -8,9 +8,8 @@ from typing import Any
 
 import httpx
 
-from server.common.exceptions import FatalProviderError, RetryableProviderError
+from server.apps.generation.clients._google_api_common import classify_response
 
-_RETRYABLE_CODES = {429, 500, 502, 503, 504}
 _SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
 _VIDEOS_URL = 'https://www.googleapis.com/youtube/v3/videos'
 _CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels'
@@ -19,18 +18,7 @@ _MIN_SUBSCRIBER_FLOOR = 1000
 
 
 def _classify_response(resp: httpx.Response) -> None:
-    if resp.status_code == httpx.codes.OK:
-        return
-    if resp.status_code in _RETRYABLE_CODES:
-        raise RetryableProviderError(
-            f'YouTube search API {resp.status_code}',
-            provider='youtube_search',
-            status_code=resp.status_code,
-        )
-    raise FatalProviderError(
-        f'YouTube search API error {resp.status_code}: {resp.text[:300]}',
-        provider='youtube_search',
-    )
+    classify_response(resp, provider='youtube_search')
 
 
 def compute_outlier_score(

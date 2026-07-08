@@ -633,7 +633,7 @@ def test_niche_patch_all_fields(channel: Channel) -> None:
 
 @pytest.mark.django_db
 def test_list_characters_status_filter(
-    channel: Channel, character: Character
+    channel: Channel, character: Character,
 ) -> None:
     """Cover character list status filter branch."""
     from server.apps.channels.character_selectors import list_characters
@@ -649,7 +649,7 @@ def test_list_characters_status_filter(
 
 @pytest.mark.django_db
 def test_list_characters_channel_filter_only(
-    channel: Channel, character: Character
+    channel: Channel, character: Character,
 ) -> None:
     """Cover character list channel_id-only filter branch."""
     from server.apps.channels.character_selectors import list_characters
@@ -878,7 +878,7 @@ def test_visual_prompts_map_skips_invalid_items(run) -> None:
         },
     )
     assert _visual_prompts_map(str(run.id)) == {
-        0: {'scene_idx': 0, 'prompt': 'keep'}
+        0: {'scene_idx': 0, 'prompt': 'keep'},
     }
 
 

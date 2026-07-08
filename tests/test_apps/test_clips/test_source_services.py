@@ -9,8 +9,6 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from server.common.exceptions import ConflictError
-
 from server.apps.assets.models import LibraryAsset, LibraryAssetKind
 from server.apps.channels.models import Channel, ChannelKind
 from server.apps.clips.logic.constants import ClipSourceStatus, ClipSourceType
@@ -23,8 +21,8 @@ from server.apps.clips.source_services import (
     display_topic_for_source,
     resolve_ingest_key,
 )
-from server.common.exceptions import ConflictError
 from server.apps.clips.tasks import _probe_clip_source_sync
+from server.common.exceptions import ConflictError
 
 
 @pytest.fixture
@@ -83,7 +81,7 @@ def test_list_clip_sources_filters(clipping_channel: Channel) -> None:
 
 @pytest.mark.django_db
 def test_create_clip_source_with_campaign(clipping_channel: Channel) -> None:
-    """create links optional campaign."""
+    """Create links optional campaign."""
     campaign = ClipCampaign.objects.create(
         channel=clipping_channel,
         name='Batch',
@@ -113,7 +111,7 @@ def test_create_clip_source_with_campaign(clipping_channel: Channel) -> None:
 def test_create_clip_source_validation_errors(
     clipping_channel: Channel,
 ) -> None:
-    """create raises ValidationError for invalid inputs."""
+    """Create raises ValidationError for invalid inputs."""
     service = ClipSourceService()
     with pytest.raises(ValidationError, match='Channel not found'):
         service.create(
@@ -215,7 +213,11 @@ def test_resolve_topic_and_run_helpers(clipping_channel: Channel) -> None:
 
     source.status = ClipSourceStatus.READY
     source.save(update_fields=['status'])
-    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
 
     blueprint = PipelineBlueprint.objects.create(
         name='clip_link_test',
@@ -368,7 +370,11 @@ def test_resolve_topic_for_run_returns_ingest_key(clipping_channel: Channel) -> 
 @pytest.mark.django_db
 def test_prepare_for_run_rejects_existing_run(clipping_channel: Channel) -> None:
     """prepare_for_run raises ConflictError when source already linked."""
-    from server.apps.pipelines.models import PipelineBlueprint, PipelineKind, PipelineRun
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+    )
 
     source = ClipSource.objects.create(
         channel=clipping_channel,

@@ -12,12 +12,29 @@ from unfold.contrib.filters.admin import (
     RangeDateTimeFilter,
 )
 
-from server.apps.assets.models import Asset, AssetRendition, LibraryAsset
+from server.apps.assets.models import (
+    Asset,
+    AssetRendition,
+    LibraryAsset,
+    LibraryAssetLicense,
+)
 from server.common.admin import ReelForgeAdmin
 from server.common.admin_display import (
+    COLOR_DANGER,
+    COLOR_INFO,
+    COLOR_SUCCESS,
+    make_badge_method,
     make_boolean_badge_method,
     make_header_method,
 )
+
+_LICENSE_COLORS = {
+    LibraryAssetLicense.UNSPECIFIED: COLOR_DANGER,
+    LibraryAssetLicense.OWNED: COLOR_SUCCESS,
+    LibraryAssetLicense.LICENSED: COLOR_SUCCESS,
+    LibraryAssetLicense.CREATIVE_COMMONS: COLOR_INFO,
+    LibraryAssetLicense.ROYALTY_FREE_VERIFIED: COLOR_SUCCESS,
+}
 
 
 class AssetRenditionInline(TabularInline):  # type: ignore[misc]
@@ -42,11 +59,13 @@ class LibraryAssetAdmin(ReelForgeAdmin):
         'display_name',
         'kind',
         'channel',
+        'display_license_type',
         'version',
         'display_is_active',
     )
     list_filter = (
         ('kind', ChoicesCheckboxFilter),
+        ('license_type', ChoicesCheckboxFilter),
         ('is_active', ChoicesCheckboxFilter),
         ('channel', AutocompleteSelectFilter),
     )
@@ -71,6 +90,13 @@ class LibraryAssetAdmin(ReelForgeAdmin):
             },
         ),
         (
+            _('Licensing'),
+            {
+                'classes': ('tab',),
+                'fields': ('license_type', 'license_note'),
+            },
+        ),
+        (
             _('Metadata'),
             {
                 'classes': ('tab',),
@@ -88,6 +114,11 @@ class LibraryAssetAdmin(ReelForgeAdmin):
     display_is_active = make_boolean_badge_method(
         'is_active',
         description=_('Active'),
+    )
+    display_license_type = make_badge_method(
+        'license_type',
+        _LICENSE_COLORS,
+        description=_('License'),
     )
 
 

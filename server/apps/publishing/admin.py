@@ -45,6 +45,9 @@ class PublishJobAdmin(ReelForgeAdmin):
     readonly_fields = (
         'id',
         'metadata_snapshot',
+        'thumbnail_asset_id',
+        'thumbnail_tested',
+        'tested_candidate_ranks',
         'error',
         'created_at',
         'updated_at',
@@ -67,6 +70,17 @@ class PublishJobAdmin(ReelForgeAdmin):
             {
                 'classes': ('tab',),
                 'fields': ('metadata_snapshot',),
+            },
+        ),
+        (
+            _('Thumbnail testing'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'thumbnail_asset_id',
+                    'thumbnail_tested',
+                    'tested_candidate_ranks',
+                ),
             },
         ),
         (

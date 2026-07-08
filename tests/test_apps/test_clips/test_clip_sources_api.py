@@ -2,7 +2,7 @@
 
 import uuid
 from http import HTTPStatus
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -177,8 +177,6 @@ def test_create_run_from_clip_source(
     auth_headers: dict[str, str],
 ) -> None:
     """POST run with source_id links clip source and resolves topic."""
-    from unittest.mock import AsyncMock
-
     from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
 
     PipelineBlueprint.objects.get_or_create(
@@ -239,8 +237,6 @@ def test_create_run_rejects_duplicate_source(
     auth_headers: dict[str, str],
 ) -> None:
     """Second run start for the same source returns 409."""
-    from unittest.mock import AsyncMock
-
     from server.apps.pipelines.models import PipelineBlueprint, PipelineKind
 
     PipelineBlueprint.objects.get_or_create(

@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from server.apps.assets.logic.events import LibraryAssetIngested
 from server.apps.assets.logic.value_objects import (
