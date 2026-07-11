@@ -1303,6 +1303,12 @@ def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
         ],
     }
     run.save(update_fields=['blueprint_snapshot'])
+    StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_a',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
     downstream = StageExecution.objects.create(
         run=run,
         stage_key='dummy_b',
@@ -1320,6 +1326,7 @@ def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
     created = StageExecution.objects.get(id=exec_ids[0])
     assert created.stage_key == 'dummy_a'
     assert created.status == StageStatus.QUEUED
+    assert created.attempt == 1
 
 
 @pytest.mark.django_db(transaction=True)
