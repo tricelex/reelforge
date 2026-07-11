@@ -192,7 +192,7 @@ nano /opt/reelforge/.env
 | `REDIS_CACHE_URL` | Same Redis, different logical DB index (e.g. `.../1` vs `REDIS_URL`'s `.../0`) — **not derived from `REDIS_URL`**, must be set explicitly or Django's cache (and django-axes login tracking) silently falls back to `redis://localhost:6379/1`, which doesn't exist in this topology |
 | `RABBITMQ_URL` | `amqp://<user>:<password>@<coolify-host>:<port>/` (or `amqps://` if available) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_STORAGE_BUCKET_NAME` / `AWS_S3_ENDPOINT_URL` / `AWS_S3_PUBLIC_ENDPOINT_URL` / `AWS_S3_CUSTOM_DOMAIN` | Same Cloudflare R2 credentials already used today |
-| `OPENAI_API_KEY` / `HUGGINGFACE_TOKEN` | Same as today |
+| `OPENAI_API_KEY` / `HUGGINGFACE_TOKEN` / `ELEVENLABS_API_KEY` | Same as today |
 | `SENTRY_DSN`, `LOGFIRE_TOKEN` | Optional, same as today |
 | `TASKIQ_WORKERS`, `TASKIQ_MAX_ASYNC_TASKS` | Optional — only set if you want to override the conservative defaults (1 worker process / 2 concurrent tasks) baked into `docker-compose.vps.yml` |
 
