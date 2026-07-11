@@ -24,6 +24,18 @@ def _transitive_dep_keys(
     return ordered
 
 
+# Channel reverse relations read by async Stage.run() — preload in build_context
+# to avoid SynchronousOnlyOperation from lazy ORM fetches.
+_CHANNEL_RELATIONS = (
+    'channel',
+    'channel__niche_config',
+    'channel__niche_config__format',
+    'channel__branding',
+    'channel__branding__watermark',
+    'channel__assembly_style',
+)
+
+
 async def build_context(execution: 'StageExecution') -> 'StageContext':
     """Assemble a StageContext from a StageExecution row.
 
@@ -46,8 +58,11 @@ async def build_context(execution: 'StageExecution') -> 'StageContext':
     )
     from server.apps.pipelines.stages.base import StageContext  # noqa: PLC0415
 
-    run = await PipelineRun.objects.select_related('channel').aget(
-        id=execution.run_id,
+    run = await (
+        PipelineRun.objects
+        .select_related(*_CHANNEL_RELATIONS)
+        .prefetch_related('channel__niche_config__format_pool')
+        .aget(id=execution.run_id)
     )
     channel = run.channel
 
