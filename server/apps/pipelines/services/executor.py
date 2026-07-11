@@ -221,26 +221,31 @@ async def _maybe_complete_fan_out_parent(  # noqa: C901
     if parent.status in {StageStatus.SUCCEEDED, StageStatus.FAILED}:
         return
 
-    shard_statuses: dict[int, str] = {}
+    shard_entries: dict[int, dict[str, Any]] = {}
     async for sib in StageExecution.objects.filter(parent=parent).order_by(
         'shard_index',
         '-attempt',
     ):
         if (
             sib.shard_index is not None
-            and sib.shard_index not in shard_statuses
+            and sib.shard_index not in shard_entries
         ):
-            shard_statuses[sib.shard_index] = sib.status
+            entry: dict[str, Any] = {
+                'shard_index': sib.shard_index,
+                'status': sib.status,
+            }
+            if sib.output:
+                entry.update(sib.output)
+            shard_entries[sib.shard_index] = entry
 
     terminal = {StageStatus.SUCCEEDED, StageStatus.SKIPPED}
-    values = set(shard_statuses.values())
+    values = {entry['status'] for entry in shard_entries.values()}
 
     if all(s in terminal for s in values):
         parent.status = StageStatus.SUCCEEDED
         parent.output = {
             'shards': [
-                {'shard_index': idx, 'status': st}
-                for idx, st in sorted(shard_statuses.items())
+                shard_entries[idx] for idx in sorted(shard_entries)
             ],
         }
         parent.finished_at = tz.now()

@@ -1132,6 +1132,102 @@ def test_maybe_complete_fan_out_parent_uses_latest_attempt_per_shard(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_merges_child_output_into_shards(
+    run: PipelineRun,
+) -> None:
+    """Parent shards include fields from the latest child output per shard."""
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='tts',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        child_0 = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='tts',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+            output={
+                'chapter_idx': 0,
+                'asset_id': 'audio-0',
+                'char_count': 100,
+            },
+        )
+        child_1 = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='tts',
+            parent=parent,
+            shard_index=1,
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+            output={
+                'chapter_idx': 1,
+                'asset_id': 'audio-1',
+                'char_count': 200,
+            },
+        )
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            new=AsyncMock(),
+        ):
+            await _maybe_complete_fan_out_parent(child_1)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.SUCCEEDED
+        shards = refreshed.output['shards']
+        assert len(shards) == 2
+        assert shards[0] == {
+            'shard_index': 0,
+            'status': StageStatus.SUCCEEDED,
+            'chapter_idx': 0,
+            'asset_id': 'audio-0',
+            'char_count': 100,
+        }
+        assert shards[1] == {
+            'shard_index': 1,
+            'status': StageStatus.SUCCEEDED,
+            'chapter_idx': 1,
+            'asset_id': 'audio-1',
+            'char_count': 200,
+        }
+        # Latest attempt wins when merging output
+        await StageExecution.objects.acreate(
+            run=run,
+            stage_key='tts',
+            parent=parent,
+            shard_index=0,
+            attempt=1,
+            status=StageStatus.SUCCEEDED,
+            input_hash='',
+            output={
+                'chapter_idx': 0,
+                'asset_id': 'audio-0-retry',
+                'char_count': 110,
+            },
+        )
+        parent.status = StageStatus.RUNNING
+        parent.output = {}
+        await parent.asave(update_fields=['status', 'output'])
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            new=AsyncMock(),
+        ):
+            await _maybe_complete_fan_out_parent(child_0)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.output['shards'][0]['asset_id'] == 'audio-0-retry'
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
 def test_maybe_complete_fan_out_parent_fails_parent_when_shard_failed_and_no_in_flight(
     run: PipelineRun,
 ) -> None:

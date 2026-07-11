@@ -60,7 +60,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
             'fan_out': 'scenes',
             'config': {
-                'model': 'fal-ai/flux-kontext-pro',
+                'model': 'fal-ai/flux/dev',
                 'use_character_ref': True,
             },
         },

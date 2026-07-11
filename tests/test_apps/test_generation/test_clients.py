@@ -50,6 +50,29 @@ def test_fal_generate_image_fatal_on_safety() -> None:
         pass
 
 
+def test_fal_generate_image_fatal_on_404() -> None:
+    """FalClientError with status 404 raises FatalProviderError (bad model slug)."""
+    from fal_client import FalClientError
+
+    from server.apps.generation.clients.fal import (
+        generate_image,
+    )
+    from server.common.exceptions import FatalProviderError
+
+    exc = FalClientError("Application 'flux-kontext-pro' not found")
+    exc.status = 404
+
+    async def _inner() -> None:
+        with patch('fal_client.run_async', side_effect=exc):
+            await generate_image('prompt', model='fal-ai/flux-kontext-pro')
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected FatalProviderError')
+    except FatalProviderError as err:
+        assert err.error_code == 'model_not_found'
+
+
 def test_fal_generate_image_retryable_on_no_images() -> None:
     """Empty images list from fal raises RetryableProviderError."""
     from server.apps.generation.clients.fal import (
