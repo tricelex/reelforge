@@ -21,7 +21,7 @@ def test_prompt_version_default_model() -> None:
         system_prompt='s',
         user_prompt='u',
     )
-    assert pv.model == 'gpt-5.2'
+    assert pv.model == 'gpt-5.6-terra'
     assert pv.temperature == 1.0
     assert pv.max_tokens == 8192
     assert pv.is_active is False

@@ -110,7 +110,5 @@ class ResearchStage(Stage):
             ctx,
             stage_key=self.key,
             request_limit=5,
-            input_tokens_limit=200_000,
-            count_tokens_before_request=True,
         )
         return output.model_dump()

@@ -5,9 +5,8 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
 
-from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
+from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.ideas.logic.schemas import (
     IdeationOutput,
     OutlierVideo,
@@ -31,7 +30,7 @@ _SYSTEM_PROMPT = (
 @cache
 def _agent() -> Agent[None, IdeationOutput]:
     return Agent(
-        OpenAIChatModel(DEFAULT_LLM_MODEL),
+        PYDANTIC_AI_MODEL,
         output_type=IdeationOutput,
         system_prompt=_SYSTEM_PROMPT,
     )

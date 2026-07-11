@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import pydantic
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
 
-from server.apps.generation.logic.constants import DEFAULT_LLM_MODEL
+from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipCandidate
@@ -40,7 +39,7 @@ class ClipsOutput(pydantic.BaseModel):
 
 
 clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
-    OpenAIChatModel(DEFAULT_LLM_MODEL),
+    PYDANTIC_AI_MODEL,
     output_type=ClipsOutput,
     system_prompt=(
         'You are an expert short-form video editor. '
@@ -52,7 +51,7 @@ clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
 
 
 class ClipAnalysisService:
-    """Identifies clip candidates from transcript using GPT 5.2 (PydanticAI)."""
+    """Identifies clip candidates from transcript using GPT 5.6 Terra (PydanticAI)."""
 
     def __init__(self, run: Any, clips_requested: int = 5) -> None:
         """Initialise with the pipeline run and requested clip count."""
