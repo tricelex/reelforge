@@ -1,10 +1,69 @@
 """Tests for server/common/observability.py."""
 
+import re
 from unittest.mock import patch
 
+import logfire
 import pytest
 
-from server.common.observability import init_logfire, init_sentry
+from server.common.observability import (
+    init_logfire,
+    init_sentry,
+    scrubbing_callback,
+)
+
+
+def _scrub_match(
+    *,
+    path: tuple[str, ...],
+    value: str,
+    matched: str,
+) -> logfire.ScrubMatch:
+    return logfire.ScrubMatch(
+        path=path,
+        value=value,
+        pattern_match=re.search(matched, matched, re.IGNORECASE),
+    )
+
+
+@pytest.mark.parametrize(
+    ('matched', 'value'),
+    [
+        ('cookie', 'missing cookie header'),
+        ('Cookie', 'missing Cookie header'),
+        ('apikey', 'invalid apikey format'),
+        ('api_key', 'missing api_key in config'),
+        ('api-key', 'api-key not found'),
+        ('api key', 'api key required'),
+    ],
+)
+def test_scrubbing_callback_preserves_benign_error_messages(
+    matched: str,
+    value: str,
+) -> None:
+    """Error messages mentioning cookie/api-key wording are not redacted."""
+    match = _scrub_match(
+        path=('attributes', 'error', 'message'),
+        value=value,
+        matched=matched,
+    )
+    assert scrubbing_callback(match) == value
+
+
+@pytest.mark.parametrize(
+    ('path', 'matched'),
+    [
+        (('attributes', 'error', 'message'), 'password'),
+        (('attributes', 'other', 'message'), 'cookie'),
+    ],
+)
+def test_scrubbing_callback_redacts_other_matches(
+    path: tuple[str, ...],
+    matched: str,
+) -> None:
+    """Only error.message cookie/api-key wording is exempt from scrubbing."""
+    match = _scrub_match(path=path, value='some value', matched=matched)
+    assert scrubbing_callback(match) is None
 
 
 def test_init_sentry_is_noop_without_dsn(settings) -> None:
@@ -49,10 +108,9 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     with (
         patch('logfire.configure') as mock_configure,
         patch('logfire.instrument_django') as mock_django,
-        patch('logfire.instrument_psycopg') as mock_psycopg2,
-        patch('logfire.instrument_redis') as mock_redis,
         patch('logfire.instrument_httpx') as mock_httpx,
         patch('logfire.instrument_pydantic_ai') as mock_pydantic_ai,
+        patch('logfire.instrument_requests') as mock_requests,
         patch('logfire.LogfireLoggingHandler') as mock_handler,
         patch('logging.getLogger') as mock_get_logger,
     ):
@@ -61,12 +119,15 @@ def test_init_logfire_configures_and_instruments_all_integrations(
     mock_configure.assert_called_once_with(
         token='test-logfire-token',
         service_name='***REMOVED***-test',
+        scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback),
     )
-    mock_django.assert_called_once_with(capture_headers=False)
-    mock_psycopg2.assert_called_once_with('psycopg2')
-    mock_redis.assert_called_once_with()
+    mock_django.assert_called_once_with(
+        capture_headers=False,
+        excluded_urls='/health/',
+    )
     mock_httpx.assert_called_once_with()
     mock_pydantic_ai.assert_called_once_with()
+    mock_requests.assert_called_once_with()
     mock_handler.assert_called_once_with()
     mock_get_logger.assert_called_once_with()
     mock_get_logger.return_value.addHandler.assert_called_once_with(
@@ -84,10 +145,9 @@ def test_init_logfire_skips_handler_when_already_present(settings) -> None:
     with (
         patch('logfire.configure'),
         patch('logfire.instrument_django'),
-        patch('logfire.instrument_psycopg'),
-        patch('logfire.instrument_redis'),
         patch('logfire.instrument_httpx'),
         patch('logfire.instrument_pydantic_ai'),
+        patch('logfire.instrument_requests'),
         patch('logging.getLogger') as mock_get_logger,
     ):
         mock_get_logger.return_value.handlers = [existing_handler]

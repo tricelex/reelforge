@@ -14,14 +14,21 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 
 _HEALTH_CHECK_PATH = '/health/'
+_ERROR_MESSAGE_PATH = ('attributes', 'error', 'message')
+_FALSE_POSITIVE_MATCHES = frozenset({'cookie', 'apikey'})
 
 
-def scrubbing_callback(m: logfire.ScrubMatch):
-    if (
-        m.path == ('attributes', 'error', 'message')
-        and m.pattern_match.group(0) == 'cookie'
-    ):
+def _normalised_scrub_match(matched: str) -> str:
+    return matched.casefold().replace('_', '').replace('-', '').replace(' ', '')
+
+
+def scrubbing_callback(m: logfire.ScrubMatch) -> object | None:
+    """Keep benign error messages that mention cookie/api-key wording."""
+    if m.path != _ERROR_MESSAGE_PATH:
+        return None
+    if _normalised_scrub_match(m.pattern_match.group(0)) in _FALSE_POSITIVE_MATCHES:
         return m.value
+    return None
 
 
 def init_sentry() -> None:
