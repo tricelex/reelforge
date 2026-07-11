@@ -9,6 +9,9 @@ from pydantic_ai import Agent, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import VideoMetadata
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -27,10 +30,8 @@ def _agent() -> Agent[StageContext, VideoMetadata]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'metadata',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('metadata', variables)
         return sys or (
             'You are a YouTube SEO specialist. '
             'Write a title ≤60 chars (hook-style, no clickbait lies), '
@@ -77,14 +78,12 @@ class MetadataStage(Stage):
         alignment_scenes = ctx.upstream.get('alignment', {}).get('scenes', [])
         timestamps = _build_chapter_timestamps(alignment_scenes, chapters)
 
-        _, usr = await ctx.prompts.render(
-            'metadata',
-            {
-                'topic': ctx.run.topic,
-                'chapters': chapters,
-                'timestamps': timestamps,
-            },
+        variables = await build_prompt_variables(
+            ctx,
+            extra={'timestamps': timestamps},
+            include_character=False,
         )
+        _, usr = await ctx.prompts.render('metadata', variables)
         user_prompt = usr or (
             f'Write YouTube metadata for "{ctx.run.topic}".\n'
             f'Chapter timestamps:\n{timestamps}\n'

@@ -8,6 +8,9 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import SceneBreakdownOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -26,10 +29,8 @@ def _agent() -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C901
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'scene_breakdown',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps)
+        sys, _ = await ctx.deps.prompts.render('scene_breakdown', variables)
         return sys or (
             'You are a documentary scene breakdown specialist. '
             'Split each chapter into scenes of 6-12 seconds of narration. '
@@ -81,14 +82,11 @@ class SceneBreakdownStage(Stage):
         chapters = ctx.upstream.get('script', {}).get('chapters', [])
         hero_ratio = ctx.config.get('hero_ratio', 0.15)
 
-        _, usr = await ctx.prompts.render(
-            'scene_breakdown',
-            {
-                'topic': ctx.run.topic,
-                'chapters': chapters,
-                'hero_ratio': hero_ratio,
-            },
+        variables = await build_prompt_variables(
+            ctx,
+            extra={'hero_ratio': hero_ratio},
         )
+        _, usr = await ctx.prompts.render('scene_breakdown', variables)
         user_prompt = usr or (
             f'Break down each chapter of "{ctx.run.topic}" into scenes.\n'
             f'Chapters: {chapters}\n'

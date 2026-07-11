@@ -14,6 +14,9 @@ from pydantic_ai import Agent, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import NarrativeQCOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -35,7 +38,8 @@ def _agent() -> Agent[StageContext, NarrativeQCOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render('narrative_qc', {})
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('narrative_qc', variables)
         return sys or (
             'You are a documentary editorial quality judge. Score this '
             'script + scene breakdown 0.0-1.0 on: (1) does the first 30s '
@@ -64,14 +68,8 @@ class NarrativeQCStage(Stage):
         script = ctx.upstream.get('script', {})
         scenes = ctx.upstream.get('scene_breakdown', {})
 
-        _, usr = await ctx.prompts.render(
-            'narrative_qc',
-            {
-                'topic': ctx.run.topic,
-                'script': script,
-                'scene_breakdown': scenes,
-            },
-        )
+        variables = await build_prompt_variables(ctx, include_character=False)
+        _, usr = await ctx.prompts.render('narrative_qc', variables)
         user_prompt = usr or (
             f'Topic: "{ctx.run.topic}"\n'
             f'Script chapters (with commentary): {script.get("chapters", [])}\n'

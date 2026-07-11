@@ -59,11 +59,8 @@ def init_logfire() -> None:
         capture_headers=False,
         excluded_urls=_HEALTH_CHECK_PATH,
     )
-    logfire.instrument_psycopg('psycopg2')
-    logfire.instrument_redis()
     logfire.instrument_httpx()
     logfire.instrument_pydantic_ai()
-    logfire.instrument_system_metrics()
     logfire.instrument_requests()
     root_logger = logging.getLogger()
     already_added = any(

@@ -8,6 +8,9 @@ from pydantic_ai import Agent, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import VisualPromptsOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -26,10 +29,8 @@ def _agent() -> Agent[StageContext, VisualPromptsOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'visual_prompts',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps)
+        sys, _ = await ctx.deps.prompts.render('visual_prompts', variables)
         return sys or (
             'You are a visual prompt engineer for AI image generation. '
             'Write Flux-compatible image prompts: specific, evocative, '
@@ -57,13 +58,11 @@ class VisualPromptsStage(Stage):
         niche = getattr(ctx.channel, 'niche_config', None)
         style = getattr(niche, 'style_guide', '') if niche else ''
 
-        _, usr = await ctx.prompts.render(
-            'visual_prompts',
-            {
-                'scenes': scenes,
-                'style_guide': style,
-            },
+        variables = await build_prompt_variables(
+            ctx,
+            extra={'style_guide': style},
         )
+        _, usr = await ctx.prompts.render('visual_prompts', variables)
         user_prompt = usr or (
             f'Write image generation prompts for each scene.\n'
             f'Scenes: {scenes}\n'

@@ -7,6 +7,9 @@ import httpx
 
 from server.apps.assets.models import AssetKind
 from server.apps.generation.clients import fal as fal_client
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -77,10 +80,11 @@ class ThumbnailStage(Stage):
         if branding:
             palette = getattr(branding, 'thumbnail_palette', {}) or {}
 
-        _, usr = await ctx.prompts.render(
-            'thumbnail',
-            {'title': title, 'topic': ctx.run.topic},
+        variables = await build_prompt_variables(
+            ctx,
+            extra={'title': title},
         )
+        _, usr = await ctx.prompts.render('thumbnail', variables)
         thumb_prompt = usr or (
             f'Cinematic thumbnail for: {title}. '
             f'Exaggerated emotion, dramatic lighting, photorealistic.'

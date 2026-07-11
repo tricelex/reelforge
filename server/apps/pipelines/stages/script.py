@@ -10,6 +10,9 @@ from server.apps.generation.clients.embeddings import embed_text
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.logic.similarity import is_too_similar
 from server.apps.pipelines.schemas import ScriptOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -34,10 +37,8 @@ def _agent() -> Agent[StageContext, ScriptOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'script',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('script', variables)
         return sys or (
             'You are a professional documentary script writer. '
             'No greetings. Short sentences. Curiosity gaps at chapter ends. '
@@ -69,15 +70,12 @@ async def _generate_script(
     chapters = outline.get('chapters', [])
     wpm = getattr(ctx.channel, 'wpm', 158)
 
-    _, usr = await ctx.prompts.render(
-        'script',
-        {
-            'topic': ctx.run.topic,
-            'chapters': chapters,
-            'research': research,
-            'wpm': wpm,
-        },
+    variables = await build_prompt_variables(
+        ctx,
+        extra={'wpm': wpm},
+        include_character=False,
     )
+    _, usr = await ctx.prompts.render('script', variables)
     user_prompt = usr or (
         f'Write the full script for "{ctx.run.topic}".\n'
         f'Chapters: {chapters}\n'
