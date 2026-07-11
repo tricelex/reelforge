@@ -1345,6 +1345,93 @@ def test_rerun_stage_sync_unknown_stage_returns_empty(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_rerun_fan_out_stage_creates_children_with_new_attempt(
+    run: PipelineRun,
+) -> None:
+    """Rerunning a fan-out stage must not reuse shard attempt=0 child rows."""
+    from server.apps.pipelines.services.executor import (
+        _handle_fan_out,
+    )
+    from server.apps.pipelines.services.orchestrator import (
+        _rerun_stage_sync,
+    )
+    from server.apps.pipelines.stages.base import (
+        Stage,
+        StageContext,
+        register_stage,
+    )
+
+    @register_stage
+    class _FanRerunCovStage(Stage):
+        """Fan-out stage for rerun attempt coverage."""
+
+        key = '_fan_rerun_cov'
+        queue = 'api'
+        max_retries = 2
+        timeout_s = 10
+
+        def fan_out(
+            self,
+            ctx: StageContext,
+        ) -> list[dict[str, object]] | None:
+            """Return one shard."""
+            return [{'chapter_idx': 0, 'text': 'hello'}]
+
+        async def run(
+            self,
+            ctx: StageContext,
+        ) -> dict[str, object]:  # pragma: no cover
+            """Return empty dict."""
+            return {}
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': '_fan_rerun_cov', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+
+    parent_v0 = StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_cov',
+        status=StageStatus.FAILED,
+        attempt=0,
+        input_hash='',
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_cov',
+        parent=parent_v0,
+        shard_index=0,
+        attempt=0,
+        status=StageStatus.FAILED,
+        input_hash='',
+    )
+
+    exec_ids = _rerun_stage_sync(str(run.id), '_fan_rerun_cov', None)
+    parent_v1 = StageExecution.objects.get(id=exec_ids[0])
+    assert parent_v1.attempt == 1
+
+    async def _fan_out() -> None:
+        with patch(
+            'server.apps.pipelines.services.executor.execute_stage_kiq',
+            new=AsyncMock(),
+        ):
+            await _handle_fan_out(
+                parent_v1,
+                [{'chapter_idx': 0, 'text': 'hello'}],
+            )
+
+    _run(_fan_out())
+
+    child_v1 = StageExecution.objects.get(
+        run=run,
+        stage_key='_fan_rerun_cov',
+        parent=parent_v1,
+        shard_index=0,
+    )
+    assert child_v1.attempt == 1
+
+
+@pytest.mark.django_db(transaction=True)
 def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
     """_rerun_stage_sync stales downstream and creates a queued execution."""
     import server.apps.pipelines.stages.dummy  # noqa: F401
