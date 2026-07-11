@@ -18,6 +18,12 @@ def _raise_fal_error(
     """Classify a FalClientError and raise the appropriate provider error."""
     status = getattr(exc, 'status', None)
     msg = str(exc)
+    if status == 404:
+        raise FatalProviderError(
+            msg,
+            provider=provider,
+            error_code='model_not_found',
+        ) from exc
     if status in _RETRYABLE_CODES:
         raise RetryableProviderError(
             msg,
