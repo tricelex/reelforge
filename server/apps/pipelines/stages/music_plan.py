@@ -18,6 +18,25 @@ from server.apps.pipelines.stages.base import (
 )
 
 
+async def _music_plan_variables(
+    ctx: StageContext,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fetch the music library and build prompt variables for music_plan."""
+    channel_id = str(getattr(ctx.channel, 'id', ''))
+    library = await _fetch_music_library(channel_id)
+    niche = getattr(ctx.channel, 'niche_config', None)
+    mood_map = getattr(niche, 'music_mood_map', {}) if niche else {}
+    variables = await build_prompt_variables(
+        ctx,
+        extra={
+            'library_tracks': library,
+            'mood_map': mood_map,
+        },
+        include_character=False,
+    )
+    return library, variables
+
+
 @cache
 def _agent() -> Agent[StageContext, MusicPlanOutput]:
     """Create and cache the music plan agent on first call."""
@@ -29,7 +48,7 @@ def _agent() -> Agent[StageContext, MusicPlanOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        _, variables = await _music_plan_variables(ctx.deps)
         sys, _ = await ctx.deps.prompts.render('music_plan', variables)
         return sys or (
             'You are a music supervisor for documentary videos. '
@@ -91,20 +110,14 @@ class MusicPlanStage(Stage):
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Ask the LLM to pick library music for each chapter."""
+        library, variables = await _music_plan_variables(ctx)
+        if not library:
+            return {'entries': []}
+
         chapters = ctx.upstream.get('outline', {}).get('chapters', [])
-        channel_id = str(getattr(ctx.channel, 'id', ''))
-        library = await _fetch_music_library(channel_id)
         niche = getattr(ctx.channel, 'niche_config', None)
         mood_map = getattr(niche, 'music_mood_map', {}) if niche else {}
 
-        variables = await build_prompt_variables(
-            ctx,
-            extra={
-                'library_tracks': library,
-                'mood_map': mood_map,
-            },
-            include_character=False,
-        )
         _, usr = await ctx.prompts.render('music_plan', variables)
         user_prompt = usr or (
             f'Select music for each chapter:\n'
