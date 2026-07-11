@@ -18,7 +18,7 @@ _HEALTH_CHECK_PATH = '/health/'
 
 def scrubbing_callback(m: logfire.ScrubMatch):
     if (
-        m.path == ('attributes', 'exception')
+        m.path == ('attributes', 'error', 'message')
         and m.pattern_match.group(0) == 'cookie'
     ):
         return m.value
