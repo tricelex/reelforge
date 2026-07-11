@@ -25,12 +25,19 @@ async def run_agent(
     ctx: 'StageContext',
     stage_key: str,
     request_limit: int = 4,
+    *,
+    input_tokens_limit: int | None = None,
+    count_tokens_before_request: bool = False,
 ) -> Any:
     """Run a PydanticAI agent, record token costs, and return typed output."""
     result = await agent.run(
         user_prompt,
         deps=ctx,
-        usage_limits=UsageLimits(request_limit=request_limit),
+        usage_limits=UsageLimits(
+            request_limit=request_limit,
+            input_tokens_limit=input_tokens_limit,
+            count_tokens_before_request=count_tokens_before_request,
+        ),
     )
     usage = result.usage
     if usage.input_tokens:

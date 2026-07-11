@@ -44,9 +44,19 @@ def _agent() -> Agent[StageContext, ResearchOutput]:
         ctx: RunContext[StageContext],
         query: str,
     ) -> list[dict[str, Any]]:  # pragma: no cover
-        """Search the web for relevant sources."""
+        """Search the web for relevant sources.
+
+        Use 2-4 targeted queries total; avoid repeating similar searches.
+        """
         api_key: str = getattr(settings, 'EXA_API_KEY', '')
-        return await search_client.search(query, api_key=api_key)
+        return await search_client.search(
+            query,
+            api_key=api_key,
+            num_results=search_client.AGENT_NUM_RESULTS,
+            content_mode='highlights',
+            max_characters_per_result=search_client.AGENT_MAX_CHARACTERS_PER_RESULT,
+            max_total_characters=search_client.AGENT_MAX_TOTAL_CHARACTERS,
+        )
 
     @a.output_validator
     def _validate(  # pragma: no cover
@@ -99,6 +109,8 @@ class ResearchStage(Stage):
             user_prompt,
             ctx,
             stage_key=self.key,
-            request_limit=8,
+            request_limit=5,
+            input_tokens_limit=200_000,
+            count_tokens_before_request=True,
         )
         return output.model_dump()

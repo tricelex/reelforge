@@ -128,6 +128,137 @@ def test_exa_search_returns_results_on_success() -> None:
     assert results[0]['url'] == 'https://example.com'
 
 
+def test_exa_search_requests_max_characters_in_body() -> None:
+    """search() asks Exa to cap page text via maxCharacters."""
+    import httpx
+
+    from server.apps.generation.clients.search import search
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {'results': []}
+    captured_body: list[dict[str, object]] = []
+
+    async def _fake_post(
+        url: str,
+        *,
+        headers: object = None,
+        json: dict[str, object] | None = None,
+    ) -> object:
+        captured_body.append(json)
+        return mock_resp
+
+    async def _inner() -> list[dict[str, object]]:
+        with patch('httpx.AsyncClient.post', side_effect=_fake_post):
+            return await search('query', api_key='key', max_characters_per_result=8000)
+
+    asyncio.run(_inner())
+    assert captured_body[0]['contents'] == {'text': {'maxCharacters': 8000}}
+
+
+def test_exa_search_highlights_mode_uses_query_in_body() -> None:
+    """Agent-style search requests query-relevant highlights, not full pages."""
+    import httpx
+
+    from server.apps.generation.clients.search import search
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {'results': []}
+    captured_body: list[dict[str, object]] = []
+
+    async def _fake_post(
+        url: str,
+        *,
+        headers: object = None,
+        json: dict[str, object] | None = None,
+    ) -> object:
+        captured_body.append(json)
+        return mock_resp
+
+    async def _inner() -> list[dict[str, object]]:
+        with patch('httpx.AsyncClient.post', side_effect=_fake_post):
+            return await search(
+                'fall of rome causes',
+                api_key='key',
+                content_mode='highlights',
+                max_characters_per_result=1500,
+            )
+
+    asyncio.run(_inner())
+    assert captured_body[0]['contents'] == {
+        'highlights': {
+            'query': 'fall of rome causes',
+            'maxCharacters': 1500,
+        },
+    }
+
+
+def test_exa_search_joins_highlights_into_text_field() -> None:
+    """Highlight payloads are flattened into the text field for the agent."""
+    import httpx
+
+    from server.apps.generation.clients.search import search
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {
+        'results': [
+            {
+                'url': 'https://example.com',
+                'title': 'Rome',
+                'highlights': ['Fact one.', 'Fact two.'],
+            },
+        ],
+    }
+
+    async def _inner() -> list[dict[str, object]]:
+        with patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
+        ):
+            return await search(
+                'rome',
+                api_key='key',
+                content_mode='highlights',
+            )
+
+    results = asyncio.run(_inner())
+    assert results[0]['text'] == 'Fact one.\nFact two.'
+    """search() truncates oversized page text returned by Exa."""
+    import httpx
+
+    from server.apps.generation.clients.search import search
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {
+        'results': [
+            {
+                'url': 'https://example.com',
+                'title': 'Long page',
+                'text': 'x' * 20_000,
+            },
+        ],
+    }
+
+    async def _inner() -> list[dict[str, object]]:
+        with patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
+        ):
+            return await search(
+                'query',
+                api_key='key',
+                max_characters_per_result=1000,
+                max_total_characters=1000,
+            )
+
+    results = asyncio.run(_inner())
+    assert len(results[0]['text']) == 1000
+    assert results[0]['text'].endswith('...')
+
+
 def test_elevenlabs_synthesize_returns_bytes_on_success() -> None:
     """Successful ElevenLabs response returns audio bytes."""
     import httpx
@@ -627,3 +758,40 @@ def test_run_agent_records_input_and_output_token_costs() -> None:
     operations = [c['operation'] for c in calls]
     assert any('input' in op for op in operations)
     assert any('output' in op for op in operations)
+
+
+def test_run_agent_passes_input_token_limit_to_usage_limits() -> None:
+    """run_agent() forwards input_tokens_limit to pydantic-ai UsageLimits."""
+    from pydantic_ai.usage import UsageLimits
+
+    from server.apps.generation.clients.llm import run_agent
+
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+
+    mock_result = MagicMock()
+    mock_result.usage = mock_usage
+    mock_result.output = 'done'
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=mock_result)
+
+    mock_ctx = MagicMock()
+    mock_ctx.costs.record = AsyncMock()
+
+    async def _inner() -> object:
+        return await run_agent(
+            mock_agent,
+            'prompt',
+            mock_ctx,
+            stage_key='research',
+            input_tokens_limit=250_000,
+            count_tokens_before_request=True,
+        )
+
+    asyncio.run(_inner())
+    limits = mock_agent.run.await_args.kwargs['usage_limits']
+    assert isinstance(limits, UsageLimits)
+    assert limits.input_tokens_limit == 250_000
+    assert limits.count_tokens_before_request is True
