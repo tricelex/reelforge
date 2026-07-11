@@ -50,7 +50,10 @@ RUN groupadd -g "${GID}" -r web \
 COPY --chown=web:web pyproject.toml poetry.lock ./
 
 # Install main + ml groups. torch + CUDA + whisperx + scenedetect only live here.
-RUN poetry sync --only main --with ml --no-interaction --no-ansi
+# NOTE: `--only main --with ml` does NOT install ml in Poetry 2.4 — use `--with ml`
+# (main is always included) or `--only main,ml`.
+RUN poetry sync --with ml --no-interaction --no-ansi \
+    && python -c "import whisperx"
 
 COPY --chown=web:web . /code
 

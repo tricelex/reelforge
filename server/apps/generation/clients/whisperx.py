@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ async def align(
     """Run WhisperX alignment. Returns word-level timestamps as a dict."""
     out_dir = tempfile.mkdtemp()
     cmd = [
-        'python',
+        sys.executable,
         '-m',
         'whisperx',
         audio_path,
