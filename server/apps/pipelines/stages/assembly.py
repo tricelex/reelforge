@@ -68,24 +68,14 @@ async def _build_scene_asset_map(ctx: StageContext) -> dict[int, str]:
 
 async def _build_chapter_audio_map(ctx: StageContext) -> dict[int, str]:
     """Return {chapter_idx: asset_id} from tts stage child executions in DB."""
-    from server.apps.pipelines.models import (  # noqa: PLC0415
-        StageExecution,
-        StageStatus,
+    from server.apps.pipelines.services.tts_shards import (  # noqa: PLC0415
+        load_tts_chapter_shards,
     )
 
-    chapter_map: dict[int, str] = {}
-    async for child in StageExecution.objects.filter(
-        run=ctx.run,
-        stage_key='tts',
-        parent__isnull=False,
-        status=StageStatus.SUCCEEDED,
-    ).order_by('shard_index'):
-        output = child.output
-        ch_idx = output.get('chapter_idx')
-        asset_id = output.get('asset_id')
-        if ch_idx is not None and asset_id:
-            chapter_map[int(ch_idx)] = str(asset_id)
-    return chapter_map
+    return {
+        shard['chapter_idx']: shard['asset_id']
+        for shard in await load_tts_chapter_shards(ctx.run)
+    }
 
 
 async def _fetch_asset_bytes(asset_id: str) -> bytes:
