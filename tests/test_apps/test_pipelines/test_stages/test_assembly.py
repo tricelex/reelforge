@@ -527,7 +527,7 @@ def test_build_scene_asset_map_skips_child_with_missing_fields() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_build_chapter_audio_map_skips_child_with_missing_fields() -> None:
-    """Children missing chapter_idx or asset_id are ignored (branch 72->63)."""
+    """Children missing asset_id are ignored; chapter_idx falls back to shard_index."""
     channel = Channel.objects.create(
         name='Asm Skip Ch2',
         kind=ChannelKind.LONGFORM,
@@ -576,7 +576,7 @@ def test_build_chapter_audio_map_skips_child_with_missing_fields() -> None:
     ctx.run = run
 
     result = _run_async(_build_chapter_audio_map(ctx))
-    assert result == {}
+    assert result == {1: 'audio-0'}
 
 
 # ---------------------------------------------------------------------------

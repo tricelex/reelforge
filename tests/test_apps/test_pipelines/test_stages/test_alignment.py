@@ -3,10 +3,21 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from server.apps.channels.models import Channel, ChannelKind
+from server.apps.pipelines.models import (
+    PipelineBlueprint,
+    PipelineKind,
+    PipelineRun,
+    StageExecution,
+    StageStatus,
+)
 from server.apps.pipelines.stages.alignment import (
     AlignmentStage,
     _build_ass_content,
 )
+from server.common.exceptions import FatalProviderError
 
 
 def _make_ctx() -> MagicMock:
@@ -112,6 +123,17 @@ def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     async def _inner() -> dict[str, object]:
         with (
             patch(
+                'server.apps.pipelines.stages.alignment.load_tts_chapter_shards',
+                new=AsyncMock(
+                    return_value=[
+                        {
+                            'chapter_idx': 0,
+                            'asset_id': 'audio-0',
+                        },
+                    ],
+                ),
+            ),
+            patch(
                 'server.apps.pipelines.stages.alignment._fetch_audio_bytes',
                 new=AsyncMock(return_value=b'fake-audio'),
             ),
@@ -146,3 +168,110 @@ def test_fetch_audio_bytes_reads_from_asset() -> None:
 
     result = asyncio.run(_inner())
     assert result == b'audio-bytes'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_alignment_loads_tts_from_child_executions() -> None:
+    """Alignment reads TTS data from child rows, not stale parent shard aggregates."""
+    channel = Channel.objects.create(
+        name='Align DB Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='align_db_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': [{'key': 'alignment', 'depends_on': ['tts'], 'queue': 'gpu'}]},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='test',
+    )
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='tts',
+        status=StageStatus.SUCCEEDED,
+        output={'shards': [{'shard_index': 0, 'status': StageStatus.SUCCEEDED}]},
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='tts',
+        parent=parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        output={'chapter_idx': 0, 'asset_id': 'audio-ch0', 'char_count': 100},
+    )
+
+    ctx = MagicMock()
+    ctx.run = run
+    ctx.upstream = {
+        'tts': {
+            'shards': [{'shard_index': 0, 'status': StageStatus.SUCCEEDED}],
+        },
+        'script': {
+            'chapters': [
+                {
+                    'idx': 0,
+                    'text': 'Rome was great once. Then it fell.',
+                    'word_count': 8,
+                },
+            ],
+        },
+    }
+    ctx.assets = AsyncMock()
+    ctx.assets.save = AsyncMock(return_value=MagicMock(id='subtitle-uuid'))
+    fake_whisper_result = {
+        'segments': [
+            {
+                'start': 0.0,
+                'end': 2.5,
+                'text': 'Rome was great once.',
+                'words': [{'word': 'Rome', 'start': 0.0, 'end': 0.4}],
+            },
+        ],
+    }
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.pipelines.stages.alignment._fetch_audio_bytes',
+                new=AsyncMock(return_value=b'fake-audio'),
+            ),
+            patch(
+                'server.apps.generation.clients.whisperx.align',
+                new=AsyncMock(return_value=fake_whisper_result),
+            ),
+        ):
+            return await AlignmentStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]
+    assert result['scenes'][0]['chapter_idx'] == 0  # type: ignore[index]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_alignment_fails_when_no_tts_children() -> None:
+    """Alignment raises when no succeeded TTS child shards exist."""
+    channel = Channel.objects.create(
+        name='Align Empty',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='align_empty_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': [{'key': 'alignment', 'depends_on': ['tts'], 'queue': 'gpu'}]},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='test',
+    )
+
+    ctx = MagicMock()
+    ctx.run = run
+    ctx.upstream = {'script': {'chapters': []}}
+
+    with pytest.raises(FatalProviderError, match='No succeeded TTS chapter shards'):
+        asyncio.run(AlignmentStage().run(ctx))

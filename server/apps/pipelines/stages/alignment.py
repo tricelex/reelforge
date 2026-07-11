@@ -1,16 +1,17 @@
 """Alignment stage — WhisperX forced alignment and ASS subtitle generation."""
 
-import operator
 import tempfile
 from typing import Any, override
 
 from server.apps.assets.models import AssetKind
 from server.apps.generation.clients import whisperx as whisperx_client
+from server.apps.pipelines.services.tts_shards import load_tts_chapter_shards
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 
 async def _fetch_audio_bytes(asset_id: str) -> bytes:
@@ -91,7 +92,13 @@ class AlignmentStage(Stage):
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Align TTS audio per chapter, producing scene word timestamps."""
-        tts_shards = ctx.upstream.get('tts', {}).get('shards', [])
+        tts_shards = await load_tts_chapter_shards(ctx.run)
+        if not tts_shards:
+            raise FatalProviderError(
+                'No succeeded TTS chapter shards found for alignment',
+                provider='tts',
+                error_code='missing_tts_shards',
+            )
         script_chapters = {
             ch['idx']: ch
             for ch in ctx.upstream.get('script', {}).get('chapters', [])
@@ -100,7 +107,7 @@ class AlignmentStage(Stage):
         all_scenes: list[dict[str, Any]] = []
         all_segments: list[dict[str, Any]] = []
 
-        for shard in sorted(tts_shards, key=operator.itemgetter('chapter_idx')):
+        for shard in tts_shards:
             audio_bytes = await _fetch_audio_bytes(shard['asset_id'])
             chapter = script_chapters.get(shard['chapter_idx'], {})
             transcript_text = chapter.get('text', '')
