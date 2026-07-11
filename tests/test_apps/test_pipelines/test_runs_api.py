@@ -497,6 +497,12 @@ def test_rerun_stage(
     )
     StageExecution.objects.create(
         run=rerun_run,
+        stage_key='dummy_a',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+    StageExecution.objects.create(
+        run=rerun_run,
         stage_key='dummy_b',
         status=StageStatus.SUCCEEDED,
         attempt=0,
@@ -520,6 +526,11 @@ def test_rerun_stage(
 
     assert response.status_code == HTTPStatus.OK
     mock_kiq.assert_called_once()
+    rerun_stage = next(
+        s for s in response.json()['stages'] if s['stage_key'] == 'dummy_a'
+    )
+    assert rerun_stage['attempt'] == 1
+    assert rerun_stage['status'] == StageStatus.QUEUED
     downstream = StageExecution.objects.get(
         run=rerun_run,
         stage_key='dummy_b',

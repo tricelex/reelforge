@@ -672,7 +672,9 @@ def _rerun_stage_sync(
             )
             .first()
         )
-        next_attempt = (latest_attempt or -1) + 1
+        next_attempt = (
+            latest_attempt if latest_attempt is not None else -1
+        ) + 1
 
         exec_ = StageExecution.objects.create(
             run=run,
