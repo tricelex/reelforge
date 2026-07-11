@@ -375,7 +375,8 @@ Create **at least 5 tracks**, one per mood in `music_mood_map`:
 
 For each: upload MP3, **Kind** = `Music`, **Is active** = ✅, **License type** ≠ `Unspecified`.
 
-**Blocking:** Without licensed music, `music_plan` fails and `assembly` never runs.
+**Recommended:** Licensed music improves BGM quality, but runs complete without it —
+`music_plan` returns empty entries and `assembly` produces voiceover-only video.
 
 ---
 

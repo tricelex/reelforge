@@ -156,6 +156,72 @@ def test_fetch_music_library_returns_empty_list_when_no_assets() -> None:
     assert result == []
 
 
+def test_music_plan_empty_library_returns_empty_entries() -> None:
+    """run() short-circuits with no entries when the library is empty."""
+    ctx = _make_ctx()
+    run_agent = AsyncMock()
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=run_agent,
+            ),
+            patch(
+                'server.apps.pipelines.stages.music_plan._fetch_music_library',
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            return await MusicPlanStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert result == {'entries': []}
+    run_agent.assert_not_called()
+
+
+def test_music_plan_sys_prompt_renders_without_undefined() -> None:
+    """music_plan user template renders when library_tracks is [] (not Undefined)."""
+    from server.apps.pipelines.services.prompt_renderer import (
+        PromptRenderer,
+    )
+    from server.apps.pipelines.stages.music_plan import (
+        _music_plan_variables,
+    )
+
+    ctx = _make_ctx()
+    ctx.upstream['scene_breakdown'] = {'scenes': [{'idx': 0, 'chapter_idx': 0}]}
+    ctx.run.topic = 'Test topic'
+    ctx.channel.niche_config = None
+
+    user_prompt = (
+        'Available Library Asset IDs by tag:\n'
+        '{{ library_tracks | default([]) | tojson }}\n'
+    )
+    mock_pv = MagicMock()
+    mock_pv.system_prompt = 'You are a music supervisor.'
+    mock_pv.user_prompt = user_prompt
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.pipelines.stages.music_plan._fetch_music_library',
+            new=AsyncMock(return_value=[]),
+        ):
+            library, variables = await _music_plan_variables(ctx)
+            assert library == []
+            assert variables['library_tracks'] == []
+
+            renderer = PromptRenderer({})
+            with patch(
+                'server.apps.prompts.models.PromptVersion.objects.filter',
+            ) as mock_filter:
+                mock_filter.return_value.afirst = AsyncMock(return_value=mock_pv)
+                sys, usr = await renderer.render('music_plan', variables)
+                assert sys == 'You are a music supervisor.'
+                assert usr == 'Available Library Asset IDs by tag:\n[]'
+
+    asyncio.run(_inner())
+
+
 def test_fetch_music_library_returns_asset_dicts() -> None:
     """_fetch_music_library returns list of asset dicts when assets exist."""
     from server.apps.pipelines.stages.music_plan import (
