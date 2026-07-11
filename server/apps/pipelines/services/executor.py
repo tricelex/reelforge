@@ -150,6 +150,28 @@ async def _schedule_retry(
     await execute_stage_kiq(str(next_exec.id))
 
 
+async def _next_fan_out_child_attempt(
+    run_id: uuid.UUID,
+    stage_key: str,
+    shard_index: int,
+    parent_attempt: int,
+) -> int:
+    """Pick a child attempt that satisfies uq_stage_attempt for this shard."""
+    from django.db.models import Max  # noqa: PLC0415
+
+    from server.apps.pipelines.models import StageExecution  # noqa: PLC0415
+
+    result = await StageExecution.objects.filter(
+        run_id=run_id,
+        stage_key=stage_key,
+        shard_index=shard_index,
+    ).aaggregate(m=Max('attempt'))
+    max_existing = result['m']
+    if max_existing is None:
+        return parent_attempt
+    return max(parent_attempt, max_existing + 1)
+
+
 async def _handle_fan_out(
     parent: 'StageExecution',
     shard_inputs: list[dict[str, Any]],
@@ -162,11 +184,18 @@ async def _handle_fan_out(
 
     await _mark_running(parent)
     for i, shard_input in enumerate(shard_inputs):
+        child_attempt = await _next_fan_out_child_attempt(
+            parent.run_id,
+            parent.stage_key,
+            i,
+            parent.attempt,
+        )
         child = await StageExecution.objects.acreate(
             run_id=parent.run_id,
             stage_key=parent.stage_key,
             parent=parent,
             shard_index=i,
+            attempt=child_attempt,
             status=StageStatus.QUEUED,
             queue=parent.queue,
             max_retries=parent.max_retries,
