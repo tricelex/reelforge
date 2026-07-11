@@ -395,6 +395,62 @@ def test_prompt_renderer_render_applies_jinja2_variables() -> None:
     asyncio.run(_inner())
 
 
+def test_build_prompt_variables_includes_niche_for_jinja() -> None:
+    """build_prompt_variables supplies niche.* keys used by seeded templates."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.services.prompt_renderer import (
+        PromptRenderer,
+    )
+    from server.apps.pipelines.services.prompt_variables import (
+        build_prompt_variables,
+    )
+
+    channel = MagicMock()
+    channel.name = 'History Explained'
+    channel.kind = 'LONGFORM'
+    channel.branding = None
+    channel.niche_config = MagicMock()
+    channel.niche_config.audience = 'history buffs'
+    channel.niche_config.angle = 'documentary'
+    channel.niche_config.banned_topics = ['politics']
+    channel.niche_config.lore_document = 'Be factual.'
+    channel.niche_config.format = None
+
+    ctx = MagicMock()
+    ctx.run.topic = 'The fall of Rome'
+    ctx.run.id = '00000000-0000-0000-0000-000000000001'
+    ctx.channel = channel
+    ctx.upstream = {}
+    ctx.config = {}
+
+    user_template = (
+        'Topic: {{ topic }}\n'
+        '{% if niche.audience %}Audience: {{ niche.audience }}\n{% endif %}'
+        '{% if niche.angle %}Angle: {{ niche.angle }}\n{% endif %}'
+    )
+
+    async def _inner() -> None:
+        variables = await build_prompt_variables(
+            ctx,
+            include_character=False,
+        )
+        renderer = PromptRenderer({})
+        mock_pv = MagicMock()
+        mock_pv.system_prompt = ''
+        mock_pv.user_prompt = user_template
+        with patch('server.apps.prompts.models.PromptVersion') as mock_pv_cls:
+            mock_pv_cls.objects.filter.return_value.afirst = AsyncMock(
+                return_value=mock_pv,
+            )
+            _, usr = await renderer.render('research', variables)
+        assert 'Topic: The fall of Rome' in usr
+        assert 'Audience: history buffs' in usr
+        assert 'Angle: documentary' in usr
+
+    asyncio.run(_inner())
+
+
 # ---------------------------------------------------------------------------
 # asset_writer.save
 # ---------------------------------------------------------------------------

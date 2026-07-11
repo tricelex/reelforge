@@ -8,6 +8,9 @@ from pydantic_ai import Agent, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import MusicPlanOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -26,7 +29,8 @@ def _agent() -> Agent[StageContext, MusicPlanOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render('music_plan', {})
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('music_plan', variables)
         return sys or (
             'You are a music supervisor for documentary videos. '
             'Select one music track per chapter from the provided library. '
@@ -93,14 +97,15 @@ class MusicPlanStage(Stage):
         niche = getattr(ctx.channel, 'niche_config', None)
         mood_map = getattr(niche, 'music_mood_map', {}) if niche else {}
 
-        _, usr = await ctx.prompts.render(
-            'music_plan',
-            {
-                'chapters': chapters,
-                'library': library,
+        variables = await build_prompt_variables(
+            ctx,
+            extra={
+                'library_tracks': library,
                 'mood_map': mood_map,
             },
+            include_character=False,
         )
+        _, usr = await ctx.prompts.render('music_plan', variables)
         user_prompt = usr or (
             f'Select music for each chapter:\n'
             f'Chapters: {chapters}\n'

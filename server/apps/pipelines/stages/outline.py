@@ -10,6 +10,10 @@ from server.apps.analytics.retention_rollup import compute_soft_spots
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import OutlineOutput
+from server.apps.pipelines.services.prompt_variables import (
+    _format_dict,
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -68,10 +72,8 @@ def _agent() -> Agent[StageContext, OutlineOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'outline',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('outline', variables)
         return sys or (
             'You are a documentary outline writer. '
             'Produce a chapter structure with 6-10 chapters. '
@@ -99,6 +101,7 @@ class OutlineStage(Stage):
         niche = getattr(ctx.channel, 'niche_config', None)
         beats: list[dict[str, Any]] = []
         format_key = ''
+        selected_format: Any | None = None
         if niche:
             pool = [
                 fmt
@@ -110,24 +113,32 @@ class OutlineStage(Stage):
                     str(ctx.run.id),
                 )
                 beats, format_key = _pick_format(pool, recent_keys)
+                selected_format = next(
+                    (fmt for fmt in pool if fmt.key == format_key),
+                    None,
+                )
             elif pool:
+                selected_format = pool[0]
                 beats, format_key = pool[0].beats, pool[0].key
             elif getattr(niche, 'format', None):
+                selected_format = niche.format
                 beats = getattr(niche.format, 'beats', [])
                 format_key = getattr(niche.format, 'key', '')
         total_s = ctx.config.get('total_target_seconds', 1320)
         soft_spots = await compute_soft_spots(str(ctx.channel.id))
 
-        _, usr = await ctx.prompts.render(
-            'outline',
-            {
-                'topic': ctx.run.topic,
-                'research_brief': brief,
-                'beats': beats,
-                'total_target_seconds': total_s,
-                'soft_spots': soft_spots,
-            },
+        extra: dict[str, Any] = {
+            'total_target_seconds': total_s,
+            'soft_spots': soft_spots,
+        }
+        if selected_format is not None:
+            extra['format'] = _format_dict(selected_format)
+        variables = await build_prompt_variables(
+            ctx,
+            extra=extra,
+            include_character=False,
         )
+        _, usr = await ctx.prompts.render('outline', variables)
         user_prompt = usr or (
             f'Topic: {ctx.run.topic}\n'
             f'Research brief: {brief}\n'

@@ -10,6 +10,9 @@ from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.clients import search as search_client
 from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
 from server.apps.pipelines.schemas import ResearchOutput
+from server.apps.pipelines.services.prompt_variables import (
+    build_prompt_variables,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -28,10 +31,8 @@ def _agent() -> Agent[StageContext, ResearchOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        sys, _ = await ctx.deps.prompts.render(
-            'research',
-            {'topic': ctx.deps.run.topic},
-        )
+        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        sys, _ = await ctx.deps.prompts.render('research', variables)
         return sys or (
             'You are a factual research assistant. '
             'Produce a structured research brief with key facts, sources, '
@@ -77,14 +78,11 @@ class ResearchStage(Stage):
         niche = getattr(ctx.channel, 'niche_config', None)
         audience = getattr(niche, 'audience', '') if niche else ''
         angle = getattr(niche, 'angle', '') if niche else ''
-        _, usr = await ctx.prompts.render(
-            'research',
-            {
-                'topic': ctx.run.topic,
-                'audience': audience,
-                'angle': angle,
-            },
+        variables = await build_prompt_variables(
+            ctx,
+            include_character=False,
         )
+        _, usr = await ctx.prompts.render('research', variables)
         user_prompt = usr or (
             f'Research "{ctx.run.topic}". '
             f'Target audience: {audience or "general"}. '
