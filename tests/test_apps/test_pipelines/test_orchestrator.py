@@ -407,6 +407,128 @@ def test_build_context_merges_channel_config_overrides() -> None:
     _run(_inner())
 
 
+@pytest.mark.django_db(transaction=True)
+def test_build_context_prefetches_channel_relations_for_async_stages() -> None:
+    """build_context preloads channel reverse relations for async stages."""
+    from server.apps.channels.models import (
+        AssemblyStyleConfig,
+        Channel,
+        ChannelBranding,
+        ChannelKind,
+        NicheConfig,
+    )
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.context import build_context
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='prefetch_ctx_v1',
+            kind=PipelineKind.LONGFORM,
+            graph={
+                'stages': [
+                    {'key': 'research', 'depends_on': [], 'queue': 'api'},
+                ],
+            },
+        )
+        ch = await Channel.objects.acreate(
+            name='prefetch_ch',
+            kind=ChannelKind.LONGFORM,
+        )
+        await NicheConfig.objects.acreate(
+            channel=ch,
+            audience='history buffs',
+            angle='factual',
+        )
+        await ChannelBranding.objects.acreate(
+            channel=ch,
+            thumbnail_palette={'primary': '#112233'},
+        )
+        await AssemblyStyleConfig.objects.acreate(
+            channel=ch,
+            camera_movements=['push_in'],
+            transition_styles=['hard_cut'],
+            sfx_pool_tags=['whoosh'],
+        )
+        ctx_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='prefetch test',
+        )
+        execution = await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='research',
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        ctx = await build_context(execution)
+        assert ctx.channel.niche_config.audience == 'history buffs'
+        assert ctx.channel.branding.thumbnail_palette == {
+            'primary': '#112233',
+        }
+        assert ctx.channel.assembly_style_camera_movements == ['push_in']
+        assert ctx.channel.assembly_style_sfx_pool_tags == ['whoosh']
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_context_minimal_channel_avoids_sync_orm() -> None:
+    """Bare channel without optional relations must not sync-query in async."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.context import build_context
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='bare_ctx_v1',
+            kind=PipelineKind.LONGFORM,
+            graph={
+                'stages': [
+                    {'key': 'research', 'depends_on': [], 'queue': 'api'},
+                ],
+            },
+        )
+        ch = await Channel.objects.acreate(
+            name='bare_ch',
+            kind=ChannelKind.LONGFORM,
+        )
+        ctx_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='bare channel test',
+        )
+        execution = await StageExecution.objects.acreate(
+            run=ctx_run,
+            stage_key='research',
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        ctx = await build_context(execution)
+        assert ctx.channel.wpm == 158
+        try:
+            _ = ctx.channel.niche_config
+        except ObjectDoesNotExist:
+            pass
+
+    _run(_inner())
+
+
 from server.apps.pipelines.models import (
     RunStatus,
 )
