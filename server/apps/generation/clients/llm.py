@@ -14,9 +14,9 @@ from server.apps.generation.logic.constants import (
 if TYPE_CHECKING:
     from server.apps.pipelines.stages.base import StageContext
 
-# Approximate per-token costs for gpt-5.2 (USD).
-_INPUT_COST_PER_TOKEN = Decimal('0.00000175')
-_OUTPUT_COST_PER_TOKEN = Decimal('0.000014')
+# Approximate per-token costs for gpt-5.6-terra (USD).
+_INPUT_COST_PER_TOKEN = Decimal('0.0000025')
+_OUTPUT_COST_PER_TOKEN = Decimal('0.000015')
 
 
 async def run_agent(
