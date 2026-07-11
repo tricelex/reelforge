@@ -3,7 +3,10 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from server.apps.pipelines.stages.tts import TtsStage
+from server.common.exceptions import FatalProviderError
 
 
 def _make_ctx(n_chapters: int = 2) -> MagicMock:
@@ -73,3 +76,21 @@ def test_tts_child_run_saves_audio_asset() -> None:
     assert result['chapter_idx'] == 0
     assert 'asset_id' in result
     assert result['char_count'] == len('Chapter text here.')
+
+
+def test_tts_run_raises_when_api_key_missing(settings) -> None:
+    """run() fails fast with a clear error when ELEVENLABS_API_KEY is unset."""
+    settings.ELEVENLABS_API_KEY = ''
+    ctx = _make_ctx()
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'parent-id'
+    ctx.execution.input_snapshot = {
+        'chapter_idx': 0,
+        'text': 'Chapter text here.',
+    }
+
+    async def _inner() -> None:
+        with pytest.raises(FatalProviderError, match='ELEVENLABS_API_KEY'):
+            await TtsStage().run(ctx)
+
+    asyncio.run(_inner())

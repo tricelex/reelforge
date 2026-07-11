@@ -11,6 +11,7 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 
 @register_stage
@@ -40,7 +41,19 @@ class TtsStage(Stage):
         voice_id: str = getattr(ctx.channel, 'voice_id', '')
         stability = float(getattr(ctx.channel, 'stability', 0.5))
         similarity = float(getattr(ctx.channel, 'similarity_boost', 0.75))
-        api_key: str = getattr(settings, 'ELEVENLABS_API_KEY', '')
+        api_key = settings.ELEVENLABS_API_KEY
+        if not api_key:
+            raise FatalProviderError(
+                'ELEVENLABS_API_KEY is not configured',
+                provider='elevenlabs',
+                error_code='missing_api_key',
+            )
+        if not voice_id:
+            raise FatalProviderError(
+                'Channel voice_id is not configured',
+                provider='elevenlabs',
+                error_code='missing_voice_id',
+            )
 
         audio_bytes = await tts_client.synthesize(
             text=text,

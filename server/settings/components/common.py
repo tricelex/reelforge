@@ -557,3 +557,4 @@ YTDLP_POT_PROVIDER_BASE_URL: str = config(
 OPENAI_API_KEY: str = config('OPENAI_API_KEY', default='')
 HUGGINGFACE_TOKEN: str = config('HUGGINGFACE_TOKEN', default='')
 EXA_API_KEY: str = config('EXA_API_KEY', default='')
+ELEVENLABS_API_KEY: str = config('ELEVENLABS_API_KEY', default='')
