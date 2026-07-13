@@ -1,6 +1,5 @@
 """DMR controllers for pipeline run operations."""
 
-import asyncio
 from http import HTTPStatus
 from typing import final, override
 
@@ -282,8 +281,11 @@ class RunGateApproveController(
         """Record gate output and re-advance the pipeline."""
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _approve_gate_sync,
-            advance_pipeline_impl,
         )
+        from server.apps.pipelines.tasks import (  # noqa: PLC0415
+            advance_pipeline,
+        )
+        from server.common.taskiq_sender import kiq_task  # noqa: PLC0415
 
         run_id = str(self.kwargs['run_id'])
         gate_key = str(self.kwargs['gate_key'])
@@ -299,7 +301,7 @@ class RunGateApproveController(
                 )
                 approved_count = len(approved_ids)
         _approve_gate_sync(run_id, gate_key, output)
-        asyncio.run(advance_pipeline_impl(run_id))
+        kiq_task(advance_pipeline, run_id)
         return GateApproveResultPayload(
             status='ok',
             approved_count=approved_count,

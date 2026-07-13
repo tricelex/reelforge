@@ -108,6 +108,60 @@ def test_produce_pipeline_events_yields_typed_sse(run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db
+def test_produce_pipeline_events_emits_ping_when_idle(
+    run: PipelineRun,
+) -> None:
+    """Idle Redis listen yields a comment-only ping keepalive."""
+    import asyncio
+
+    from server.apps.pipelines.api.events_views import produce_pipeline_events
+
+    async def _inner() -> None:
+        async def _fake_listen():
+            await asyncio.sleep(3600)
+            yield {'type': 'message', 'data': b'{}'}
+            return
+            yield  # pragma: no cover
+
+        mock_pubsub = MagicMock()
+        mock_pubsub.subscribe = AsyncMock()
+        mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.listen = _fake_listen
+        mock_client = MagicMock()
+        mock_client.pubsub.return_value = mock_pubsub
+        mock_client.aclose = AsyncMock()
+
+        with (
+            patch(
+                'server.apps.pipelines.api.events_views.get_redis',
+                return_value=mock_client,
+            ),
+            patch(
+                'server.apps.pipelines.api.events_views._SSE_PING_SECONDS',
+                0.01,
+            ),
+        ):
+            agen = produce_pipeline_events(str(run.id))
+            event = await agen.__anext__()
+            await agen.aclose()
+
+        assert event.comment == 'ping'
+        assert event.data is None
+        mock_pubsub.unsubscribe.assert_called_once()
+        mock_client.aclose.assert_called_once()
+
+    asyncio.run(_inner())
+
+
+@pytest.mark.django_db
+def test_run_events_disables_dmr_builtin_pings(run: PipelineRun) -> None:
+    """RunEventsController opts out of DMR's orphan-prone ping race."""
+    from server.apps.pipelines.api.events_views import RunEventsController
+
+    assert RunEventsController.streaming_ping_seconds is None
+
+
+@pytest.mark.django_db
 def test_run_events_response_headers(run: PipelineRun) -> None:
     """GET events returns StreamingHttpResponse with SSE headers."""
     from django.test import AsyncRequestFactory

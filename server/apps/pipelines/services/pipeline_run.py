@@ -86,11 +86,10 @@ class PipelineRunService:
         """Resume a paused run and re-evaluate the DAG."""
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _resume_run_sync,
-            advance_pipeline_impl,
         )
 
         _resume_run_sync(run_id)
-        asyncio.run(advance_pipeline_impl(run_id))
+        kiq_task(advance_pipeline, run_id)
         return get_run_detail(run_id)
 
     def rerun_stage(

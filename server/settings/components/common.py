@@ -110,6 +110,9 @@ DATABASES = {
         'HOST': config('DJANGO_DATABASE_HOST'),
         'PORT': config('DJANGO_DATABASE_PORT', cast=int),
         'CONN_MAX_AGE': config('CONN_MAX_AGE', cast=int, default=60),
+        # Heal stale sockets before reuse (Taskiq workers call
+        # close_old_connections via DjangoDbMiddleware).
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'connect_timeout': 10,
             'options': '-c statement_timeout=15000ms',
