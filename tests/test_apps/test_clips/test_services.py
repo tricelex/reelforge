@@ -517,8 +517,8 @@ def test_start_render_requires_approved_candidates(
 
 
 @pytest.mark.django_db
-def test_reset_smart_crop_applies_detection(candidate: ClipCandidate) -> None:
-    """reset_smart_crop clears manual crop and stores detection output."""
+def test_reset_smart_crop_enqueues_detection(candidate: ClipCandidate) -> None:
+    """reset_smart_crop clears crop fields and enqueues worker detection."""
     from server.apps.assets.models import Asset, AssetKind
     from server.apps.pipelines.models import StageExecution, StageStatus
 
@@ -540,6 +540,40 @@ def test_reset_smart_crop_applies_detection(candidate: ClipCandidate) -> None:
     layout.manual_crop_x = 99
     layout.save()
 
+    with patch(
+        'server.apps.clips.services.kiq_task',
+    ) as mock_kiq:
+        result = _clips_service().reset_smart_crop(str(candidate.id))
+
+    layout.refresh_from_db()
+    assert result.render_mode == 'SMART_CROP'
+    assert result.manual_crop_x is None
+    assert result.face_detected is None
+    assert layout.manual_crop_x is None
+    mock_kiq.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_apply_smart_crop_detection(candidate: ClipCandidate) -> None:
+    """apply_smart_crop_detection stores MediaPipe crop output."""
+    from server.apps.assets.models import Asset, AssetKind
+    from server.apps.pipelines.models import StageExecution, StageStatus
+
+    asset = Asset.objects.create(
+        kind=AssetKind.VIDEO_SEGMENT,
+        file=ContentFile(b'video', name='source.mp4'),
+        mime='video/mp4',
+        checksum='abc',
+        run=candidate.run,
+        meta={'width': 1920, 'height': 1080},
+    )
+    StageExecution.objects.create(
+        run=candidate.run,
+        stage_key='clip_ingest',
+        status=StageStatus.SUCCEEDED,
+        output={'asset_id': str(asset.id)},
+    )
+
     mock_result = MagicMock(
         crop_x=120,
         crop_w=600,
@@ -551,10 +585,10 @@ def test_reset_smart_crop_applies_detection(candidate: ClipCandidate) -> None:
         'server.apps.rendering.speaker_detection.SpeakerDetectionService.detect',
         return_value=mock_result,
     ):
-        result = _clips_service().reset_smart_crop(str(candidate.id))
+        result = _clips_service().apply_smart_crop_detection(str(candidate.id))
 
-    assert result.render_mode == 'SMART_CROP'
     assert result.manual_crop_x == 120
+    assert result.face_detected is True
     assert result.source_width == 1920
 
 
