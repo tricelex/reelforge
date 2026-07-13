@@ -25,12 +25,6 @@ var/
 .installed.cfg
 *.egg
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -49,44 +43,43 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 *.log
 
-# Sphinx documentation
-docs/_build/
-docs/documents/
+# Docs (not needed at runtime)
+docs/
+
+# Tests (not needed in production images)
+tests/
+
+# Git / CI / local tooling — shrink Buildx context upload
+.git/
+.github/
+.cursor/
+.vscode/
+.idea/
 
 # PyBuilder
 target/
 
-# Docker
-Dockerfile
+# Docker compose (images build from Dockerfiles directly)
 docker-compose.yml
 docker-compose.override.yml
+docker-compose.worker.yml
+docker-compose.vps.yml
 docker/docker-compose.prod.yml
 
-# JetBrains
-.idea/
-
-# mypy:
+# Caches and linters
 .mypy_cache/
-
-# pytest and hypothesis
 .pytest_cache/
 .hypothesis/
-
-# ipython:
 .ipython/
 .python_history
-
-# ruff:
 .ruff_cache/
-
-# import-linter:
 .import_linter_cache/
-
-# safety:
 .safety/
 
-# kira-release script
+# Misc
 release.config.js
+*.md
+!README.md
