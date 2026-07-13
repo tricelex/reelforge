@@ -23,12 +23,20 @@ ENV PYTHONFAULTHANDLER=1 \
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
+# OpenCV (via mediapipe's opencv-contrib-python) needs X11/GL shared libs
+# even for the builder smoke import.
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
         build-essential \
         curl \
+        libgl1 \
+        libglib2.0-0 \
         libpq-dev \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libxcb1 \
     && curl -sSL 'https://install.python-poetry.org' | python - \
     && poetry --version \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
@@ -65,7 +73,7 @@ ENV PYTHONFAULTHANDLER=1 \
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 # ffmpeg: video processing. libsndfile1: pyannote / soundfile audio I/O.
-# libgl1 / libglib: OpenCV / MediaPipe runtime.
+# libgl1 / libglib / libxcb*: OpenCV (opencv-contrib-python via mediapipe).
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
@@ -75,7 +83,11 @@ RUN apt-get update && apt-get upgrade -y \
         libgl1 \
         libglib2.0-0 \
         libpq5 \
+        libsm6 \
         libsndfile1 \
+        libxext6 \
+        libxrender1 \
+        libxcb1 \
         unzip \
     && mkdir -p /opt/mediapipe \
     && curl -fsSL \
