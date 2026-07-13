@@ -607,7 +607,7 @@ def test_whisperx_align_raises_on_failure() -> None:
         asyncio.run(_inner())
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
-        assert 'WhisperX failed' in str(e)
+        assert 'Alignment failed' in str(e)
         assert 'bad audio' in str(e)
 
 

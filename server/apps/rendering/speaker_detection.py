@@ -140,22 +140,27 @@ class SpeakerDetectionService:
         )
 
     def _get_detector(self) -> Any:
-        """Load MediaPipe face detector, downloading model on first use."""
+        """Load MediaPipe face detector from baked or cache path."""
         if self._detector_cache is not None:
             return self._detector_cache
 
+        import os  # noqa: PLC0415
         import urllib.request  # noqa: PLC0415
         from pathlib import Path as ModelPath  # noqa: PLC0415
 
         from mediapipe.tasks import python as mp_python  # noqa: PLC0415
         from mediapipe.tasks.python import vision  # noqa: PLC0415
 
-        model_path = (
-            ModelPath.home()
-            / '.cache'
-            / 'mediapipe'
-            / 'blaze_face_short_range.tflite'
-        )
+        baked = os.environ.get('MEDIAPIPE_FACE_MODEL_PATH', '')
+        if baked:
+            model_path = ModelPath(baked)
+        else:
+            model_path = (
+                ModelPath.home()
+                / '.cache'
+                / 'mediapipe'
+                / 'blaze_face_short_range.tflite'
+            )
         if not model_path.exists():
             model_path.parent.mkdir(parents=True, exist_ok=True)
             url = (
@@ -175,10 +180,23 @@ class SpeakerDetectionService:
         """Run PyAnnote speaker diarization.
 
         Returns [{speaker_id, start, end}] list.
+        Raises FatalProviderError when HuggingFace token is missing.
         """
         import subprocess  # noqa: PLC0415, S404
         import tempfile  # noqa: PLC0415
         from pathlib import Path as AudioPath  # noqa: PLC0415
+
+        from django.conf import settings  # noqa: PLC0415
+
+        from server.common.exceptions import FatalProviderError  # noqa: PLC0415
+
+        token: str = getattr(settings, 'HUGGINGFACE_TOKEN', '') or ''
+        if not token.strip():
+            raise FatalProviderError(
+                'HUGGINGFACE_TOKEN is required for speaker diarization',
+                provider='pyannote',
+                error_code='missing_hf_token',
+            )
 
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             audio_path = tmp.name
@@ -199,14 +217,10 @@ class SpeakerDetectionService:
                 check=True,
                 capture_output=True,
             )
-            from django.conf import settings  # noqa: PLC0415
             from pyannote.audio import (  # noqa: PLC0415
                 Pipeline as PyannotePipeline,
             )
 
-            token: str | None = (
-                getattr(settings, 'HUGGINGFACE_TOKEN', '') or None
-            )
             diarizer = PyannotePipeline.from_pretrained(
                 'pyannote/speaker-diarization-community-1',
                 token=token,

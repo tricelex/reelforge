@@ -55,8 +55,19 @@ bgutil-ytdlp-pot-provider = "^1.3.1"
 optional = true
 
 [tool.poetry.group.ml.dependencies]
-whisperx = "^3.3"
-scenedetect = { version = "^0.6", extras = ["opencv"] }
+# CPU torch/torchaudio — matching +cpu wheels, no CUDA.
+torch = { version = "2.8.0+cpu", source = "pytorch-cpu" }
+torchaudio = { version = "2.8.0+cpu", source = "pytorch-cpu" }
+mediapipe = "^0.10.30"
+opencv-python-headless = "^4.10"
+pyannote-audio = "^3.3"
+scenedetect = "^0.6"
+numpy = "^2.0"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"

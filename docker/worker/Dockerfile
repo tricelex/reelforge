@@ -1,5 +1,5 @@
 # Multi-stage: Poetry + build tools stay in the builder; runtime is slim.
-# ML group (torch / whisperx / scenedetect) only lives in this image.
+# ML group (torch CPU / mediapipe / pyannote / scenedetect) only lives here.
 
 ARG PYTHON_IMAGE=python:3.13.13-slim-bookworm
 
@@ -37,11 +37,11 @@ WORKDIR /build
 
 COPY pyproject.toml poetry.lock ./
 
-# Install main + ml. torch + CUDA + whisperx + scenedetect only live here.
+# Install main + ml. CPU torch + mediapipe + pyannote + scenedetect live here.
 # NOTE: `--only main --with ml` does NOT install ml in Poetry 2.4 — use
 # `--with ml` (main is always included) or `--only main,ml`.
 RUN poetry sync --with ml --no-interaction --no-ansi \
-    && python -c "import whisperx"
+    && python -c "import torch; import mediapipe; import cv2"
 
 # ---------------------------------------------------------------------------
 # Runtime — no Poetry, no compilers
@@ -59,20 +59,28 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore \
-    DJANGO_ENV=production
+    DJANGO_ENV=production \
+    MEDIAPIPE_FACE_MODEL_PATH=/opt/mediapipe/blaze_face_short_range.tflite
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-# ffmpeg: video processing. libsndfile1: speechbrain / soundfile audio I/O.
+# ffmpeg: video processing. libsndfile1: pyannote / soundfile audio I/O.
+# libgl1 / libglib: OpenCV / MediaPipe runtime.
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
         bash \
         curl \
         ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
         libpq5 \
         libsndfile1 \
         unzip \
+    && mkdir -p /opt/mediapipe \
+    && curl -fsSL \
+        'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite' \
+        -o /opt/mediapipe/blaze_face_short_range.tflite \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/lib/python3.13/site-packages \
@@ -87,7 +95,8 @@ WORKDIR /code
 
 RUN groupadd -g "${GID}" -r web \
     && useradd -d '/code' -g web -l -r -u "${UID}" web \
-    && chown web:web -R '/code'
+    && chown web:web -R '/code' \
+    && chown -R web:web /opt/mediapipe
 
 COPY --chown=web:web . /code
 

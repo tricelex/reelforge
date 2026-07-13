@@ -95,6 +95,17 @@ class ClipAnalyzeStage(Stage):
                     run_id=str(ctx.run.id),
                     error=str(exc),
                 )
+                from server.common.exceptions import (  # noqa: PLC0415
+                    FatalProviderError,
+                )
+
+                if isinstance(exc, FatalProviderError):
+                    raise
+                raise FatalProviderError(
+                    f'Speaker diarization failed: {exc}',
+                    provider='pyannote',
+                    error_code='diarization_failed',
+                ) from exc
 
         enriched = merge_transcript_with_diarization(
             manifest.get('enriched_transcript', []),

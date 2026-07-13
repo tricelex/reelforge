@@ -220,40 +220,43 @@ def test_layout_config_includes_source_dimensions(
 def test_layout_smart_crop_endpoint(
     dmr_client: DMRClient,
     candidate: ClipCandidate,
-    run: object,
     auth_headers: dict[str, str],
 ) -> None:
-    """POST smart-crop clears manual crop and applies detection result."""
-    asset = Asset.objects.create(
-        kind=AssetKind.VIDEO_SEGMENT,
-        file=ContentFile(b'video', name='source.mp4'),
-        mime='video/mp4',
-        checksum='abc',
-        run=run,  # type: ignore[arg-type]
-    )
-    StageExecution.objects.create(
-        run=run,  # type: ignore[arg-type]
-        stage_key='clip_ingest',
-        status=StageStatus.SUCCEEDED,
-        output={'asset_id': str(asset.id)},
-    )
-    layout = candidate.layout_config
-    layout.manual_crop_x = 50
-    layout.manual_crop_y = 50
-    layout.manual_crop_w = 400
-    layout.manual_crop_h = 400
-    layout.save()
+    """POST smart-crop delegates to ClipsService.reset_smart_crop."""
+    from server.apps.clips.api.views import ClipLayoutSmartCropView
+    from server.apps.clips.logic.value_objects import ClipLayoutConfigPayload
 
-    mock_result = MagicMock(
-        crop_x=120,
-        crop_w=600,
-        crop_h=1080,
-        confidence=0.9,
-        face_detected=True,
+    layout = candidate.layout_config
+    fake_payload = ClipLayoutConfigPayload(
+        id=str(layout.id),
+        candidate_id=str(candidate.id),
+        render_mode='SMART_CROP',
+        render_format='VERTICAL_9_16',
+        source_width=1920,
+        source_height=1080,
+        manual_crop_x=None,
+        manual_crop_y=None,
+        manual_crop_w=None,
+        manual_crop_h=None,
+        region_a_x=None,
+        region_a_y=None,
+        region_a_w=None,
+        region_a_h=None,
+        region_b_x=None,
+        region_b_y=None,
+        region_b_w=None,
+        region_b_h=None,
+        stack_ratio=0.6,
+        fit_mode='CROP',
+        face_detected=None,
+        detection_confidence=None,
     )
-    with patch(
-        'server.apps.rendering.speaker_detection.SpeakerDetectionService.detect',
-        return_value=mock_result,
+    mock_svc = MagicMock()
+    mock_svc.reset_smart_crop.return_value = fake_payload
+    with patch.object(
+        ClipLayoutSmartCropView,
+        'resolve',
+        return_value=mock_svc,
     ):
         response = dmr_client.post(
             reverse(
@@ -266,9 +269,9 @@ def test_layout_smart_crop_endpoint(
     assert response.status_code == HTTPStatus.OK
     data = response.json()
     assert data['render_mode'] == 'SMART_CROP'
-    assert data['manual_crop_x'] == 120
-    assert data['manual_crop_y'] == 0
-    assert data['face_detected'] is True
+    assert data['manual_crop_x'] is None
+    assert data['face_detected'] is None
+    mock_svc.reset_smart_crop.assert_called_once_with(str(candidate.id))
 
 
 @pytest.mark.django_db

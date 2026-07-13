@@ -790,9 +790,52 @@ class ClipsService:
         )
 
     def reset_smart_crop(self, candidate_id: str) -> ClipLayoutConfigPayload:
-        """Clear manual crop and re-run speaker-aware smart crop detection."""
-        import tempfile
-        from pathlib import Path
+        """Clear manual crop and enqueue worker smart-crop detection."""
+        from server.apps.clips.models import (  # noqa: PLC0415
+            ClipCandidate,
+            ClipLayoutConfig,
+        )
+        from server.apps.clips.tasks import (  # noqa: PLC0415
+            reset_smart_crop_task,
+        )
+
+        ClipCandidate.objects.get(id=candidate_id)
+        config = ClipLayoutConfig.objects.get(candidate_id=candidate_id)  # type: ignore[misc]
+        config.render_mode = RenderMode.SMART_CROP
+        config.manual_crop_x = None
+        config.manual_crop_y = None
+        config.manual_crop_w = None
+        config.manual_crop_h = None
+        config.face_detected = None
+        config.detection_confidence = None
+        config.save(
+            update_fields=[
+                'render_mode',
+                'manual_crop_x',
+                'manual_crop_y',
+                'manual_crop_w',
+                'manual_crop_h',
+                'face_detected',
+                'detection_confidence',
+                'updated_at',
+            ],
+        )
+        invalidate_preview_cache(candidate_id)
+        kiq_task(reset_smart_crop_task, candidate_id)
+        source_w, source_h = get_candidate_source_dimensions(candidate_id)
+        return _to_layout_payload(
+            config,
+            source_width=source_w,
+            source_height=source_h,
+        )
+
+    def apply_smart_crop_detection(
+        self,
+        candidate_id: str,
+    ) -> ClipLayoutConfigPayload:
+        """Run MediaPipe detection on the worker and persist crop fields."""
+        import tempfile  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
 
         from server.apps.assets.models import Asset  # noqa: PLC0415
         from server.apps.clips.models import (  # noqa: PLC0415
@@ -807,25 +850,17 @@ class ClipsService:
             id=candidate_id,
         )
         config = ClipLayoutConfig.objects.get(candidate_id=candidate_id)  # type: ignore[misc]
-        config.render_mode = RenderMode.SMART_CROP
-        config.manual_crop_x = None
-        config.manual_crop_y = None
-        config.manual_crop_w = None
-        config.manual_crop_h = None
-        config.face_detected = None
-        config.detection_confidence = None
-
         asset_id = get_run_source_asset_id(str(candidate.run_id))
         update_fields = [
-            'render_mode',
-            'manual_crop_x',
-            'manual_crop_y',
-            'manual_crop_w',
-            'manual_crop_h',
             'face_detected',
             'detection_confidence',
+            'updated_at',
         ]
-        if asset_id is not None:
+        if asset_id is None:
+            config.face_detected = False
+            config.detection_confidence = 0.0
+            config.save(update_fields=update_fields)
+        else:
             asset = Asset.objects.get(id=uuid.UUID(asset_id))
             with tempfile.NamedTemporaryFile(
                 suffix='.mp4',
@@ -852,14 +887,12 @@ class ClipsService:
                         'manual_crop_y',
                         'manual_crop_w',
                         'manual_crop_h',
-                        'face_detected',
-                        'detection_confidence',
                     ],
                 )
+                config.save(update_fields=update_fields)
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
 
-        config.save(update_fields=update_fields)
         invalidate_preview_cache(candidate_id)
         source_w, source_h = get_candidate_source_dimensions(candidate_id)
         return _to_layout_payload(

@@ -88,7 +88,7 @@ def test_clip_analyze_run() -> None:
     )
 
 
-def test_clip_analyze_continues_when_diarize_fails() -> None:
+def test_clip_analyze_fails_when_diarize_fails() -> None:
     ctx = MagicMock()
     ctx.run.id = 'run-id'
     ctx.upstream = {
@@ -104,14 +104,11 @@ def test_clip_analyze_continues_when_diarize_fails() -> None:
         'scene_cuts': [],
     }
 
-    async def _inner() -> dict:
+    async def _inner() -> None:
         with (
             patch(
                 'server.apps.assets.models.Asset',
             ) as mock_asset_cls,
-            patch(
-                'server.apps.clips.analysis.ClipAnalysisService',
-            ) as mock_svc_cls,
             patch(
                 'server.apps.pipelines.stages.clip_analyze.asyncio.to_thread',
                 new=AsyncMock(
@@ -120,8 +117,6 @@ def test_clip_analyze_continues_when_diarize_fails() -> None:
                         b'video bytes',
                         None,
                         RuntimeError('pyannote failed'),
-                        None,
-                        [],
                     ],
                 ),
             ),
@@ -129,11 +124,16 @@ def test_clip_analyze_continues_when_diarize_fails() -> None:
             mock_asset_cls.objects.aget = AsyncMock(
                 side_effect=[MagicMock(), MagicMock()],
             )
-            mock_svc_cls.return_value = MagicMock()
-            return await ClipAnalyzeStage().run(ctx)
+            await ClipAnalyzeStage().run(ctx)
 
-    result = asyncio.run(_inner())
-    assert result['candidate_count'] == 0
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected FatalProviderError')
+    except Exception as exc:
+        from server.common.exceptions import FatalProviderError
+
+        assert isinstance(exc, FatalProviderError)
+        assert 'diarization' in str(exc).lower() or 'pyannote' in str(exc).lower()
 
 
 def test_clip_analyze_default_clips_requested() -> None:

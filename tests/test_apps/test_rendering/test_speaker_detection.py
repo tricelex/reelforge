@@ -238,6 +238,11 @@ def test_diarize_returns_segments() -> None:
         ),
         patch('subprocess.run') as mock_run,
         patch('tempfile.NamedTemporaryFile') as mock_tmp,
+        patch(
+            'django.conf.settings.HUGGINGFACE_TOKEN',
+            'hf-test-token',
+            create=True,
+        ),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         mock_ctx = MagicMock()
@@ -253,3 +258,20 @@ def test_diarize_returns_segments() -> None:
     assert result[0]['speaker_id'] == 'SPEAKER_A'
     assert result[0]['start'] == 0.0
     assert result[0]['end'] == 5.0
+
+
+def test_diarize_requires_huggingface_token() -> None:
+    svc = SpeakerDetectionService()
+    with patch(
+        'django.conf.settings.HUGGINGFACE_TOKEN',
+        '',
+        create=True,
+    ):
+        try:
+            svc.diarize(Path('/fake.mp4'))
+            raise AssertionError('expected FatalProviderError')
+        except Exception as exc:
+            from server.common.exceptions import FatalProviderError
+
+            assert isinstance(exc, FatalProviderError)
+            assert exc.error_code == 'missing_hf_token'
