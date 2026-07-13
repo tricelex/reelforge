@@ -1,11 +1,49 @@
-"""WhisperX forced alignment via subprocess (runs on GPU queue workers)."""
+"""WhisperX forced alignment via Python API (runs on GPU queue workers)."""
 
 import asyncio
-import json
-import sys
-import tempfile
-from pathlib import Path
 from typing import Any
+
+_SAMPLE_RATE = 16000
+
+
+def _build_align_segments(
+    transcript_text: str,
+    duration: float,
+) -> list[dict[str, Any]]:
+    """Build a single segment spanning the audio for forced alignment."""
+    text = transcript_text.strip()
+    if not text:
+        msg = 'transcript_text is empty — cannot align audio without script'
+        raise ValueError(msg)
+    if duration <= 0:
+        msg = f'audio duration must be positive, got {duration}'
+        raise ValueError(msg)
+    return [{'text': text, 'start': 0.0, 'end': duration}]
+
+
+def _align_blocking(
+    audio_path: str,
+    transcript_text: str,
+    language: str,
+    device: str,
+) -> dict[str, Any]:
+    """Run WhisperX forced alignment in a worker thread."""
+    import whisperx  # type: ignore[import-untyped]
+
+    audio = whisperx.load_audio(audio_path)  # type: ignore[attr-defined]
+    duration = len(audio) / _SAMPLE_RATE
+    segments = _build_align_segments(transcript_text, duration)
+    model_a, metadata = whisperx.load_align_model(  # type: ignore[attr-defined]
+        language_code=language,
+        device=device,
+    )
+    return whisperx.align(  # type: ignore[attr-defined,no-any-return]
+        segments,
+        model_a,
+        metadata,
+        audio,
+        device,
+    )
 
 
 async def align(
@@ -15,34 +53,15 @@ async def align(
     device: str = 'cpu',
     compute_type: str = 'int8',
 ) -> dict[str, Any]:
-    """Run WhisperX alignment. Returns word-level timestamps as a dict."""
-    out_dir = tempfile.mkdtemp()
-    cmd = [
-        sys.executable,
-        '-m',
-        'whisperx',
-        audio_path,
-        '--language',
-        language,
-        '--device',
-        device,
-        '--compute_type',
-        compute_type,
-        '--output_format',
-        'json',
-        '--output_dir',
-        out_dir,
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-
-    if proc.returncode != 0:
-        raise RuntimeError(f'WhisperX failed: {stderr.decode()[:500]}')
-
-    out_file = Path(out_dir) / (Path(audio_path).stem + '.json')
-    content = await asyncio.to_thread(out_file.read_text, encoding='utf-8')
-    return json.loads(content)  # type: ignore[no-any-return]
+    """Align known transcript text to audio; returns word-level timestamps."""
+    _ = compute_type  # retained for stage config compatibility
+    try:
+        return await asyncio.to_thread(
+            _align_blocking,
+            audio_path,
+            transcript_text,
+            language,
+            device,
+        )
+    except Exception as exc:
+        raise RuntimeError(f'WhisperX failed: {exc}') from exc

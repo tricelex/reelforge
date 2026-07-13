@@ -576,27 +576,15 @@ def test_exa_search_without_contents_flag() -> None:
 
 
 def test_whisperx_align_returns_dict_on_success() -> None:
-    """align() mocks subprocess success and returns the JSON result."""
-    import json
-
+    """align() returns the dict produced by whisperx.align()."""
     from server.apps.generation.clients.whisperx import align
 
     fake_result = {'segments': [{'start': 0.0, 'end': 2.0, 'text': 'hello'}]}
 
-    mock_proc = MagicMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
-
     async def _inner() -> dict[str, object]:
-        with (
-            patch(
-                'asyncio.create_subprocess_exec',
-                new=AsyncMock(return_value=mock_proc),
-            ),
-            patch(
-                'asyncio.to_thread',
-                new=AsyncMock(return_value=json.dumps(fake_result)),
-            ),
+        with patch(
+            'server.apps.generation.clients.whisperx.asyncio.to_thread',
+            new=AsyncMock(return_value=fake_result),
         ):
             return await align('/tmp/audio.mp3', 'hello world')  # type: ignore[return-value]
 
@@ -604,20 +592,14 @@ def test_whisperx_align_returns_dict_on_success() -> None:
     assert result == fake_result
 
 
-def test_whisperx_align_raises_on_nonzero_returncode() -> None:
-    """align() raises RuntimeError when the subprocess exits non-zero."""
+def test_whisperx_align_raises_on_failure() -> None:
+    """align() raises RuntimeError when whisperx alignment fails."""
     from server.apps.generation.clients.whisperx import align
-
-    mock_proc = MagicMock()
-    mock_proc.returncode = 1
-    mock_proc.communicate = AsyncMock(
-        return_value=(b'', b'WhisperX model not found'),
-    )
 
     async def _inner() -> None:
         with patch(
-            'asyncio.create_subprocess_exec',
-            new=AsyncMock(return_value=mock_proc),
+            'server.apps.generation.clients.whisperx.asyncio.to_thread',
+            new=AsyncMock(side_effect=ValueError('bad audio')),
         ):
             await align('/tmp/audio.mp3', 'hello')
 
@@ -626,6 +608,26 @@ def test_whisperx_align_raises_on_nonzero_returncode() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'WhisperX failed' in str(e)
+        assert 'bad audio' in str(e)
+
+
+def test_build_align_segments_requires_non_empty_text() -> None:
+    """_build_align_segments rejects empty transcript text."""
+    from server.apps.generation.clients.whisperx import _build_align_segments
+
+    try:
+        _build_align_segments('   ', 5.0)
+        raise AssertionError('expected ValueError')
+    except ValueError as e:
+        assert 'empty' in str(e)
+
+
+def test_build_align_segments_spans_full_audio() -> None:
+    """_build_align_segments returns one segment covering the full duration."""
+    from server.apps.generation.clients.whisperx import _build_align_segments
+
+    segments = _build_align_segments('Hello world.', 12.5)
+    assert segments == [{'text': 'Hello world.', 'start': 0.0, 'end': 12.5}]
 
 
 def test_whisper_calculate_cost() -> None:
