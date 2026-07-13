@@ -31,7 +31,6 @@ django-stubs-ext = "^6.0"
 django-modern-rest = { version = "^0.10.0", extras = ["msgspec", "pydantic", "attrs", "jwt", "openapi"] }
 django-unfold = ">=0.40"
 django-json-widget = "^2.0"
-pygments = "^2.19"
 
 psycopg2-binary = "^2.9"
 gunicorn = "^26.0"
@@ -42,17 +41,13 @@ taskiq = "^0.11"
 taskiq-aio-pika = "^0.4"
 taskiq-redis = "^1.0"
 sentry-sdk = { version = "^2.62", extras = ["django"] }
-logfire = { version = "^4.37", extras = ["django", "httpx", "redis", "psycopg2",
-  "system-metrics", "requests"] }
-pydantic-ai = "^1.107.0"
+logfire = { version = "^4.37", extras = ["django", "httpx", "requests"] }
+pydantic-ai-slim = { version = "^1.107.0", extras = ["openai", "anthropic", "logfire"] }
 django-storages = { version = "^1.14.6", extras = ["boto3"] }
 fal-client = "^1.0"
-elevenlabs = "^2.0"
-exa-py = "^2.0"
 pillow = "^11.0"
 jinja2 = "^3.1"
 fonttools = "^4.55.0"
-#openai = "^1.0"
 yt-dlp = "^2026.7.4"
 bgutil-ytdlp-pot-provider = "^1.3.1"
 
@@ -355,9 +350,7 @@ DEP002 = [
   "django-cors-headers",       # INSTALLED_APPS + middleware via dotted path
   "django-permissions-policy", # Permissions-Policy middleware (dotted path)
   "psycopg2-binary",           # PostgreSQL driver for `ENGINE = postgresql`
-  "gunicorn",                  # production WSGI/ASGI process (docker/, CI)
-  "uvicorn",                   # ASGI worker backend
-  "uvicorn-worker",            # Gunicorn worker class for uvicorn
+  "gunicorn",                  # production WSGI process (docker/, CI)
 ]
 # Imported directly but pulled in only as transitive deps
 DEP003 = [
