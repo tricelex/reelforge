@@ -1,6 +1,6 @@
 """Tests for ClipCandidateService."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.files.base import ContentFile
@@ -464,8 +464,7 @@ def test_approve_gate_mocks_orchestrator(candidate: ClipCandidate) -> None:
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ) as mock_sync,
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.apps.clips.services.kiq_task',
         ),
     ):
         result = _clips_service().approve_gate(

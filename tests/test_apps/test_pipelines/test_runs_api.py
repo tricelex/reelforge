@@ -193,8 +193,7 @@ def test_pause_and_resume_run(
     assert run.is_paused is True
 
     with patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new_callable=AsyncMock,
+        'server.apps.pipelines.services.pipeline_run.kiq_task',
     ):
         resume_resp = dmr_client.post(
             reverse('api:pipelines_api:run-resume', kwargs={'run_id': run.id}),

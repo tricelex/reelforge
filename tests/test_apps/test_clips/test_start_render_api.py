@@ -1,7 +1,7 @@
 """Tests for POST /runs/{run_id}/start-render/."""
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -71,8 +71,7 @@ def test_start_render_resumes_pipeline(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ) as mock_sync,
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.apps.clips.services.kiq_task',
         ),
     ):
         response = dmr_client.post(
@@ -112,8 +111,7 @@ def test_start_render_with_explicit_candidate_ids(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ),
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.apps.clips.services.kiq_task',
         ),
     ):
         response = dmr_client.post(

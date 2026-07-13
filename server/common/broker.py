@@ -5,7 +5,10 @@ from taskiq import TaskiqEvents, TaskiqState
 from taskiq_aio_pika import AioPikaBroker
 from taskiq_redis import RedisAsyncResultBackend
 
-from server.common.taskiq_middleware import ObservabilityMiddleware
+from server.common.taskiq_middleware import (
+    DjangoDbMiddleware,
+    ObservabilityMiddleware,
+)
 
 broker = (
     AioPikaBroker(
@@ -21,7 +24,7 @@ broker = (
             config('REDIS_URL', default='redis://localhost:6379/0'),
         ),
     )
-    .with_middlewares(ObservabilityMiddleware())
+    .with_middlewares(DjangoDbMiddleware(), ObservabilityMiddleware())
 )
 
 

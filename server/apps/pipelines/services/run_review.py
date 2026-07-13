@@ -1,6 +1,5 @@
 """Business logic for longform review (scene edits, publish)."""
 
-import asyncio
 import uuid
 from typing import Any, final
 
@@ -34,7 +33,9 @@ from server.apps.pipelines.storyboard_selectors import (
 from server.apps.pipelines.storyboard_selectors import (
     get_scene_breakdown as _get_scene_breakdown,
 )
+from server.apps.pipelines.tasks import advance_pipeline
 from server.common.storage import PresignUrlHelper
+from server.common.taskiq_sender import kiq_task
 
 _TERMINAL = {
     StageStatus.SUCCEEDED,
@@ -263,7 +264,6 @@ class RunReviewService:
         """Approve final gate and resume pipeline toward publish stage."""
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _approve_gate_sync,
-            advance_pipeline_impl,
         )
 
         run = PipelineRun.objects.select_related('channel').get(
@@ -289,7 +289,7 @@ class RunReviewService:
             output['schedule_at'] = payload.schedule_at
 
         _approve_gate_sync(run_id, gate_key, output)
-        asyncio.run(advance_pipeline_impl(run_id))
+        kiq_task(advance_pipeline, run_id)
 
         run.refresh_from_db()
         job_id: str | None = None

@@ -1,6 +1,6 @@
 """Tests for the gate approval API endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.urls import reverse
@@ -71,8 +71,7 @@ def test_gate_approve_endpoint(
     """POST to gate approve endpoint calls orchestrator sync and returns 200."""
     with (
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.common.taskiq_sender.kiq_task',
         ),
         patch(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
@@ -120,8 +119,7 @@ def test_gate_approve_thumbnail_and_schedule(
 
     with (
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.common.taskiq_sender.kiq_task',
         ),
         patch(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
@@ -194,8 +192,7 @@ def test_clip_approval_gate_syncs_candidates(
 
     with (
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(return_value=None),
+            'server.common.taskiq_sender.kiq_task',
         ),
         patch(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
@@ -243,8 +240,7 @@ def test_gate_approve_non_list_candidates_skips_sync(run: PipelineRun) -> None:
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ),
         patch(
-            'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-            new=AsyncMock(),
+            'server.common.taskiq_sender.kiq_task',
         ),
     ):
         result = controller.post(parsed_body=payload)

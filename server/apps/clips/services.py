@@ -1,6 +1,5 @@
 """ClipsService — all read/write operations for the clips app."""
 
-import asyncio
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, final
@@ -51,6 +50,7 @@ from server.apps.clips.selectors import (
     get_candidate_source_dimensions,
     get_run_source_asset_id,
 )
+from server.apps.pipelines.tasks import advance_pipeline
 from server.common.exceptions import ConflictError
 from server.common.pagination import paginate_queryset
 from server.common.storage import PresignUrlHelper
@@ -723,7 +723,6 @@ class ClipsService:
         """Sync candidates and resume the clip approval gate."""
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _approve_gate_sync,
-            advance_pipeline_impl,
         )
 
         count = self.sync_gate_candidates(run_id, approved_candidate_ids)
@@ -731,7 +730,7 @@ class ClipsService:
             'approved_candidate_ids': approved_candidate_ids,
         }
         _approve_gate_sync(run_id, 'clip_approval_gate', output)
-        asyncio.run(advance_pipeline_impl(run_id))
+        kiq_task(advance_pipeline, run_id)
         return GateApprovalResultPayload(
             status='approved',
             approved_count=count,

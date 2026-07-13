@@ -3,13 +3,14 @@
 import asyncio
 from collections.abc import Coroutine
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from opentelemetry.trace import StatusCode
 from taskiq.message import TaskiqMessage
 from taskiq.result import TaskiqResult
 
 from server.common.taskiq_middleware import (
+    DjangoDbMiddleware,
     ObservabilityMiddleware,
     _span_stack,
 )
@@ -39,6 +40,33 @@ def _make_result() -> TaskiqResult[None]:
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
+
+
+def test_django_db_middleware_closes_connections_pre_and_post() -> None:
+    """DjangoDbMiddleware refreshes DB connections around task execution."""
+    middleware = DjangoDbMiddleware()
+    message = _make_message()
+    result = _make_result()
+    with patch(
+        'server.common.taskiq_middleware._close_old_connections',
+        new_callable=AsyncMock,
+    ) as mock_close:
+        _run(middleware.pre_execute(message))
+        _run(middleware.post_execute(message, result))
+    assert mock_close.await_count == 2
+
+
+def test_django_db_middleware_closes_connections_on_error() -> None:
+    """DjangoDbMiddleware closes connections after a failed task."""
+    middleware = DjangoDbMiddleware()
+    message = _make_message()
+    result = _make_result()
+    with patch(
+        'server.common.taskiq_middleware._close_old_connections',
+        new_callable=AsyncMock,
+    ) as mock_close:
+        _run(middleware.on_error(message, result, ValueError('boom')))
+    mock_close.assert_awaited_once()
 
 
 def test_pre_execute_returns_message_unchanged() -> None:

@@ -1293,7 +1293,7 @@ def test_publish_metadata_patch_without_metadata_stage(
     auth_headers: dict[str, str],
 ) -> None:
     """Cover publish metadata_patch when metadata stage is absent."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     run.channel.gates = ['final_gate']
     run.channel.save(update_fields=['gates'])
@@ -1304,8 +1304,7 @@ def test_publish_metadata_patch_without_metadata_stage(
         attempt=0,
     )
     with patch(
-        'server.apps.pipelines.services.orchestrator.advance_pipeline_impl',
-        new=AsyncMock(),
+        'server.apps.pipelines.services.run_review.kiq_task',
     ):
         response = dmr_client.post(
             reverse(
