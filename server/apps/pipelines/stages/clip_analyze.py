@@ -57,7 +57,7 @@ class ClipAnalyzeStage(Stage):
     key = 'clip_analyze'
     queue = 'render'
     max_retries = 2
-    timeout_s = 600
+    timeout_s = 3600
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
