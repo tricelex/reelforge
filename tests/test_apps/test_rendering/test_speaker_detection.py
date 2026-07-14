@@ -216,12 +216,9 @@ def test_diarize_returns_segments() -> None:
     mock_turn_a = MagicMock()
     mock_turn_a.start = 0.0
     mock_turn_a.end = 5.0
-    mock_annotation = MagicMock()
-    mock_annotation.itertracks.return_value = [
-        (mock_turn_a, None, 'SPEAKER_A'),
-    ]
-    mock_diarizer_instance = MagicMock()
-    mock_diarizer_instance.return_value.speaker_diarization = mock_annotation
+    mock_output = MagicMock()
+    mock_output.speaker_diarization = [(mock_turn_a, 'SPEAKER_A')]
+    mock_diarizer_instance = MagicMock(return_value=mock_output)
     mock_pipeline_cls = MagicMock(return_value=mock_diarizer_instance)
     mock_pipeline_cls.from_pretrained.return_value = mock_diarizer_instance
 
@@ -254,6 +251,10 @@ def test_diarize_returns_segments() -> None:
         with patch('pathlib.Path.unlink'):
             result = svc.diarize(Path('/fake.mp4'))
 
+    mock_pipeline_cls.from_pretrained.assert_called_once_with(
+        'pyannote/speaker-diarization-community-1',
+        token='hf-test-token',
+    )
     assert len(result) == 1
     assert result[0]['speaker_id'] == 'SPEAKER_A'
     assert result[0]['start'] == 0.0

@@ -6,6 +6,9 @@
 services:
   worker:
     image: "reelforge:worker"
+    # mediapipe publishes manylinux x86_64 wheels only — force amd64 on
+    # Apple Silicon dev machines and match typical VPS targets.
+    platform: linux/amd64
     build:
       context: .
       dockerfile: ./docker/worker/Dockerfile
