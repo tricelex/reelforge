@@ -202,3 +202,70 @@ def test_execute_stage_fails_after_exhausting_retries(
         assert refreshed.error['retryable'] is True
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_stage_never_retries_fatal_provider_error(
+    run: PipelineRun,
+) -> None:
+    """FatalProviderError goes to NEEDS_INPUT and never schedules a retry.
+
+    Regression test for the diarization-timeout CPU-starvation spiral: a
+    FatalProviderError (e.g. a diarization chunk timeout) must never
+    trigger `_schedule_retry`, even when `attempt < max_retries` — an
+    automatic retry on a resource-exhaustion failure just compounds it.
+    """
+    from server.apps.pipelines.services.executor import (
+        execute_stage_impl,
+    )
+    from server.apps.pipelines.stages.base import (
+        Stage,
+        StageContext,
+        register_stage,
+    )
+    from server.common.exceptions import FatalProviderError
+
+    async def _inner() -> None:
+        @register_stage
+        class _FatalStage(Stage):
+            """Test stage that always raises FatalProviderError."""
+
+            key = '_fatal_stage'
+            queue = 'api'
+            max_retries = 2
+            timeout_s = 10
+
+            async def run(self, ctx: StageContext) -> dict:
+                """Raise a fatal error unconditionally."""
+                raise FatalProviderError(
+                    'diarization chunk 0 exceeded 600s',
+                    provider='pyannote',
+                    error_code='diarization_chunk_timeout',
+                )
+
+        exec_ = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='_fatal_stage',
+            status=StageStatus.QUEUED,
+            input_hash='',
+            max_retries=2,
+            attempt=0,  # Well under max_retries — a retry-prone bug would fire here.
+        )
+        with (
+            patch(
+                'server.apps.pipelines.services.executor.kick_advance',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.executor.execute_stage_kiq',
+                new=AsyncMock(),
+            ) as mock_execute_stage_kiq,
+        ):
+            await execute_stage_impl(str(exec_.id))
+
+        refreshed = await StageExecution.objects.aget(id=exec_.id)
+        assert refreshed.status == StageStatus.NEEDS_INPUT
+        assert refreshed.error['type'] == 'FatalProviderError'
+        mock_execute_stage_kiq.assert_not_called()
+
+    _run(_inner())

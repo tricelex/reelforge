@@ -37,9 +37,9 @@ async def _setup_django(  # pragma: no cover  # noqa: RUF029
 
     django.setup()
     from server.apps.rendering.speaker_detection import (  # noqa: PLC0415
-        preload_diarization_pipeline,
+        preload_diarization_pool,
     )
 
     # Soft-fails when DIARIZATION_PRELOAD is unset or ML deps missing
     # (web image never sets the flag; worker image sets DIARIZATION_PRELOAD=1).
-    preload_diarization_pipeline()
+    preload_diarization_pool()

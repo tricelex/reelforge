@@ -73,23 +73,42 @@ The worker persists pyannote models in a Docker volume (`huggingface-cache` →
 `/var/cache/huggingface` via `HF_HOME`). That survives image pulls and container recreate, so
 redeploys should **not** re-download weights from HuggingFace.
 
-On boot the worker sets `DIARIZATION_PRELOAD=1` and loads
-`pyannote/speaker-diarization-community-1` once into memory. Look for:
+Diarization runs on a small **pool of persistent subprocesses** (not the main worker process),
+so a slow/stuck chunk can be killed and its slot replaced without losing the rest of the worker.
+The source video is split into fixed-duration chunks (`DIARIZATION_CHUNK_S`, default 900s), each
+diarized independently on the pool, then reconciled back into globally consistent speaker ids
+using the per-chunk speaker embeddings pyannote already produces. On boot, if `DIARIZATION_PRELOAD=1`,
+the worker eagerly starts this pool; otherwise it starts lazily on the first diarization job. Look
+for:
 
 ```text
-diarization_pipeline_ready cached=False   # first boot / empty process cache
-diarization_pipeline_ready cached=True    # already loaded in this process
-diarization_complete segment_count=… elapsed_s=…
+diarization_pool_started pool_size=…            # eager start at boot (DIARIZATION_PRELOAD=1)
+diarization_pipeline_loaded elapsed_s=…          # one pool worker's first-job model load
+diarization_chunk_complete segment_count=… elapsed_s=…   # per-chunk inference, logged per chunk
+diarization_complete segment_count=… chunk_count=…       # whole-file result after reconciliation
 ```
 
 **Expectations (CPU VPS):**
 
-- First fill of an empty volume: download + load can take several minutes at worker start.
-- Warm process: stage time is mostly CPU **inference** (still long for long videos — realtime-ish).
+- First fill of an empty volume: download + load can take several minutes — this cost is paid
+  once per pool worker process, not once per chunk (the pool is persistent, not spawned fresh
+  per job).
+- A chunk that exceeds `DIARIZATION_CHUNK_TIMEOUT_S` (default 600s) kills and replaces just that
+  one pool worker — expect a `NEEDS_INPUT` stage with `error_code=diarization_chunk_timeout`,
+  not a full-worker outage.
 - Wipe the cache only if intentional: `docker volume rm …_huggingface-cache` (name from
   `docker volume ls | grep huggingface`).
 
-Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` — quality unchanged.
+Tunables (all env-overridable, no redeploy needed — see
+`server/apps/rendering/speaker_detection.py` for defaults): `DIARIZATION_POOL_SIZE`,
+`DIARIZATION_CHUNK_S`, `DIARIZATION_CHUNK_OVERLAP_S`, `DIARIZATION_CHUNK_TIMEOUT_S`,
+`DIARIZATION_SEGMENTATION_BATCH_SIZE`, `DIARIZATION_EMBEDDING_BATCH_SIZE`,
+`DIARIZATION_POOL_WORKER_TORCH_THREADS`.
+
+Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` for the container as a
+whole (e.g. forced-alignment work); each diarization pool worker overrides its own
+`TORCH_NUM_THREADS` to `DIARIZATION_POOL_WORKER_TORCH_THREADS` (default 1) so `DIARIZATION_POOL_SIZE`
+parallel chunks divide the 4 CPUs instead of each contending for all 4 threads at once.
 
 If you see `Permission denied: '/var/cache/huggingface/hub'`, the volume was created
 root-owned before the worker entrypoint chown ran. With the current worker image this
