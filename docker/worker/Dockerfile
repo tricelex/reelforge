@@ -76,12 +76,14 @@ SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 # ffmpeg: video processing. libsndfile1: pyannote / soundfile audio I/O.
 # libgl1 / libglib / libxcb*: OpenCV (opencv-contrib-python via mediapipe).
+# gosu: entrypoint drops from root → web after chowning HF cache volume.
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
         bash \
         curl \
         ffmpeg \
+        gosu \
         libgl1 \
         libglib2.0-0 \
         libpq5 \
@@ -114,7 +116,11 @@ RUN groupadd -g "${GID}" -r web \
 
 COPY --chown=web:web . /code
 
-USER web
+# Entrypoint starts as root to chown the HF cache volume, then gosu → web.
+COPY --chmod=755 docker/worker/entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+USER root
 
 CMD ["python", "-m", "taskiq", "worker", \
      "server.common.broker:broker", \

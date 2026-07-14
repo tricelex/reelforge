@@ -91,6 +91,23 @@ diarization_complete segment_count=… elapsed_s=…
 
 Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` — quality unchanged.
 
+If you see `Permission denied: '/var/cache/huggingface/hub'`, the volume was created
+root-owned before the worker entrypoint chown ran. With the current worker image this
+is fixed on every start. One-shot repair without rebuild:
+
+```bash
+# on the VPS
+docker compose run --rm --user root --entrypoint '' \
+  -v "$(docker volume ls -q | grep huggingface-cache):/var/cache/huggingface" \
+  worker chown -R 1000:1000 /var/cache/huggingface
+# or more simply:
+docker run --rm -v ***REMOVED***_huggingface-cache:/data alpine \
+  chown -R 1000:1000 /data
+docker compose restart worker
+```
+
+(Adjust the volume name from `docker volume ls | grep huggingface`.)
+
 ### "High memory usage / suspected OOM"
 
 ```bash
