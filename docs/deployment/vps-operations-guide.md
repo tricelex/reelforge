@@ -102,8 +102,10 @@ diarization_complete segment_count=… chunk_count=…       # whole-file result
 Tunables (all env-overridable, no redeploy needed — see
 `server/apps/rendering/speaker_detection.py` for defaults): `DIARIZATION_POOL_SIZE`,
 `DIARIZATION_CHUNK_S`, `DIARIZATION_CHUNK_OVERLAP_S`, `DIARIZATION_CHUNK_TIMEOUT_S`,
-`DIARIZATION_SEGMENTATION_BATCH_SIZE`, `DIARIZATION_EMBEDDING_BATCH_SIZE`,
-`DIARIZATION_POOL_WORKER_TORCH_THREADS`.
+`DIARIZATION_POOL_WORKER_TORCH_THREADS`. (Segmentation/embedding batch-size tuning was
+attempted and reverted — `Pipeline.from_pretrained()` only forwards `token`/`cache_dir`
+to the underlying pipeline class, not arbitrary hyperparameters, so this isn't currently
+a supported lever without reaching into pyannote internals.)
 
 Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` for the container as a
 whole (e.g. forced-alignment work); each diarization pool worker overrides its own

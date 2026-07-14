@@ -410,7 +410,7 @@ def test_pool_worker_main_processes_job_and_returns_segments_and_centroids() -> 
     ):
         from server.apps.rendering.speaker_detection import _pool_worker_main
 
-        _pool_worker_main(input_q, output_q, 'hf-token', 8, 8)
+        _pool_worker_main(input_q, output_q, 'hf-token')
 
     chunk_id, status, segments, centroids = output_q.get_nowait()
     assert chunk_id == 0
@@ -420,8 +420,6 @@ def test_pool_worker_main_processes_job_and_returns_segments_and_centroids() -> 
     mock_pipeline_cls.from_pretrained.assert_called_once_with(
         'pyannote/speaker-diarization-community-1',
         token='hf-token',
-        segmentation_batch_size=8,
-        embedding_batch_size=8,
     )
 
 
@@ -460,7 +458,7 @@ def test_pool_worker_main_reuses_cached_pipeline_across_jobs() -> None:
     ):
         from server.apps.rendering.speaker_detection import _pool_worker_main
 
-        _pool_worker_main(input_q, output_q, 'hf-token', 8, 8)
+        _pool_worker_main(input_q, output_q, 'hf-token')
 
     assert output_q.get_nowait()[0] == 0
     assert output_q.get_nowait()[0] == 1
@@ -495,7 +493,7 @@ def test_pool_worker_main_reports_error_for_failed_job() -> None:
             side_effect=RuntimeError('boom'),
         ),
     ):
-        _pool_worker_main(input_q, output_q, 'hf-token', 8, 8)
+        _pool_worker_main(input_q, output_q, 'hf-token')
 
     chunk_id, status, payload, centroids = output_q.get_nowait()
     assert chunk_id == 1
@@ -537,7 +535,7 @@ def test_pool_worker_main_overrides_torch_threads_for_this_process(
             return_value={'waveform': MagicMock(), 'sample_rate': 16000},
         ),
     ):
-        _pool_worker_main(input_q, output_q, 'hf-token', 8, 8)
+        _pool_worker_main(input_q, output_q, 'hf-token')
 
     assert os.environ['TORCH_NUM_THREADS'] == '1'
 
@@ -651,8 +649,6 @@ def test_diarization_pool_submit_chunk_returns_result_on_success() -> None:
         pool = _DiarizationPool(
             pool_size=1,
             hf_token='hf-token',
-            segmentation_batch_size=8,
-            embedding_batch_size=8,
             mp_context=ctx,
         )
         result = pool.submit_chunk(
@@ -678,8 +674,6 @@ def test_diarization_pool_terminates_and_replaces_worker_on_timeout() -> None:
     pool = _DiarizationPool(
         pool_size=1,
         hf_token='hf-token',
-        segmentation_batch_size=8,
-        embedding_batch_size=8,
         mp_context=ctx,
     )
     original_process = ctx.processes[0]
@@ -704,8 +698,6 @@ def test_diarization_pool_kills_worker_that_wont_terminate() -> None:
     pool = _DiarizationPool(
         pool_size=1,
         hf_token='hf-token',
-        segmentation_batch_size=8,
-        embedding_batch_size=8,
         mp_context=ctx,
     )
     original_process = ctx.processes[0]
@@ -750,8 +742,6 @@ def test_diarization_pool_raises_runtime_error_on_worker_failure() -> None:
         pool = _DiarizationPool(
             pool_size=1,
             hf_token='hf-token',
-            segmentation_batch_size=8,
-            embedding_batch_size=8,
             mp_context=ctx,
         )
         with pytest.raises(RuntimeError, match='boom'):
