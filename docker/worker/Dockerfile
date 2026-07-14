@@ -46,6 +46,8 @@ WORKDIR /build
 COPY pyproject.toml poetry.lock ./
 
 # Install main + ml. CPU torch + mediapipe + pyannote + scenedetect live here.
+# mediapipe wheels are manylinux_2_28_x86_64 only — build with platform
+# linux/amd64 (see docker-compose.worker.yml).
 # NOTE: `--only main --with ml` does NOT install ml in Poetry 2.4 — use
 # `--with ml` (main is always included) or `--only main,ml`.
 RUN poetry sync --with ml --no-interaction --no-ansi \

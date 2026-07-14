@@ -225,16 +225,14 @@ class SpeakerDetectionService:
                 'pyannote/speaker-diarization-community-1',
                 token=token,
             )
-            annotation = diarizer(audio_path).speaker_diarization
+            output = diarizer(audio_path)
             return [
                 {
                     'speaker_id': speaker,
                     'start': turn.start,
                     'end': turn.end,
                 }
-                for turn, _, speaker in annotation.itertracks(
-                    yield_label=True,
-                )
+                for turn, speaker in output.speaker_diarization
             ]
         finally:
             AudioPath(audio_path).unlink(missing_ok=True)
