@@ -66,6 +66,15 @@ services:
       DJANGO_ENV: production
       LOGFIRE_SERVICE_NAME: reelforge-worker
       YTDLP_POT_PROVIDER_BASE_URL: http://bgutil-provider:4416
+      # Persist HF models across image pulls / container recreate.
+      HF_HOME: /var/cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /var/cache/huggingface/hub
+      # Eager-load pyannote at worker boot (ML image only).
+      DIARIZATION_PRELOAD: "1"
+      # Match cpus: 4.0 — modest inference speedup, no quality change.
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TORCH_NUM_THREADS: "4"
     depends_on:
       - bgutil-provider
     volumes:
@@ -74,6 +83,7 @@ services:
       # player API even for public videos — a PO token alone doesn't
       # cover that. Created by scripts/vps-setup-youtube.sh on the host.
       - ./secrets/youtube-cookies.txt:/run/secrets/youtube-cookies.txt:ro
+      - huggingface-cache:/var/cache/huggingface
     # Bounded concurrency: whisperx/ffmpeg tasks are memory-heavy, and
     # taskiq's own defaults (--workers 2 --max-async-tasks 100) would allow
     # up to 200 concurrent task slots — the likely cause of the Railway OOM
@@ -116,3 +126,4 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+  huggingface-cache:

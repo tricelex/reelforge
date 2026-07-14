@@ -55,7 +55,7 @@ All four services should show `Up` (or `Up (healthy)` for `web`). Health endpoin
 ### "Clips/videos aren't processing — worker seems stuck"
 
 ```bash
-./scripts/vps-logs.sh worker --tail=200 --no-follow
+./scripts/vps-logs.sh worker --tail=200
 ```
 
 Look for repeated tracebacks (crash-looping) vs. silence (nothing being consumed — check RabbitMQ
@@ -66,6 +66,30 @@ bug. If it's just wedged, a restart is a fine first move:
 ```bash
 ./scripts/vps-restart.sh worker
 ```
+
+### Diarization / HuggingFace model cache on the worker
+
+The worker persists pyannote models in a Docker volume (`huggingface-cache` →
+`/var/cache/huggingface` via `HF_HOME`). That survives image pulls and container recreate, so
+redeploys should **not** re-download weights from HuggingFace.
+
+On boot the worker sets `DIARIZATION_PRELOAD=1` and loads
+`pyannote/speaker-diarization-community-1` once into memory. Look for:
+
+```text
+diarization_pipeline_ready cached=False   # first boot / empty process cache
+diarization_pipeline_ready cached=True    # already loaded in this process
+diarization_complete segment_count=… elapsed_s=…
+```
+
+**Expectations (CPU VPS):**
+
+- First fill of an empty volume: download + load can take several minutes at worker start.
+- Warm process: stage time is mostly CPU **inference** (still long for long videos — realtime-ish).
+- Wipe the cache only if intentional: `docker volume rm …_huggingface-cache` (name from
+  `docker volume ls | grep huggingface`).
+
+Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` — quality unchanged.
 
 ### "High memory usage / suspected OOM"
 

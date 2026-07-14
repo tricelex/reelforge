@@ -4,10 +4,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from server.apps.rendering import speaker_detection as speaker_detection_module
 from server.apps.rendering.speaker_detection import (
     SpeakerCropResult,
     SpeakerDetectionService,
+    preload_diarization_pipeline,
 )
 
 
@@ -247,6 +250,9 @@ def test_diarize_returns_segments() -> None:
             'server.apps.rendering.speaker_detection._load_diarization_audio',
             return_value=audio_in_memory,
         ),
+        patch(
+            'server.apps.rendering.speaker_detection._configure_torch_threads',
+        ),
         patch('subprocess.run') as mock_run,
         patch('tempfile.NamedTemporaryFile') as mock_tmp,
         patch(
@@ -308,6 +314,9 @@ def test_diarization_pipeline_loaded_once() -> None:
             'server.apps.rendering.speaker_detection._load_diarization_audio',
             return_value=audio_in_memory,
         ),
+        patch(
+            'server.apps.rendering.speaker_detection._configure_torch_threads',
+        ),
         patch('subprocess.run') as mock_run,
         patch('tempfile.NamedTemporaryFile') as mock_tmp,
         patch(
@@ -349,3 +358,46 @@ def test_diarize_requires_huggingface_token() -> None:
 
             assert isinstance(exc, FatalProviderError)
             assert exc.error_code == 'missing_hf_token'
+
+
+def test_preload_diarization_pipeline_skips_when_flag_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv('DIARIZATION_PRELOAD', raising=False)
+    assert preload_diarization_pipeline() is False
+
+
+def test_preload_diarization_pipeline_loads_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_diarization_pipeline_cache()
+    monkeypatch.setenv('DIARIZATION_PRELOAD', '1')
+    mock_pipeline_cls = MagicMock()
+    mock_pipeline_cls.from_pretrained.return_value = MagicMock()
+    mock_pyannote_audio = MagicMock()
+    mock_pyannote_audio.Pipeline = mock_pipeline_cls
+
+    with (
+        patch.dict(
+            sys.modules,
+            {
+                'pyannote': MagicMock(),
+                'pyannote.audio': mock_pyannote_audio,
+            },
+        ),
+        patch(
+            'django.conf.settings.HUGGINGFACE_TOKEN',
+            'hf-test-token',
+            create=True,
+        ),
+        patch(
+            'server.apps.rendering.speaker_detection._configure_torch_threads',
+        ),
+    ):
+        assert preload_diarization_pipeline() is True
+        assert preload_diarization_pipeline() is True
+
+    mock_pipeline_cls.from_pretrained.assert_called_once_with(
+        'pyannote/speaker-diarization-community-1',
+        token='hf-test-token',
+    )
