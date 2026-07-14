@@ -14,6 +14,25 @@ _diarization_pipeline: Any = None
 _diarization_pipeline_lock = threading.Lock()
 
 
+def _configure_torch_threads() -> None:
+    """Use TORCH_NUM_THREADS (default 4) for CPU inference."""
+    import os  # noqa: PLC0415
+
+    try:
+        import torch  # noqa: PLC0415
+    except ImportError:
+        return
+
+    raw = os.environ.get('TORCH_NUM_THREADS', '4').strip() or '4'
+    try:
+        n_threads = int(raw)
+    except ValueError:
+        n_threads = 4
+    if n_threads < 1:
+        n_threads = 1
+    torch.set_num_threads(n_threads)
+
+
 def _get_diarization_pipeline(token: str) -> tuple[Any, bool]:
     """Return cached pyannote pipeline; load once per worker process."""
     global _diarization_pipeline
@@ -26,11 +45,51 @@ def _get_diarization_pipeline(token: str) -> tuple[Any, bool]:
             Pipeline as PyannotePipeline,
         )
 
+        _configure_torch_threads()
+        started = time.perf_counter()
         _diarization_pipeline = PyannotePipeline.from_pretrained(
             'pyannote/speaker-diarization-community-1',
             token=token,
         )
+        logger.info(
+            'diarization_pipeline_loaded elapsed_s=%.2f',
+            time.perf_counter() - started,
+        )
         return _diarization_pipeline, False
+
+
+def preload_diarization_pipeline() -> bool:
+    """Eager-load pyannote when DIARIZATION_PRELOAD=1 (worker only).
+
+    Returns True if the pipeline is ready. Soft-fails (logs, returns False)
+    when the token is missing or ML deps are unavailable.
+    """
+    import os  # noqa: PLC0415
+
+    flag = os.environ.get('DIARIZATION_PRELOAD', '').strip().lower()
+    if flag not in {'1', 'true', 'yes'}:
+        return False
+    try:
+        from django.conf import settings  # noqa: PLC0415
+    except Exception:
+        logger.warning('diarization_preload_skipped reason=django_unavailable')
+        return False
+    token: str = getattr(settings, 'HUGGINGFACE_TOKEN', '') or ''
+    if not token.strip():
+        logger.warning('diarization_preload_skipped reason=missing_hf_token')
+        return False
+    try:
+        started = time.perf_counter()
+        _pipeline, cached = _get_diarization_pipeline(token)
+        logger.info(
+            'diarization_pipeline_ready cached=%s elapsed_s=%.2f',
+            cached,
+            time.perf_counter() - started,
+        )
+        return _pipeline is not None
+    except Exception:
+        logger.exception('diarization_preload_failed')
+        return False
 
 
 def _load_diarization_audio(audio_path: str) -> dict[str, Any]:
