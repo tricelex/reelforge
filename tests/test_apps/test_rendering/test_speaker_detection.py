@@ -221,6 +221,10 @@ def test_diarize_returns_segments() -> None:
     mock_diarizer_instance = MagicMock(return_value=mock_output)
     mock_pipeline_cls = MagicMock(return_value=mock_diarizer_instance)
     mock_pipeline_cls.from_pretrained.return_value = mock_diarizer_instance
+    audio_in_memory = {
+        'waveform': MagicMock(),
+        'sample_rate': 16000,
+    }
 
     mock_pyannote_audio = MagicMock()
     mock_pyannote_audio.Pipeline = mock_pipeline_cls
@@ -232,6 +236,10 @@ def test_diarize_returns_segments() -> None:
                 'pyannote': MagicMock(),
                 'pyannote.audio': mock_pyannote_audio,
             },
+        ),
+        patch(
+            'server.apps.rendering.speaker_detection._load_diarization_audio',
+            return_value=audio_in_memory,
         ),
         patch('subprocess.run') as mock_run,
         patch('tempfile.NamedTemporaryFile') as mock_tmp,
@@ -255,6 +263,7 @@ def test_diarize_returns_segments() -> None:
         'pyannote/speaker-diarization-community-1',
         token='hf-test-token',
     )
+    mock_diarizer_instance.assert_called_once_with(audio_in_memory)
     assert len(result) == 1
     assert result[0]['speaker_id'] == 'SPEAKER_A'
     assert result[0]['start'] == 0.0
