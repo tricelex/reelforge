@@ -4,10 +4,15 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from server.apps.rendering import speaker_detection as speaker_detection_module
 from server.apps.rendering.speaker_detection import (
     SpeakerCropResult,
     SpeakerDetectionService,
 )
+
+
+def _reset_diarization_pipeline_cache() -> None:
+    speaker_detection_module._diarization_pipeline = None
 
 
 def test_detect_with_manual_crop() -> None:
@@ -211,6 +216,7 @@ def test_get_detector_downloads_model_when_missing(tmp_path: Path) -> None:
 
 
 def test_diarize_returns_segments() -> None:
+    _reset_diarization_pipeline_cache()
     svc = SpeakerDetectionService()
 
     mock_turn_a = MagicMock()
@@ -268,6 +274,64 @@ def test_diarize_returns_segments() -> None:
     assert result[0]['speaker_id'] == 'SPEAKER_A'
     assert result[0]['start'] == 0.0
     assert result[0]['end'] == 5.0
+
+
+def test_diarization_pipeline_loaded_once() -> None:
+    _reset_diarization_pipeline_cache()
+    svc = SpeakerDetectionService()
+
+    mock_turn = MagicMock()
+    mock_turn.start = 0.0
+    mock_turn.end = 1.0
+    mock_output = MagicMock()
+    mock_output.speaker_diarization = [(mock_turn, 'SPEAKER_A')]
+    mock_diarizer_instance = MagicMock(return_value=mock_output)
+    mock_pipeline_cls = MagicMock(return_value=mock_diarizer_instance)
+    mock_pipeline_cls.from_pretrained.return_value = mock_diarizer_instance
+    audio_in_memory = {
+        'waveform': MagicMock(),
+        'sample_rate': 16000,
+    }
+
+    mock_pyannote_audio = MagicMock()
+    mock_pyannote_audio.Pipeline = mock_pipeline_cls
+
+    with (
+        patch.dict(
+            sys.modules,
+            {
+                'pyannote': MagicMock(),
+                'pyannote.audio': mock_pyannote_audio,
+            },
+        ),
+        patch(
+            'server.apps.rendering.speaker_detection._load_diarization_audio',
+            return_value=audio_in_memory,
+        ),
+        patch('subprocess.run') as mock_run,
+        patch('tempfile.NamedTemporaryFile') as mock_tmp,
+        patch(
+            'django.conf.settings.HUGGINGFACE_TOKEN',
+            'hf-test-token',
+            create=True,
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+        mock_ctx.__exit__ = MagicMock(return_value=False)
+        mock_ctx.name = '/tmp/test_audio.wav'
+        mock_tmp.return_value = mock_ctx
+
+        with patch('pathlib.Path.unlink'):
+            svc.diarize(Path('/fake.mp4'))
+            svc.diarize(Path('/fake.mp4'))
+
+    mock_pipeline_cls.from_pretrained.assert_called_once_with(
+        'pyannote/speaker-diarization-community-1',
+        token='hf-test-token',
+    )
+    assert mock_diarizer_instance.call_count == 2
 
 
 def test_diarize_requires_huggingface_token() -> None:

@@ -1,6 +1,8 @@
 """SpeakerDetectionService — face detection + diarization for smart crop."""
 
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, final
@@ -8,6 +10,27 @@ from typing import Any, final
 logger = logging.getLogger('reelforge.rendering.speaker_detection')
 
 _DIARIZATION_SAMPLE_RATE = 16000
+_diarization_pipeline: Any = None
+_diarization_pipeline_lock = threading.Lock()
+
+
+def _get_diarization_pipeline(token: str) -> tuple[Any, bool]:
+    """Return cached pyannote pipeline; load once per worker process."""
+    global _diarization_pipeline
+    if _diarization_pipeline is not None:
+        return _diarization_pipeline, True
+    with _diarization_pipeline_lock:
+        if _diarization_pipeline is not None:
+            return _diarization_pipeline, True
+        from pyannote.audio import (  # noqa: PLC0415
+            Pipeline as PyannotePipeline,
+        )
+
+        _diarization_pipeline = PyannotePipeline.from_pretrained(
+            'pyannote/speaker-diarization-community-1',
+            token=token,
+        )
+        return _diarization_pipeline, False
 
 
 def _load_diarization_audio(audio_path: str) -> dict[str, Any]:
@@ -236,17 +259,17 @@ class SpeakerDetectionService:
                 check=True,
                 capture_output=True,
             )
-            from pyannote.audio import (  # noqa: PLC0415
-                Pipeline as PyannotePipeline,
-            )
-
-            diarizer = PyannotePipeline.from_pretrained(
-                'pyannote/speaker-diarization-community-1',
-                token=token,
+            pipeline_start = time.perf_counter()
+            diarizer, cached = _get_diarization_pipeline(token)
+            logger.info(
+                'diarization_pipeline_ready cached=%s elapsed_s=%.2f',
+                cached,
+                time.perf_counter() - pipeline_start,
             )
             audio_in_memory = _load_diarization_audio(audio_path)
+            inference_start = time.perf_counter()
             output = diarizer(audio_in_memory)
-            return [
+            segments = [
                 {
                     'speaker_id': speaker,
                     'start': turn.start,
@@ -254,5 +277,11 @@ class SpeakerDetectionService:
                 }
                 for turn, speaker in output.speaker_diarization
             ]
+            logger.info(
+                'diarization_complete segment_count=%d elapsed_s=%.2f',
+                len(segments),
+                time.perf_counter() - inference_start,
+            )
+            return segments
         finally:
             AudioPath(audio_path).unlink(missing_ok=True)

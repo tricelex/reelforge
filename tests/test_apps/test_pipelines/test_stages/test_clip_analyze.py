@@ -11,7 +11,7 @@ def test_clip_analyze_attributes() -> None:
     assert ClipAnalyzeStage.key == 'clip_analyze'
     assert ClipAnalyzeStage.queue == 'render'
     assert ClipAnalyzeStage.max_retries == 2
-    assert ClipAnalyzeStage.timeout_s == 600
+    assert ClipAnalyzeStage.timeout_s == 3600
 
 
 def test_clip_analyze_fan_out_returns_none() -> None:
