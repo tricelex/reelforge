@@ -7,6 +7,25 @@ from typing import Any, final
 
 logger = logging.getLogger('***REMOVED***.rendering.speaker_detection')
 
+_DIARIZATION_SAMPLE_RATE = 16000
+
+
+def _load_diarization_audio(audio_path: str) -> dict[str, Any]:
+    """Load mono 16 kHz WAV for pyannote (bypasses torchcodec file decoding)."""
+    import torchaudio  # noqa: PLC0415
+
+    waveform, sample_rate = torchaudio.load(audio_path)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    if sample_rate != _DIARIZATION_SAMPLE_RATE:
+        waveform = torchaudio.functional.resample(
+            waveform,
+            sample_rate,
+            _DIARIZATION_SAMPLE_RATE,
+        )
+        sample_rate = _DIARIZATION_SAMPLE_RATE
+    return {'waveform': waveform, 'sample_rate': sample_rate}
+
 
 @dataclass(frozen=True)
 class SpeakerCropResult:
@@ -225,7 +244,8 @@ class SpeakerDetectionService:
                 'pyannote/speaker-diarization-community-1',
                 token=token,
             )
-            output = diarizer(audio_path)
+            audio_in_memory = _load_diarization_audio(audio_path)
+            output = diarizer(audio_in_memory)
             return [
                 {
                     'speaker_id': speaker,
