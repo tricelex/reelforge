@@ -25,12 +25,6 @@ _DIARIZATION_CHUNK_OVERLAP_S = float(
 _DIARIZATION_CHUNK_TIMEOUT_S = float(
     os.environ.get('DIARIZATION_CHUNK_TIMEOUT_S', '600'),
 )
-_SEGMENTATION_BATCH_SIZE = int(
-    os.environ.get('DIARIZATION_SEGMENTATION_BATCH_SIZE', '8'),
-)
-_EMBEDDING_BATCH_SIZE = int(
-    os.environ.get('DIARIZATION_EMBEDDING_BATCH_SIZE', '8'),
-)
 _diarization_pool: '_DiarizationPool | None' = None
 _diarization_pool_lock = threading.Lock()
 _DIARIZATION_POOL_WORKER_TORCH_THREADS = os.environ.get(
@@ -67,13 +61,13 @@ class ChunkDiarizationResult:
     centroids: dict[str, list[float]]
 
 
-def _get_diarization_pipeline(
-    token: str,
-    *,
-    segmentation_batch_size: int = 1,
-    embedding_batch_size: int = 1,
-) -> tuple[Any, bool]:
-    """Return cached pyannote pipeline; load once per worker process."""
+def _get_diarization_pipeline(token: str) -> tuple[Any, bool]:
+    """Return cached pyannote pipeline; load once per worker process.
+
+    Note: Pipeline.from_pretrained() only forwards `token`/`cache_dir` to
+    the underlying pipeline class — it does not accept arbitrary
+    hyperparameter overrides (e.g. batch sizes) as kwargs.
+    """
     global _diarization_pipeline  # noqa: PLW0603
     if _diarization_pipeline is not None:
         return _diarization_pipeline, True
@@ -89,8 +83,6 @@ def _get_diarization_pipeline(
         _diarization_pipeline = PyannotePipeline.from_pretrained(
             'pyannote/speaker-diarization-community-1',
             token=token,
-            segmentation_batch_size=segmentation_batch_size,
-            embedding_batch_size=embedding_batch_size,
         )
         logger.info(
             'diarization_pipeline_loaded elapsed_s=%.2f',
@@ -102,15 +94,9 @@ def _get_diarization_pipeline(
 def _diarize_chunk_file(
     wav_path: str,
     token: str,
-    segmentation_batch_size: int,
-    embedding_batch_size: int,
 ) -> tuple[list[dict[str, Any]], dict[str, list[float]]]:
     """Diarize one chunk's audio file; returns (segments, local centroids)."""
-    pipeline, _cached = _get_diarization_pipeline(
-        token,
-        segmentation_batch_size=segmentation_batch_size,
-        embedding_batch_size=embedding_batch_size,
-    )
+    pipeline, _cached = _get_diarization_pipeline(token)
     audio_in_memory = _load_diarization_audio(wav_path)
     started = time.perf_counter()
     output = pipeline(audio_in_memory)
@@ -135,8 +121,6 @@ def _pool_worker_main(
     input_queue: Any,
     output_queue: Any,
     hf_token: str,
-    segmentation_batch_size: int,
-    embedding_batch_size: int,
 ) -> None:
     """Entry point for a persistent diarization pool worker process.
 
@@ -155,12 +139,7 @@ def _pool_worker_main(
             return
         chunk_id, wav_path, _start_offset = job
         try:
-            segments, centroids = _diarize_chunk_file(
-                wav_path,
-                hf_token,
-                segmentation_batch_size,
-                embedding_batch_size,
-            )
+            segments, centroids = _diarize_chunk_file(wav_path, hf_token)
         except Exception as exc:
             output_queue.put((chunk_id, 'error', str(exc), None))
             continue
@@ -188,8 +167,6 @@ class _DiarizationPool:
         self,
         pool_size: int,
         hf_token: str,
-        segmentation_batch_size: int,
-        embedding_batch_size: int,
         *,
         mp_context: Any = None,
     ) -> None:
@@ -197,8 +174,6 @@ class _DiarizationPool:
 
         self._pool_size = pool_size
         self._hf_token = hf_token
-        self._segmentation_batch_size = segmentation_batch_size
-        self._embedding_batch_size = embedding_batch_size
         self._ctx = mp_context or multiprocessing.get_context('spawn')
         self._slots = [self._spawn_slot() for _ in range(pool_size)]
         self._next_slot = 0
@@ -208,13 +183,7 @@ class _DiarizationPool:
         output_queue = self._ctx.Queue()
         process = self._ctx.Process(
             target=_pool_worker_main,
-            args=(
-                input_queue,
-                output_queue,
-                self._hf_token,
-                self._segmentation_batch_size,
-                self._embedding_batch_size,
-            ),
+            args=(input_queue, output_queue, self._hf_token),
             daemon=True,
         )
         process.start()
@@ -271,8 +240,6 @@ def _get_diarization_pool(token: str) -> '_DiarizationPool':
             _diarization_pool = _DiarizationPool(
                 pool_size=_DIARIZATION_POOL_SIZE,
                 hf_token=token,
-                segmentation_batch_size=_SEGMENTATION_BATCH_SIZE,
-                embedding_batch_size=_EMBEDDING_BATCH_SIZE,
             )
         return _diarization_pool
 
