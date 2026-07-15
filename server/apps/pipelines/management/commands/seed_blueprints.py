@@ -81,7 +81,11 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
                 'i2v_model': 'fal-ai/kling-video/v2.1/standard/image-to-video',
             },
         },
-        {'key': 'alignment', 'depends_on': ['tts'], 'queue': 'api'},
+        {
+            'key': 'alignment',
+            'depends_on': ['tts', 'scene_breakdown'],
+            'queue': 'api',
+        },
         {
             'key': 'music_plan',
             'depends_on': ['scene_breakdown'],

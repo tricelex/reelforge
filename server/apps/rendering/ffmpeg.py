@@ -10,6 +10,32 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+_MEZZANINE_VF = (
+    'scale=1920:1080:force_original_aspect_ratio=decrease,'
+    'pad=1920:1080:(ow-iw)/2:(oh-ih)/2'
+)
+_FFMPEG_ERROR_MARKERS = (
+    'error',
+    'invalid',
+    'no such file',
+    'matches no streams',
+    'does not contain',
+    'conversion failed',
+)
+
+
+def _extract_ffmpeg_error(stderr: str, limit: int = 500) -> str:
+    """Prefer the actionable FFmpeg error line over the version banner."""
+    text = stderr.strip()
+    if not text:
+        return '(no stderr)'
+    lines = text.splitlines()
+    for line in lines:
+        lower = line.lower()
+        if any(marker in lower for marker in _FFMPEG_ERROR_MARKERS):
+            return line.strip()[:limit]
+    return text[-limit:]
+
 
 async def async_ffprobe(path: str) -> dict[str, Any]:
     """Run ffprobe asynchronously and return parsed JSON.
@@ -32,7 +58,8 @@ async def async_ffprobe(path: str) -> dict[str, Any]:
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise RuntimeError(
-            f'ffprobe failed ({proc.returncode}): {stderr.decode()[:200]}',
+            f'ffprobe failed ({proc.returncode}): '
+            f'{_extract_ffmpeg_error(stderr.decode())}',
         )
     return json.loads(stdout)  # type: ignore[no-any-return]
 
@@ -51,7 +78,8 @@ async def mux_scene(
 
     Probes motion video duration. If drift <= 5% uses setpts PTS scaling;
     otherwise pads video with tpad (hold last frame). Always re-encodes to
-    mezzanine spec: libx264 CRF 16, yuv420p, 30fps, AAC 48kHz stereo.
+    mezzanine spec: 1920x1080, libx264 CRF 16, yuv420p, 30fps, AAC 48kHz
+    stereo.
 
     Raises:
         RuntimeError: If FFmpeg exits with non-zero return code.
@@ -79,7 +107,7 @@ async def mux_scene(
             '-i',
             audio_path,
             '-vf',
-            f'setpts={pts_factor:.6f}*PTS',
+            f'setpts={pts_factor:.6f}*PTS,{_MEZZANINE_VF}',
             '-af',
             (
                 f'atrim=start={start_s:.3f}:end={end_s:.3f},'
@@ -116,7 +144,10 @@ async def mux_scene(
             '-i',
             audio_path,
             '-vf',
-            f'tpad=stop_mode=clone:stop_duration={pad_s:.3f}',
+            (
+                f'tpad=stop_mode=clone:stop_duration={pad_s:.3f},'
+                f'{_MEZZANINE_VF}'
+            ),
             '-af',
             (f'atrim=start={start_s:.3f}:end={end_s:.3f},asetpts=PTS-STARTPTS'),
             '-c:v',
@@ -146,7 +177,8 @@ async def mux_scene(
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise RuntimeError(
-            f'mux_scene failed ({proc.returncode}): {stderr.decode()[:300]}',
+            f'mux_scene failed ({proc.returncode}): '
+            f'{_extract_ffmpeg_error(stderr.decode())}',
         )
 
 
@@ -156,8 +188,12 @@ async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
     All segments must conform to mezzanine spec so -c copy is safe and fast.
 
     Raises:
+        ValueError: If ``segment_paths`` is empty.
         RuntimeError: If FFmpeg exits with non-zero return code.
     """
+    if not segment_paths:
+        raise ValueError('concat_chapter requires at least one segment path')
+
     with tempfile.NamedTemporaryFile(
         encoding='utf-8',
         mode='w',
@@ -191,7 +227,7 @@ async def concat_chapter(segment_paths: list[str], out_path: str) -> None:
     if proc.returncode != 0:
         raise RuntimeError(
             'concat_chapter failed '
-            f'({proc.returncode}): {stderr.decode()[:300]}',
+            f'({proc.returncode}): {_extract_ffmpeg_error(stderr.decode())}',
         )
 
 
@@ -472,7 +508,8 @@ async def _run_ffmpeg_cmd(cmd: list[str]) -> None:
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise RuntimeError(
-            f'final_pass failed ({proc.returncode}): {stderr.decode()[:400]}',
+            f'final_pass failed ({proc.returncode}): '
+            f'{_extract_ffmpeg_error(stderr.decode())}',
         )
 
 

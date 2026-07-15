@@ -89,16 +89,126 @@ def _map_aligned_words(
     """Map ElevenLabs FA words to {word, start, end, score}.
 
     ``score`` stores ElevenLabs ``loss`` (lower is better).
+    Whitespace-only tokens are dropped — FA emits them between words.
     """
-    return [
-        {
-            'word': w.get('text', ''),
+    mapped: list[dict[str, Any]] = []
+    for w in words_raw:
+        token = str(w.get('text', w.get('word', '')))
+        if not token.strip():
+            continue
+        mapped.append({
+            'word': token,
             'start': float(w.get('start', 0)),
             'end': float(w.get('end', 0)),
-            'score': float(w.get('loss', 0)),
-        }
-        for w in words_raw
+            'score': float(w.get('loss', w.get('score', 0))),
+        })
+    return mapped
+
+
+def _scene_word_quota(scene: dict[str, Any]) -> int:
+    """Prefer word_count; fall back to tokenising narration_text."""
+    count = int(scene.get('word_count') or 0)
+    if count > 0:
+        return count
+    return len(str(scene.get('narration_text', '')).split())
+
+
+def _remap_quota_sizes(n_words: int, quotas: list[int]) -> list[int]:
+    """Map scene word quotas onto exactly ``n_words`` slice sizes."""
+    assert n_words > 0, 'n_words must be > 0'
+    assert quotas, 'quotas must be non-empty'
+    n_scenes = len(quotas)
+    safe = [max(1, q) for q in quotas]
+    total = sum(safe)
+    if total == n_words:
+        return safe
+
+    raw = [q * n_words / total for q in safe]
+    sizes = [int(x) for x in raw]
+    rem = n_words - sum(sizes)
+    order = sorted(
+        range(n_scenes),
+        key=lambda i: raw[i] - sizes[i],
+        reverse=True,
+    )
+    for j in range(max(0, rem)):
+        sizes[order[j % n_scenes]] += 1
+    if n_words < n_scenes:
+        return sizes
+    for i in range(n_scenes):
+        if sizes[i] != 0:
+            continue
+        donor = max(range(n_scenes), key=lambda k: sizes[k])
+        if sizes[donor] > 1:
+            sizes[donor] -= 1
+            sizes[i] = 1
+    return sizes
+
+
+def _partition_slices(
+    n_words: int,
+    quotas: list[int],
+) -> list[tuple[int, int]]:
+    """Cover ``0..n_words`` with one [start, end) slice per quota.
+
+    Exact match when ``sum(quotas) == n_words``. Otherwise uses largest-
+    remainder proportional remapping so every speech word is assigned and
+    every scene gets ≥1 word when ``n_words >= len(quotas)``.
+    """
+    sizes = _remap_quota_sizes(n_words, quotas)
+    slices: list[tuple[int, int]] = []
+    cursor = 0
+    for size in sizes:
+        slices.append((cursor, cursor + size))
+        cursor += size
+    if slices:
+        start, _ = slices[-1]
+        slices[-1] = (start, n_words)
+    return slices
+
+
+def _split_words_into_scenes(
+    chapter_scenes: list[dict[str, Any]],
+    fa_words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Partition FA words across scene_breakdown rows for one chapter.
+
+    Emits one alignment scene per breakdown scene, carrying the global
+    ``scene_idx`` that motion / image_gen already use.
+    """
+    assert chapter_scenes, 'chapter_scenes must be non-empty'
+    speech = [
+        w
+        for w in fa_words
+        if str(w.get('word', '')).strip()
     ]
+    if not speech:
+        raise ValueError('no speech words in forced-alignment response')
+
+    ordered = sorted(chapter_scenes, key=lambda s: int(s['idx']))
+    if len(speech) < len(ordered):
+        raise ValueError(
+            f'only {len(speech)} speech words for {len(ordered)} scenes',
+        )
+    quotas = [_scene_word_quota(s) for s in ordered]
+    slices = _partition_slices(len(speech), quotas)
+
+    result: list[dict[str, Any]] = []
+    for local_idx, (scene, (start_i, end_i)) in enumerate(
+        zip(ordered, slices, strict=True),
+    ):
+        chunk = speech[start_i:end_i]
+        assert chunk, f'scene {scene["idx"]} received empty word slice'
+        result.append({
+            'scene_idx': int(scene['idx']),
+            'chapter_idx': int(scene['chapter_idx']),
+            'segment_idx': local_idx,
+            'start_s': float(chunk[0]['start']),
+            'end_s': float(chunk[-1]['end']),
+            'text': str(scene.get('narration_text', '')).strip(),
+            'words': chunk,
+        })
+    return result
 
 
 def _segment_from_alignment(
@@ -148,6 +258,16 @@ class AlignmentStage(Stage):
             ch['idx']: ch
             for ch in ctx.upstream.get('script', {}).get('chapters', [])
         }
+        breakdown_scenes = ctx.upstream.get('scene_breakdown', {}).get(
+            'scenes',
+            [],
+        )
+        if not breakdown_scenes:
+            raise FatalProviderError(
+                'scene_breakdown has no scenes — cannot build timing map',
+                provider='alignment',
+                error_code='missing_scene_breakdown',
+            )
 
         all_scenes: list[dict[str, Any]] = []
         all_segments: list[dict[str, Any]] = []
@@ -164,6 +284,19 @@ class AlignmentStage(Stage):
                     error_code='empty_transcript',
                 )
 
+            chapter_scenes = [
+                s
+                for s in breakdown_scenes
+                if int(s['chapter_idx']) == int(shard['chapter_idx'])
+            ]
+            if not chapter_scenes:
+                raise FatalProviderError(
+                    f'No scene_breakdown scenes for chapter '
+                    f'{shard["chapter_idx"]}',
+                    provider='alignment',
+                    error_code='missing_chapter_scenes',
+                )
+
             with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
                 f.write(audio_bytes)
                 audio_path = Path(f.name)
@@ -176,14 +309,16 @@ class AlignmentStage(Stage):
             segment = _segment_from_alignment(transcript_text, alignment)
             all_segments.append(segment)
             total_duration_sec += float(segment['end'])
-            all_scenes.append({
-                'chapter_idx': shard['chapter_idx'],
-                'segment_idx': 0,
-                'start_s': segment['start'],
-                'end_s': segment['end'],
-                'text': segment['text'].strip(),
-                'words': segment['words'],
-            })
+            try:
+                all_scenes.extend(
+                    _split_words_into_scenes(chapter_scenes, segment['words']),
+                )
+            except ValueError as exc:
+                raise FatalProviderError(
+                    f'Chapter {shard["chapter_idx"]}: {exc}',
+                    provider='alignment',
+                    error_code='scene_timing_failed',
+                ) from exc
 
         await ctx.costs.record(
             provider='elevenlabs',

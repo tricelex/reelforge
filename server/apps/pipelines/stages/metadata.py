@@ -46,19 +46,32 @@ def _build_chapter_timestamps(
     scenes: list[dict[str, Any]],
     chapters: list[dict[str, Any]],
 ) -> str:
-    """Build YouTube chapter timestamp string from alignment scene data."""
-    chapter_starts: dict[int, float] = {}
+    """Build YouTube chapter timestamp string from alignment scene data.
+
+    Alignment ``start_s`` / ``end_s`` are chapter-relative (per TTS file).
+    YouTube chapter markers need absolute offsets in the final video, so
+    each chapter's duration is summed from its scenes before advancing.
+    """
+    spans: dict[int, tuple[float, float]] = {}
     for seg in scenes:
-        ch_idx = seg.get('chapter_idx', 0)
-        if ch_idx not in chapter_starts:
-            chapter_starts[ch_idx] = seg.get('start_s', 0.0)
+        ch_idx = int(seg.get('chapter_idx', 0))
+        start_s = float(seg.get('start_s', 0.0))
+        end_s = float(seg.get('end_s', start_s))
+        if ch_idx not in spans:
+            spans[ch_idx] = (start_s, end_s)
+        else:
+            prev_start, prev_end = spans[ch_idx]
+            spans[ch_idx] = (min(prev_start, start_s), max(prev_end, end_s))
 
     lines: list[str] = []
+    offset = 0.0
     for ch in sorted(chapters, key=operator.itemgetter('idx')):
-        start_s = chapter_starts.get(ch['idx'], 0.0)
-        m = int(start_s // 60)
-        s = int(start_s % 60)
+        m = int(offset // 60)
+        s = int(offset % 60)
         lines.append(f'{m}:{s:02d} {ch["title"]}')
+        if ch['idx'] in spans:
+            local_start, local_end = spans[ch['idx']]
+            offset += max(0.0, local_end - local_start)
     return '\n'.join(lines)
 
 
