@@ -7,7 +7,7 @@ from typing import Any, override
 
 import httpx
 
-from server.apps.assets.models import AssetKind
+from server.apps.assets.models import Asset, AssetKind
 from server.apps.generation.clients import fal as fal_client
 from server.apps.pipelines.logic.pool_rotation import pick_cyclic
 from server.apps.pipelines.stages.base import (
@@ -37,16 +37,20 @@ def _pick_camera_movement(pool: list[str], scene_idx: int) -> str:
     return pick_cyclic(pool, scene_idx, _DEFAULT_CAMERA_MOVEMENT)
 
 
+async def _load_image_asset(asset_id: str) -> Asset:
+    """Load the scene image Asset; raise if id is missing."""
+    assert asset_id, 'asset_id is required'
+    return await Asset.objects.aget(id=asset_id)
+
+
 async def _run_ken_burns(
-    image_url: str,
+    image_bytes: bytes,
     duration_s: float,
     preset_idx: int = 0,
 ) -> bytes:
-    """Download image and apply Ken Burns zoom/pan via FFmpeg subprocess."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(image_url)
-        resp.raise_for_status()
-        image_bytes = resp.content
+    """Apply Ken Burns zoom/pan to image bytes via FFmpeg subprocess."""
+    assert image_bytes, 'image_bytes must be non-empty'
+    assert duration_s > 0, f'duration_s must be > 0, got {duration_s}'
 
     with (
         tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_f,
@@ -92,7 +96,9 @@ async def _run_ken_burns(
     if proc.returncode != 0:
         raise RuntimeError(f'FFmpeg Ken Burns failed: {stderr.decode()[:300]}')
 
-    return await asyncio.to_thread(Path(vid_path).read_bytes)
+    video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
+    assert video_bytes, 'Ken Burns produced empty video'
+    return video_bytes
 
 
 @register_stage
@@ -128,7 +134,6 @@ class MotionStage(Stage):
                     'visual_concept',
                     '',
                 ),
-                'image_url': sh.get('image_url', ''),
             }
             for sh in shards
         ]
@@ -138,12 +143,26 @@ class MotionStage(Stage):
         """Apply Kling I2V or Ken Burns motion to the scene."""
         snap = ctx.execution.input_snapshot
         scene_idx: int = snap['scene_idx']
+        asset_id: str = snap.get('asset_id', '')
         is_hero: bool = snap.get('is_hero', False)
         est_seconds: float = snap.get('est_seconds', 8.0)
-        image_url: str = snap.get('image_url', '')
         visual_concept: str = snap.get('visual_concept', '')
 
+        if not asset_id:
+            raise ValueError(
+                f'Motion scene {scene_idx}: missing asset_id '
+                '(image_gen must return asset_id)',
+            )
+
+        image_asset = await _load_image_asset(asset_id)
+
         if is_hero:
+            image_url = image_asset.file.url if image_asset.file else ''
+            if not image_url:
+                raise ValueError(
+                    f'Motion scene {scene_idx}: asset {asset_id} '
+                    'has no file URL for Kling I2V',
+                )
             model = ctx.config.get(
                 'i2v_model',
                 'fal-ai/kling-video/v2.1/standard/image-to-video',
@@ -176,8 +195,9 @@ class MotionStage(Stage):
                 unit_cost_usd=0.52,
             )
         else:
+            image_bytes = await asyncio.to_thread(image_asset.file.read)
             video_bytes = await _run_ken_burns(
-                image_url=image_url,
+                image_bytes=image_bytes,
                 duration_s=est_seconds,
                 preset_idx=scene_idx,
             )
