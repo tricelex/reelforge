@@ -1,10 +1,13 @@
-"""Alignment stage — WhisperX forced alignment and ASS subtitle generation."""
+"""Alignment stage — ElevenLabs forced alignment and ASS subtitle generation."""
 
 import tempfile
+from pathlib import Path
 from typing import Any, override
 
+from django.conf import settings
+
 from server.apps.assets.models import AssetKind
-from server.apps.generation.clients import whisperx as whisperx_client
+from server.apps.generation.clients import elevenlabs as elevenlabs_client
 from server.apps.pipelines.services.tts_shards import load_tts_chapter_shards
 from server.apps.pipelines.stages.base import (
     Stage,
@@ -23,7 +26,7 @@ async def _fetch_audio_bytes(asset_id: str) -> bytes:
 
 
 def _build_ass_content(segments: list[dict[str, Any]]) -> bytes:
-    """Build a minimal ASS subtitle file from WhisperX segment list."""
+    """Build a minimal ASS subtitle file from aligned segment list."""
     lines = [
         '[Script Info]',
         'ScriptType: v4.00+',
@@ -70,7 +73,7 @@ def _fmt_srt_time(seconds: float) -> str:
 
 
 def _build_srt_content(segments: list[dict[str, Any]]) -> bytes:
-    """Build a standard SRT file from WhisperX segment list."""
+    """Build a standard SRT file from aligned segment list."""
     blocks: list[str] = []
     for i, seg in enumerate(segments, start=1):
         start = _fmt_srt_time(seg['start'])
@@ -80,18 +83,60 @@ def _build_srt_content(segments: list[dict[str, Any]]) -> bytes:
     return '\n\n'.join(blocks).encode()
 
 
+def _map_aligned_words(
+    words_raw: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Map ElevenLabs FA words to {word, start, end, score}.
+
+    ``score`` stores ElevenLabs ``loss`` (lower is better).
+    """
+    return [
+        {
+            'word': w.get('text', ''),
+            'start': float(w.get('start', 0)),
+            'end': float(w.get('end', 0)),
+            'score': float(w.get('loss', 0)),
+        }
+        for w in words_raw
+    ]
+
+
+def _segment_from_alignment(
+    transcript_text: str,
+    alignment: dict[str, Any],
+) -> dict[str, Any]:
+    """Build one chapter segment from a Forced Alignment response."""
+    word_timings = _map_aligned_words(alignment.get('words', []))
+    start_s = word_timings[0]['start'] if word_timings else 0.0
+    end_s = word_timings[-1]['end'] if word_timings else 0.0
+    return {
+        'text': transcript_text,
+        'start': start_s,
+        'end': end_s,
+        'words': word_timings,
+    }
+
+
 @register_stage
 class AlignmentStage(Stage):
-    """Stage 9: WhisperX forced alignment and ASS subtitle generation."""
+    """Stage 9: ElevenLabs forced alignment and ASS subtitle generation."""
 
     key = 'alignment'
-    queue = 'gpu'
+    queue = 'api'
     max_retries = 2
     timeout_s = 900
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Align TTS audio per chapter, producing scene word timestamps."""
+        api_key: str = getattr(settings, 'ELEVENLABS_API_KEY', '')
+        if not api_key:
+            raise FatalProviderError(
+                'ELEVENLABS_API_KEY is not configured',
+                provider='elevenlabs',
+                error_code='missing_api_key',
+            )
+
         tts_shards = await load_tts_chapter_shards(ctx.run)
         if not tts_shards:
             raise FatalProviderError(
@@ -106,32 +151,46 @@ class AlignmentStage(Stage):
 
         all_scenes: list[dict[str, Any]] = []
         all_segments: list[dict[str, Any]] = []
+        total_duration_sec = 0.0
 
         for shard in tts_shards:
             audio_bytes = await _fetch_audio_bytes(shard['asset_id'])
             chapter = script_chapters.get(shard['chapter_idx'], {})
             transcript_text = chapter.get('text', '')
+            if not transcript_text.strip():
+                raise FatalProviderError(
+                    'Script chapter text is empty — cannot align audio',
+                    provider='elevenlabs',
+                    error_code='empty_transcript',
+                )
 
             with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
                 f.write(audio_bytes)
-                audio_path = f.name
+                audio_path = Path(f.name)
 
-            alignment = await whisperx_client.align(
+            alignment = await elevenlabs_client.force_align(
                 audio_path=audio_path,
-                transcript_text=transcript_text,
+                text=transcript_text,
+                api_key=api_key,
             )
-            segments = alignment.get('segments', [])
-            all_segments.extend(segments)
+            segment = _segment_from_alignment(transcript_text, alignment)
+            all_segments.append(segment)
+            total_duration_sec += float(segment['end'])
+            all_scenes.append({
+                'chapter_idx': shard['chapter_idx'],
+                'segment_idx': 0,
+                'start_s': segment['start'],
+                'end_s': segment['end'],
+                'text': segment['text'].strip(),
+                'words': segment['words'],
+            })
 
-            for i, seg in enumerate(segments):
-                all_scenes.append({
-                    'chapter_idx': shard['chapter_idx'],
-                    'segment_idx': i,
-                    'start_s': seg['start'],
-                    'end_s': seg['end'],
-                    'text': seg['text'].strip(),
-                    'words': seg.get('words', []),
-                })
+        await ctx.costs.record(
+            provider='elevenlabs',
+            operation='forced_alignment',
+            units=total_duration_sec / 60.0,
+            unit_cost_usd=elevenlabs_client.SCRIBE_COST_PER_MINUTE_USD,
+        )
 
         ass_bytes = _build_ass_content(all_segments)
         ass_asset = await ctx.assets.save(

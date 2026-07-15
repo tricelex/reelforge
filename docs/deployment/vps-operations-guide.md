@@ -86,6 +86,21 @@ in one response — there's no separate diarization stage or job to poll.
 - `clip_analyze` no longer does any diarization work — it only reads the already-diarized
   `enriched_transcript` off the manifest asset produced by `clip_transcribe`.
 
+### Forced alignment (ElevenLabs hosted API)
+
+Longform caption timing uses ElevenLabs Forced Alignment
+(`POST /v1/forced-alignment`) with the same `ELEVENLABS_API_KEY` as TTS/Scribe —
+not a local torchaudio/WhisperX model. `AlignmentStage` uploads each TTS chapter
+MP3 plus the known script text and gets word-level timestamps back. The stage runs
+on the `api` queue (HTTP), not `gpu`.
+
+**Expectations:**
+
+- Existing blueprints that still list `alignment` on `queue: gpu` should be re-seeded
+  (`python manage.py seed_blueprints`) so new runs land on the `api` worker.
+- Pricing matches Scribe STT (per audio minute).
+- Missing/blank `ELEVENLABS_API_KEY` fails fast with `error_code=missing_api_key`.
+
 ### "High memory usage / suspected OOM"
 
 ```bash

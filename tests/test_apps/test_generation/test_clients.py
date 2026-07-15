@@ -577,59 +577,137 @@ def test_exa_search_without_contents_flag() -> None:
     assert 'contents' not in captured_body[0]
 
 
-def test_whisperx_align_returns_dict_on_success() -> None:
-    """align() returns the dict produced by whisperx.align()."""
-    from server.apps.generation.clients.whisperx import align
+def test_elevenlabs_force_align_returns_words_on_success() -> None:
+    """Successful Forced Alignment response returns word timings."""
+    from pathlib import Path
 
-    fake_result = {'segments': [{'start': 0.0, 'end': 2.0, 'text': 'hello'}]}
+    import httpx
 
-    async def _inner() -> dict[str, object]:
-        with patch(
-            'server.apps.generation.clients.whisperx.asyncio.to_thread',
-            new=AsyncMock(return_value=fake_result),
+    from server.apps.generation.clients.elevenlabs import force_align
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        'words': [
+            {'text': 'hello', 'start': 0.0, 'end': 0.4, 'loss': 0.1},
+            {'text': 'world', 'start': 0.4, 'end': 0.9, 'loss': 0.05},
+        ],
+        'characters': [],
+        'loss': 0.075,
+    }
+
+    async def _inner() -> dict:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
         ):
-            return await align('/tmp/audio.mp3', 'hello world')  # type: ignore[return-value]
+            return await force_align(
+                Path('/tmp/audio.mp3'),
+                'hello world',
+                'test-key',
+            )
 
     result = asyncio.run(_inner())
-    assert result == fake_result
+    assert len(result['words']) == 2
+    assert result['words'][0]['text'] == 'hello'
+    assert result['loss'] == 0.075
 
 
-def test_whisperx_align_raises_on_failure() -> None:
-    """align() raises RuntimeError when whisperx alignment fails."""
-    from server.apps.generation.clients.whisperx import align
+def test_elevenlabs_force_align_retryable_on_429() -> None:
+    """Forced Alignment 429 raises RetryableProviderError."""
+    from pathlib import Path
+
+    import httpx
+
+    from server.apps.generation.clients.elevenlabs import force_align
+    from server.common.exceptions import RetryableProviderError
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 429
+    mock_resp.text = 'rate limited'
 
     async def _inner() -> None:
-        with patch(
-            'server.apps.generation.clients.whisperx.asyncio.to_thread',
-            new=AsyncMock(side_effect=ValueError('bad audio')),
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
         ):
-            await align('/tmp/audio.mp3', 'hello')
+            await force_align(Path('/tmp/audio.mp3'), 'hello', 'test-key')
 
     try:
         asyncio.run(_inner())
-        raise AssertionError('expected RuntimeError')
-    except RuntimeError as e:
-        assert 'Alignment failed' in str(e)
-        assert 'bad audio' in str(e)
+        raise AssertionError('expected RetryableProviderError')
+    except RetryableProviderError as exc:
+        assert exc.provider == 'elevenlabs'
 
 
-def test_build_align_segments_requires_non_empty_text() -> None:
-    """_build_align_segments rejects empty transcript text."""
-    from server.apps.generation.clients.whisperx import _build_align_segments
+def test_elevenlabs_force_align_retryable_on_unknown_status() -> None:
+    """Forced Alignment non-422 failure raises RetryableProviderError."""
+    from pathlib import Path
+
+    import httpx
+
+    from server.apps.generation.clients.elevenlabs import force_align
+    from server.common.exceptions import RetryableProviderError
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 400
+    mock_resp.text = 'bad request'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            await force_align(Path('/tmp/audio.mp3'), 'hello', 'test-key')
 
     try:
-        _build_align_segments('   ', 5.0)
-        raise AssertionError('expected ValueError')
-    except ValueError as e:
-        assert 'empty' in str(e)
+        asyncio.run(_inner())
+        raise AssertionError('expected RetryableProviderError')
+    except RetryableProviderError as exc:
+        assert exc.provider == 'elevenlabs'
 
 
-def test_build_align_segments_spans_full_audio() -> None:
-    """_build_align_segments returns one segment covering the full duration."""
-    from server.apps.generation.clients.whisperx import _build_align_segments
+def test_elevenlabs_force_align_fatal_on_422() -> None:
+    """Forced Alignment 422 raises FatalProviderError."""
+    from pathlib import Path
 
-    segments = _build_align_segments('Hello world.', 12.5)
-    assert segments == [{'text': 'Hello world.', 'start': 0.0, 'end': 12.5}]
+    import httpx
+
+    from server.apps.generation.clients.elevenlabs import force_align
+    from server.common.exceptions import FatalProviderError
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 422
+    mock_resp.text = 'validation error'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            await force_align(Path('/tmp/audio.mp3'), 'hello', 'test-key')
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected FatalProviderError')
+    except FatalProviderError as exc:
+        assert exc.provider == 'elevenlabs'
 
 
 def test_elevenlabs_calculate_transcription_cost() -> None:

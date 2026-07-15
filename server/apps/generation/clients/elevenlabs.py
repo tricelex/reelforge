@@ -1,6 +1,7 @@
 """ElevenLabs provider client (raw HTTP — avoids SDK version pinning).
 
-Covers TTS synthesis and Scribe speech-to-text with diarization.
+Covers TTS synthesis, Scribe speech-to-text with diarization, and
+forced alignment of known transcripts to audio.
 """
 
 from decimal import Decimal
@@ -93,6 +94,13 @@ async def transcribe(
                 files={'file': (audio_path.name, audio_file, 'audio/mpeg')},
             )
 
+    _raise_for_status(resp)
+    result: dict[str, Any] = resp.json()
+    return result
+
+
+def _raise_for_status(resp: httpx.Response) -> None:
+    """Map ElevenLabs HTTP errors to provider exceptions."""
     if resp.status_code in _RETRYABLE:
         raise RetryableProviderError(
             f'ElevenLabs {resp.status_code}',
@@ -111,5 +119,29 @@ async def transcribe(
             provider='elevenlabs',
             status_code=resp.status_code,
         )
+
+
+async def force_align(
+    audio_path: Path,
+    text: str,
+    api_key: str,
+) -> dict[str, Any]:
+    """Force-align audio to a known transcript via ElevenLabs.
+
+    Returns {words: [{text, start, end, loss}, ...], characters: [...],
+    loss}.
+    """
+    with audio_path.open('rb') as audio_file:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(
+                f'{_BASE}/forced-alignment',
+                headers={'xi-api-key': api_key},
+                data={'text': text},
+                files={
+                    'file': (audio_path.name, audio_file, 'audio/mpeg'),
+                },
+            )
+
+    _raise_for_status(resp)
     result: dict[str, Any] = resp.json()
     return result
