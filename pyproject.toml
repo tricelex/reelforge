@@ -55,17 +55,9 @@ bgutil-ytdlp-pot-provider = "^1.3.1"
 optional = true
 
 [tool.poetry.group.ml.dependencies]
-# CPU torch/torchaudio — matching +cpu wheels, no CUDA.
-torch = { version = "2.8.0+cpu", source = "pytorch-cpu" }
-torchaudio = { version = "2.8.0+cpu", source = "pytorch-cpu" }
 mediapipe = "^0.10.30"
-pyannote-audio = "^4.0"
 scenedetect = "^0.6"
-
-[[tool.poetry.source]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-priority = "explicit"
+pyannoteai-sdk = "^0.4"
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"

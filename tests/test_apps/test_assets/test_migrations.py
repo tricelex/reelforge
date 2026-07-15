@@ -46,7 +46,7 @@ def test_backfill_license_type_grandfathers_unspecified_rows(
         ),
     )
     library_asset_model = reverted_state.apps.get_model(
-        'assets', 'LibraryAsset'
+        'assets', 'LibraryAsset',
     )
     reverted = library_asset_model.objects.get(id=pre_existing.id)
     assert reverted.license_type == 'UNSPECIFIED'

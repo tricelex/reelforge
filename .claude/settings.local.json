@@ -58,7 +58,13 @@
       "Bash(ffmpeg -version)",
       "Bash(brew info *)",
       "Bash(brew search *)",
-      "mcp__railway__get_service_config"
+      "mcp__railway__get_service_config",
+      "Bash(find /Users/chuckz/.cache/uv/archive-v0/ogQBua5ILAmUbkRk7ew6e/pyannoteai -type f -name \"*.py\" | sort)",
+      "Read(//Users/chuckz/.cache/uv/archive-v0/ogQBua5ILAmUbkRk7ew6e/pyannoteai/**)",
+      "Bash(git show HEAD:tests/test_apps/test_rendering/test_speaker_detection.py > /tmp/old_test_speaker_detection.py 2>&1 *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
