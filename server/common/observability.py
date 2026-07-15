@@ -15,7 +15,7 @@ from sentry_sdk.integrations.redis import RedisIntegration
 
 _HEALTH_CHECK_PATH = '/health/'
 _ERROR_MESSAGE_PATH = ('attributes', 'error', 'message')
-_FALSE_POSITIVE_MATCHES = frozenset({'cookie', 'apikey'})
+_FALSE_POSITIVE_MATCHES = frozenset({'cookie', 'apikey', 'auth'})
 
 
 def _normalised_scrub_match(matched: str) -> str:
