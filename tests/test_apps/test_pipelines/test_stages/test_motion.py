@@ -56,6 +56,13 @@ def _make_ctx() -> MagicMock:
     return ctx
 
 
+def _mock_image_asset(*, url: str = 'https://storage/img.jpg') -> MagicMock:
+    asset = MagicMock()
+    asset.file.url = url
+    asset.file.read = MagicMock(return_value=b'fake-image')
+    return asset
+
+
 def test_motion_stage_key() -> None:
     """MotionStage has the expected class attributes."""
     assert MotionStage.key == 'motion'
@@ -63,17 +70,20 @@ def test_motion_stage_key() -> None:
 
 
 def test_motion_fan_out_one_per_scene() -> None:
-    """fan_out() returns one shard per image_gen result."""
+    """fan_out() returns one shard per image_gen result with asset_id."""
     ctx = _make_ctx()
     shards = MotionStage().fan_out(ctx)
     assert shards is not None
     assert len(shards) == 2
     assert shards[0]['is_hero'] is True
+    assert shards[0]['asset_id'] == 'img-0'
     assert shards[1]['is_hero'] is False
+    assert shards[1]['asset_id'] == 'img-1'
+    assert 'image_url' not in shards[0]
 
 
 def test_motion_hero_scene_calls_kling() -> None:
-    """Hero scenes use Kling I2V and return method='kling'."""
+    """Hero scenes use Kling I2V via asset.file.url."""
     import httpx
 
     ctx = _make_ctx()
@@ -85,11 +95,15 @@ def test_motion_hero_scene_calls_kling() -> None:
         'is_hero': True,
         'est_seconds': 8.0,
         'visual_concept': 'aerial shot',
-        'image_url': 'https://storage/img-0.jpg',
     }
+    image_asset = _mock_image_asset(url='https://storage/img-0.jpg')
 
     async def _inner() -> dict[str, object]:
         with (
+            patch(
+                'server.apps.pipelines.stages.motion._load_image_asset',
+                new=AsyncMock(return_value=image_asset),
+            ),
             patch(
                 'server.apps.generation.clients.fal.generate_video_kling',
                 new=AsyncMock(
@@ -98,7 +112,7 @@ def test_motion_hero_scene_calls_kling() -> None:
                         'duration_s': 5,
                     },
                 ),
-            ),
+            ) as mock_kling,
             patch(
                 'httpx.AsyncClient.get',
                 new=AsyncMock(
@@ -110,7 +124,11 @@ def test_motion_hero_scene_calls_kling() -> None:
                 ),
             ),
         ):
-            return await MotionStage().run(ctx)
+            result = await MotionStage().run(ctx)
+            assert mock_kling.call_args.kwargs['image_url'] == (
+                'https://storage/img-0.jpg'
+            )
+            return result
 
     result = asyncio.run(_inner())
     assert result['scene_idx'] == 0
@@ -119,7 +137,7 @@ def test_motion_hero_scene_calls_kling() -> None:
 
 
 def test_motion_non_hero_scene_runs_ken_burns() -> None:
-    """Non-hero scenes use Ken Burns and return method='ken_burns'."""
+    """Non-hero scenes read asset bytes and use Ken Burns."""
     ctx = _make_ctx()
     ctx.execution.shard_index = 1
     ctx.execution.parent_id = 'parent'
@@ -129,20 +147,47 @@ def test_motion_non_hero_scene_runs_ken_burns() -> None:
         'is_hero': False,
         'est_seconds': 7.0,
         'visual_concept': 'map pan',
-        'image_url': 'https://storage/img-1.jpg',
     }
+    image_asset = _mock_image_asset()
 
     async def _inner() -> dict[str, object]:
-        with patch(
-            'server.apps.pipelines.stages.motion._run_ken_burns',
-            new=AsyncMock(return_value=b'fake-ken-burns-video'),
+        with (
+            patch(
+                'server.apps.pipelines.stages.motion._load_image_asset',
+                new=AsyncMock(return_value=image_asset),
+            ),
+            patch(
+                'server.apps.pipelines.stages.motion._run_ken_burns',
+                new=AsyncMock(return_value=b'fake-ken-burns-video'),
+            ) as mock_kb,
         ):
-            return await MotionStage().run(ctx)
+            result = await MotionStage().run(ctx)
+            assert mock_kb.call_args.kwargs['image_bytes'] == b'fake-image'
+            return result
 
     result = asyncio.run(_inner())
     assert result['scene_idx'] == 1
     assert result['method'] == 'ken_burns'
     assert 'asset_id' in result
+
+
+def test_motion_run_raises_when_asset_id_missing() -> None:
+    """run() raises a clear error when asset_id is absent."""
+    ctx = _make_ctx()
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'is_hero': False,
+        'est_seconds': 7.0,
+    }
+
+    async def _inner() -> None:
+        await MotionStage().run(ctx)
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected ValueError')
+    except ValueError as e:
+        assert 'missing asset_id' in str(e)
 
 
 def test_pick_camera_movement_cycles_through_pool_by_scene_idx() -> None:
@@ -169,14 +214,19 @@ def test_motion_run_hero_scene_uses_channel_camera_movement() -> None:
     ctx.execution.parent_id = 'parent'
     ctx.execution.input_snapshot = {
         'scene_idx': 0,
+        'asset_id': 'img-0',
         'is_hero': True,
         'est_seconds': 5.0,
-        'image_url': 'https://img.example.com/0.jpg',
         'visual_concept': 'aerial shot',
     }
+    image_asset = _mock_image_asset(url='https://img.example.com/0.jpg')
 
     async def _inner() -> dict[str, object]:
         with (
+            patch(
+                'server.apps.pipelines.stages.motion._load_image_asset',
+                new=AsyncMock(return_value=image_asset),
+            ),
             patch(
                 'server.apps.generation.clients.fal.generate_video_kling',
                 new=AsyncMock(
@@ -199,15 +249,16 @@ def test_motion_run_hero_scene_uses_channel_camera_movement() -> None:
             assert (
                 'pan_right' in prompt.lower() or 'pan right' in prompt.lower()
             )
+            assert mock_kling.call_args.kwargs['image_url'] == (
+                'https://img.example.com/0.jpg'
+            )
             return result
 
     asyncio.run(_inner())
 
 
 def test_run_ken_burns_returns_video_bytes() -> None:
-    """_run_ken_burns downloads image, runs FFmpeg, returns video bytes."""
-    import httpx
-
+    """_run_ken_burns writes image bytes, runs FFmpeg, returns video bytes."""
     from server.apps.pipelines.stages.motion import (
         _run_ken_burns,
     )
@@ -219,15 +270,6 @@ def test_run_ken_burns_returns_video_bytes() -> None:
     async def _inner() -> bytes:
         with (
             patch(
-                'httpx.AsyncClient.get',
-                new=AsyncMock(
-                    return_value=MagicMock(
-                        spec=httpx.Response,
-                        content=b'fake-image',
-                    ),
-                ),
-            ),
-            patch(
                 'asyncio.create_subprocess_exec',
                 new=AsyncMock(return_value=mock_proc),
             ),
@@ -236,7 +278,7 @@ def test_run_ken_burns_returns_video_bytes() -> None:
                 return_value=b'fake-video',
             ),
         ):
-            return await _run_ken_burns('https://storage/img.jpg', 5.0)
+            return await _run_ken_burns(b'fake-image', 5.0)
 
     result = asyncio.run(_inner())
     assert result == b'fake-video'
@@ -244,8 +286,6 @@ def test_run_ken_burns_returns_video_bytes() -> None:
 
 def test_run_ken_burns_raises_on_ffmpeg_failure() -> None:
     """_run_ken_burns raises RuntimeError if FFmpeg exits non-zero."""
-    import httpx
-
     from server.apps.pipelines.stages.motion import (
         _run_ken_burns,
     )
@@ -255,22 +295,11 @@ def test_run_ken_burns_raises_on_ffmpeg_failure() -> None:
     mock_proc.communicate = AsyncMock(return_value=(b'', b'codec not found'))
 
     async def _inner() -> None:
-        with (
-            patch(
-                'httpx.AsyncClient.get',
-                new=AsyncMock(
-                    return_value=MagicMock(
-                        spec=httpx.Response,
-                        content=b'fake-image',
-                    ),
-                ),
-            ),
-            patch(
-                'asyncio.create_subprocess_exec',
-                new=AsyncMock(return_value=mock_proc),
-            ),
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
         ):
-            await _run_ken_burns('https://storage/img.jpg', 5.0)
+            await _run_ken_burns(b'fake-image', 5.0)
 
     try:
         asyncio.run(_inner())
