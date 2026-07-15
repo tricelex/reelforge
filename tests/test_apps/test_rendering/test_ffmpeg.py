@@ -85,6 +85,43 @@ def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
     cmd = ' '.join(captured)
     assert 'ffmpeg' in captured[0]
     assert '/tmp/scene.mp4' in cmd
+    assert 'scale=1920:1080' in cmd
+    assert 'pad=1920:1080' in cmd
+
+
+def test_extract_ffmpeg_error_prefers_error_line_over_banner() -> None:
+    from server.apps.rendering.ffmpeg import _extract_ffmpeg_error
+
+    stderr = (
+        'ffmpeg version 5.1.9 Copyright (c) 2000-2026\n'
+        '  built with gcc 12\n'
+        'Error opening input file /tmp/missing.mp4.\n'
+        'Error opening input files: No such file or directory\n'
+    )
+    result = _extract_ffmpeg_error(stderr)
+    assert 'Error opening input file' in result
+    assert 'Copyright' not in result
+
+
+def test_extract_ffmpeg_error_falls_back_to_tail() -> None:
+    from server.apps.rendering.ffmpeg import _extract_ffmpeg_error
+
+    stderr = 'banner stuff\n' + ('x' * 20) + 'TAIL_MARKER'
+    result = _extract_ffmpeg_error(stderr, limit=40)
+    assert result.endswith('TAIL_MARKER')
+
+
+def test_concat_chapter_rejects_empty_segment_list() -> None:
+    from server.apps.rendering.ffmpeg import concat_chapter
+
+    async def _run() -> None:
+        await concat_chapter([], '/tmp/out.mp4')
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected ValueError')
+    except ValueError as e:
+        assert 'at least one segment' in str(e)
 
 
 def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:

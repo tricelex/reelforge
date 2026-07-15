@@ -47,6 +47,16 @@ def _make_ctx() -> MagicMock:
                 },
             ],
         },
+        'scene_breakdown': {
+            'scenes': [
+                {
+                    'idx': 0,
+                    'chapter_idx': 0,
+                    'narration_text': 'Rome was',
+                    'word_count': 2,
+                },
+            ],
+        },
     }
     ctx.config = {}
     ctx.costs = AsyncMock()
@@ -145,6 +155,100 @@ def test_segment_from_alignment_spans_words() -> None:
     assert len(segment['words']) == 2
 
 
+def test_split_words_into_scenes_assigns_scene_idx_and_skips_whitespace() -> None:
+    """FA word stream is partitioned into scene_breakdown rows by word quota."""
+    from server.apps.pipelines.stages.alignment import _split_words_into_scenes
+
+    chapter_scenes = [
+        {
+            'idx': 10,
+            'chapter_idx': 2,
+            'narration_text': 'The fire did not',
+            'word_count': 4,
+        },
+        {
+            'idx': 11,
+            'chapter_idx': 2,
+            'narration_text': 'destroy Ashmere',
+            'word_count': 2,
+        },
+    ]
+    fa_words = [
+        {'word': 'The', 'start': 0.1, 'end': 0.2, 'score': 0.1},
+        {'word': ' ', 'start': 0.2, 'end': 0.25, 'score': 0.0},
+        {'word': 'fire', 'start': 0.25, 'end': 0.5, 'score': 0.1},
+        {'word': ' ', 'start': 0.5, 'end': 0.55, 'score': 0.0},
+        {'word': 'did', 'start': 0.55, 'end': 0.7, 'score': 0.1},
+        {'word': 'not', 'start': 0.7, 'end': 0.9, 'score': 0.1},
+        {'word': 'destroy', 'start': 0.9, 'end': 1.2, 'score': 0.1},
+        {'word': 'Ashmere', 'start': 1.2, 'end': 1.6, 'score': 0.1},
+    ]
+    result = _split_words_into_scenes(chapter_scenes, fa_words)
+    assert len(result) == 2
+    assert result[0]['scene_idx'] == 10
+    assert result[0]['chapter_idx'] == 2
+    assert result[0]['segment_idx'] == 0
+    assert result[0]['start_s'] == 0.1
+    assert result[0]['end_s'] == 0.9
+    assert [w['word'] for w in result[0]['words']] == [
+        'The',
+        'fire',
+        'did',
+        'not',
+    ]
+    assert result[1]['scene_idx'] == 11
+    assert result[1]['segment_idx'] == 1
+    assert result[1]['start_s'] == 0.9
+    assert result[1]['end_s'] == 1.6
+
+
+def test_split_words_into_scenes_remap_when_quota_mismatches_fa_count() -> None:
+    """When narration quotas disagree with FA count, remap proportionally."""
+    from server.apps.pipelines.stages.alignment import _split_words_into_scenes
+
+    chapter_scenes = [
+        {
+            'idx': 0,
+            'chapter_idx': 0,
+            'narration_text': 'one two three',
+            'word_count': 3,
+        },
+        {
+            'idx': 1,
+            'chapter_idx': 0,
+            'narration_text': 'four',
+            'word_count': 1,
+        },
+    ]
+    # 6 speech tokens vs quotas totaling 4 → proportional remap
+    fa_words = [
+        {'word': f'w{i}', 'start': float(i), 'end': float(i) + 0.5, 'score': 0}
+        for i in range(6)
+    ]
+    result = _split_words_into_scenes(chapter_scenes, fa_words)
+    assert len(result) == 2
+    assert sum(len(s['words']) for s in result) == 6
+    assert result[0]['end_s'] <= result[1]['start_s']
+
+
+def test_split_words_into_scenes_raises_without_speech_words() -> None:
+    """Empty / whitespace-only FA stream is a fatal alignment failure."""
+    from server.apps.pipelines.stages.alignment import _split_words_into_scenes
+
+    with pytest.raises(ValueError, match='no speech words'):
+        _split_words_into_scenes(
+            [
+                {
+                    'idx': 0,
+                    'chapter_idx': 0,
+                    'narration_text': 'Hello',
+                    'word_count': 1,
+                },
+            ],
+            [{'word': ' ', 'start': 0.0, 'end': 0.1, 'score': 0.0}],
+        )
+
+
 def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     """run() returns dict with 'scenes' and 'ass_asset_id'."""
     ctx = _make_ctx()
@@ -181,6 +285,7 @@ def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     assert 'scenes' in result
     assert 'ass_asset_id' in result
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
+    assert result['scenes'][0]['scene_idx'] == 0  # type: ignore[index]
     ctx.costs.record.assert_awaited()
 
 
@@ -283,6 +388,16 @@ def test_alignment_loads_tts_from_child_executions() -> None:
                 },
             ],
         },
+        'scene_breakdown': {
+            'scenes': [
+                {
+                    'idx': 0,
+                    'chapter_idx': 0,
+                    'narration_text': 'Rome was',
+                    'word_count': 2,
+                },
+            ],
+        },
     }
     ctx.costs = AsyncMock()
     ctx.assets = AsyncMock()
@@ -308,6 +423,7 @@ def test_alignment_loads_tts_from_child_executions() -> None:
     result = asyncio.run(_inner())
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
     assert result['scenes'][0]['chapter_idx'] == 0  # type: ignore[index]
+    assert result['scenes'][0]['scene_idx'] == 0  # type: ignore[index]
 
 
 @pytest.mark.django_db(transaction=True)

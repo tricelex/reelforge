@@ -678,46 +678,44 @@ def test_assembly_run_without_ass_and_no_music_for_chapter() -> None:
     assert result['asset_id'] == 'final-uuid'
 
 
-def test_assembly_run_skips_scene_with_no_vid_asset() -> None:
-    """Covers line 166: continue when scene_idx not in scene_asset_map."""
+def test_assembly_run_fails_when_motion_asset_missing() -> None:
+    """Missing motion assets fail loudly instead of empty-concat FFmpeg errors."""
     ctx = _make_ctx()
-    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
 
     async def _run() -> dict:  # type: ignore[type-arg]
         with (
             patch(
                 'server.apps.pipelines.stages.assembly._build_scene_asset_map',
-                # scene_idx 0 has no asset — triggers the continue at line 166
                 new=AsyncMock(return_value={}),
             ),
             patch(
                 'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
                 new=AsyncMock(return_value={0: 'audio-uuid-0'}),
             ),
+        ):
+            return await AssemblyStage().run(ctx)
+
+    with pytest.raises(ValueError, match='missing motion assets'):
+        asyncio.run(_run())
+
+
+def test_assembly_run_fails_when_scene_idx_missing() -> None:
+    """Alignment rows without scene_idx are rejected before mux."""
+    ctx = _make_ctx()
+    del ctx.upstream['alignment']['scenes'][0]['scene_idx']
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with (
             patch(
-                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
-                new=AsyncMock(return_value=b'fake-bytes'),
+                'server.apps.pipelines.stages.assembly._build_scene_asset_map',
+                new=AsyncMock(return_value={0: 'vid-uuid-0'}),
             ),
             patch(
-                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-                new=AsyncMock(return_value=b'fake-music'),
-            ),
-            patch('server.apps.rendering.ffmpeg.mux_scene', new=AsyncMock()),
-            patch(
-                'server.apps.rendering.ffmpeg.concat_chapter',
-                new=AsyncMock(),
-            ),
-            patch('server.apps.rendering.ffmpeg.final_pass', new=AsyncMock()),
-            patch(
-                'server.apps.rendering.ffmpeg.async_ffprobe',
-                new=AsyncMock(return_value=fake_probe),
-            ),
-            patch(
-                'asyncio.to_thread',
-                new=AsyncMock(return_value=b'final-video'),
+                'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
+                new=AsyncMock(return_value={0: 'audio-uuid-0'}),
             ),
         ):
             return await AssemblyStage().run(ctx)
 
-    result = asyncio.run(_run())
-    assert result['asset_id'] == 'final-uuid'
+    with pytest.raises(ValueError, match='missing scene_idx'):
+        asyncio.run(_run())
