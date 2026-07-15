@@ -1,4 +1,4 @@
-"""Tests for the alignment stage (WhisperX + ASS subtitles)."""
+"""Tests for the alignment stage (ElevenLabs FA + ASS subtitles)."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +16,8 @@ from server.apps.pipelines.models import (
 from server.apps.pipelines.stages.alignment import (
     AlignmentStage,
     _build_ass_content,
+    _map_aligned_words,
+    _segment_from_alignment,
 )
 from server.common.exceptions import FatalProviderError
 
@@ -53,10 +55,21 @@ def _make_ctx() -> MagicMock:
     return ctx
 
 
+def _fake_fa_result() -> dict[str, object]:
+    return {
+        'words': [
+            {'text': 'Rome', 'start': 0.0, 'end': 0.4, 'loss': 0.1},
+            {'text': 'was', 'start': 0.4, 'end': 0.7, 'loss': 0.05},
+        ],
+        'characters': [],
+        'loss': 0.075,
+    }
+
+
 def test_alignment_stage_key() -> None:
     """AlignmentStage has the expected class attributes."""
     assert AlignmentStage.key == 'alignment'
-    assert AlignmentStage.queue == 'gpu'
+    assert AlignmentStage.queue == 'api'
 
 
 def test_alignment_fan_out_none() -> None:
@@ -106,19 +119,35 @@ def test_fmt_srt_time_carries_millisecond_rounding_into_seconds() -> None:
     assert _fmt_srt_time(61.234) == '00:01:01,234'
 
 
+def test_map_aligned_words_maps_text_and_loss() -> None:
+    """ElevenLabs word fields map to word/start/end/score."""
+    mapped = _map_aligned_words([
+        {'text': 'Rome', 'start': 0.0, 'end': 0.4, 'loss': 0.12},
+    ])
+    assert mapped == [
+        {'word': 'Rome', 'start': 0.0, 'end': 0.4, 'score': 0.12},
+    ]
+
+
+def test_segment_from_alignment_spans_words() -> None:
+    """One segment covers first-word start through last-word end."""
+    segment = _segment_from_alignment(
+        'Rome was great.',
+        {
+            'words': [
+                {'text': 'Rome', 'start': 0.1, 'end': 0.4, 'loss': 0.1},
+                {'text': 'great', 'start': 1.0, 'end': 1.5, 'loss': 0.2},
+            ],
+        },
+    )
+    assert segment['start'] == 0.1
+    assert segment['end'] == 1.5
+    assert len(segment['words']) == 2
+
+
 def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     """run() returns dict with 'scenes' and 'ass_asset_id'."""
     ctx = _make_ctx()
-    fake_whisper_result = {
-        'segments': [
-            {
-                'start': 0.0,
-                'end': 2.5,
-                'text': 'Rome was great once.',
-                'words': [{'word': 'Rome', 'start': 0.0, 'end': 0.4}],
-            },
-        ],
-    }
 
     async def _inner() -> dict[str, object]:
         with (
@@ -138,8 +167,12 @@ def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
                 new=AsyncMock(return_value=b'fake-audio'),
             ),
             patch(
-                'server.apps.generation.clients.whisperx.align',
-                new=AsyncMock(return_value=fake_whisper_result),
+                'server.apps.pipelines.stages.alignment.elevenlabs_client.force_align',
+                new=AsyncMock(return_value=_fake_fa_result()),
+            ),
+            patch(
+                'server.apps.pipelines.stages.alignment.settings.ELEVENLABS_API_KEY',
+                'test-key',
             ),
         ):
             return await AlignmentStage().run(ctx)
@@ -148,6 +181,22 @@ def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     assert 'scenes' in result
     assert 'ass_asset_id' in result
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
+    ctx.costs.record.assert_awaited()
+
+
+def test_alignment_run_fails_without_api_key() -> None:
+    """run() fails fast when ELEVENLABS_API_KEY is unset."""
+    ctx = _make_ctx()
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.pipelines.stages.alignment.settings.ELEVENLABS_API_KEY',
+            '',
+        ):
+            await AlignmentStage().run(ctx)
+
+    with pytest.raises(FatalProviderError, match='ELEVENLABS_API_KEY'):
+        asyncio.run(_inner())
 
 
 def test_fetch_audio_bytes_reads_from_asset() -> None:
@@ -180,7 +229,15 @@ def test_alignment_loads_tts_from_child_executions() -> None:
     bp = PipelineBlueprint.objects.create(
         name='align_db_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [{'key': 'alignment', 'depends_on': ['tts'], 'queue': 'gpu'}]},
+        graph={
+            'stages': [
+                {
+                    'key': 'alignment',
+                    'depends_on': ['tts'],
+                    'queue': 'api',
+                },
+            ],
+        },
     )
     run = PipelineRun.objects.create(
         channel=channel,
@@ -192,7 +249,11 @@ def test_alignment_loads_tts_from_child_executions() -> None:
         run=run,
         stage_key='tts',
         status=StageStatus.SUCCEEDED,
-        output={'shards': [{'shard_index': 0, 'status': StageStatus.SUCCEEDED}]},
+        output={
+            'shards': [
+                {'shard_index': 0, 'status': StageStatus.SUCCEEDED},
+            ],
+        },
     )
     StageExecution.objects.create(
         run=run,
@@ -200,7 +261,11 @@ def test_alignment_loads_tts_from_child_executions() -> None:
         parent=parent,
         shard_index=0,
         status=StageStatus.SUCCEEDED,
-        output={'chapter_idx': 0, 'asset_id': 'audio-ch0', 'char_count': 100},
+        output={
+            'chapter_idx': 0,
+            'asset_id': 'audio-ch0',
+            'char_count': 100,
+        },
     )
 
     ctx = MagicMock()
@@ -219,18 +284,9 @@ def test_alignment_loads_tts_from_child_executions() -> None:
             ],
         },
     }
+    ctx.costs = AsyncMock()
     ctx.assets = AsyncMock()
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='subtitle-uuid'))
-    fake_whisper_result = {
-        'segments': [
-            {
-                'start': 0.0,
-                'end': 2.5,
-                'text': 'Rome was great once.',
-                'words': [{'word': 'Rome', 'start': 0.0, 'end': 0.4}],
-            },
-        ],
-    }
 
     async def _inner() -> dict[str, object]:
         with (
@@ -239,8 +295,12 @@ def test_alignment_loads_tts_from_child_executions() -> None:
                 new=AsyncMock(return_value=b'fake-audio'),
             ),
             patch(
-                'server.apps.generation.clients.whisperx.align',
-                new=AsyncMock(return_value=fake_whisper_result),
+                'server.apps.pipelines.stages.alignment.elevenlabs_client.force_align',
+                new=AsyncMock(return_value=_fake_fa_result()),
+            ),
+            patch(
+                'server.apps.pipelines.stages.alignment.settings.ELEVENLABS_API_KEY',
+                'test-key',
             ),
         ):
             return await AlignmentStage().run(ctx)
@@ -260,7 +320,15 @@ def test_alignment_fails_when_no_tts_children() -> None:
     bp = PipelineBlueprint.objects.create(
         name='align_empty_v1',
         kind=PipelineKind.LONGFORM,
-        graph={'stages': [{'key': 'alignment', 'depends_on': ['tts'], 'queue': 'gpu'}]},
+        graph={
+            'stages': [
+                {
+                    'key': 'alignment',
+                    'depends_on': ['tts'],
+                    'queue': 'api',
+                },
+            ],
+        },
     )
     run = PipelineRun.objects.create(
         channel=channel,
@@ -272,6 +340,16 @@ def test_alignment_fails_when_no_tts_children() -> None:
     ctx = MagicMock()
     ctx.run = run
     ctx.upstream = {'script': {'chapters': []}}
+    ctx.costs = AsyncMock()
 
-    with pytest.raises(FatalProviderError, match='No succeeded TTS chapter shards'):
+    with (
+        patch(
+            'server.apps.pipelines.stages.alignment.settings.ELEVENLABS_API_KEY',
+            'test-key',
+        ),
+        pytest.raises(
+            FatalProviderError,
+            match='No succeeded TTS chapter shards',
+        ),
+    ):
         asyncio.run(AlignmentStage().run(ctx))
