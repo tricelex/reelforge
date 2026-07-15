@@ -57,7 +57,6 @@ optional = true
 [tool.poetry.group.ml.dependencies]
 mediapipe = "^0.10.30"
 scenedetect = "^0.6"
-pyannoteai-sdk = "^0.4"
 
 [tool.poetry.group.dev.dependencies]
 django-debug-toolbar = "^6.0"

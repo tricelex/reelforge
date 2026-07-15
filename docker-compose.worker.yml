@@ -1,6 +1,6 @@
 ---
 
-# Worker compose file — uses the ML image (mediapipe / scenedetect / pyannoteai-sdk).
+# Worker compose file — uses the ML image (mediapipe / scenedetect).
 # Run alongside dev: docker compose -f docker-compose.yml -f docker-compose.worker.yml up
 
 services:

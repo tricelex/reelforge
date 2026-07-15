@@ -1,4 +1,4 @@
-"""ClipTranscribeStage — OpenAI Whisper + scene detection."""
+"""ClipTranscribeStage — ElevenLabs Scribe transcribe+diarize + scene detect."""
 
 import asyncio
 import json
@@ -10,25 +10,20 @@ from typing import Any, override
 import structlog
 from django.conf import settings
 
-from server.apps.generation.clients.whisper import (
-    WHISPER_COST_PER_MINUTE_USD,
-    calculate_cost,
-)
-from server.apps.generation.clients.whisper import (
-    transcribe as whisper_transcribe,
-)
+from server.apps.generation.clients import elevenlabs as elevenlabs_client
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 from server.common.subprocess_errors import raise_subprocess_failure
 
 logger = structlog.get_logger(__name__)
 
 
 def _extract_audio(video_path: str, audio_path: str) -> None:
-    """Extract mono 16kHz MP3 from video for OpenAI Whisper."""
+    """Extract mono 16kHz MP3 from video for ElevenLabs Scribe."""
     result = subprocess.run(  # noqa: S603
         [  # noqa: S607
             'ffmpeg',
@@ -50,11 +45,6 @@ def _extract_audio(video_path: str, audio_path: str) -> None:
     )
     if result.returncode != 0:
         raise_subprocess_failure('ffmpeg', result)
-
-
-def _run_whisper(audio_path: str, api_key: str) -> dict[str, Any]:
-    """Transcribe audio via OpenAI Whisper API."""
-    return whisper_transcribe(Path(audio_path), api_key)
 
 
 def _try_scene_detect(video_path: str) -> list[float]:
@@ -85,25 +75,22 @@ def _run_scene_detection(video_path: str) -> list[float]:
 def _build_enriched_transcript(
     transcript_json: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Flatten word-level data into list of {word, start, end, speaker_id}."""
-    words: list[dict[str, Any]] = []
-    for seg in transcript_json.get('segments', []):
-        speaker = seg.get('speaker', 'UNKNOWN')
-        words.extend(
-            {
-                'word': w.get('word', ''),
-                'start': float(w.get('start', 0)),
-                'end': float(w.get('end', 0)),
-                'speaker_id': speaker,
-            }
-            for w in seg.get('words', [])
-        )
-    return words
+    """Flatten ElevenLabs Scribe words into {word, start, end, speaker_id}."""
+    return [
+        {
+            'word': w.get('text', ''),
+            'start': float(w.get('start', 0)),
+            'end': float(w.get('end', 0)),
+            'speaker_id': w.get('speaker_id') or 'UNKNOWN',
+        }
+        for w in transcript_json.get('words', [])
+        if w.get('type', 'word') == 'word'
+    ]
 
 
 @register_stage
 class ClipTranscribeStage(Stage):
-    """Stage 2: transcription + scene detection → transcript assets."""
+    """Stage 2: transcribe+diarize + scene detection → transcript assets."""
 
     key = 'clip_transcribe'
     queue = 'render'
@@ -120,7 +107,13 @@ class ClipTranscribeStage(Stage):
             'source_duration_sec',
             0.0,
         )
-        api_key: str = getattr(settings, 'OPENAI_API_KEY', '')
+        api_key: str = getattr(settings, 'ELEVENLABS_API_KEY', '')
+        if not api_key:
+            raise FatalProviderError(
+                'ELEVENLABS_API_KEY is not configured',
+                provider='elevenlabs',
+                error_code='missing_api_key',
+            )
 
         source_asset = await Asset.objects.aget(id=source_asset_id)
         video_bytes = await asyncio.to_thread(source_asset.file.read)
@@ -128,16 +121,15 @@ class ClipTranscribeStage(Stage):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             video_path = str(tmp / 'source.mp4')
-            audio_path = str(tmp / 'audio.mp3')
+            audio_path = tmp / 'audio.mp3'
             await asyncio.to_thread(
                 (tmp / 'source.mp4').write_bytes,
                 video_bytes,
             )
             logger.info('clip_transcribe_extract_audio', run_id=str(ctx.run.id))
-            await asyncio.to_thread(_extract_audio, video_path, audio_path)
-            logger.info('clip_transcribe_whisper', run_id=str(ctx.run.id))
-            transcript_json = await asyncio.to_thread(
-                _run_whisper,
+            await asyncio.to_thread(_extract_audio, video_path, str(audio_path))
+            logger.info('clip_transcribe_scribe', run_id=str(ctx.run.id))
+            transcript_json = await elevenlabs_client.transcribe(
                 audio_path,
                 api_key,
             )
@@ -150,10 +142,7 @@ class ClipTranscribeStage(Stage):
                 video_path,
             )
 
-        transcript_text = ' '.join(
-            seg.get('text', '').strip()
-            for seg in transcript_json.get('segments', [])
-        )
+        transcript_text = transcript_json.get('text', '')
         enriched = _build_enriched_transcript(transcript_json)
 
         manifest: dict[str, Any] = {
@@ -178,13 +167,13 @@ class ClipTranscribeStage(Stage):
         )
 
         duration_sec = float(
-            transcript_json.get('duration', source_duration_sec),
+            transcript_json.get('audio_duration_secs', source_duration_sec),
         )
         await ctx.costs.record(
-            provider='openai',
-            operation='whisper_transcription',
-            units=float(duration_sec) / 60.0,
-            unit_cost_usd=WHISPER_COST_PER_MINUTE_USD,
+            provider='elevenlabs',
+            operation='scribe_transcription',
+            units=duration_sec / 60.0,
+            unit_cost_usd=elevenlabs_client.SCRIBE_COST_PER_MINUTE_USD,
         )
 
         return {
@@ -194,5 +183,7 @@ class ClipTranscribeStage(Stage):
             'transcript_text': transcript_text,
             'scene_cuts': scene_cuts,
             'source_duration_sec': source_duration_sec,
-            'transcription_cost_usd': str(calculate_cost(duration_sec)),
+            'transcription_cost_usd': str(
+                elevenlabs_client.calculate_transcription_cost(duration_sec),
+            ),
         }

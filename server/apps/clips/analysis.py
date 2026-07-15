@@ -62,7 +62,6 @@ class ClipAnalysisService:
         self,
         transcript_text: str,
         enriched_transcript: list[dict[str, Any]] | None = None,
-        diarization: dict[str, Any] | None = None,
         scene_cuts: list[float] | None = None,
         video_duration: float | None = None,
     ) -> list[ClipCandidate]:
@@ -75,7 +74,6 @@ class ClipAnalysisService:
         prompt = self._build_prompt(
             transcript_text,
             enriched_transcript,
-            diarization,
             scene_cuts,
             video_duration,
         )
@@ -118,7 +116,6 @@ class ClipAnalysisService:
         self,
         transcript_text: str,
         enriched_transcript: list[dict[str, Any]] | None,
-        diarization: dict[str, Any] | None,
         scene_cuts: list[float] | None,
         video_duration: float | None,
     ) -> str:
@@ -126,11 +123,13 @@ class ClipAnalysisService:
             f'Source video transcript:\n{transcript_text}\n',
             f'Number of clips to identify: {self.clips_requested}',
         ]
-        if diarization and diarization.get('segments'):
+        if enriched_transcript:
             speaker_count = len(
-                {s.get('speaker_id') for s in diarization['segments']},
+                {w.get('speaker_id') for w in enriched_transcript}
+                - {'UNKNOWN', None},
             )
-            lines.append(f'\nThis video has {speaker_count} speaker(s).')
+            if speaker_count:
+                lines.append(f'\nThis video has {speaker_count} speaker(s).')
         if video_duration is not None:
             lines.append(f'\nVIDEO_DURATION_SECONDS: {video_duration:.3f}')
         if enriched_transcript:

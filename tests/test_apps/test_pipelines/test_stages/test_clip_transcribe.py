@@ -2,7 +2,6 @@
 
 import asyncio
 import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from server.apps.pipelines.stages.clip_transcribe import (
@@ -10,7 +9,6 @@ from server.apps.pipelines.stages.clip_transcribe import (
     _build_enriched_transcript,
     _extract_audio,
     _run_scene_detection,
-    _run_whisper,
     _try_scene_detect,
 )
 
@@ -34,14 +32,20 @@ def test_clip_transcribe_registered() -> None:
 
 def test_build_enriched_transcript_basic() -> None:
     transcript = {
-        'segments': [
+        'words': [
             {
-                'speaker': 'SPEAKER_A',
-                'text': 'Hello world',
-                'words': [
-                    {'word': 'Hello', 'start': 0.0, 'end': 0.5},
-                    {'word': 'world', 'start': 0.5, 'end': 1.0},
-                ],
+                'text': 'Hello',
+                'start': 0.0,
+                'end': 0.5,
+                'type': 'word',
+                'speaker_id': 'speaker_0',
+            },
+            {
+                'text': 'world',
+                'start': 0.5,
+                'end': 1.0,
+                'type': 'word',
+                'speaker_id': 'speaker_0',
             },
         ],
     }
@@ -51,23 +55,39 @@ def test_build_enriched_transcript_basic() -> None:
         'word': 'Hello',
         'start': 0.0,
         'end': 0.5,
-        'speaker_id': 'SPEAKER_A',
+        'speaker_id': 'speaker_0',
     }
 
 
 def test_build_enriched_transcript_default_speaker() -> None:
     transcript = {
-        'segments': [
-            {'text': 'Hi', 'words': [{'word': 'Hi', 'start': 0.0, 'end': 0.3}]},
-        ],
+        'words': [{'text': 'Hi', 'start': 0.0, 'end': 0.3, 'type': 'word'}],
     }
     result = _build_enriched_transcript(transcript)
     assert result[0]['speaker_id'] == 'UNKNOWN'
 
 
+def test_build_enriched_transcript_skips_non_word_entries() -> None:
+    transcript = {
+        'words': [
+            {'text': ' ', 'start': 0.3, 'end': 0.4, 'type': 'spacing'},
+            {
+                'text': 'Hi',
+                'start': 0.4,
+                'end': 0.6,
+                'type': 'word',
+                'speaker_id': 'speaker_1',
+            },
+        ],
+    }
+    result = _build_enriched_transcript(transcript)
+    assert len(result) == 1
+    assert result[0]['word'] == 'Hi'
+
+
 def test_build_enriched_transcript_empty() -> None:
     assert _build_enriched_transcript({}) == []
-    assert _build_enriched_transcript({'segments': []}) == []
+    assert _build_enriched_transcript({'words': []}) == []
 
 
 def test_run_scene_detection_returns_empty_on_exception() -> None:
@@ -122,15 +142,6 @@ def test_extract_audio_raises_with_stderr(mock_run: MagicMock) -> None:
         raise AssertionError('expected RuntimeError')
 
 
-@patch('server.apps.pipelines.stages.clip_transcribe.whisper_transcribe')
-def test_run_whisper_delegates_to_client(mock_transcribe: MagicMock) -> None:
-    transcript_data = {'segments': [{'text': 'hello'}], 'duration': 12.0}
-    mock_transcribe.return_value = transcript_data
-    result = _run_whisper('/tmp/audio.mp3', 'test-key')
-    assert result == transcript_data
-    mock_transcribe.assert_called_once_with(Path('/tmp/audio.mp3'), 'test-key')
-
-
 @patch('server.apps.pipelines.stages.clip_transcribe.subprocess.run')
 def test_extract_audio_calls_ffmpeg(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
@@ -140,6 +151,27 @@ def test_extract_audio_calls_ffmpeg(mock_run: MagicMock) -> None:
     assert 'ffmpeg' in cmd
     assert '-vn' in cmd
     assert '32k' in cmd
+
+
+def test_clip_transcribe_missing_api_key_raises_fatal() -> None:
+    from server.common.exceptions import FatalProviderError
+
+    ctx = MagicMock()
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.pipelines.stages.clip_transcribe.settings',
+        ) as mock_settings:
+            mock_settings.ELEVENLABS_API_KEY = ''
+            await ClipTranscribeStage().run(ctx)
+
+    try:
+        asyncio.run(_inner())
+    except FatalProviderError as exc:
+        assert exc.provider == 'elevenlabs'
+        assert exc.error_code == 'missing_api_key'
+    else:
+        raise AssertionError('expected FatalProviderError')
 
 
 def test_clip_transcribe_run() -> None:
@@ -152,8 +184,17 @@ def test_clip_transcribe_run() -> None:
     }
 
     transcript_data: dict = {
-        'segments': [{'text': 'hello', 'speaker': 'A', 'words': []}],
-        'duration': 60.0,
+        'text': 'hello',
+        'words': [
+            {
+                'text': 'hello',
+                'start': 0.0,
+                'end': 0.4,
+                'type': 'word',
+                'speaker_id': 'speaker_0',
+            },
+        ],
+        'audio_duration_secs': 60.0,
     }
     fake_source_asset = MagicMock()
     fake_transcript_asset = MagicMock()
@@ -173,16 +214,19 @@ def test_clip_transcribe_run() -> None:
                         b'video bytes',  # source_asset.file.read
                         None,  # write_bytes
                         None,  # extract_audio
-                        transcript_data,  # whisper
                         [5.0, 10.0],  # scene_detection
                     ],
                 ),
             ),
             patch(
+                'server.apps.pipelines.stages.clip_transcribe.elevenlabs_client.transcribe',
+                new=AsyncMock(return_value=transcript_data),
+            ) as mock_transcribe,
+            patch(
                 'server.apps.pipelines.stages.clip_transcribe.settings',
             ) as mock_settings,
         ):
-            mock_settings.OPENAI_API_KEY = 'test-key'
+            mock_settings.ELEVENLABS_API_KEY = 'test-key'
             mock_asset_cls.objects.aget = AsyncMock(
                 return_value=fake_source_asset,
             )
@@ -190,7 +234,9 @@ def test_clip_transcribe_run() -> None:
                 side_effect=[fake_transcript_asset, fake_manifest_asset],
             )
             ctx.costs.record = AsyncMock()
-            return await ClipTranscribeStage().run(ctx)
+            result = await ClipTranscribeStage().run(ctx)
+            mock_transcribe.assert_called_once()
+            return result
 
     result = asyncio.run(_inner())
     assert result['source_asset_id'] == 'src-asset-id'

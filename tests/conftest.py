@@ -14,7 +14,6 @@ import pytest
 # With @lru_cache lazy init, agents are only created on first _agent() call
 # (inside test bodies), so setting these here is sufficient.
 os.environ.setdefault('OPENAI_API_KEY', 'test-dummy-key')
-os.environ.setdefault('PYANNOTEAI_API_KEY', 'test-dummy-key')
 os.environ.setdefault('FAL_KEY', 'test-dummy-key')
 os.environ.setdefault('EXA_API_KEY', 'test-dummy-key')
 os.environ.setdefault('ELEVENLABS_API_KEY', 'test-dummy-key')

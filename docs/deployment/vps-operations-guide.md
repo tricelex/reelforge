@@ -67,27 +67,24 @@ bug. If it's just wedged, a restart is a fine first move:
 ./scripts/vps-restart.sh worker
 ```
 
-### Diarization (pyannoteAI hosted API)
+### Transcription + diarization (ElevenLabs Scribe hosted API)
 
-Speaker diarization runs against pyannoteAI's hosted API (`PYANNOTEAI_API_KEY`), not a
-local model — there's no HuggingFace model cache, GPU/CPU inference, or subprocess pool
-on the worker to manage. `SpeakerDetectionService.diarize()` extracts mono 16kHz audio with
-`ffmpeg`, uploads it, submits a diarization job, and blocks (via the SDK's own polling) until
-it completes. Look for:
-
-```text
-diarization_complete segment_count=… elapsed_s=…   # whole-file result
-```
+Transcription and speaker diarization run together against ElevenLabs' Scribe v2 hosted
+API (`ELEVENLABS_API_KEY`), not a local model — there's no HuggingFace model cache,
+GPU/CPU inference, or subprocess pool on the worker to manage. `ClipTranscribeStage`
+extracts mono 16kHz audio with `ffmpeg`, uploads it via `elevenlabs.transcribe()`
+(`diarize=true`), and gets back a word-level transcript with a `speaker_id` on every word
+in one response — there's no separate diarization stage or job to poll.
 
 **Expectations:**
 
 - No model download/cache warmup — the first request is as fast as any other.
-- A stuck or slow job is bounded by `ClipAnalyzeStage.timeout_s` (3600s), same as every
-  other pipeline stage — no bespoke diarization timeout to configure.
-- `PYANNOTEAI_MODEL` env var (default `precision-2`) selects the model; set to `community-1`
-  if cost needs to come down.
-- Missing/blank `PYANNOTEAI_API_KEY` fails fast with `error_code=missing_api_key` rather than
-  attempting the call.
+- A stuck or slow call is bounded by `ClipTranscribeStage.timeout_s` (3600s), same as
+  every other pipeline stage — no bespoke diarization timeout to configure.
+- Missing/blank `ELEVENLABS_API_KEY` fails fast with `error_code=missing_api_key` rather
+  than attempting the call.
+- `clip_analyze` no longer does any diarization work — it only reads the already-diarized
+  `enriched_transcript` off the manifest asset produced by `clip_transcribe`.
 
 ### "High memory usage / suspected OOM"
 
