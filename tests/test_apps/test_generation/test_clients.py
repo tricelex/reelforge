@@ -251,8 +251,6 @@ def test_exa_search_joins_highlights_into_text_field() -> None:
     """search() truncates oversized page text returned by Exa."""
     import httpx
 
-    from server.apps.generation.clients.search import search
-
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.is_success = True
     mock_resp.json.return_value = {

@@ -60,7 +60,7 @@ def init_logfire() -> None:
     logfire.configure(
         token=settings.LOGFIRE_TOKEN,
         service_name=settings.LOGFIRE_SERVICE_NAME,
-        scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback)
+        scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback),
     )
     logfire.instrument_django(
         capture_headers=False,

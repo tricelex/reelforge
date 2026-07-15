@@ -103,7 +103,7 @@ class ClipAnalyzeStage(Stage):
                     raise
                 raise FatalProviderError(
                     f'Speaker diarization failed: {exc}',
-                    provider='pyannote',
+                    provider='pyannoteai',
                     error_code='diarization_failed',
                 ) from exc
 

@@ -1,6 +1,6 @@
 ---
 
-# Worker compose file — uses the ML image (torch CPU / mediapipe / pyannote / scenedetect).
+# Worker compose file — uses the ML image (mediapipe / scenedetect / pyannoteai-sdk).
 # Run alongside dev: docker compose -f docker-compose.yml -f docker-compose.worker.yml up
 
 services:
@@ -17,16 +17,9 @@ services:
         GID: ${GID:-1000}
     environment:
       LOGFIRE_SERVICE_NAME: ***REMOVED***-worker
-      DIARIZATION_PRELOAD: "1"
-      OMP_NUM_THREADS: "4"
-      MKL_NUM_THREADS: "4"
-      TORCH_NUM_THREADS: "4"
-      HF_HOME: /var/cache/huggingface
-      HUGGINGFACE_HUB_CACHE: /var/cache/huggingface/hub
     env_file: ./config/.env
     volumes:
       - .:/code
-      - huggingface-cache:/var/cache/huggingface
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -35,6 +28,3 @@ services:
       server.apps.clips.tasks
       server.apps.pipelines.tasks
       server.apps.analytics.tasks
-
-volumes:
-  huggingface-cache:

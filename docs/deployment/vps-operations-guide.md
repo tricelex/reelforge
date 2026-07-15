@@ -67,67 +67,27 @@ bug. If it's just wedged, a restart is a fine first move:
 ./scripts/vps-restart.sh worker
 ```
 
-### Diarization / HuggingFace model cache on the worker
+### Diarization (pyannoteAI hosted API)
 
-The worker persists pyannote models in a Docker volume (`huggingface-cache` →
-`/var/cache/huggingface` via `HF_HOME`). That survives image pulls and container recreate, so
-redeploys should **not** re-download weights from HuggingFace.
-
-Diarization runs on a small **pool of persistent subprocesses** (not the main worker process),
-so a slow/stuck chunk can be killed and its slot replaced without losing the rest of the worker.
-The source video is split into fixed-duration chunks (`DIARIZATION_CHUNK_S`, default 900s), each
-diarized independently on the pool, then reconciled back into globally consistent speaker ids
-using the per-chunk speaker embeddings pyannote already produces. On boot, if `DIARIZATION_PRELOAD=1`,
-the worker eagerly starts this pool; otherwise it starts lazily on the first diarization job. Look
-for:
+Speaker diarization runs against pyannoteAI's hosted API (`PYANNOTEAI_API_KEY`), not a
+local model — there's no HuggingFace model cache, GPU/CPU inference, or subprocess pool
+on the worker to manage. `SpeakerDetectionService.diarize()` extracts mono 16kHz audio with
+`ffmpeg`, uploads it, submits a diarization job, and blocks (via the SDK's own polling) until
+it completes. Look for:
 
 ```text
-diarization_pool_started pool_size=…            # eager start at boot (DIARIZATION_PRELOAD=1)
-diarization_pipeline_loaded elapsed_s=…          # one pool worker's first-job model load
-diarization_chunk_complete segment_count=… elapsed_s=…   # per-chunk inference, logged per chunk
-diarization_complete segment_count=… chunk_count=…       # whole-file result after reconciliation
+diarization_complete segment_count=… elapsed_s=…   # whole-file result
 ```
 
-**Expectations (CPU VPS):**
+**Expectations:**
 
-- First fill of an empty volume: download + load can take several minutes — this cost is paid
-  once per pool worker process, not once per chunk (the pool is persistent, not spawned fresh
-  per job).
-- A chunk that exceeds `DIARIZATION_CHUNK_TIMEOUT_S` (default 600s) kills and replaces just that
-  one pool worker — expect a `NEEDS_INPUT` stage with `error_code=diarization_chunk_timeout`,
-  not a full-worker outage.
-- Wipe the cache only if intentional: `docker volume rm …_huggingface-cache` (name from
-  `docker volume ls | grep huggingface`).
-
-Tunables (all env-overridable, no redeploy needed — see
-`server/apps/rendering/speaker_detection.py` for defaults): `DIARIZATION_POOL_SIZE`,
-`DIARIZATION_CHUNK_S`, `DIARIZATION_CHUNK_OVERLAP_S`, `DIARIZATION_CHUNK_TIMEOUT_S`,
-`DIARIZATION_POOL_WORKER_TORCH_THREADS`. (Segmentation/embedding batch-size tuning was
-attempted and reverted — `Pipeline.from_pretrained()` only forwards `token`/`cache_dir`
-to the underlying pipeline class, not arbitrary hyperparameters, so this isn't currently
-a supported lever without reaching into pyannote internals.)
-
-Thread env (`OMP_NUM_THREADS` / `TORCH_NUM_THREADS=4`) matches `cpus: 4.0` for the container as a
-whole (e.g. forced-alignment work); each diarization pool worker overrides its own
-`TORCH_NUM_THREADS` to `DIARIZATION_POOL_WORKER_TORCH_THREADS` (default 1) so `DIARIZATION_POOL_SIZE`
-parallel chunks divide the 4 CPUs instead of each contending for all 4 threads at once.
-
-If you see `Permission denied: '/var/cache/huggingface/hub'`, the volume was created
-root-owned before the worker entrypoint chown ran. With the current worker image this
-is fixed on every start. One-shot repair without rebuild:
-
-```bash
-# on the VPS
-docker compose run --rm --user root --entrypoint '' \
-  -v "$(docker volume ls -q | grep huggingface-cache):/var/cache/huggingface" \
-  worker chown -R 1000:1000 /var/cache/huggingface
-# or more simply:
-docker run --rm -v ***REMOVED***_huggingface-cache:/data alpine \
-  chown -R 1000:1000 /data
-docker compose restart worker
-```
-
-(Adjust the volume name from `docker volume ls | grep huggingface`.)
+- No model download/cache warmup — the first request is as fast as any other.
+- A stuck or slow job is bounded by `ClipAnalyzeStage.timeout_s` (3600s), same as every
+  other pipeline stage — no bespoke diarization timeout to configure.
+- `PYANNOTEAI_MODEL` env var (default `precision-2`) selects the model; set to `community-1`
+  if cost needs to come down.
+- Missing/blank `PYANNOTEAI_API_KEY` fails fast with `error_code=missing_api_key` rather than
+  attempting the call.
 
 ### "High memory usage / suspected OOM"
 
