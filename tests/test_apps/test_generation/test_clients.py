@@ -173,7 +173,11 @@ def test_exa_search_requests_max_characters_in_body() -> None:
 
     async def _inner() -> list[dict[str, object]]:
         with patch('httpx.AsyncClient.post', side_effect=_fake_post):
-            return await search('query', api_key='key', max_characters_per_result=8000)
+            return await search(
+                'query',
+                api_key='key',
+                max_characters_per_result=8000,
+            )
 
     asyncio.run(_inner())
     assert captured_body[0]['contents'] == {'text': {'maxCharacters': 8000}}
@@ -628,96 +632,149 @@ def test_build_align_segments_spans_full_audio() -> None:
     assert segments == [{'text': 'Hello world.', 'start': 0.0, 'end': 12.5}]
 
 
-def test_whisper_calculate_cost() -> None:
+def test_elevenlabs_calculate_transcription_cost() -> None:
     from decimal import Decimal
 
-    from server.apps.generation.clients.whisper import calculate_cost
+    from server.apps.generation.clients.elevenlabs import (
+        calculate_transcription_cost,
+    )
 
-    assert calculate_cost(60.0) == Decimal('0.006000')
-    assert calculate_cost(0.0) == Decimal('0.000000')
+    assert calculate_transcription_cost(60.0) == Decimal('0.003670')
+    assert calculate_transcription_cost(0.0) == Decimal('0.000000')
 
 
-def test_whisper_transcribe_returns_verbose_json() -> None:
+def test_elevenlabs_transcribe_returns_words_on_success() -> None:
+    """Successful ElevenLabs Scribe response returns diarized transcript JSON."""
     from pathlib import Path
 
-    from server.apps.generation.clients.whisper import transcribe
+    import httpx
 
-    fake_response = MagicMock()
-    fake_response.model_dump.return_value = {
-        'text': 'hello',
-        'segments': [{'text': 'hello', 'words': []}],
-        'duration': 1.5,
+    from server.apps.generation.clients.elevenlabs import transcribe
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        'text': 'hello world',
+        'words': [
+            {
+                'text': 'hello',
+                'start': 0.0,
+                'end': 0.5,
+                'type': 'word',
+                'speaker_id': 'speaker_0',
+            },
+        ],
+        'audio_duration_secs': 1.5,
     }
 
-    mock_client = MagicMock()
-    mock_client.audio.transcriptions.create.return_value = fake_response
+    async def _inner() -> dict:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            return await transcribe(Path('/tmp/audio.mp3'), 'test-key')
 
-    with (
-        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
-        patch('pathlib.Path.open', create=True),
-    ):
-        mock_openai.return_value = mock_client
-        result = transcribe(Path('/tmp/audio.mp3'), 'test-key')
-
-    assert result['text'] == 'hello'
-    assert result['duration'] == 1.5
+    result = asyncio.run(_inner())
+    assert result['text'] == 'hello world'
+    assert result['audio_duration_secs'] == 1.5
+    assert result['words'][0]['speaker_id'] == 'speaker_0'
 
 
-def test_whisper_transcribe_raises_retryable_on_timeout() -> None:
+def test_elevenlabs_transcribe_retryable_on_429() -> None:
+    """ElevenLabs Scribe 429 raises RetryableProviderError."""
     from pathlib import Path
 
-    from openai import APITimeoutError
+    import httpx
 
-    from server.apps.generation.clients.whisper import transcribe
+    from server.apps.generation.clients.elevenlabs import transcribe
     from server.common.exceptions import RetryableProviderError
 
-    mock_client = MagicMock()
-    mock_client.audio.transcriptions.create.side_effect = APITimeoutError(
-        request=MagicMock(),
-    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 429
+    mock_resp.text = 'rate limited'
 
-    with (
-        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
-        patch('pathlib.Path.open', create=True),
-    ):
-        mock_openai.return_value = mock_client
-        try:
-            transcribe(Path('/tmp/audio.mp3'), 'test-key')
-        except RetryableProviderError as exc:
-            assert exc.provider == 'openai'
-        else:
-            raise AssertionError('expected RetryableProviderError')
+    async def _inner() -> None:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            await transcribe(Path('/tmp/audio.mp3'), 'test-key')
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected RetryableProviderError')
+    except RetryableProviderError as exc:
+        assert exc.provider == 'elevenlabs'
 
 
-def test_whisper_transcribe_raises_fatal_on_401() -> None:
+def test_elevenlabs_transcribe_retryable_on_unknown_status() -> None:
+    """ElevenLabs Scribe non-422, non-retryable failure raises RetryableProviderError."""
     from pathlib import Path
 
-    from openai import APIStatusError
+    import httpx
 
-    from server.apps.generation.clients.whisper import transcribe
+    from server.apps.generation.clients.elevenlabs import transcribe
+    from server.common.exceptions import RetryableProviderError
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 400
+    mock_resp.text = 'bad request'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            await transcribe(Path('/tmp/audio.mp3'), 'test-key')
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected RetryableProviderError')
+    except RetryableProviderError as exc:
+        assert exc.provider == 'elevenlabs'
+
+
+def test_elevenlabs_transcribe_fatal_on_422() -> None:
+    """ElevenLabs Scribe 422 raises FatalProviderError."""
+    from pathlib import Path
+
+    import httpx
+
+    from server.apps.generation.clients.elevenlabs import transcribe
     from server.common.exceptions import FatalProviderError
 
-    mock_response = MagicMock()
-    mock_response.status_code = 401
-    mock_client = MagicMock()
-    mock_client.audio.transcriptions.create.side_effect = APIStatusError(
-        'invalid key',
-        response=mock_response,
-        body=None,
-    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = False
+    mock_resp.status_code = 422
+    mock_resp.text = 'validation error'
 
-    with (
-        patch('server.apps.generation.clients.whisper.openai.OpenAI') as mock_openai,
-        patch('pathlib.Path.open', create=True),
-    ):
-        mock_openai.return_value = mock_client
-        try:
-            transcribe(Path('/tmp/audio.mp3'), 'test-key')
-        except FatalProviderError as exc:
-            assert exc.provider == 'openai'
-            assert exc.error_code == '401'
-        else:
-            raise AssertionError('expected FatalProviderError')
+    async def _inner() -> None:
+        with (
+            patch(
+                'httpx.AsyncClient.post',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+            patch('pathlib.Path.open', create=True),
+        ):
+            await transcribe(Path('/tmp/audio.mp3'), 'test-key')
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected FatalProviderError')
+    except FatalProviderError as exc:
+        assert exc.provider == 'elevenlabs'
 
 
 def test_run_agent_skips_cost_recording_when_zero_tokens() -> None:

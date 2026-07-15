@@ -47,7 +47,7 @@ ignore_imports =
   server.apps.pipelines.stages.tts -> server.apps.generation.clients.elevenlabs
   server.apps.pipelines.stages.motion -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.alignment -> server.apps.generation.clients.whisperx
-  server.apps.pipelines.stages.clip_transcribe -> server.apps.generation.clients.whisper
+  server.apps.pipelines.stages.clip_transcribe -> server.apps.generation.clients.elevenlabs
   server.apps.pipelines.stages.music_plan -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.thumbnail -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.metadata -> server.apps.generation.clients.llm
@@ -91,8 +91,6 @@ ignore_imports =
   server.apps.pipelines.stages.clip_distribute -> server.apps.clips.models
   server.apps.pipelines.stages.clip_distribute -> server.apps.clips.logic.constants
   server.apps.pipelines.stages.clip_analyze -> server.apps.clips.analysis
-  server.apps.pipelines.stages.clip_analyze -> server.apps.clips.logic.transcript_merge
-  server.apps.pipelines.stages.clip_analyze -> server.apps.rendering.speaker_detection
   # Clip render stage orchestrates the ClipRenderPipeline (rendering is a service for clips)
   server.apps.pipelines.stages.clip_render -> server.apps.rendering.clip_render_pipeline
   # Clip gate approval calls the pipeline orchestrator from the service layer

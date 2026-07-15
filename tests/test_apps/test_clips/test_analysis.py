@@ -61,7 +61,6 @@ def test_build_prompt_includes_duration() -> None:
         'Hello world',
         None,
         None,
-        None,
         video_duration=120.5,
     )
     assert 'VIDEO_DURATION_SECONDS: 120.500' in prompt
@@ -71,21 +70,30 @@ def test_build_prompt_includes_duration() -> None:
 def test_build_prompt_includes_speaker_count() -> None:
     run = MagicMock()
     svc = ClipAnalysisService(run=run)
-    diarization = {
-        'segments': [
-            {'speaker_id': 'A', 'start': 0.0, 'end': 5.0},
-            {'speaker_id': 'B', 'start': 5.0, 'end': 10.0},
-            {'speaker_id': 'A', 'start': 10.0, 'end': 15.0},
-        ],
-    }
-    prompt = svc._build_prompt('text', None, diarization, None, None)
+    enriched = [
+        {'word': 'Hi', 'start': 0.0, 'end': 0.5, 'speaker_id': 'A'},
+        {'word': 'there', 'start': 0.5, 'end': 1.0, 'speaker_id': 'B'},
+        {'word': 'you', 'start': 1.0, 'end': 1.5, 'speaker_id': 'A'},
+    ]
+    prompt = svc._build_prompt('text', enriched, None, None)
     assert '2 speaker(s)' in prompt
+
+
+def test_build_prompt_omits_speaker_count_when_all_unknown() -> None:
+    run = MagicMock()
+    svc = ClipAnalysisService(run=run)
+    enriched = [
+        {'word': 'Hi', 'start': 0.0, 'end': 0.5, 'speaker_id': 'UNKNOWN'},
+        {'word': 'there', 'start': 0.5, 'end': 1.0, 'speaker_id': 'UNKNOWN'},
+    ]
+    prompt = svc._build_prompt('text', enriched, None, None)
+    assert 'speaker(s)' not in prompt
 
 
 def test_build_prompt_includes_scene_cuts() -> None:
     run = MagicMock()
     svc = ClipAnalysisService(run=run)
-    prompt = svc._build_prompt('text', None, None, [5.0, 10.0, 20.5], None)
+    prompt = svc._build_prompt('text', None, [5.0, 10.0, 20.5], None)
     assert 'SCENE_CUTS' in prompt
     assert '5.0' in prompt
 
@@ -97,7 +105,7 @@ def test_build_prompt_includes_words_json() -> None:
         {'word': 'Hello', 'start': 0.0, 'end': 0.5, 'speaker_id': 'A'},
         {'word': 'world', 'start': 0.5, 'end': 1.0, 'speaker_id': 'A'},
     ]
-    prompt = svc._build_prompt('Hello world', enriched, None, None, None)
+    prompt = svc._build_prompt('Hello world', enriched, None, None)
     assert 'WORDS_JSON' in prompt
     assert 'Hello' in prompt
 
@@ -182,7 +190,6 @@ def test_analyze_creates_candidates() -> None:
                     'speaker_id': 'A',
                 },
             ],
-            diarization={'segments': []},
             scene_cuts=[5.0, 20.0],
             video_duration=120.0,
         )

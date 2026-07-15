@@ -1,15 +1,11 @@
-"""SpeakerDetectionService — face detection + diarization for smart crop."""
+"""SpeakerDetectionService — face detection for smart crop."""
 
 import logging
-import os
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, final
 
 logger = logging.getLogger('***REMOVED***.rendering.speaker_detection')
-
-_PYANNOTEAI_MODEL = os.environ.get('PYANNOTEAI_MODEL', 'precision-2')
 
 
 @dataclass(frozen=True)
@@ -26,7 +22,7 @@ class SpeakerCropResult:
 
 @final
 class SpeakerDetectionService:
-    """MediaPipe face detection + pyannoteAI diarization for smart crop.
+    """MediaPipe face detection for smart crop.
 
     Falls back to center crop when face detection fails or is unavailable.
     """
@@ -179,74 +175,3 @@ class SpeakerDetectionService:
         options = vision.FaceDetectorOptions(base_options=base_options)
         self._detector_cache = vision.FaceDetector.create_from_options(options)
         return self._detector_cache
-
-    def diarize(self, video_path: Path) -> list[dict[str, Any]]:
-        """Run pyannoteAI hosted speaker diarization.
-
-        Extracts mono 16kHz audio, uploads it to pyannoteAI, and submits a
-        diarization job; `Client.retrieve` polls internally until the job
-        completes.
-
-        Returns [{speaker_id, start, end}] list, absolute to the source.
-        Raises FatalProviderError when the API key is missing. Other
-        failures (upload/job errors — bounded by the pipeline stage's own
-        `timeout_s`) propagate and are wrapped by the caller.
-        """
-        import subprocess  # noqa: PLC0415, S404
-        import tempfile  # noqa: PLC0415
-        from pathlib import Path as AudioPath  # noqa: PLC0415
-
-        from django.conf import settings  # noqa: PLC0415
-
-        from server.common.exceptions import FatalProviderError  # noqa: PLC0415
-
-        api_key: str = getattr(settings, 'PYANNOTEAI_API_KEY', '') or ''
-        if not api_key.strip():
-            raise FatalProviderError(
-                'PYANNOTEAI_API_KEY is required for speaker diarization',
-                provider='pyannoteai',
-                error_code='missing_api_key',
-            )
-
-        from pyannoteai.sdk import Client  # noqa: PLC0415
-
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            audio_path = tmp.name
-        try:
-            subprocess.run(  # noqa: S603
-                [  # noqa: S607
-                    'ffmpeg',
-                    '-y',
-                    '-i',
-                    str(video_path),
-                    '-ac',
-                    '1',
-                    '-ar',
-                    '16000',
-                    '-vn',
-                    audio_path,
-                ],
-                check=True,
-                capture_output=True,
-            )
-            client = Client(api_key)
-            started = time.perf_counter()
-            media_url = client.upload(audio_path)
-            job_id = client.diarize(media_url, model=_PYANNOTEAI_MODEL)
-            job = client.retrieve(job_id)
-            segments: list[dict[str, Any]] = [
-                {
-                    'speaker_id': seg['speaker'],
-                    'start': seg['start'],
-                    'end': seg['end'],
-                }
-                for seg in job['output']['diarization']
-            ]
-            logger.info(
-                'diarization_complete segment_count=%d elapsed_s=%.2f',
-                len(segments),
-                time.perf_counter() - started,
-            )
-            return segments
-        finally:
-            AudioPath(audio_path).unlink(missing_ok=True)

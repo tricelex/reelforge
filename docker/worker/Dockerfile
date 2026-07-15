@@ -1,5 +1,5 @@
 # Multi-stage: Poetry + build tools stay in the builder; runtime is slim.
-# ML group (mediapipe / scenedetect / pyannoteai-sdk) only lives here.
+# ML group (mediapipe / scenedetect) only lives here.
 
 ARG PYTHON_IMAGE=python:3.13.13-slim-bookworm
 
@@ -45,13 +45,13 @@ WORKDIR /build
 
 COPY pyproject.toml poetry.lock ./
 
-# Install main + ml. mediapipe + scenedetect + pyannoteai-sdk live here.
+# Install main + ml. mediapipe + scenedetect live here.
 # mediapipe wheels are manylinux_2_28_x86_64 only — build with platform
 # linux/amd64 (see docker-compose.worker.yml).
 # NOTE: `--only main --with ml` does NOT install ml in Poetry 2.4 — use
 # `--with ml` (main is always included) or `--only main,ml`.
 RUN poetry sync --with ml --no-interaction --no-ansi \
-    && python -c "import mediapipe; import cv2; import pyannoteai.sdk"
+    && python -c "import mediapipe; import cv2"
 
 # ---------------------------------------------------------------------------
 # Runtime — no Poetry, no compilers
@@ -74,7 +74,7 @@ ENV PYTHONFAULTHANDLER=1 \
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-# ffmpeg: video/audio extraction ahead of pyannoteAI hosted-API upload.
+# ffmpeg: video/audio extraction ahead of ElevenLabs Scribe hosted-API upload.
 # libgl1 / libglib / libxcb*: OpenCV (opencv-contrib-python via mediapipe).
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y \
