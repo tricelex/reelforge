@@ -118,27 +118,6 @@ def _mezzanine_encode_tail(narration_dur: float, out_path: str) -> list[str]:
     ]
 
 
-def _mux_scene_inputs(
-    video_path: str,
-    audio_path: str,
-    start_s: float,
-    end_s: float,
-) -> list[str]:
-    """Common ffmpeg input args for mux_scene (video + trimmed audio)."""
-    return [
-        'ffmpeg',
-        '-y',
-        '-i',
-        video_path,
-        '-ss',
-        f'{start_s:.3f}',
-        '-to',
-        f'{end_s:.3f}',
-        '-i',
-        audio_path,
-    ]
-
-
 def _build_mux_scene_cmd(
     *,
     video_path: str,
@@ -149,9 +128,15 @@ def _build_mux_scene_cmd(
     motion_dur: float,
     out_path: str,
 ) -> list[str]:
-    """Build ffmpeg argv for fitting motion video to narration duration."""
+    """Build ffmpeg argv for fitting motion video to narration duration.
+
+    The chapter audio is trimmed once, by the sample-accurate atrim filter.
+    Do NOT add -ss/-to input seeking on the audio: input seeking resets
+    timestamps to zero, which makes the absolute-time atrim window empty
+    for any scene that starts later in the chapter (video-only output).
+    """
     drift = abs(motion_dur - narration_dur) / max(motion_dur, narration_dur)
-    inputs = _mux_scene_inputs(video_path, audio_path, start_s, end_s)
+    inputs = ['ffmpeg', '-y', '-i', video_path, '-i', audio_path]
     if drift <= _DRIFT_THRESHOLD:
         pts_factor = narration_dur / motion_dur if motion_dur > 0 else 1.0
         atempo = max(0.5, min(2.0, pts_factor))
