@@ -57,7 +57,7 @@ class PipelineRunService:
         self._events.emit(
             PipelineRunCreated(run_id=run_id, channel_id=payload.channel_id),
         )
-        kiq_task(advance_pipeline, run_id)
+        transaction.on_commit(lambda: kiq_task(advance_pipeline, run_id))
         return get_run_detail(run_id)
 
     def cancel(self, run_id: str) -> RunDetailPayload:
