@@ -53,6 +53,17 @@ def _execution_log_fields(execution: 'StageExecution') -> dict[str, Any]:
     }
 
 
+def _cache_log_fields(
+    execution: 'StageExecution',
+    cached_execution: 'StageExecution',
+) -> dict[str, Any]:
+    log_fields = _execution_log_fields(execution)
+    log_fields['cached_execution_id'] = str(cached_execution.id)
+    log_fields['cached_run_id'] = str(cached_execution.run_id)
+    log_fields['is_fan_out_child'] = execution.parent_id is not None
+    return log_fields
+
+
 async def _mark_running(execution: 'StageExecution') -> None:
     execution.status = 'RUNNING'
     execution.started_at = tz.now()
@@ -322,6 +333,8 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
         execution.input_hash = compute_input_hash({
             'stage_key': execution.stage_key,
             'shard_index': execution.shard_index,
+            'topic': ctx.run.topic,
+            'blueprint_id': str(ctx.run.blueprint_id),
             'upstream': ctx.upstream,
             'config': ctx.config,
             'prompt_snapshot': ctx.run.prompt_snapshot,
@@ -329,32 +342,39 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
         })
         await execution.asave(update_fields=['input_hash'])
 
-    cached = await find_cached_output(
-        stage_key=execution.stage_key,
-        shard_index=execution.shard_index,
-        input_hash=execution.input_hash,
-    )
-    if cached is not None and cached.id != execution.id:
-        await _complete(execution, cached.output, cost=Decimal(0))
-        await kick_advance(execution)
-        return
-
-    # Fan-out: only for top-level (non-child) executions
+    shard_inputs: list[dict[str, Any]] | None = None
     if execution.parent_id is None:
         shard_inputs = await sync_to_async(
             stage_cls().fan_out,
             thread_sensitive=True,
         )(ctx)
-        if shard_inputs is not None:
-            already_fanned = await StageExecution.objects.filter(
-                parent=execution,
-            ).aexists()
-            if not already_fanned:
-                if not shard_inputs:
-                    await _complete(execution, {'shards': []}, cost=Decimal(0))
-                    await kick_advance(execution)
-                else:
-                    await _handle_fan_out(execution, shard_inputs)
+
+    if shard_inputs is None:
+        cached = await find_cached_output(
+            stage_key=execution.stage_key,
+            shard_index=execution.shard_index,
+            input_hash=execution.input_hash,
+        )
+        if cached is not None and cached.id != execution.id:
+            logger.info(
+                'stage_cache_hit',
+                **_cache_log_fields(execution, cached),
+            )
+            await _complete(execution, cached.output, cost=Decimal(0))
+            await kick_advance(execution)
             return
+
+    # Fan-out: only for top-level (non-child) executions
+    if shard_inputs is not None:
+        already_fanned = await StageExecution.objects.filter(
+            parent=execution,
+        ).aexists()
+        if not already_fanned:
+            if not shard_inputs:
+                await _complete(execution, {'shards': []}, cost=Decimal(0))
+                await kick_advance(execution)
+            else:
+                await _handle_fan_out(execution, shard_inputs)
+        return
 
     await _run_stage(execution, stage_cls, ctx)
