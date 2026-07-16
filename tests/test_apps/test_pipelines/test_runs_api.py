@@ -97,9 +97,16 @@ def test_create_run(
     auth_headers: dict[str, str],
 ) -> None:
     """POST /api/runs/ creates a run and returns detail."""
-    with patch(
-        'server.apps.pipelines.services.pipeline_run.kiq_task',
-    ) as mock_kiq:
+    callbacks: list[object] = []
+    with (
+        patch(
+            'server.apps.pipelines.services.pipeline_run.kiq_task',
+        ) as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
+            side_effect=callbacks.append,
+        ) as mock_on_commit,
+    ):
         response = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -108,12 +115,17 @@ def test_create_run(
             },
             headers=auth_headers,
         )
+        assert len(callbacks) == 1
+        mock_on_commit.assert_called_once()
+        callback = callbacks[0]
+        assert callable(callback)
+        callback()
+        mock_kiq.assert_called_once()
 
     assert response.status_code == HTTPStatus.CREATED
     data = response.json()
     assert data['topic'] == 'New video idea'
     assert data['channel_id'] == str(channel.id)
-    mock_kiq.assert_called_once()
 
 
 @pytest.mark.django_db
@@ -247,9 +259,16 @@ def test_create_run_idempotency(
 
     cache_key = f'idem-run-{uuid.uuid4()}'
     headers = {**auth_headers, 'Idempotency-Key': cache_key}
-    with patch(
-        'server.apps.pipelines.services.pipeline_run.kiq_task',
-    ) as mock_kiq:
+    callbacks: list[object] = []
+    with (
+        patch(
+            'server.apps.pipelines.services.pipeline_run.kiq_task',
+        ) as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
+            side_effect=callbacks.append,
+        ) as mock_on_commit,
+    ):
         first = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={'channel_id': str(channel.id), 'topic': 'Idempotent topic'},
@@ -263,10 +282,15 @@ def test_create_run_idempotency(
             data={'channel_id': str(channel.id), 'topic': 'Idempotent topic'},
             headers=headers,
         )
+        assert len(callbacks) == 1
+        mock_on_commit.assert_called_once()
+        callback = callbacks[0]
+        assert callable(callback)
+        callback()
+        mock_kiq.assert_called_once()
 
     assert second.status_code == HTTPStatus.CREATED
     assert first.json()['id'] == second.json()['id']
-    mock_kiq.assert_called_once()
 
 
 @pytest.mark.django_db
@@ -287,14 +311,70 @@ def test_pipeline_run_service_idempotency(
         topic='Service idempotent topic',
     )
     idem_key = f'svc-idem-{uuid.uuid4()}'
-    with patch(
-        'server.apps.pipelines.services.pipeline_run.kiq_task',
-    ) as mock_kiq:
+    callbacks: list[object] = []
+    with (
+        patch(
+            'server.apps.pipelines.services.pipeline_run.kiq_task',
+        ) as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
+            side_effect=callbacks.append,
+        ) as mock_on_commit,
+    ):
         first = service.create(payload, idempotency_key=idem_key)
         second = service.create(payload, idempotency_key=idem_key)
+        assert len(callbacks) == 1
+        mock_on_commit.assert_called_once()
+        callback = callbacks[0]
+        assert callable(callback)
+        callback()
+        mock_kiq.assert_called_once()
 
     assert first.id == second.id
-    mock_kiq.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_pipeline_run_service_defers_enqueue_until_transaction_commit(
+    channel: Channel,
+    blueprint: PipelineBlueprint,
+) -> None:
+    """Create must not enqueue worker tasks before outer commit."""
+    from unittest.mock import MagicMock
+
+    from django.db import transaction
+
+    from server.apps.pipelines.logic.value_objects import RunCreatePayload
+    from server.apps.pipelines.services.pipeline_run import PipelineRunService
+    from server.apps.pipelines.tasks import advance_pipeline
+    from server.common.events import EventBus
+
+    service = PipelineRunService(MagicMock(spec=EventBus))
+    payload = RunCreatePayload(
+        channel_id=str(channel.id),
+        topic='Transactional topic',
+    )
+
+    callbacks: list[object] = []
+    with (
+        patch(
+            'server.apps.pipelines.services.pipeline_run.kiq_task',
+        ) as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
+            side_effect=callbacks.append,
+        ) as mock_on_commit,
+    ):
+        with transaction.atomic():
+            run_detail = service.create(payload)
+            assert run_detail.id
+            mock_kiq.assert_not_called()
+        assert len(callbacks) == 1
+        mock_on_commit.assert_called_once()
+        callback = callbacks[0]
+        assert callable(callback)
+        mock_kiq.assert_not_called()
+        callback()
+        mock_kiq.assert_called_once_with(advance_pipeline, run_detail.id)
 
 
 @pytest.mark.django_db

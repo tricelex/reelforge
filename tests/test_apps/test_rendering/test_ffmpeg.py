@@ -51,6 +51,22 @@ def test_async_ffprobe_raises_on_nonzero_exit() -> None:
 
 from server.apps.rendering.ffmpeg import mux_scene
 
+_PROBE_MOTION = {
+    'format': {'duration': '8.0'},
+    'streams': [{'codec_type': 'video'}],
+}
+_PROBE_MEZZ_WITH_AUDIO = {
+    'format': {'duration': '7.5'},
+    'streams': [
+        {'codec_type': 'video'},
+        {'codec_type': 'audio'},
+    ],
+}
+_PROBE_VIDEO_ONLY = {
+    'format': {'duration': '6.0'},
+    'streams': [{'codec_type': 'video'}],
+}
+
 
 def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
     """mux_scene invokes ffmpeg with -ss/-to audio trim and output path."""
@@ -63,14 +79,14 @@ def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
         captured.extend(args)
         return mock_proc
 
-    fake_probe = {'format': {'duration': '8.0'}, 'streams': []}
-
     async def _run() -> None:
         with (
             patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
-                new=AsyncMock(return_value=fake_probe),
+                new=AsyncMock(
+                    side_effect=[_PROBE_MOTION, _PROBE_MEZZ_WITH_AUDIO],
+                ),
             ),
         ):
             await mux_scene(
@@ -87,6 +103,12 @@ def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
     assert '/tmp/scene.mp4' in cmd
     assert 'scale=1920:1080' in cmd
     assert 'pad=1920:1080' in cmd
+    assert '-map' in captured
+    assert '0:v:0' in captured
+    assert '1:a:0' in captured
+    assert '-t' in captured
+    assert '7.500' in captured
+    assert '-shortest' not in captured
 
 
 def test_extract_ffmpeg_error_prefers_error_line_over_banner() -> None:
@@ -135,14 +157,19 @@ def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:
         captured.extend(args)
         return mock_proc
 
-    fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
+    motion_probe = {
+        'format': {'duration': '5.0'},
+        'streams': [{'codec_type': 'video'}],
+    }
 
     async def _run() -> None:
         with (
             patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
-                new=AsyncMock(return_value=fake_probe),
+                new=AsyncMock(
+                    side_effect=[motion_probe, _PROBE_MEZZ_WITH_AUDIO],
+                ),
             ),
         ):
             # narration=8.5s, motion=5s → drift=70% >> 5%
@@ -157,6 +184,8 @@ def test_mux_scene_uses_hold_last_frame_on_large_drift() -> None:
     asyncio.run(_run())
     cmd = ' '.join(captured)
     assert 'tpad' in cmd
+    assert '0:v:0' in captured
+    assert '1:a:0' in captured
 
 
 def test_mux_scene_raises_on_ffmpeg_failure() -> None:
@@ -189,6 +218,59 @@ def test_mux_scene_raises_on_ffmpeg_failure() -> None:
         raise AssertionError('expected RuntimeError')
     except RuntimeError as e:
         assert 'mux_scene failed' in str(e)
+
+
+def test_mux_scene_rejects_non_positive_window() -> None:
+    """mux_scene raises ValueError when end_s <= start_s."""
+
+    async def _run() -> None:
+        await mux_scene(
+            video_path='/tmp/seg.mp4',
+            audio_path='/tmp/ch.mp3',
+            start_s=5.0,
+            end_s=5.0,
+            out_path='/tmp/scene.mp4',
+        )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected ValueError')
+    except ValueError as e:
+        assert 'end_s > start_s' in str(e)
+
+
+def test_mux_scene_raises_when_output_has_no_audio() -> None:
+    """mux_scene fails fast if the encoded mezzanine is video-only."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+
+    async def _run() -> None:
+        with (
+            patch(
+                'asyncio.create_subprocess_exec',
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    side_effect=[_PROBE_MOTION, _PROBE_VIDEO_ONLY],
+                ),
+            ),
+        ):
+            await mux_scene(
+                video_path='/tmp/seg.mp4',
+                audio_path='/tmp/ch.mp3',
+                start_s=0.0,
+                end_s=5.0,
+                out_path='/tmp/scene.mp4',
+            )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected RuntimeError')
+    except RuntimeError as e:
+        assert 'video-only output' in str(e)
 
 
 from server.apps.rendering.ffmpeg import concat_chapter
@@ -414,15 +496,16 @@ def test_mux_scene_fallback_when_motion_dur_zero() -> None:
         captured.extend(args)
         return mock_proc
 
-    # Probe returns 0 duration — triggers line 63
-    fake_probe = {'format': {'duration': '0'}, 'streams': []}
+    zero_probe = {'format': {'duration': '0'}, 'streams': []}
 
     async def _run() -> None:
         with (
             patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
             patch(
                 'server.apps.rendering.ffmpeg.async_ffprobe',
-                new=AsyncMock(return_value=fake_probe),
+                new=AsyncMock(
+                    side_effect=[zero_probe, _PROBE_MEZZ_WITH_AUDIO],
+                ),
             ),
         ):
             await mux_scene(
@@ -615,8 +698,8 @@ def test_concat_chapter_with_transition_cross_dissolve_builds_xfade() -> None:
         with (
             patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
             patch(
-                'server.apps.rendering.ffmpeg._probe_duration',
-                new=AsyncMock(return_value=6.0),
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=_PROBE_MEZZ_WITH_AUDIO),
             ),
         ):
             await concat_chapter_with_transition(
@@ -630,7 +713,50 @@ def test_concat_chapter_with_transition_cross_dissolve_builds_xfade() -> None:
     cmd = ' '.join(captured)
     assert 'xfade' in cmd
     assert 'acrossfade' in cmd
+    assert 'transition=fade' in cmd
     assert '/tmp/out.mp4' in cmd
+
+
+def test_concat_chapter_with_transition_normalizes_video_only_segment() -> None:
+    """Video-only mezzanine segments get silent audio before xfade."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured_cmds: list[list[str]] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured_cmds.append(list(args))
+        return mock_proc
+
+    probes = {
+        '/tmp/a.mp4': _PROBE_VIDEO_ONLY,
+        '/tmp/b.mp4': _PROBE_MEZZ_WITH_AUDIO,
+    }
+
+    async def fake_probe(path: str) -> dict[str, object]:
+        return probes.get(path, _PROBE_MEZZ_WITH_AUDIO)
+
+    async def _run() -> None:
+        with patch('asyncio.create_subprocess_exec', side_effect=fake_exec):
+            with patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                side_effect=fake_probe,
+            ):
+                await concat_chapter_with_transition(
+                    ['/tmp/a.mp4', '/tmp/b.mp4'],
+                    'cross_dissolve',
+                    0.5,
+                    '/tmp/out.mp4',
+                )
+
+    asyncio.run(_run())
+    assert len(captured_cmds) >= 2
+    normalize_cmd = ' '.join(captured_cmds[0])
+    assert 'anullsrc' in normalize_cmd
+    assert '/tmp/a.mp4' in normalize_cmd
+    xfade_cmd = ' '.join(captured_cmds[-1])
+    assert 'xfade' in xfade_cmd
+    assert 'acrossfade' in xfade_cmd
 
 
 def test_probe_duration_returns_container_duration() -> None:
@@ -654,6 +780,40 @@ def test_build_xfade_filter_chains_across_inputs() -> None:
     assert 'acrossfade' in fc
     assert v_out == '[v2]'
     assert a_out == '[a2]'
+
+
+def test_build_xfade_filter_uses_named_transition() -> None:
+    fc, _, _ = _build_xfade_filter(
+        [5.0, 6.0],
+        0.5,
+        transition='fade_black',
+    )
+    assert 'xfade=transition=fadeblack' in fc
+
+
+def test_run_ffmpeg_cmd_uses_operation_label() -> None:
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+    mock_proc.communicate = AsyncMock(
+        return_value=(b'', b'matches no streams'),
+    )
+
+    async def _run() -> None:
+        with patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            await _run_ffmpeg_cmd(
+                ['ffmpeg', '-version'],
+                label='concat_chapter_with_transition',
+            )
+
+    try:
+        asyncio.run(_run())
+        raise AssertionError('expected RuntimeError')
+    except RuntimeError as e:
+        assert 'concat_chapter_with_transition failed' in str(e)
+        assert 'matches no streams' in str(e)
 
 
 def test_final_pass_includes_sfx_in_amix() -> None:
