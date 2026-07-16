@@ -69,7 +69,7 @@ _PROBE_VIDEO_ONLY = {
 
 
 def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
-    """mux_scene invokes ffmpeg with -ss/-to audio trim and output path."""
+    """mux_scene trims chapter audio via atrim only (no -ss/-to seek)."""
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', b''))
@@ -109,6 +109,11 @@ def test_mux_scene_calls_ffmpeg_with_audio_trim_args() -> None:
     assert '-t' in captured
     assert '7.500' in captured
     assert '-shortest' not in captured
+    # Double-trim regression: input seek (-ss/-to) shifts audio timestamps
+    # to zero, making the absolute-time atrim window empty for later scenes.
+    assert '-ss' not in captured
+    assert '-to' not in captured
+    assert 'atrim=start=2.000:end=9.500' in cmd
 
 
 def test_extract_ffmpeg_error_prefers_error_line_over_banner() -> None:
