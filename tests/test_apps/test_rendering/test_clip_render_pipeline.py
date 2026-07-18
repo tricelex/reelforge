@@ -141,7 +141,11 @@ def test_pipeline_run_skips_disabled_stages(
             result = pipeline.run()
 
     assert result == config.output_path
-    mock_copy.assert_called_once()
+    # Only stage 1 runs, so the last copy moves its output into place.
+    # (Earlier calls may be font cache copies when /tmp is cold.)
+    final_call = mock_copy.call_args_list[-1]
+    assert final_call.args[-1] == str(config.output_path)
+    assert '01_trim_crop.mp4' in str(final_call.args[0])
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')

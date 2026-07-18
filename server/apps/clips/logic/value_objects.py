@@ -66,11 +66,13 @@ class ClipCandidateListPayload(msgspec.Struct, frozen=True):
 
 
 class ClipRenderPayload(msgspec.Struct, frozen=True):
-    """Presigned URL for a rendered clip."""
+    """Export render job state + presigned URL for a rendered clip."""
 
     candidate_id: str
     asset_id: str | None
     url: str | None
+    status: str = 'idle'
+    error: str | None = None
 
 
 class ClipPreviewStatusPayload(msgspec.Struct, frozen=True):
