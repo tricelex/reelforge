@@ -28,10 +28,24 @@ logger = structlog.get_logger(__name__)
 PREVIEW_CACHE_PREFIX = 'clip_preview:'
 PREVIEW_WORKER_LOCK_SUFFIX = ':worker'
 PREVIEW_CACHE_TIMEOUT = 3600
-PREVIEW_WIDTH = 540
-PREVIEW_HEIGHT = 960
+PREVIEW_DOWNSCALE = 2
 PREVIEW_CRF = 28
 PREVIEW_PRESET = 'veryfast'
+
+
+def preview_dimensions(candidate: 'ClipCandidate') -> tuple[int, int]:
+    """Return preview (width, height): half of the format's full size."""
+    from server.apps.clips.logic.constants import (  # noqa: PLC0415
+        RenderFormat,
+        render_format_dimensions,
+    )
+
+    layout = getattr(candidate, 'layout_config', None)
+    render_format = (
+        layout.render_format if layout else RenderFormat.VERTICAL_9_16
+    )
+    full_w, full_h = render_format_dimensions(render_format)
+    return full_w // PREVIEW_DOWNSCALE, full_h // PREVIEW_DOWNSCALE
 
 
 def preview_cache_key(candidate_id: str) -> str:
@@ -191,6 +205,7 @@ def _run_preview_pipeline(
         with source_asset.file.open('rb') as fh:
             src_path.write_bytes(fh.read())
 
+        preview_w, preview_h = preview_dimensions(candidate)
         config = PipelineRenderConfig(
             source_path=src_path,
             output_path=out_path,
@@ -203,8 +218,8 @@ def _run_preview_pipeline(
             timed_overlays=timed_overlays,
             timed_sfx=timed_sfx,
             render_id=f'preview-{candidate_id}-{uuid.uuid4()}',
-            width=PREVIEW_WIDTH,
-            height=PREVIEW_HEIGHT,
+            width=preview_w,
+            height=preview_h,
             crf=PREVIEW_CRF,
             preset=PREVIEW_PRESET,
         )

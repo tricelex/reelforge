@@ -274,14 +274,71 @@ class ClipCandidateRenderView(
     HasContainer,
     Controller[MsgspecSerializer],
 ):
-    """Return presigned URL for a rendered clip."""
+    """Trigger and poll a full-quality export render for a candidate."""
 
     auth = (jwt_sync_auth,)
 
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
     def get(self) -> ClipRenderPayload:
-        """Return render asset URL."""
+        """Return export job state + render asset URL."""
         return self.resolve(ClipsService).get_render(
             str(self.kwargs['candidate_id']),
+        )
+
+    @modify(
+        status_code=HTTPStatus.ACCEPTED,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.CONFLICT,
+            ),
+        ],
+    )
+    def post(self) -> ClipRenderPayload:
+        """Queue a full-quality export render."""
+        return self.resolve(ClipsService).trigger_render(
+            str(self.kwargs['candidate_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        """Map missing candidates and conflicts to API errors."""
+        if isinstance(exc, ClipCandidate.DoesNotExist):
+            return self.to_error(
+                self.format_error(
+                    'Candidate not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        if isinstance(exc, ConflictError):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    str(exc),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.CONFLICT,
+            )
+        return super().handle_error(  # pragma: no cover
+            endpoint,
+            controller,
+            exc,
         )
 
 

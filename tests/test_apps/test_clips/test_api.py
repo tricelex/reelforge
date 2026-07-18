@@ -219,6 +219,70 @@ def test_candidate_render_without_asset(
     parsed = msgspec.convert(response.json(), type=ClipRenderPayload)
     assert parsed.url is None
     assert parsed.asset_id is None
+    assert parsed.status == 'idle'
+
+
+@pytest.mark.django_db
+def test_candidate_render_post_queues_export(
+    dmr_client: DMRClient,
+    candidate: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST render queues a full-quality export for an approved clip."""
+    candidate.status = CandidateStatus.APPROVED  # type: ignore[attr-defined]
+    candidate.save(update_fields=['status'])  # type: ignore[attr-defined]
+
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        response = dmr_client.post(
+            reverse(
+                'clips:candidate_render',
+                kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+            ),
+            headers=auth_headers,
+        )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    parsed = msgspec.convert(response.json(), type=ClipRenderPayload)
+    assert parsed.status == 'queued'
+    mock_kiq.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_candidate_render_missing_candidate(
+    dmr_client: DMRClient,
+    db: None,
+    auth_headers: dict[str, str],
+) -> None:
+    """Render endpoints return 404 for unknown candidates."""
+    import uuid
+
+    response = dmr_client.get(
+        reverse(
+            'clips:candidate_render',
+            kwargs={'candidate_id': uuid.uuid4()},
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_candidate_render_post_conflict_when_not_approved(
+    dmr_client: DMRClient,
+    candidate: object,
+    auth_headers: dict[str, str],
+) -> None:
+    """POST render is rejected while the candidate is still proposed."""
+    response = dmr_client.post(
+        reverse(
+            'clips:candidate_render',
+            kwargs={'candidate_id': candidate.id},  # type: ignore[attr-defined]
+        ),
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.CONFLICT
 
 
 @pytest.mark.django_db

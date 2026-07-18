@@ -131,8 +131,12 @@ class TrimAndCropStage(RenderStage):
                 f'fps={self.fps}{video_suffix}'
             )
         else:
+            # Centered crop to the target aspect ratio: no-op when the
+            # source already matches (e.g. 16:9 source -> 16:9 target).
             vf = (
-                f'crop=ih*9/16:ih,scale={self.width}:{self.height},'
+                f"crop='min(iw,ih*{self.width}/{self.height})'"
+                f":'min(ih,iw*{self.height}/{self.width})',"
+                f'scale={self.width}:{self.height},'
                 f'fps={self.fps}{video_suffix}'
             )
         cmd = [
@@ -160,11 +164,14 @@ class TrimAndCropStage(RenderStage):
             manual_crop_y=lc.manual_crop_y if lc else None,
             manual_crop_w=lc.manual_crop_w if lc else None,
             manual_crop_h=lc.manual_crop_h if lc else None,
+            target_width=self.width,
+            target_height=self.height,
         )
         self.last_speaker_crop_result = result
         video_suffix, audio_af = self._speed_filters()
         vf = (
-            f'crop={result.crop_w}:{result.crop_h}:{result.crop_x}:0,'
+            f'crop={result.crop_w}:{result.crop_h}'
+            f':{result.crop_x}:{result.crop_y},'
             f'scale={self.width}:{self.height},fps={self.fps}{video_suffix}'
         )
         cmd = [

@@ -163,16 +163,20 @@ class TimedOverlayStage(RenderStage):
         return self.output_path
 
     def _apply_text(self, input_path: str, overlay: ClipTimedOverlay) -> str:
+        from server.apps.rendering.clip_stages.escape import (  # noqa: PLC0415
+            drawtext_escape,
+            filter_path_escape,
+        )
         from server.apps.rendering.clip_stages.fonts import (  # noqa: PLC0415
             resolve_drawtext_font,
         )
 
-        safe = overlay.text.replace("'", "\\'").replace(':', '\\:')
+        safe = drawtext_escape(overlay.text)
         font_path, _family = resolve_drawtext_font(
             overlay.font,
             overlay.font_asset,
         )
-        safe_font = font_path.replace("'", "\\'").replace(':', '\\:')
+        safe_font = filter_path_escape(font_path)
         alpha_expr = _animation_alpha_expr(
             overlay.animation,
             start=overlay.start_sec,
@@ -188,7 +192,7 @@ class TimedOverlayStage(RenderStage):
         )
         part = (
             f"drawtext=text='{safe}'"
-            f':fontfile={safe_font}'
+            f":fontfile='{safe_font}'"
             f':fontsize={overlay.font_size}'
             f':fontcolor={overlay.color}'
             f":alpha='{alpha_expr}'"

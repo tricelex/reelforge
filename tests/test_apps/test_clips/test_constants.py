@@ -8,6 +8,7 @@ from server.apps.clips.logic.constants import (
     RenderMode,
     WatermarkPosition,
     WatermarkType,
+    render_format_dimensions,
 )
 from server.apps.clips.logic.events import ClipCandidatesCreated
 
@@ -22,6 +23,19 @@ def test_render_format_values() -> None:
     assert RenderFormat.VERTICAL_9_16 == 'VERTICAL_9_16'
     assert RenderFormat.LANDSCAPE_16_9 == 'LANDSCAPE_16_9'
     assert RenderFormat.SQUARE_1_1 == 'SQUARE_1_1'
+
+
+def test_render_format_dimensions() -> None:
+    assert render_format_dimensions(RenderFormat.VERTICAL_9_16) == (1080, 1920)
+    assert render_format_dimensions(RenderFormat.LANDSCAPE_16_9) == (
+        1920,
+        1080,
+    )
+    assert render_format_dimensions(RenderFormat.SQUARE_1_1) == (1080, 1080)
+
+
+def test_render_format_dimensions_unknown_defaults_to_vertical() -> None:
+    assert render_format_dimensions('BOGUS') == (1080, 1920)
 
 
 def test_candidate_status_values() -> None:
