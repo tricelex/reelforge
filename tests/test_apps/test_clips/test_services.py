@@ -213,6 +213,74 @@ def test_get_render_with_asset(candidate: ClipCandidate) -> None:
     result = _clips_service().get_render(str(candidate.id))
     assert result.asset_id == str(asset.id)
     assert result.url == 'https://storage.example/file'
+    assert result.status == 'ready'
+
+
+@pytest.mark.django_db
+def test_get_render_without_asset_is_idle(candidate: ClipCandidate) -> None:
+    result = _clips_service().get_render(str(candidate.id))
+    assert result.asset_id is None
+    assert result.url is None
+    assert result.status == 'idle'
+
+
+@pytest.mark.django_db
+def test_get_render_reports_failed_state(candidate: ClipCandidate) -> None:
+    from django.core.cache import cache
+
+    from server.apps.clips.export_render import export_cache_key
+
+    cache.set(
+        export_cache_key(str(candidate.id)),
+        {'status': 'failed', 'error': 'ffmpeg exploded'},
+    )
+    result = _clips_service().get_render(str(candidate.id))
+    assert result.status == 'failed'
+    assert result.error == 'ffmpeg exploded'
+
+
+@pytest.mark.django_db
+def test_trigger_render_requires_approval(candidate: ClipCandidate) -> None:
+    from server.common.exceptions import ConflictError
+
+    with pytest.raises(ConflictError, match='must be approved'):
+        _clips_service().trigger_render(str(candidate.id))
+
+
+@pytest.mark.django_db
+def test_trigger_render_queues_task(candidate: ClipCandidate) -> None:
+    from server.apps.clips.export_render import get_export_state
+
+    candidate.status = CandidateStatus.APPROVED
+    candidate.save(update_fields=['status'])
+
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_render(str(candidate.id))
+
+    assert result.status == 'queued'
+    mock_kiq.assert_called_once()
+    state = get_export_state(str(candidate.id))
+    assert state is not None
+    assert state['status'] == 'queued'
+
+
+@pytest.mark.django_db
+def test_trigger_render_short_circuits_when_in_progress(
+    candidate: ClipCandidate,
+) -> None:
+    from django.core.cache import cache
+
+    from server.apps.clips.export_render import export_cache_key
+
+    candidate.status = CandidateStatus.APPROVED
+    candidate.save(update_fields=['status'])
+    cache.set(export_cache_key(str(candidate.id)), {'status': 'rendering'})
+
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_render(str(candidate.id))
+
+    assert result.status == 'rendering'
+    mock_kiq.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -576,6 +644,7 @@ def test_apply_smart_crop_detection(candidate: ClipCandidate) -> None:
 
     mock_result = MagicMock(
         crop_x=120,
+        crop_y=0,
         crop_w=600,
         crop_h=1080,
         confidence=0.9,

@@ -33,7 +33,13 @@ def test_detect_falls_back_to_center_on_error() -> None:
         '_mediapipe_detect',
         side_effect=RuntimeError('no mediapipe'),
     ):
-        result = svc._detect_from_video(Path('/fake.mp4'), 0.0, 60.0)
+        result = svc._detect_from_video(
+            Path('/fake.mp4'),
+            0.0,
+            60.0,
+            target_width=1080,
+            target_height=1920,
+        )
     assert result.face_detected is False
     assert result.confidence == 0.0
 
@@ -43,12 +49,27 @@ def test_center_fallback_default() -> None:
     result = svc._center_fallback()
     assert result.face_detected is False
     assert result.crop_x + result.crop_w <= 1920
+    assert result.crop_h == 1080
 
 
-def test_center_fallback_custom_width() -> None:
+def test_center_fallback_custom_dimensions() -> None:
     svc = SpeakerDetectionService()
-    result = svc._center_fallback(frame_w=1280)
-    assert result.crop_w == int(1280 * 9 / 16)
+    result = svc._center_fallback(frame_w=1280, frame_h=720)
+    assert result.crop_w == int(720 * 1080 / 1920)
+    assert result.crop_h == 720
+
+
+def test_center_fallback_landscape_target_is_full_frame() -> None:
+    """A 16:9 target on a 16:9 source crops nothing."""
+    svc = SpeakerDetectionService()
+    result = svc._center_fallback(
+        frame_w=1920,
+        frame_h=1080,
+        target_width=1920,
+        target_height=1080,
+    )
+    assert (result.crop_w, result.crop_h) == (1920, 1080)
+    assert (result.crop_x, result.crop_y) == (0, 0)
 
 
 def test_speaker_crop_result_is_frozen() -> None:
@@ -86,7 +107,7 @@ def test_mediapipe_detect_with_no_faces() -> None:
     mock_cv2 = MagicMock()
     mock_cap = MagicMock()
     mock_cv2.VideoCapture.return_value = mock_cap
-    mock_cap.get.side_effect = [30.0, 1920]
+    mock_cap.get.side_effect = [30.0, 1920, 1080]
     mock_cap.read.return_value = (False, None)
 
     mock_np = MagicMock()
@@ -106,7 +127,13 @@ def test_mediapipe_detect_with_no_faces() -> None:
         ),
         patch.object(svc, '_get_detector', return_value=MagicMock()),
     ):
-        result = svc._mediapipe_detect(Path('/fake.mp4'), 0.0, 30.0)
+        result = svc._mediapipe_detect(
+            Path('/fake.mp4'),
+            0.0,
+            30.0,
+            target_width=1080,
+            target_height=1920,
+        )
 
     assert result.face_detected is False
     assert result.confidence == 0.0
@@ -118,7 +145,7 @@ def test_mediapipe_detect_with_faces() -> None:
     mock_cv2 = MagicMock()
     mock_cap = MagicMock()
     mock_cv2.VideoCapture.return_value = mock_cap
-    mock_cap.get.side_effect = [30.0, 1920]
+    mock_cap.get.side_effect = [30.0, 1920, 1080]
     mock_cap.read.side_effect = [(True, MagicMock()), (False, None)]
     mock_cv2.cvtColor.return_value = MagicMock()
 
@@ -147,10 +174,17 @@ def test_mediapipe_detect_with_faces() -> None:
         ),
         patch.object(svc, '_get_detector', return_value=mock_detector),
     ):
-        result = svc._mediapipe_detect(Path('/fake.mp4'), 0.0, 1.0)
+        result = svc._mediapipe_detect(
+            Path('/fake.mp4'),
+            0.0,
+            1.0,
+            target_width=1080,
+            target_height=1920,
+        )
 
     assert result.face_detected is True
     assert result.crop_w > 0
+    assert result.crop_h == 1080
 
 
 def test_get_detector_uses_cache() -> None:

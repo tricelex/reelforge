@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING, final, override
 
 from server.apps.rendering.clip_stages.base import RenderStage
 from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
+from server.apps.rendering.clip_stages.escape import (
+    drawtext_escape,
+    filter_path_escape,
+)
 from server.apps.rendering.clip_stages.fonts import resolve_drawtext_font
 from server.apps.rendering.clip_stages.timed_overlays import (
     _animation_alpha_expr,
@@ -77,12 +81,12 @@ class HookStage(RenderStage):
         """Draw hook text as timed overlay at top or center."""
         from server.apps.clips.logic.constants import HookStyle  # noqa: PLC0415
 
-        safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
+        safe_text = drawtext_escape(self.hook_text)
         font_path, _family = resolve_drawtext_font(
             sc.hook_font,
             sc.hook_font_asset,
         )
-        safe_font_path = font_path.replace("'", "\\'").replace(':', '\\:')
+        safe_font_path = filter_path_escape(font_path)
         alpha_expr = _animation_alpha_expr(
             sc.hook_animation,
             start=0.0,
@@ -112,7 +116,7 @@ class HookStage(RenderStage):
             y_draw = y_pos
         drawtext = (
             f"drawtext=text='{safe_text}'"
-            f':fontfile={safe_font_path}'
+            f":fontfile='{safe_font_path}'"
             f':fontsize={sc.hook_size}'
             f':fontcolor={sc.hook_color}'
             f":alpha='{alpha_expr}'"
@@ -153,12 +157,12 @@ class HookStage(RenderStage):
         sc: ClipStyleConfig,
     ) -> Path:
         """Prepend a black title card with the hook text."""
-        safe_text = self.hook_text.replace("'", "\\'").replace(':', '\\:')
+        safe_text = drawtext_escape(self.hook_text)
         font_path, _family = resolve_drawtext_font(
             sc.hook_font,
             sc.hook_font_asset,
         )
-        safe_font_path = font_path.replace("'", "\\'").replace(':', '\\:')
+        safe_font_path = filter_path_escape(font_path)
 
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
             card_path = tmp.name
@@ -166,7 +170,7 @@ class HookStage(RenderStage):
         # Generate title card
         drawtext = (
             f"drawtext=text='{safe_text}'"
-            f':fontfile={safe_font_path}'
+            f":fontfile='{safe_font_path}'"
             f':fontsize={sc.hook_size}'
             f':fontcolor={sc.hook_color}'
             f':x=(w-text_w)/2:y=(h-text_h)/2'

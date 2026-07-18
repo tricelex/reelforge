@@ -41,6 +41,9 @@ class ClipRenderStage(Stage):
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Run ClipRenderPipeline for one candidate; save FINAL_VIDEO asset."""
         from server.apps.assets.models import Asset, AssetKind  # noqa: PLC0415
+        from server.apps.clips.logic.constants import (  # noqa: PLC0415
+            render_format_dimensions,
+        )
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
         from server.apps.rendering.clip_render_pipeline import (  # noqa: PLC0415
             ClipRenderPipeline,
@@ -74,6 +77,9 @@ class ClipRenderStage(Stage):
             out_path = tmp / 'rendered.mp4'
             await asyncio.to_thread(src_path.write_bytes, video_bytes)
 
+            width, height = render_format_dimensions(
+                candidate.layout_config.render_format,
+            )
             config = PipelineRenderConfig(
                 source_path=src_path,
                 output_path=out_path,
@@ -86,6 +92,8 @@ class ClipRenderStage(Stage):
                 timed_overlays=timed_overlays,
                 timed_sfx=timed_sfx,
                 render_id=str(candidate.id),
+                width=width,
+                height=height,
             )
             await asyncio.to_thread(ClipRenderPipeline(config).run)
             rendered_bytes = await asyncio.to_thread(out_path.read_bytes)
