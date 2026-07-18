@@ -13,6 +13,7 @@ from server.apps.clips.logic.constants import (
     CandidateStatus,
     PostStatus,
     RenderMode,
+    render_format_dimensions,
 )
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
@@ -867,6 +868,9 @@ class ClipsService:
                 delete=False,
             ) as tmp:
                 tmp_path = tmp.name
+            target_w, target_h = render_format_dimensions(
+                config.render_format,
+            )
             try:
                 with asset.file.open('rb') as fh:
                     Path(tmp_path).write_bytes(fh.read())
@@ -874,9 +878,11 @@ class ClipsService:
                     video_path=Path(tmp_path),
                     start_sec=candidate.start_sec,
                     end_sec=candidate.end_sec,
+                    target_width=target_w,
+                    target_height=target_h,
                 )
                 config.manual_crop_x = result.crop_x
-                config.manual_crop_y = 0
+                config.manual_crop_y = result.crop_y
                 config.manual_crop_w = result.crop_w
                 config.manual_crop_h = result.crop_h
                 config.face_detected = result.face_detected
@@ -1268,23 +1274,74 @@ class ClipsService:
         )
 
     def get_render(self, candidate_id: str) -> ClipRenderPayload:
-        """Return presigned URL for the candidate render asset."""
+        """Return export job state + presigned URL for the render asset."""
         from server.apps.assets.models import Asset  # noqa: PLC0415
+        from server.apps.clips.export_render import (  # noqa: PLC0415
+            get_export_state,
+        )
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
         candidate = ClipCandidate.objects.get(id=candidate_id)
-        if candidate.render_asset_id is None:
+        asset_id: str | None = None
+        url: str | None = None
+        if candidate.render_asset_id is not None:
+            asset = Asset.objects.get(id=candidate.render_asset_id)
+            asset_id = str(asset.id)
+            url = self._presign.presign_get(asset.file.name or '')
+
+        state = get_export_state(candidate_id)
+        if state is not None and state.get('status') in {
+            'queued',
+            'rendering',
+            'failed',
+        }:
+            error = state.get('error')
             return ClipRenderPayload(
                 candidate_id=candidate_id,
-                asset_id=None,
-                url=None,
+                asset_id=asset_id,
+                url=url,
+                status=str(state['status']),
+                error=str(error) if error is not None else None,
             )
-        asset = Asset.objects.get(id=candidate.render_asset_id)
         return ClipRenderPayload(
             candidate_id=candidate_id,
-            asset_id=str(asset.id),
-            url=self._presign.presign_get(asset.file.name or ''),
+            asset_id=asset_id,
+            url=url,
+            status='ready' if asset_id is not None else 'idle',
         )
+
+    def trigger_render(self, candidate_id: str) -> ClipRenderPayload:
+        """Queue a full-quality export render for one candidate."""
+        from server.apps.clips.export_render import (  # noqa: PLC0415
+            get_export_state,
+            set_export_queued,
+        )
+        from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+        from server.apps.clips.tasks import (  # noqa: PLC0415
+            render_clip_export_task,
+        )
+
+        candidate = ClipCandidate.objects.get(id=candidate_id)
+        if candidate.status not in {
+            CandidateStatus.APPROVED,
+            CandidateStatus.RENDERED,
+        }:
+            msg = (
+                f'Candidate must be approved before export '
+                f'(status: {candidate.status})'
+            )
+            raise ConflictError(msg)
+
+        state = get_export_state(candidate_id)
+        if state is not None and state.get('status') in {
+            'queued',
+            'rendering',
+        }:
+            return self.get_render(candidate_id)
+
+        set_export_queued(candidate_id)
+        kiq_task(render_clip_export_task, candidate_id)
+        return self.get_render(candidate_id)
 
     def trigger_preview(
         self,

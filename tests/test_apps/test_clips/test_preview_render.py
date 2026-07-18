@@ -12,6 +12,7 @@ from server.apps.channels.models import Channel, ChannelKind, PublishMode
 from server.apps.clips.models import ClipCandidate
 from server.apps.clips.preview_render import (
     preview_cache_key,
+    preview_dimensions,
     render_clip_preview_sync,
 )
 from server.apps.pipelines.models import (
@@ -103,6 +104,34 @@ def candidate_with_transcript(db: None) -> tuple[ClipCandidate, Asset, Asset]:
         title='Preview Clip',
     )
     return candidate, source_asset, manifest_asset
+
+
+@pytest.mark.django_db
+def test_preview_dimensions_default_vertical(
+    bare_candidate: ClipCandidate,
+) -> None:
+    """Default layout (9:16) previews at half of 1080x1920."""
+    assert preview_dimensions(bare_candidate) == (540, 960)
+
+
+@pytest.mark.django_db
+def test_preview_dimensions_landscape(
+    bare_candidate: ClipCandidate,
+) -> None:
+    """A 16:9 layout previews at half of 1920x1080."""
+    from server.apps.clips.logic.constants import RenderFormat
+
+    layout = bare_candidate.layout_config
+    layout.render_format = RenderFormat.LANDSCAPE_16_9
+    layout.save(update_fields=['render_format', 'updated_at'])
+    bare_candidate.refresh_from_db()
+    assert preview_dimensions(bare_candidate) == (960, 540)
+
+
+@pytest.mark.django_db
+def test_preview_dimensions_without_layout_config() -> None:
+    """A candidate without a layout config row falls back to 9:16."""
+    assert preview_dimensions(ClipCandidate()) == (540, 960)
 
 
 @pytest.mark.django_db

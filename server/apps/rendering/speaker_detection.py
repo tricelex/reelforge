@@ -8,6 +8,19 @@ from typing import Any, final
 logger = logging.getLogger('***REMOVED***.rendering.speaker_detection')
 
 
+def _crop_window(
+    frame_w: int,
+    frame_h: int,
+    *,
+    target_width: int,
+    target_height: int,
+) -> tuple[int, int]:
+    """Return the largest (crop_w, crop_h) matching the target aspect."""
+    crop_w = min(frame_w, int(frame_h * target_width / target_height))
+    crop_h = min(frame_h, int(frame_w * target_height / target_width))
+    return crop_w, crop_h
+
+
 @dataclass(frozen=True)
 class SpeakerCropResult:
     """Result of speaker/face detection for smart crop."""
@@ -17,6 +30,7 @@ class SpeakerCropResult:
     crop_h: int
     confidence: float
     face_detected: bool
+    crop_y: int = 0
     speaker_id: str | None = None
 
 
@@ -40,44 +54,72 @@ class SpeakerDetectionService:
         manual_crop_y: int | None = None,
         manual_crop_w: int | None = None,
         manual_crop_h: int | None = None,
+        target_width: int = 1080,
+        target_height: int = 1920,
     ) -> SpeakerCropResult:
-        """Return optimal crop coordinates for the speaking region."""
+        """Return optimal crop coordinates for the speaking region.
+
+        ``target_width``/``target_height`` define the output aspect ratio
+        the crop window must match (only their ratio is used).
+        """
         if all(
             v is not None for v in [manual_crop_x, manual_crop_w, manual_crop_h]
         ):
             return SpeakerCropResult(
                 crop_x=manual_crop_x or 0,
-                crop_w=manual_crop_w or 1080,
-                crop_h=manual_crop_h or 1920,
+                crop_y=manual_crop_y or 0,
+                crop_w=manual_crop_w or target_width,
+                crop_h=manual_crop_h or target_height,
                 confidence=1.0,
                 face_detected=True,
             )
-        return self._detect_from_video(video_path, start_sec, end_sec)
+        return self._detect_from_video(
+            video_path,
+            start_sec,
+            end_sec,
+            target_width=target_width,
+            target_height=target_height,
+        )
 
     def _detect_from_video(
         self,
         video_path: Path,
         start_sec: float,
         end_sec: float,
+        *,
+        target_width: int,
+        target_height: int,
     ) -> SpeakerCropResult:
         """Sample frames, detect faces, return median crop.
 
         Falls back to center crop on any error.
         """
         try:
-            return self._mediapipe_detect(video_path, start_sec, end_sec)
+            return self._mediapipe_detect(
+                video_path,
+                start_sec,
+                end_sec,
+                target_width=target_width,
+                target_height=target_height,
+            )
         except Exception:
             logger.warning(
                 'Face detection failed, falling back to center crop',
                 exc_info=True,
             )
-            return self._center_fallback()
+            return self._center_fallback(
+                target_width=target_width,
+                target_height=target_height,
+            )
 
     def _mediapipe_detect(
         self,
         video_path: Path,
         start_sec: float,
         end_sec: float,
+        *,
+        target_width: int,
+        target_height: int,
     ) -> SpeakerCropResult:
         """Use MediaPipe face detector to find speaker crop coordinates."""
         import cv2  # noqa: PLC0415
@@ -87,9 +129,13 @@ class SpeakerDetectionService:
         try:
             fps = cap.get(cv2.CAP_PROP_FPS) or 30
             frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            crop_w = int(frame_w * 9 / 16)
-            crop_w = min(crop_w, frame_w)
-            crop_h = frame_w
+            frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            crop_w, crop_h = _crop_window(
+                frame_w,
+                frame_h,
+                target_width=target_width,
+                target_height=target_height,
+            )
             detector = self._get_detector()
             start_frame = int(start_sec * fps)
             end_frame = int(end_sec * fps)
@@ -112,13 +158,19 @@ class SpeakerDetectionService:
                     bbox = det.bounding_box
                     center_xs.append(bbox.origin_x + bbox.width / 2)
             if not center_xs:
-                return self._center_fallback(frame_w)
+                return self._center_fallback(
+                    frame_w,
+                    frame_h,
+                    target_width=target_width,
+                    target_height=target_height,
+                )
             median_cx = float(np.median(center_xs))
             crop_x = max(0, int(median_cx - crop_w / 2))
             crop_x = min(crop_x, frame_w - crop_w)
             denom = max(1, (end_frame - start_frame) // sample_step)
             return SpeakerCropResult(
                 crop_x=crop_x,
+                crop_y=(frame_h - crop_h) // 2,
                 crop_w=crop_w,
                 crop_h=crop_h,
                 confidence=len(center_xs) / denom,
@@ -127,14 +179,28 @@ class SpeakerDetectionService:
         finally:
             cap.release()
 
-    def _center_fallback(self, frame_w: int = 1920) -> SpeakerCropResult:
+    def _center_fallback(
+        self,
+        frame_w: int = 1920,
+        frame_h: int = 1080,
+        *,
+        target_width: int = 1080,
+        target_height: int = 1920,
+    ) -> SpeakerCropResult:
         """Return a center-crop result when face detection is not possible."""
-        crop_w = int(frame_w * 9 / 16)
+        crop_w, crop_h = _crop_window(
+            frame_w,
+            frame_h,
+            target_width=target_width,
+            target_height=target_height,
+        )
         crop_x = (frame_w - crop_w) // 2
+        crop_y = (frame_h - crop_h) // 2
         return SpeakerCropResult(
             crop_x=crop_x,
+            crop_y=crop_y,
             crop_w=crop_w,
-            crop_h=frame_w,
+            crop_h=crop_h,
             confidence=0.0,
             face_detected=False,
         )

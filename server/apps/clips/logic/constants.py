@@ -17,6 +17,22 @@ class RenderFormat(models.TextChoices):
     SQUARE_1_1 = 'SQUARE_1_1', 'Square 1:1'
 
 
+#: Full-quality output dimensions (width, height) per render format.
+RENDER_FORMAT_DIMENSIONS: dict[str, tuple[int, int]] = {
+    RenderFormat.VERTICAL_9_16: (1080, 1920),
+    RenderFormat.LANDSCAPE_16_9: (1920, 1080),
+    RenderFormat.SQUARE_1_1: (1080, 1080),
+}
+
+
+def render_format_dimensions(render_format: str) -> tuple[int, int]:
+    """Return (width, height) for a render format; default 9:16 vertical."""
+    return RENDER_FORMAT_DIMENSIONS.get(
+        render_format,
+        RENDER_FORMAT_DIMENSIONS[RenderFormat.VERTICAL_9_16],
+    )
+
+
 class CandidateStatus(models.TextChoices):
     """Lifecycle status of a clip candidate."""
 

@@ -5,6 +5,7 @@ import uuid
 import structlog
 from asgiref.sync import sync_to_async
 
+from server.apps.clips.export_render import render_clip_export_sync
 from server.apps.clips.logic.constants import ClipSourceStatus, ClipSourceType
 from server.apps.clips.models import ClipSource
 from server.apps.clips.preview_render import render_clip_preview_sync
@@ -56,6 +57,12 @@ async def probe_clip_source_task(source_id: str) -> None:
 async def render_clip_preview_task(candidate_id: str) -> None:
     """Render a lightweight editor preview for one clip candidate."""
     await sync_to_async(render_clip_preview_sync)(candidate_id)
+
+
+@broker.task(retry_on_error=False, queue='render')
+async def render_clip_export_task(candidate_id: str) -> None:
+    """Render a full-quality export for one clip candidate."""
+    await sync_to_async(render_clip_export_sync)(candidate_id)
 
 
 def _reset_smart_crop_sync(candidate_id: str) -> None:

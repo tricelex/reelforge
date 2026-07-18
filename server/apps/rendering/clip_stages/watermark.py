@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING, final, override
 from server.apps.clips.logic.constants import WatermarkType
 from server.apps.rendering.clip_stages.base import RenderStage
 from server.apps.rendering.clip_stages.encode import clip_filter_encode_args
+from server.apps.rendering.clip_stages.escape import (
+    drawtext_escape,
+    filter_path_escape,
+)
 from server.apps.rendering.clip_stages.fonts import resolve_drawtext_font
 
 if TYPE_CHECKING:
@@ -90,12 +94,12 @@ class WatermarkStage(RenderStage):
         ]
 
     def _text_watermark(self, input_path: Path, sc: ClipStyleConfig) -> Path:
-        safe_text = sc.watermark_text.replace("'", "\\'").replace(':', '\\:')
+        safe_text = drawtext_escape(sc.watermark_text)
         font_path, _family = resolve_drawtext_font(
             sc.watermark_font,
             sc.watermark_font_asset,
         )
-        safe_font = font_path.replace("'", "\\'").replace(':', '\\:')
+        safe_font = filter_path_escape(font_path)
         color = sc.watermark_color
 
         if sc.watermark_position == 'TILED':
@@ -103,7 +107,7 @@ class WatermarkStage(RenderStage):
             parts = [
                 (
                     f"drawtext=text='{safe_text}'"
-                    f':fontfile={safe_font}'
+                    f":fontfile='{safe_font}'"
                     f':fontsize={sc.watermark_size}'
                     f':fontcolor={color}@{sc.watermark_opacity}'
                     f':x={x}:y={y}'
@@ -115,7 +119,7 @@ class WatermarkStage(RenderStage):
             x, y = self._position_coords(sc.watermark_position)
             drawtext = (
                 f"drawtext=text='{safe_text}'"
-                f':fontfile={safe_font}'
+                f":fontfile='{safe_font}'"
                 f':fontsize={sc.watermark_size}'
                 f':fontcolor={color}@{sc.watermark_opacity}'
                 f':x={x}:y={y}'

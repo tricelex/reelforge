@@ -52,7 +52,9 @@ def test_center_crop_runs_ffmpeg(mock_run: MagicMock) -> None:
     assert result == Path('/out.mp4')
     assert mock_run.called
     cmd = mock_run.call_args[0][0]
-    assert 'crop=ih*9/16:ih' in ' '.join(cmd)
+    assert "crop='min(iw,ih*1080/1920)':'min(ih,iw*1920/1080)'" in ' '.join(
+        cmd,
+    )
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
@@ -91,7 +93,9 @@ def test_spatial_stack_no_regions_falls_back_to_center(
     with patch('server.apps.rendering.clip_stages.trim_crop.Path.mkdir'):
         stage.run(Path('/src.mp4'))
     cmd = mock_run.call_args[0][0]
-    assert 'crop=ih*9/16:ih' in ' '.join(cmd)
+    assert "crop='min(iw,ih*1080/1920)':'min(ih,iw*1920/1080)'" in ' '.join(
+        cmd,
+    )
 
 
 @patch('server.apps.rendering.clip_stages.trim_crop.subprocess.run')
@@ -220,4 +224,52 @@ def test_center_crop_default_fit_mode_unchanged() -> None:
     cmd = stage._build_command(Path('/in.mp4'))
     vf = cmd[cmd.index('-vf') + 1]
     assert 'boxblur' not in vf
-    assert vf == 'crop=ih*9/16:ih,scale=1080:1920,fps=30'
+    assert vf == (
+        "crop='min(iw,ih*1080/1920)':'min(ih,iw*1920/1080)',"
+        'scale=1080:1920,fps=30'
+    )
+
+
+def test_center_crop_landscape_format() -> None:
+    """A 16:9 target keeps the crop expression aspect-aware."""
+    layout = MagicMock()
+    layout.render_mode = 'CENTER_CROP'
+    layout.fit_mode = 'CROP'
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+        width=1920,
+        height=1080,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    vf = cmd[cmd.index('-vf') + 1]
+    assert vf == (
+        "crop='min(iw,ih*1920/1080)':'min(ih,iw*1080/1920)',"
+        'scale=1920:1080,fps=30'
+    )
+
+
+def test_smart_crop_passes_target_dimensions() -> None:
+    """Smart crop forwards the output dimensions to speaker detection."""
+    mock_result = MagicMock(crop_x=0, crop_y=0, crop_w=1920, crop_h=1080)
+    lc = _make_layout('SMART_CROP')
+    stage = TrimAndCropStage(
+        source_path=Path('/src.mp4'),
+        start_sec=0.0,
+        end_sec=60.0,
+        output_path=Path('/out.mp4'),
+        layout_config=lc,
+        width=1920,
+        height=1080,
+    )
+    stage._speaker_svc = MagicMock()
+    stage._speaker_svc.detect.return_value = mock_result
+    cmd = stage._build_command(Path('/src.mp4'))
+    kwargs = stage._speaker_svc.detect.call_args.kwargs
+    assert kwargs['target_width'] == 1920
+    assert kwargs['target_height'] == 1080
+    vf = cmd[cmd.index('-vf') + 1]
+    assert vf.startswith('crop=1920:1080:0:0,')

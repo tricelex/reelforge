@@ -1114,7 +1114,7 @@ def test_hook_uses_fontfile(
     with patch('server.apps.rendering.clip_stages.hook.Path.mkdir'):
         stage.run(Path('/in.mp4'))
     cmd = mock_run.call_args[0][0]
-    assert 'fontfile=/fonts/Montserrat-Bold.ttf' in ' '.join(cmd)
+    assert "fontfile='/fonts/Montserrat-Bold.ttf'" in ' '.join(cmd)
 
 
 @patch('server.apps.rendering.clip_stages.watermark.subprocess.run')
@@ -1134,7 +1134,7 @@ def test_watermark_text_uses_fontfile(
         stage.run(Path('/in.mp4'))
     cmd = mock_run.call_args[0][0]
     joined = ' '.join(cmd)
-    assert 'fontfile=/fonts/Poppins-Bold.ttf' in joined
+    assert "fontfile='/fonts/Poppins-Bold.ttf'" in joined
     assert 'fontcolor=#00FF00' in joined
 
 
@@ -1165,7 +1165,7 @@ def test_timed_overlay_text_uses_fontfile(
     ):
         stage.run(Path('/in.mp4'))
     cmd = mock_run.call_args[0][0]
-    assert 'fontfile=/fonts/Oswald-Bold.ttf' in ' '.join(cmd)
+    assert "fontfile='/fonts/Oswald-Bold.ttf'" in ' '.join(cmd)
 
 
 @patch('server.apps.rendering.clip_stages.captions.subprocess.run')
