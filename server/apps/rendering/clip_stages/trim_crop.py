@@ -1,4 +1,4 @@
-"""TrimAndCropStage — trim + crop source video to target format."""
+"""TrimAndCropStage — trim + crop/compose source video to target format."""
 
 import logging
 import subprocess  # noqa: S404
@@ -6,8 +6,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, final, override
 
-from server.apps.clips.logic.constants import RenderMode
+from server.apps.clips.logic.constants import (
+    BackgroundMode,
+    ForegroundTreatment,
+    RenderMode,
+)
 from server.apps.rendering.clip_stages.base import RenderStage
+from server.apps.rendering.clip_stages.composition import (
+    MiddleZone,
+    ResolvedComposition,
+    blurred_background_filter,
+    compose_overlay_filter,
+    contain_foreground_filter,
+    fill_crop_filter,
+    middle_zone,
+    needs_composed_background,
+    resolve_layout_composition,
+    solid_background_filter,
+    square_crop_foreground_filter,
+)
 from server.apps.rendering.speaker_detection import SpeakerDetectionService
 
 if TYPE_CHECKING:
@@ -19,7 +36,7 @@ logger = logging.getLogger('reelforge.rendering.clip_stages')
 @final
 @dataclass
 class TrimAndCropStage(RenderStage):
-    """Stage 1: Trim source to clip boundary + crop to target aspect ratio."""
+    """Stage 1: Trim source to clip boundary + crop/compose to target format."""
 
     source_path: Path
     start_sec: float
@@ -67,8 +84,8 @@ class TrimAndCropStage(RenderStage):
         return self.output_path
 
     def _speed_filters(self) -> tuple[str, str]:
-        """Return (video_vf_suffix, audio_af) for playback_speed, or ('', '')."""
-        if self.playback_speed == 1.0:
+        """Return video/audio speed filters, or empty strings at 1x."""
+        if abs(self.playback_speed - 1.0) < 1e-9:
             return '', ''
         video = f',setpts={1 / self.playback_speed:.6f}*PTS'
         remaining = self.playback_speed
@@ -103,6 +120,16 @@ class TrimAndCropStage(RenderStage):
         ]
         return cmd
 
+    def _clip_duration(self) -> float:
+        duration = self.end_sec - self.start_sec
+        if duration <= 0:
+            msg = (
+                f'Invalid clip window: start={self.start_sec} '
+                f'end={self.end_sec}'
+            )
+            raise ValueError(msg)
+        return duration / self.playback_speed
+
     def _build_command(self, input_path: Path) -> list[str]:
         mode = (
             self.layout_config.render_mode
@@ -115,30 +142,123 @@ class TrimAndCropStage(RenderStage):
             return self._smart_crop_cmd(input_path)
         return self._center_crop_cmd(input_path)
 
-    def _center_crop_cmd(self, input_path: Path) -> list[str]:
-        lc = self.layout_config
-        fit_mode = lc.fit_mode if lc else 'CROP'
+    def _background_filters(
+        self,
+        resolved: ResolvedComposition,
+        *,
+        duration: float,
+    ) -> tuple[str, str, str]:
+        """Return (filter_prefix, background_filter, foreground_input_label)."""
+        if resolved.background_mode == BackgroundMode.BLURRED_SOURCE:
+            prefix = (
+                f'[0:v]trim=start={self.start_sec}:end={self.end_sec},'
+                f'setpts=PTS-STARTPTS,split=2[srcbg][srcfg];'
+            )
+            bg = blurred_background_filter(
+                width=self.width,
+                height=self.height,
+                blur_strength=resolved.blur_strength,
+                input_label='srcbg',
+            )
+            return prefix, bg, 'srcfg'
+        bg = solid_background_filter(
+            width=self.width,
+            height=self.height,
+            color=resolved.background_color,
+            duration_sec=duration,
+        )
+        return '', bg, '0:v'
+
+    def _foreground_filter(
+        self,
+        resolved: ResolvedComposition,
+        *,
+        zone: MiddleZone,
+        fg_label: str,
+        square_crop: tuple[int, int, int, int] | None,
+    ) -> str:
+        if resolved.foreground_treatment == ForegroundTreatment.SQUARE_CROP:
+            lc = self.layout_config
+            if square_crop is not None:
+                crop_x, crop_y, crop_w, crop_h = square_crop
+            else:
+                crop_x = lc.manual_crop_x if lc else None
+                crop_y = lc.manual_crop_y if lc else None
+                crop_w = lc.manual_crop_w if lc else None
+                crop_h = lc.manual_crop_h if lc else None
+            return square_crop_foreground_filter(
+                zone=zone,
+                crop_x=crop_x,
+                crop_y=crop_y,
+                crop_w=crop_w,
+                crop_h=crop_h,
+                input_label=fg_label,
+            )
+        return contain_foreground_filter(zone=zone, input_label=fg_label)
+
+    def _composed_cmd(
+        self,
+        input_path: Path,
+        *,
+        composition: ResolvedComposition | None = None,
+        square_crop: tuple[int, int, int, int] | None = None,
+    ) -> list[str]:
+        resolved = composition or resolve_layout_composition(self.layout_config)
+        if not needs_composed_background(resolved):
+            return self._fill_cmd(input_path)
+
+        zone = middle_zone(self.width, self.height)
         video_suffix, audio_af = self._speed_filters()
-        if fit_mode == 'BLUR_FILL':
-            vf = (
-                f'split=2[bg][fg];'
-                f'[bg]scale={self.width}:{self.height}:'
-                f'force_original_aspect_ratio=increase,'
-                f'crop={self.width}:{self.height},boxblur=20:5[bgblur];'
-                f'[fg]scale={self.width}:{self.height}:'
-                f'force_original_aspect_ratio=decrease[fgfit];'
-                f'[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2,'
-                f'fps={self.fps}{video_suffix}'
+        duration = self._clip_duration()
+        use_blur = resolved.background_mode == BackgroundMode.BLURRED_SOURCE
+        filter_prefix, bg, fg_label = self._background_filters(
+            resolved,
+            duration=duration,
+        )
+        fg_body = self._foreground_filter(
+            resolved,
+            zone=zone,
+            fg_label=fg_label,
+            square_crop=square_crop,
+        )
+
+        if not use_blur:
+            if not fg_body.startswith(f'[{fg_label}]'):
+                msg = f'Unexpected foreground filter: {fg_body}'
+                raise ValueError(msg)
+            fg_body = (
+                f'[{fg_label}]trim=start={self.start_sec}:end={self.end_sec},'
+                f'setpts=PTS-STARTPTS,' + fg_body.removeprefix(f'[{fg_label}]')
             )
-        else:
-            # Centered crop to the target aspect ratio: no-op when the
-            # source already matches (e.g. 16:9 source -> 16:9 target).
-            vf = (
-                f"crop='min(iw,ih*{self.width}/{self.height})'"
-                f":'min(ih,iw*{self.height}/{self.width})',"
-                f'scale={self.width}:{self.height},'
-                f'fps={self.fps}{video_suffix}'
-            )
+
+        overlay = compose_overlay_filter(
+            zone=zone,
+            video_suffix=video_suffix,
+            fps=self.fps,
+        )
+        filter_complex = f'{filter_prefix}{bg};{fg_body};{overlay}'
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-i',
+            str(input_path),
+            '-filter_complex',
+            filter_complex,
+            '-map',
+            '[vout]',
+            '-map',
+            '0:a?',
+            '-shortest',
+        ]
+        cmd += self._encode_tail(audio_af)
+        return cmd
+
+    def _fill_cmd(self, input_path: Path) -> list[str]:
+        video_suffix, audio_af = self._speed_filters()
+        vf = (
+            f'{fill_crop_filter(width=self.width, height=self.height)},'
+            f'fps={self.fps}{video_suffix}'
+        )
         cmd = [
             'ffmpeg',
             '-y',
@@ -154,6 +274,12 @@ class TrimAndCropStage(RenderStage):
         cmd += self._encode_tail(audio_af)
         return cmd
 
+    def _center_crop_cmd(self, input_path: Path) -> list[str]:
+        composition = resolve_layout_composition(self.layout_config)
+        if needs_composed_background(composition):
+            return self._composed_cmd(input_path, composition=composition)
+        return self._fill_cmd(input_path)
+
     def _smart_crop_cmd(self, input_path: Path) -> list[str]:
         from server.apps.rendering.clip_stages.probe import (  # noqa: PLC0415
             sync_ffprobe_dimensions,
@@ -161,6 +287,10 @@ class TrimAndCropStage(RenderStage):
         from server.apps.rendering.speaker_detection import (  # noqa: PLC0415
             clamp_crop_rect,
         )
+
+        composition = resolve_layout_composition(self.layout_config)
+        if composition.foreground_treatment == ForegroundTreatment.CONTAIN:
+            return self._composed_cmd(input_path, composition=composition)
 
         lc = self.layout_config
         result = self._speaker_svc.detect(
@@ -211,6 +341,17 @@ class TrimAndCropStage(RenderStage):
                 frame_w,
                 frame_h,
             )
+
+        if composition.foreground_treatment == ForegroundTreatment.SQUARE_CROP:
+            side = min(crop_w, crop_h)
+            cx = crop_x + (crop_w - side) // 2
+            cy = crop_y + (crop_h - side) // 2
+            return self._composed_cmd(
+                input_path,
+                composition=composition,
+                square_crop=(cx, cy, side, side),
+            )
+
         video_suffix, audio_af = self._speed_filters()
         vf = (
             f'crop={crop_w}:{crop_h}:{crop_x}:{crop_y},'

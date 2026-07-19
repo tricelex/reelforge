@@ -8,6 +8,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from server.apps.clips.logic.constants import (
+    DEFAULT_BACKGROUND_COLOR,
+    DEFAULT_BLUR_STRENGTH,
+    BackgroundMode,
     CampaignStatus,
     CandidateStatus,
     CaptionAnimation,
@@ -18,6 +21,7 @@ from server.apps.clips.logic.constants import (
     ClipSourceType,
     ColorFilterPreset,
     FitMode,
+    ForegroundTreatment,
     HookStyle,
     OverlayAnimation,
     OverlayShape,
@@ -127,6 +131,23 @@ class ClipLayoutConfig(UUIDModel, TimeStampedModel):
         choices=FitMode.choices,
         default=FitMode.CROP,
     )
+    foreground_treatment = models.CharField(
+        max_length=20,
+        choices=ForegroundTreatment.choices,
+        default=ForegroundTreatment.FILL,
+    )
+    background_mode = models.CharField(
+        max_length=20,
+        choices=BackgroundMode.choices,
+        default=BackgroundMode.SOLID,
+    )
+    background_color = models.CharField(
+        max_length=7,
+        default=DEFAULT_BACKGROUND_COLOR,
+    )
+    blur_strength = models.PositiveSmallIntegerField(
+        default=DEFAULT_BLUR_STRENGTH,
+    )
     face_detected = models.BooleanField(null=True, blank=True)
     detection_confidence = models.FloatField(null=True, blank=True)
 
@@ -143,6 +164,16 @@ class ClipLayoutConfig(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='clips_cliplayoutconfig_fit_mode_valid',
                 condition=models.Q(fit_mode__in=FitMode.values),
+            ),
+            models.CheckConstraint(
+                name='clips_cliplayoutconfig_foreground_treatment_valid',
+                condition=models.Q(
+                    foreground_treatment__in=ForegroundTreatment.values,
+                ),
+            ),
+            models.CheckConstraint(
+                name='clips_cliplayoutconfig_background_mode_valid',
+                condition=models.Q(background_mode__in=BackgroundMode.values),
             ),
         ]
 
@@ -738,6 +769,23 @@ class ClipBrandTemplate(UUIDModel, TimeStampedModel):
         choices=FitMode.choices,
         default=FitMode.CROP,
     )
+    foreground_treatment = models.CharField(
+        max_length=20,
+        choices=ForegroundTreatment.choices,
+        default=ForegroundTreatment.FILL,
+    )
+    background_mode = models.CharField(
+        max_length=20,
+        choices=BackgroundMode.choices,
+        default=BackgroundMode.SOLID,
+    )
+    background_color = models.CharField(
+        max_length=7,
+        default=DEFAULT_BACKGROUND_COLOR,
+    )
+    blur_strength = models.PositiveSmallIntegerField(
+        default=DEFAULT_BLUR_STRENGTH,
+    )
     caption_preset_key = models.CharField(max_length=40, blank=True, default='')
     logo_asset = models.ForeignKey(
         'assets.LibraryAsset',
@@ -792,6 +840,16 @@ class ClipBrandTemplate(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='clips_clipbrandtemplate_fit_mode_valid',
                 condition=models.Q(fit_mode__in=FitMode.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_foreground_treatment_valid',
+                condition=models.Q(
+                    foreground_treatment__in=ForegroundTreatment.values,
+                ),
+            ),
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_background_mode_valid',
+                condition=models.Q(background_mode__in=BackgroundMode.values),
             ),
             models.CheckConstraint(
                 name='clips_clipbrandtemplate_logo_position_valid',

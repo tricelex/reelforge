@@ -114,6 +114,10 @@ def test_apply_brand_template_to_candidate(channel: Channel) -> None:
         name='Apply me',
         caption_preset_key='karaoke',
         render_format=RenderFormat.SQUARE_1_1,
+        foreground_treatment='CONTAIN',
+        background_mode='SOLID',
+        background_color='#101010',
+        blur_strength=12,
         auto_transitions=True,
     )
     candidate = ClipCandidate.objects.create(
@@ -126,5 +130,9 @@ def test_apply_brand_template_to_candidate(channel: Channel) -> None:
     assert apply_brand_template_to_candidate(candidate, str(template.id))
     candidate.refresh_from_db()
     assert candidate.layout_config.render_format == RenderFormat.SQUARE_1_1
+    assert candidate.layout_config.foreground_treatment == 'CONTAIN'
+    assert candidate.layout_config.background_mode == 'SOLID'
+    assert candidate.layout_config.background_color == '#101010'
+    assert candidate.layout_config.blur_strength == 12
     assert candidate.style_config.caption_style == CaptionStyle.KARAOKE_HIGHLIGHT
     assert candidate.style_config.intro_transition == 'FADE_BLACK'
