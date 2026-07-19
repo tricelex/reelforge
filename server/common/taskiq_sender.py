@@ -16,10 +16,18 @@ from typing import Any
 
 from server.common.broker import broker
 
+#: Hard ceiling for one enqueue round-trip to RabbitMQ. Without it a wedged
+#: broker channel blocks the calling web request forever.
+ENQUEUE_TIMEOUT_SEC = 15.0
+
 _broker_ready = False
 _loop: asyncio.AbstractEventLoop | None = None
 _loop_thread: threading.Thread | None = None
 _lock = threading.Lock()
+
+
+class TaskEnqueueError(RuntimeError):
+    """Raised when a task could not be handed to the broker in time."""
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
@@ -46,7 +54,23 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
 def _run_async(coro: Any) -> None:
     loop = _ensure_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    future.result()
+    try:
+        future.result(timeout=ENQUEUE_TIMEOUT_SEC)
+    except TimeoutError as exc:
+        future.cancel()
+        _mark_broker_stale()
+        raise TaskEnqueueError(
+            f'Task enqueue timed out after {ENQUEUE_TIMEOUT_SEC:.0f}s',
+        ) from exc
+    except Exception:
+        _mark_broker_stale()
+        raise
+
+
+def _mark_broker_stale() -> None:
+    """Force broker re-startup on the next enqueue after a failure."""
+    global _broker_ready  # noqa: PLW0603
+    _broker_ready = False
 
 
 async def _ensure_broker_started() -> None:
@@ -58,6 +82,17 @@ async def _ensure_broker_started() -> None:
 
 
 async def _enqueue(
+    task: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> None:
+    await asyncio.wait_for(
+        _enqueue_inner(task, args, kwargs),
+        timeout=ENQUEUE_TIMEOUT_SEC,
+    )
+
+
+async def _enqueue_inner(
     task: Any,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
@@ -102,4 +137,8 @@ async def kiq_task_async(task: Any, *args: Any, **kwargs: Any) -> None:
         _enqueue(task, args, kwargs),
         loop,
     )
-    await asyncio.wrap_future(future)
+    try:
+        await asyncio.wrap_future(future)
+    except Exception:
+        _mark_broker_stale()
+        raise
