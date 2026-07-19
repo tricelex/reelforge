@@ -38,6 +38,12 @@ def _probe_clip_source_sync(source_id: str) -> None:
                 'updated_at',
             ],
         )
+        if source.auto_start:
+            from server.apps.clips.source_services import (  # noqa: PLC0415
+                _maybe_auto_start_run,
+            )
+
+            _maybe_auto_start_run(source)
     except Exception as exc:
         logger.exception('clip_source_probe_failed', source_id=source_id)
         source.status = ClipSourceStatus.FAILED

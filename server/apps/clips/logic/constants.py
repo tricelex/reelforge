@@ -220,3 +220,93 @@ class ClipSourceType(models.TextChoices):
     YOUTUBE = 'youtube', 'YouTube'
     RSS = 'rss', 'RSS'
     UPLOAD = 'upload', 'Upload'
+
+
+class ClipGenre(models.TextChoices):
+    """Content genre hint for clip discovery."""
+
+    AUTO = 'auto', 'Auto'
+    PODCAST = 'podcast', 'Podcast'
+    QA = 'q_and_a', 'Q&A'
+    COMMENTARY = 'commentary', 'Commentary'
+    MARKETING = 'marketing', 'Marketing'
+    WEBINAR = 'webinar', 'Webinar'
+    MOTIVATIONAL = 'motivational', 'Motivational speech'
+
+
+class ClipLengthBucket(models.TextChoices):
+    """Preferred output duration bucket for discovered clips."""
+
+    AUTO = 'auto', 'Auto (0m-3m)'
+    UNDER_30 = 'under_30', '<30s'
+    FROM_30_TO_59 = '30_59', '30s–59s'
+    FROM_60_TO_89 = '60_89', '60s–89s'
+    FROM_90_TO_180 = '90_180', '90s–3m'
+    FROM_180_TO_300 = '180_300', '3m–5m'
+    FROM_300_TO_600 = '300_600', '5m–10m'
+    CUSTOM = 'custom', 'Custom range'
+
+
+#: Inclusive (min_sec, max_sec) bounds per duration bucket.
+CLIP_LENGTH_BOUNDS: dict[str, tuple[float, float]] = {
+    ClipLengthBucket.AUTO: (15.0, 180.0),
+    ClipLengthBucket.UNDER_30: (8.0, 29.999),
+    ClipLengthBucket.FROM_30_TO_59: (30.0, 59.999),
+    ClipLengthBucket.FROM_60_TO_89: (60.0, 89.999),
+    ClipLengthBucket.FROM_90_TO_180: (90.0, 180.0),
+    ClipLengthBucket.FROM_180_TO_300: (180.0, 300.0),
+    ClipLengthBucket.FROM_300_TO_600: (300.0, 600.0),
+}
+
+
+#: Deterministic virality weights (must sum to 1.0).
+VIRALITY_WEIGHTS: dict[str, float] = {
+    'hook': 0.30,
+    'flow': 0.25,
+    'value': 0.30,
+    'trend': 0.15,
+}
+VIRALITY_SCORE_VERSION = 'v1'
+
+
+def score_to_letter_grade(score: float) -> str:
+    """Map a 0-100 score to a letter grade used in the results UI."""
+    clamped = max(0.0, min(100.0, float(score)))
+    if clamped >= 97:
+        return 'A+'
+    if clamped >= 93:
+        return 'A'
+    if clamped >= 90:
+        return 'A-'
+    if clamped >= 87:
+        return 'B+'
+    if clamped >= 83:
+        return 'B'
+    if clamped >= 80:
+        return 'B-'
+    if clamped >= 77:
+        return 'C+'
+    if clamped >= 73:
+        return 'C'
+    if clamped >= 70:
+        return 'C-'
+    if clamped >= 60:
+        return 'D'
+    return 'F'
+
+
+def compute_virality_score(
+    *,
+    hook_score: float,
+    flow_score: float,
+    value_score: float,
+    trend_score: float,
+) -> float:
+    """Compute overall virality from weighted factor scores."""
+    total = (
+        hook_score * VIRALITY_WEIGHTS['hook']
+        + flow_score * VIRALITY_WEIGHTS['flow']
+        + value_score * VIRALITY_WEIGHTS['value']
+        + trend_score * VIRALITY_WEIGHTS['trend']
+    )
+    return round(max(0.0, min(100.0, total)), 2)

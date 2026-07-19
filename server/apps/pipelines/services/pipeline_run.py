@@ -14,6 +14,7 @@ from django.db import transaction
 from server.apps.pipelines.blueprint_validation import resolve_blueprint_name
 from server.apps.pipelines.logic.events import PipelineRunCreated
 from server.apps.pipelines.logic.value_objects import (
+    ClipRunOptionsPayload,
     RunCreatePayload,
     RunDetailPayload,
     SseTokenPayload,
@@ -170,7 +171,7 @@ class PipelineRunService:
             raise ValidationError(msg) from exc
 
         topic = payload.topic
-        prompt_snapshot: dict[str, str] = {}
+        prompt_snapshot: dict[str, object] = {}
         source_service = ClipSourceService()
         if payload.source_id:
             if payload.topic:
@@ -193,6 +194,11 @@ class PipelineRunService:
             is_active=True,
         )
 
+        clip_options = _normalize_clip_options(
+            payload.clip_options,
+            auto_approve=payload.auto_approve,
+        )
+
         if payload.source_id:
             with transaction.atomic():
                 clip_source = source_service.prepare_for_run(
@@ -203,6 +209,7 @@ class PipelineRunService:
                 prompt_snapshot = {
                     'source_title': clip_source.title,
                     'source_id': str(clip_source.id),
+                    'clip_options': clip_options,
                 }
                 run = PipelineRun.objects.create(
                     channel=channel,
@@ -234,3 +241,44 @@ class PipelineRunService:
             ),
         )
         return str(run.id)
+
+
+def _normalize_clip_options(
+    raw: ClipRunOptionsPayload | dict[str, object] | None,
+    *,
+    auto_approve: bool = False,
+) -> dict[str, object]:
+    """Normalize clipping run options into a JSON-safe snapshot dict."""
+    if raw is None:
+        opts: dict[str, object] = {}
+    elif isinstance(raw, ClipRunOptionsPayload):
+        opts = {
+            'genre': raw.genre,
+            'clip_length': raw.clip_length,
+            'moments_prompt': raw.moments_prompt,
+            'timeframe_start': raw.timeframe_start,
+            'timeframe_end': raw.timeframe_end,
+            'custom_min_sec': raw.custom_min_sec,
+            'custom_max_sec': raw.custom_max_sec,
+            'auto_headline': raw.auto_headline,
+            'candidate_count': raw.candidate_count,
+            'brand_template_id': raw.brand_template_id,
+            'auto_approve': raw.auto_approve,
+        }
+    else:
+        opts = dict(raw)
+    if auto_approve:
+        opts['auto_approve'] = True
+    return {
+        'genre': str(opts.get('genre') or 'auto'),
+        'clip_length': str(opts.get('clip_length') or 'auto'),
+        'moments_prompt': str(opts.get('moments_prompt') or '')[:2000],
+        'timeframe_start': opts.get('timeframe_start'),
+        'timeframe_end': opts.get('timeframe_end'),
+        'custom_min_sec': opts.get('custom_min_sec'),
+        'custom_max_sec': opts.get('custom_max_sec'),
+        'auto_headline': bool(opts.get('auto_headline', True)),
+        'candidate_count': int(opts.get('candidate_count') or 5),
+        'brand_template_id': opts.get('brand_template_id'),
+        'auto_approve': bool(opts.get('auto_approve', False)),
+    }

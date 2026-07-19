@@ -45,6 +45,64 @@ class ClipCandidatePayload(msgspec.Struct, frozen=True):
     rejection_reason: str
     render_asset_id: str | None
     is_manual: bool
+    headline: str = ''
+    hook_score: float = 0.0
+    flow_score: float = 0.0
+    value_score: float = 0.0
+    trend_score: float = 0.0
+    virality_score: float = 0.0
+    intent_match_score: float = 0.0
+    confidence: float = 0.0
+    score_version: str = ''
+    hook_reason: str = ''
+    flow_reason: str = ''
+    value_reason: str = ''
+    trend_reason: str = ''
+    hook_grade: str = ''
+    flow_grade: str = ''
+    value_grade: str = ''
+    trend_grade: str = ''
+
+
+class ClipRunOptionsPayload(msgspec.Struct, frozen=True):
+    """Pre-run discovery and styling controls for a clipping project."""
+
+    genre: str = 'auto'
+    clip_length: str = 'auto'
+    moments_prompt: str = ''
+    timeframe_start: float | None = None
+    timeframe_end: float | None = None
+    custom_min_sec: float | None = None
+    custom_max_sec: float | None = None
+    auto_headline: bool = True
+    candidate_count: int = 5
+    brand_template_id: str | None = None
+    auto_approve: bool = False
+
+
+class CaptionPresetPayload(msgspec.Struct, frozen=True):
+    """One caption style preset for galleries and brand templates."""
+
+    key: str
+    name: str
+    description: str
+    caption_style: str
+    caption_font: str
+    caption_size: int
+    caption_color: str
+    caption_highlight_color: str
+    caption_stroke_color: str
+    caption_stroke_width: int
+    caption_position: str
+    caption_animation: str
+    caption_uppercase: bool
+    sample_phrase: str
+
+
+class CaptionPresetListPayload(msgspec.Struct, frozen=True):
+    """Caption preset catalog."""
+
+    items: list[CaptionPresetPayload]
 
 
 class ClipCandidatePatchPayload(msgspec.Struct, frozen=True):
@@ -544,11 +602,87 @@ class ClipSourceCreatePayload(msgspec.Struct, frozen=True):
     url: str = ''
     library_asset_id: str | None = None
     campaign_id: str | None = None
+    auto_start: bool = False
+    clip_options: ClipRunOptionsPayload | None = None
 
 
 class ClipSourceListPayload(msgspec.Struct, frozen=True):
     """Paginated clip source list."""
 
     items: list[ClipSourcePayload]
+    next_cursor: str | None
+    total: int
+
+
+class ClipBrandTemplatePayload(msgspec.Struct, frozen=True):
+    """Read representation of a reusable clip brand template."""
+
+    id: str
+    channel_id: str
+    name: str
+    archived: bool
+    render_format: str
+    render_mode: str
+    fit_mode: str
+    caption_preset_key: str
+    logo_asset_id: str | None
+    logo_position: str
+    logo_opacity: float
+    intro_asset_id: str | None
+    outro_asset_id: str | None
+    music_asset_id: str | None
+    music_volume_db: float
+    keyword_highlighter: bool
+    auto_transitions: bool
+    notes: str
+    created_at: str
+
+
+class ClipBrandTemplateCreatePayload(msgspec.Struct, frozen=True):
+    """Create a brand template."""
+
+    channel_id: str
+    name: str
+    render_format: str = 'VERTICAL_9_16'
+    render_mode: str = 'SMART_CROP'
+    fit_mode: str = 'CROP'
+    caption_preset_key: str = 'chunk_three'
+    logo_asset_id: str | None = None
+    logo_position: str = 'BOTTOM_RIGHT'
+    logo_opacity: float = 0.85
+    intro_asset_id: str | None = None
+    outro_asset_id: str | None = None
+    music_asset_id: str | None = None
+    music_volume_db: float = -20.0
+    keyword_highlighter: bool = True
+    auto_transitions: bool = False
+    notes: str = ''
+
+
+class ClipBrandTemplatePatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a brand template."""
+
+    name: str | None = None
+    archived: bool | None = None
+    render_format: str | None = None
+    render_mode: str | None = None
+    fit_mode: str | None = None
+    caption_preset_key: str | None = None
+    logo_asset_id: str | None = None
+    logo_position: str | None = None
+    logo_opacity: float | None = None
+    intro_asset_id: str | None = None
+    outro_asset_id: str | None = None
+    music_asset_id: str | None = None
+    music_volume_db: float | None = None
+    keyword_highlighter: bool | None = None
+    auto_transitions: bool | None = None
+    notes: str | None = None
+
+
+class ClipBrandTemplateListPayload(msgspec.Struct, frozen=True):
+    """Paginated brand template list."""
+
+    items: list[ClipBrandTemplatePayload]
     next_cursor: str | None
     total: int

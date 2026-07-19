@@ -27,11 +27,13 @@ def test_clip_analyze_registered() -> None:
 def test_clip_analyze_run() -> None:
     ctx = MagicMock()
     ctx.run.id = 'run-id'
+    ctx.run.prompt_snapshot = {}
     ctx.upstream = {
         'clip_transcribe': {'manifest_asset_id': 'manifest-asset-id'},
     }
     ctx.config = {'clips_requested': 3}
     ctx.costs.record = AsyncMock()
+    ctx.prompts.render = AsyncMock(return_value=('', ''))
 
     manifest = {
         'transcript_text': 'Hello world',
@@ -89,11 +91,13 @@ def test_clip_analyze_run() -> None:
 def test_clip_analyze_default_clips_requested() -> None:
     ctx = MagicMock()
     ctx.run.id = 'run-id'
+    ctx.run.prompt_snapshot = {}
     ctx.upstream = {
         'clip_transcribe': {'manifest_asset_id': 'mid'},
     }
     ctx.config = {}
     ctx.costs.record = AsyncMock()
+    ctx.prompts.render = AsyncMock(return_value=('', ''))
 
     manifest: dict = {
         'transcript_text': '',

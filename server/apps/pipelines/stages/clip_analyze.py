@@ -31,25 +31,51 @@ class ClipAnalyzeStage(Stage):
         from server.apps.assets.models import Asset  # noqa: PLC0415
         from server.apps.clips.analysis import (  # noqa: PLC0415
             ClipAnalysisService,
+            options_from_run_snapshot,
         )
 
         manifest_asset_id: str = ctx.upstream['clip_transcribe'][
             'manifest_asset_id'
         ]
         clips_requested: int = ctx.config.get('clips_requested', 5)
+        options = options_from_run_snapshot(ctx.run, clips_requested)
+        clips_requested = options.clips_requested
 
         manifest_asset = await Asset.objects.aget(id=manifest_asset_id)
         manifest_bytes = await asyncio.to_thread(manifest_asset.file.read)
         manifest: dict[str, Any] = json.loads(manifest_bytes)
 
+        system_prompt, _user_prompt = await ctx.prompts.render(
+            'clip_analyze',
+            {
+                'transcript_text': manifest.get('transcript_text', ''),
+                'config': {'clips_requested': clips_requested},
+                'upstream': {
+                    'clip_transcribe': {
+                        'duration_sec': manifest.get('source_duration_sec'),
+                    },
+                },
+                'clip_options': {
+                    'genre': options.genre,
+                    'clip_length': options.length_bucket,
+                    'moments_prompt': options.moments_prompt,
+                },
+            },
+        )
+
         logger.info('clip_analyze_start', run_id=str(ctx.run.id))
-        svc = ClipAnalysisService(run=ctx.run, clips_requested=clips_requested)
+        svc = ClipAnalysisService(
+            run=ctx.run,
+            clips_requested=clips_requested,
+            options=options,
+        )
         candidates = await asyncio.to_thread(
             svc.analyze,
             transcript_text=manifest.get('transcript_text', ''),
             enriched_transcript=manifest.get('enriched_transcript', []),
             scene_cuts=manifest.get('scene_cuts', []),
             video_duration=manifest.get('source_duration_sec'),
+            system_prompt=system_prompt or None,
         )
 
         await ctx.costs.record(

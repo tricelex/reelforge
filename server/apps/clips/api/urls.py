@@ -2,7 +2,12 @@
 
 from dmr.routing import path
 
-from server.apps.clips.api import campaign_views, source_views, views
+from server.apps.clips.api import (
+    brand_template_views,
+    campaign_views,
+    source_views,
+    views,
+)
 
 app_name = 'clips'
 
@@ -51,6 +56,16 @@ candidate_urlpatterns = [
         'candidates/<uuid:candidate_id>/reject/',
         views.ClipCandidateRejectView.as_view(),
         name='candidate_reject',
+    ),
+    path(
+        'candidates/<uuid:candidate_id>/duplicate/',
+        views.ClipCandidateDuplicateView.as_view(),
+        name='candidate_duplicate',
+    ),
+    path(
+        'caption-presets/',
+        views.CaptionPresetListView.as_view(),
+        name='caption_presets',
     ),
 ]
 
@@ -141,10 +156,29 @@ source_urlpatterns = [
     ),
 ]
 
+brand_template_urlpatterns = [
+    path(
+        'brand-templates/',
+        brand_template_views.BrandTemplateCollectionController.as_view(),
+        name='brand-template-collection',
+    ),
+    path(
+        'brand-templates/<uuid:template_id>/',
+        brand_template_views.BrandTemplateDetailController.as_view(),
+        name='brand-template-detail',
+    ),
+    path(
+        'brand-templates/<uuid:template_id>/duplicate/',
+        brand_template_views.BrandTemplateDuplicateController.as_view(),
+        name='brand-template-duplicate',
+    ),
+]
+
 urlpatterns = [
     *candidate_urlpatterns,
     *config_urlpatterns,
     *post_urlpatterns,
     *campaign_urlpatterns,
     *source_urlpatterns,
+    *brand_template_urlpatterns,
 ]
