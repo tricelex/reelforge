@@ -10,6 +10,7 @@ from server.apps.rendering.clip_render_pipeline import (
     ClipRenderPipeline,
     GatePausedException,
     PipelineRenderConfig,
+    _rebase_transcript,
     _scale_transcript,
 )
 from server.apps.rendering.clip_stages.base import RenderStageError
@@ -97,6 +98,153 @@ def test_pipeline_render_config_accepts_timed_sfx(tmp_path: Path) -> None:
         timed_sfx=[sfx],  # type: ignore[list-item]
     )
     assert config.timed_sfx == [sfx]
+
+
+def test_rebase_transcript_shifts_segment_and_word_timestamps() -> None:
+    transcript = {
+        'segments': [
+            {
+                'start': 12.0,
+                'end': 14.0,
+                'text': 'hello world',
+                'words': [
+                    {'word': 'hello', 'start': 12.0, 'end': 12.5},
+                    {'word': 'world', 'start': 12.5, 'end': 14.0},
+                ],
+            },
+        ],
+    }
+    rebased = _rebase_transcript(
+        transcript,
+        start_sec=10.0,
+        end_sec=20.0,
+    )
+    seg = rebased['segments'][0]
+    assert seg['start'] == 2.0
+    assert seg['end'] == 4.0
+    assert seg['words'][0]['start'] == 2.0
+    assert seg['words'][0]['end'] == 2.5
+    assert seg['words'][1]['start'] == 2.5
+    assert seg['words'][1]['end'] == 4.0
+
+
+def test_rebase_transcript_drops_segments_outside_clip_window() -> None:
+    transcript = {
+        'segments': [
+            {'start': 1.0, 'end': 3.0, 'text': 'before'},
+            {'start': 12.0, 'end': 14.0, 'text': 'inside'},
+            {'start': 25.0, 'end': 27.0, 'text': 'after'},
+        ],
+    }
+    rebased = _rebase_transcript(
+        transcript,
+        start_sec=10.0,
+        end_sec=20.0,
+    )
+    assert len(rebased['segments']) == 1
+    assert rebased['segments'][0]['text'] == 'inside'
+    assert rebased['segments'][0]['start'] == 2.0
+
+
+def test_rebase_transcript_clamps_straddling_segment() -> None:
+    transcript = {
+        'segments': [
+            {
+                'start': 9.5,
+                'end': 11.0,
+                'text': 'edge',
+                'words': [
+                    {'word': 'before', 'start': 9.5, 'end': 9.9},
+                    {'word': 'edge', 'start': 9.9, 'end': 11.0},
+                ],
+            },
+        ],
+    }
+    rebased = _rebase_transcript(
+        transcript,
+        start_sec=10.0,
+        end_sec=20.0,
+    )
+    seg = rebased['segments'][0]
+    assert seg['start'] == 0.0
+    assert seg['end'] == 1.0
+    assert len(seg['words']) == 1
+    assert seg['words'][0]['word'] == 'edge'
+    assert seg['words'][0]['start'] == 0.0
+    assert seg['words'][0]['end'] == 1.0
+
+
+def test_rebase_transcript_rebases_scribe_top_level_words() -> None:
+    transcript = {
+        'words': [
+            {'type': 'word', 'text': 'early', 'start': 1.0, 'end': 2.0},
+            {'type': 'word', 'text': 'kept', 'start': 12.0, 'end': 13.0},
+            {'type': 'word', 'text': 'late', 'start': 30.0, 'end': 31.0},
+        ],
+    }
+    rebased = _rebase_transcript(
+        transcript,
+        start_sec=10.0,
+        end_sec=20.0,
+    )
+    assert len(rebased['words']) == 1
+    assert rebased['words'][0]['text'] == 'kept'
+    assert rebased['words'][0]['start'] == 2.0
+    assert rebased['words'][0]['end'] == 3.0
+
+
+def test_rebase_then_scale_applies_relative_speed() -> None:
+    transcript = {
+        'segments': [
+            {
+                'start': 12.0,
+                'end': 14.0,
+                'text': 'hi',
+                'words': [{'word': 'hi', 'start': 12.0, 'end': 14.0}],
+            },
+        ],
+    }
+    rebased = _rebase_transcript(
+        transcript,
+        start_sec=10.0,
+        end_sec=20.0,
+    )
+    scaled = _scale_transcript(rebased, playback_speed=2.0)
+    seg = scaled['segments'][0]
+    assert seg['start'] == 1.0
+    assert seg['end'] == 2.0
+    assert seg['words'][0]['start'] == 1.0
+    assert seg['words'][0]['end'] == 2.0
+
+
+def test_build_stages_passes_rebased_transcript_to_caption_stage(
+    tmp_path: Path,
+) -> None:
+    config = PipelineRenderConfig(
+        source_path=tmp_path / 'src.mp4',
+        output_path=tmp_path / 'out.mp4',
+        start_sec=10.0,
+        end_sec=20.0,
+        hook_text='',
+        transcript_json={
+            'segments': [
+                {
+                    'start': 12.0,
+                    'end': 14.0,
+                    'text': 'hi',
+                    'words': [{'word': 'hi', 'start': 12.0, 'end': 14.0}],
+                },
+            ],
+        },
+        layout_config=None,
+        style_config=None,
+    )
+    stages = ClipRenderPipeline(config)._build_stages()
+    caption_stage = next(s for s in stages if s.name == 'captions')
+    seg = caption_stage.transcript_json['segments'][0]
+    assert seg['start'] == 2.0
+    assert seg['end'] == 4.0
+    assert seg['words'][0]['start'] == 2.0
 
 
 def test_scale_transcript_scales_word_and_segment_timestamps() -> None:
