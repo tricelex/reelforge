@@ -155,6 +155,13 @@ class TrimAndCropStage(RenderStage):
         return cmd
 
     def _smart_crop_cmd(self, input_path: Path) -> list[str]:
+        from server.apps.rendering.clip_stages.probe import (  # noqa: PLC0415
+            sync_ffprobe_dimensions,
+        )
+        from server.apps.rendering.speaker_detection import (  # noqa: PLC0415
+            clamp_crop_rect,
+        )
+
         lc = self.layout_config
         result = self._speaker_svc.detect(
             video_path=input_path,
@@ -168,10 +175,45 @@ class TrimAndCropStage(RenderStage):
             target_height=self.height,
         )
         self.last_speaker_crop_result = result
+        frame_w, frame_h = sync_ffprobe_dimensions(str(input_path))
+        if frame_w is None or frame_h is None:
+            logger.warning(
+                'SMART_CROP could not probe source dimensions - '
+                'falling back to center crop',
+            )
+            return self._center_crop_cmd(input_path)
+        clamped = clamp_crop_rect(
+            result.crop_x,
+            result.crop_y,
+            result.crop_w,
+            result.crop_h,
+            frame_w,
+            frame_h,
+        )
+        if clamped is None:
+            return self._center_crop_cmd(input_path)
+        crop_x, crop_y, crop_w, crop_h = clamped
+        if (crop_w, crop_h) != (result.crop_w, result.crop_h) or (
+            crop_x,
+            crop_y,
+        ) != (result.crop_x, result.crop_y):
+            logger.warning(
+                'SMART_CROP clamped oversized crop '
+                '%sx%s@%s,%s -> %sx%s@%s,%s for source %sx%s',
+                result.crop_w,
+                result.crop_h,
+                result.crop_x,
+                result.crop_y,
+                crop_w,
+                crop_h,
+                crop_x,
+                crop_y,
+                frame_w,
+                frame_h,
+            )
         video_suffix, audio_af = self._speed_filters()
         vf = (
-            f'crop={result.crop_w}:{result.crop_h}'
-            f':{result.crop_x}:{result.crop_y},'
+            f'crop={crop_w}:{crop_h}:{crop_x}:{crop_y},'
             f'scale={self.width}:{self.height},fps={self.fps}{video_suffix}'
         )
         cmd = [

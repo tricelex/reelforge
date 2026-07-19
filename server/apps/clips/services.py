@@ -946,6 +946,7 @@ class ClipsService:
         )
         from server.apps.rendering.speaker_detection import (  # noqa: PLC0415
             SpeakerDetectionService,
+            clamp_crop_rect,
         )
 
         candidate = ClipCandidate.objects.select_related('run').get(
@@ -982,10 +983,33 @@ class ClipsService:
                     target_width=target_w,
                     target_height=target_h,
                 )
-                config.manual_crop_x = result.crop_x
-                config.manual_crop_y = result.crop_y
-                config.manual_crop_w = result.crop_w
-                config.manual_crop_h = result.crop_h
+                source_w, source_h = get_candidate_source_dimensions(
+                    candidate_id,
+                )
+                crop_x = result.crop_x
+                crop_y = result.crop_y
+                crop_w = result.crop_w
+                crop_h = result.crop_h
+                if (
+                    isinstance(source_w, int)
+                    and isinstance(source_h, int)
+                    and source_w > 0
+                    and source_h > 0
+                ):
+                    clamped = clamp_crop_rect(
+                        crop_x,
+                        crop_y,
+                        crop_w,
+                        crop_h,
+                        source_w,
+                        source_h,
+                    )
+                    if clamped is not None:
+                        crop_x, crop_y, crop_w, crop_h = clamped
+                config.manual_crop_x = crop_x
+                config.manual_crop_y = crop_y
+                config.manual_crop_w = crop_w
+                config.manual_crop_h = crop_h
                 config.face_detected = result.face_detected
                 config.detection_confidence = result.confidence
                 update_fields.extend(
@@ -1480,11 +1504,18 @@ class ClipsService:
                     config_version=version,
                 )
             if cached_status == 'failed':
+                raw_error = cached.get('error')
+                error = (
+                    str(raw_error)[:500]
+                    if isinstance(raw_error, str) and raw_error
+                    else None
+                )
                 return ClipPreviewStatusPayload(
                     candidate_id=candidate_id,
                     status='failed',
                     url=None,
                     config_version=version,
+                    error=error,
                 )
         if candidate.preview_asset_id is not None:
             asset = Asset.objects.get(id=candidate.preview_asset_id)
