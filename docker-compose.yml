@@ -61,7 +61,7 @@ services:
   # config/.env; tests override the DB host to `db` (see tests/conftest.py).
   # Data lives in tmpfs (RAM) so it is fast and wiped on restart.
   db:
-    image: ***REMOVED***:16-alpine
+    image: ***REMOVED***:18-alpine
     environment:
       POSTGRES_DB: ***REMOVED***_test
       POSTGRES_USER: ***REMOVED***
