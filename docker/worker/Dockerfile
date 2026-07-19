@@ -109,7 +109,9 @@ WORKDIR /code
 RUN groupadd -g "${GID}" -r web \
     && useradd -d '/code' -g web -l -r -u "${UID}" web \
     && chown web:web -R '/code' \
-    && chown -R web:web /opt/mediapipe
+    && chown -R web:web /opt/mediapipe \
+    && mkdir -p /var/cache/***REMOVED***/assets \
+    && chown -R web:web /var/cache/***REMOVED***
 
 COPY --chown=web:web . /code
 
