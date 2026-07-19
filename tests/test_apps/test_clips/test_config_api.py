@@ -165,19 +165,55 @@ def test_layout_config_get_and_patch(
     )
     assert get_resp.status_code == HTTPStatus.OK
     assert get_resp.json()['render_mode'] == 'SMART_CROP'
+    assert get_resp.json()['foreground_treatment'] == 'FILL'
+    assert get_resp.json()['background_mode'] == 'SOLID'
 
     patch_resp = dmr_client.patch(
         reverse(
             'clips:layout_config',
             kwargs={'candidate_id': candidate.id},
         ),
-        data={'render_mode': 'CENTER_CROP', 'stack_ratio': 0.5},
+        data={
+            'render_mode': 'CENTER_CROP',
+            'stack_ratio': 0.5,
+            'foreground_treatment': 'CONTAIN',
+            'background_mode': 'SOLID',
+            'background_color': '#112233',
+            'blur_strength': 18,
+        },
         headers=auth_headers,
     )
     assert patch_resp.status_code == HTTPStatus.OK
-    assert patch_resp.json()['render_mode'] == 'CENTER_CROP'
-    assert patch_resp.json()['stack_ratio'] == 0.5
+    body = patch_resp.json()
+    assert body['render_mode'] == 'CENTER_CROP'
+    assert body['stack_ratio'] == 0.5
+    assert body['foreground_treatment'] == 'CONTAIN'
+    assert body['background_mode'] == 'SOLID'
+    assert body['background_color'] == '#112233'
+    assert body['blur_strength'] == 18
+    assert body['fit_mode'] == 'CROP'
 
+
+@pytest.mark.django_db
+def test_layout_config_legacy_blur_fill_maps_composition(
+    dmr_client: DMRClient,
+    candidate: ClipCandidate,
+    auth_headers: dict[str, str],
+) -> None:
+    """Patching fit_mode=BLUR_FILL syncs contain + blurred composition."""
+    patch_resp = dmr_client.patch(
+        reverse(
+            'clips:layout_config',
+            kwargs={'candidate_id': candidate.id},
+        ),
+        data={'fit_mode': 'BLUR_FILL'},
+        headers=auth_headers,
+    )
+    assert patch_resp.status_code == HTTPStatus.OK
+    body = patch_resp.json()
+    assert body['fit_mode'] == 'BLUR_FILL'
+    assert body['foreground_treatment'] == 'CONTAIN'
+    assert body['background_mode'] == 'BLURRED_SOURCE'
 
 @pytest.mark.django_db
 def test_layout_config_includes_source_dimensions(
@@ -248,6 +284,10 @@ def test_layout_smart_crop_endpoint(
         region_b_h=None,
         stack_ratio=0.6,
         fit_mode='CROP',
+        foreground_treatment='FILL',
+        background_mode='SOLID',
+        background_color='#000000',
+        blur_strength=20,
         face_detected=None,
         detection_confidence=None,
     )

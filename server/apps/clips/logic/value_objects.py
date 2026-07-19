@@ -6,6 +6,7 @@ import msgspec
 
 from server.apps.clips.logic.types import (
     _CROP_COORD_DESC,
+    BackgroundModeLiteral,
     CandidateStatusLiteral,
     CaptionAnimationLiteral,
     CaptionFontLiteral,
@@ -13,6 +14,7 @@ from server.apps.clips.logic.types import (
     CaptionStyleLiteral,
     ColorFilterPresetLiteral,
     FitModeLiteral,
+    ForegroundTreatmentLiteral,
     HookStyleLiteral,
     OverlayAnimationLiteral,
     OverlayShapeLiteral,
@@ -217,6 +219,10 @@ class ClipLayoutConfigPayload(msgspec.Struct, frozen=True):
     region_b_h: Annotated[int | None, msgspec.Meta(description=_CROP_COORD_DESC)]
     stack_ratio: float
     fit_mode: FitModeLiteral
+    foreground_treatment: ForegroundTreatmentLiteral
+    background_mode: BackgroundModeLiteral
+    background_color: str
+    blur_strength: int
     face_detected: bool | None
     detection_confidence: float | None
 
@@ -240,6 +246,10 @@ class ClipLayoutConfigPatchPayload(msgspec.Struct, frozen=True):
     region_b_h: int | None = None
     stack_ratio: float | None = None
     fit_mode: FitModeLiteral | None = None
+    foreground_treatment: ForegroundTreatmentLiteral | None = None
+    background_mode: BackgroundModeLiteral | None = None
+    background_color: str | None = None
+    blur_strength: int | None = None
 
 
 class ClipStyleConfigPayload(msgspec.Struct, frozen=True):
@@ -625,6 +635,10 @@ class ClipBrandTemplatePayload(msgspec.Struct, frozen=True):
     render_format: str
     render_mode: str
     fit_mode: str
+    foreground_treatment: str
+    background_mode: str
+    background_color: str
+    blur_strength: int
     caption_preset_key: str
     logo_asset_id: str | None
     logo_position: str
@@ -647,6 +661,10 @@ class ClipBrandTemplateCreatePayload(msgspec.Struct, frozen=True):
     render_format: str = 'VERTICAL_9_16'
     render_mode: str = 'SMART_CROP'
     fit_mode: str = 'CROP'
+    foreground_treatment: str = 'FILL'
+    background_mode: str = 'SOLID'
+    background_color: str = '#000000'
+    blur_strength: int = 20
     caption_preset_key: str = 'chunk_three'
     logo_asset_id: str | None = None
     logo_position: str = 'BOTTOM_RIGHT'
@@ -668,6 +686,10 @@ class ClipBrandTemplatePatchPayload(msgspec.Struct, frozen=True):
     render_format: str | None = None
     render_mode: str | None = None
     fit_mode: str | None = None
+    foreground_treatment: str | None = None
+    background_mode: str | None = None
+    background_color: str | None = None
+    blur_strength: int | None = None
     caption_preset_key: str | None = None
     logo_asset_id: str | None = None
     logo_position: str | None = None

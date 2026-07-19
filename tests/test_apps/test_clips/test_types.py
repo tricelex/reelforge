@@ -3,6 +3,7 @@
 from typing import get_args
 
 from server.apps.clips.logic.constants import (
+    BackgroundMode,
     CandidateStatus,
     CaptionAnimation,
     CaptionFont,
@@ -10,6 +11,7 @@ from server.apps.clips.logic.constants import (
     CaptionStyle,
     ColorFilterPreset,
     FitMode,
+    ForegroundTreatment,
     HookStyle,
     OverlayAnimation,
     OverlayShape,
@@ -22,6 +24,7 @@ from server.apps.clips.logic.constants import (
     WatermarkType,
 )
 from server.apps.clips.logic.types import (
+    BackgroundModeLiteral,
     CandidateStatusLiteral,
     CaptionAnimationLiteral,
     CaptionFontLiteral,
@@ -29,6 +32,7 @@ from server.apps.clips.logic.types import (
     CaptionStyleLiteral,
     ColorFilterPresetLiteral,
     FitModeLiteral,
+    ForegroundTreatmentLiteral,
     HookStyleLiteral,
     OverlayAnimationLiteral,
     OverlayShapeLiteral,
@@ -110,6 +114,16 @@ def test_color_filter_preset_literal_matches_enum() -> None:
 
 def test_fit_mode_literal_matches_enum() -> None:
     assert set(get_args(FitModeLiteral)) == set(FitMode.values)
+
+
+def test_foreground_treatment_literal_matches_enum() -> None:
+    assert set(get_args(ForegroundTreatmentLiteral)) == set(
+        ForegroundTreatment.values,
+    )
+
+
+def test_background_mode_literal_matches_enum() -> None:
+    assert set(get_args(BackgroundModeLiteral)) == set(BackgroundMode.values)
 
 
 def test_overlay_shape_literal_matches_enum() -> None:
