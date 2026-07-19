@@ -19,11 +19,19 @@ def _apply_layout(candidate: Any, template: Any) -> None:
     layout.render_format = template.render_format
     layout.render_mode = template.render_mode
     layout.fit_mode = template.fit_mode
+    layout.foreground_treatment = template.foreground_treatment
+    layout.background_mode = template.background_mode
+    layout.background_color = template.background_color
+    layout.blur_strength = template.blur_strength
     layout.save(
         update_fields=[
             'render_format',
             'render_mode',
             'fit_mode',
+            'foreground_treatment',
+            'background_mode',
+            'background_color',
+            'blur_strength',
             'updated_at',
         ],
     )

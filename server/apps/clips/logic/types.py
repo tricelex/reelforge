@@ -124,6 +124,12 @@ ColorFilterPresetLiteral = Literal[
 # FitMode.values
 FitModeLiteral = Literal['CROP', 'BLUR_FILL']
 
+# ForegroundTreatment.values
+ForegroundTreatmentLiteral = Literal['FILL', 'CONTAIN', 'SQUARE_CROP']
+
+# BackgroundMode.values
+BackgroundModeLiteral = Literal['SOLID', 'BLURRED_SOURCE']
+
 # OverlayShape.values
 OverlayShapeLiteral = Literal['RECTANGLE', 'CIRCLE', 'ROUNDED']
 
