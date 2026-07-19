@@ -351,6 +351,7 @@ def test_get_preview_status_failed(candidate: ClipCandidate) -> None:
     result = _clips_service().get_preview_status(str(candidate.id))
     assert result.status == 'failed'
     assert result.url is None
+    assert result.error == 'ffmpeg failed'
 
 
 @pytest.mark.django_db

@@ -140,6 +140,7 @@ class ClipPreviewStatusPayload(msgspec.Struct, frozen=True):
     status: str
     url: str | None
     config_version: int
+    error: str | None = None
 
 
 class ClipSourceFramePayload(msgspec.Struct, frozen=True):
