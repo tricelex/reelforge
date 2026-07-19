@@ -9,8 +9,17 @@ import django.utils.timezone as tz
 from django.core.cache import BaseCache
 from django.core.exceptions import ValidationError
 
+from server.apps.clips.logic.composition import (
+    fit_mode_from_composition,
+    normalize_background_color,
+    normalize_background_mode,
+    normalize_blur_strength,
+    normalize_foreground_treatment,
+    resolve_composition,
+)
 from server.apps.clips.logic.constants import (
     CandidateStatus,
+    FitMode,
     PostStatus,
     RenderMode,
     render_format_dimensions,
@@ -101,6 +110,99 @@ def _apply_patch_fields(
             setattr(instance, name, value)
             update_fields.append(name)
     return update_fields
+
+
+def _apply_layout_composition_patch(
+    config: 'ClipLayoutConfig',
+    payload: ClipLayoutConfigPatchPayload,
+) -> list[str]:
+    """Apply composition fields and keep fit_mode in sync."""
+    has_composition = any(
+        getattr(payload, name) is not None
+        for name in (
+            'foreground_treatment',
+            'background_mode',
+            'background_color',
+            'blur_strength',
+        )
+    )
+    updates: list[str] = []
+    if has_composition:
+        treatment = (
+            normalize_foreground_treatment(payload.foreground_treatment)
+            if payload.foreground_treatment is not None
+            else config.foreground_treatment
+        )
+        bg_mode = (
+            normalize_background_mode(payload.background_mode)
+            if payload.background_mode is not None
+            else config.background_mode
+        )
+        color = (
+            normalize_background_color(payload.background_color)
+            if payload.background_color is not None
+            else config.background_color
+        )
+        blur = (
+            normalize_blur_strength(payload.blur_strength)
+            if payload.blur_strength is not None
+            else config.blur_strength
+        )
+        config.foreground_treatment = treatment
+        config.background_mode = bg_mode
+        config.background_color = color
+        config.blur_strength = blur
+        updates.extend(
+            [
+                'foreground_treatment',
+                'background_mode',
+                'background_color',
+                'blur_strength',
+            ],
+        )
+        derived_fit = fit_mode_from_composition(
+            foreground_treatment=treatment,
+            background_mode=bg_mode,
+        )
+        if payload.fit_mode is not None and payload.fit_mode != derived_fit:
+            msg = (
+                'fit_mode conflicts with foreground_treatment/'
+                'background_mode composition'
+            )
+            raise ValidationError(msg)
+        if config.fit_mode != derived_fit:
+            config.fit_mode = derived_fit
+            updates.append('fit_mode')
+        return updates
+
+    if payload.fit_mode is None:
+        return updates
+
+    if payload.fit_mode not in FitMode.values:
+        msg = f'Invalid fit_mode: {payload.fit_mode}'
+        raise ValidationError(msg)
+    treatment, bg_mode, color, blur = resolve_composition(
+        foreground_treatment=None,
+        background_mode=None,
+        background_color=None,
+        blur_strength=None,
+        fit_mode=payload.fit_mode,
+    )
+    config.fit_mode = payload.fit_mode
+    config.foreground_treatment = treatment
+    config.background_mode = bg_mode
+    config.background_color = color
+    config.blur_strength = blur
+    updates.extend(
+        [
+            'fit_mode',
+            'foreground_treatment',
+            'background_mode',
+            'background_color',
+            'blur_strength',
+        ],
+    )
+    return updates
 
 
 def _require_asset_uuid(value: str, field_name: str) -> uuid.UUID:
@@ -447,6 +549,10 @@ def _to_layout_payload(
         region_b_h=config.region_b_h,
         stack_ratio=config.stack_ratio,
         fit_mode=config.fit_mode,
+        foreground_treatment=config.foreground_treatment,
+        background_mode=config.background_mode,
+        background_color=config.background_color,
+        blur_strength=config.blur_strength,
         face_detected=config.face_detected,
         detection_confidence=config.detection_confidence,
     )
@@ -962,9 +1068,10 @@ class ClipsService:
                 'region_b_w',
                 'region_b_h',
                 'stack_ratio',
-                'fit_mode',
             ),
         )
+        composition_fields = _apply_layout_composition_patch(config, payload)
+        update_fields.extend(composition_fields)
         if update_fields:
             config.save(update_fields=update_fields)
             invalidate_preview_cache(candidate_id)

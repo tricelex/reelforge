@@ -7,8 +7,17 @@ from typing import final
 import attrs
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
+from server.apps.clips.logic.composition import (
+    fit_mode_from_composition,
+    normalize_background_color,
+    normalize_background_mode,
+    normalize_blur_strength,
+    normalize_foreground_treatment,
+)
 from server.apps.clips.logic.constants import (
+    BackgroundMode,
     FitMode,
+    ForegroundTreatment,
     RenderFormat,
     RenderMode,
     WatermarkPosition,
@@ -24,6 +33,8 @@ from server.apps.clips.models import ClipBrandTemplate
 _VALID_FORMATS = frozenset(RenderFormat.values)
 _VALID_MODES = frozenset(RenderMode.values)
 _VALID_FITS = frozenset(FitMode.values)
+_VALID_FOREGROUND = frozenset(ForegroundTreatment.values)
+_VALID_BACKGROUND = frozenset(BackgroundMode.values)
 _VALID_POSITIONS = frozenset(WatermarkPosition.values)
 
 
@@ -44,6 +55,10 @@ def _to_payload(template: ClipBrandTemplate) -> ClipBrandTemplatePayload:
         render_format=template.render_format,
         render_mode=template.render_mode,
         fit_mode=template.fit_mode,
+        foreground_treatment=template.foreground_treatment,
+        background_mode=template.background_mode,
+        background_color=template.background_color,
+        blur_strength=template.blur_strength,
         caption_preset_key=template.caption_preset_key,
         logo_asset_id=_asset_id(template.logo_asset_id),
         logo_position=template.logo_position,
@@ -77,6 +92,14 @@ def _normalize_patch_scalar(field: str, value: object) -> object:
     if field == 'fit_mode' and value not in _VALID_FITS:
         msg = f'Invalid fit_mode: {value}'
         raise ValidationError(msg)
+    if field == 'foreground_treatment':
+        return normalize_foreground_treatment(str(value))
+    if field == 'background_mode':
+        return normalize_background_mode(str(value))
+    if field == 'background_color':
+        return normalize_background_color(str(value))
+    if field == 'blur_strength':
+        return normalize_blur_strength(int(value))  # type: ignore[arg-type]
     if field == 'logo_position' and value not in _VALID_POSITIONS:
         msg = f'Invalid logo_position: {value}'
         raise ValidationError(msg)
@@ -93,6 +116,10 @@ def _apply_scalar_patch(
         'render_format': payload.render_format,
         'render_mode': payload.render_mode,
         'fit_mode': payload.fit_mode,
+        'foreground_treatment': payload.foreground_treatment,
+        'background_mode': payload.background_mode,
+        'background_color': payload.background_color,
+        'blur_strength': payload.blur_strength,
         'caption_preset_key': payload.caption_preset_key,
         'logo_position': payload.logo_position,
         'logo_opacity': payload.logo_opacity,
@@ -107,6 +134,45 @@ def _apply_scalar_patch(
             continue
         setattr(template, field, _normalize_patch_scalar(field, raw))
         updates.append(field)
+
+    has_composition = any(
+        name in updates
+        for name in (
+            'foreground_treatment',
+            'background_mode',
+            'background_color',
+            'blur_strength',
+        )
+    )
+    if has_composition:
+        derived = fit_mode_from_composition(
+            foreground_treatment=template.foreground_treatment,
+            background_mode=template.background_mode,
+        )
+        if template.fit_mode != derived:
+            template.fit_mode = derived
+            if 'fit_mode' not in updates:
+                updates.append('fit_mode')
+    elif 'fit_mode' in updates:
+        from server.apps.clips.logic.composition import (  # noqa: PLC0415
+            apply_legacy_fit_mode,
+        )
+
+        treatment, bg_mode, color, blur = apply_legacy_fit_mode(
+            fit_mode=template.fit_mode,
+        )
+        template.foreground_treatment = treatment
+        template.background_mode = bg_mode
+        template.background_color = color
+        template.blur_strength = blur
+        updates.extend(
+            [
+                'foreground_treatment',
+                'background_mode',
+                'background_color',
+                'blur_strength',
+            ],
+        )
     return updates
 
 
@@ -187,6 +253,12 @@ class ClipBrandTemplateService:
             render_format=payload.render_format,
             render_mode=payload.render_mode,
             fit_mode=payload.fit_mode,
+            foreground_treatment=payload.foreground_treatment,
+            background_mode=payload.background_mode,
+            background_color=normalize_background_color(
+                payload.background_color,
+            ),
+            blur_strength=normalize_blur_strength(payload.blur_strength),
             caption_preset_key=payload.caption_preset_key,
             logo_asset_id=_parse_optional_uuid(payload.logo_asset_id),
             logo_position=payload.logo_position,
@@ -237,6 +309,10 @@ class ClipBrandTemplateService:
             render_format=source.render_format,
             render_mode=source.render_mode,
             fit_mode=source.fit_mode,
+            foreground_treatment=source.foreground_treatment,
+            background_mode=source.background_mode,
+            background_color=source.background_color,
+            blur_strength=source.blur_strength,
             caption_preset_key=source.caption_preset_key,
             logo_asset_id=source.logo_asset_id,
             logo_position=source.logo_position,
@@ -261,6 +337,14 @@ class ClipBrandTemplateService:
         if payload.fit_mode not in _VALID_FITS:
             msg = f'Invalid fit_mode: {payload.fit_mode}'
             raise ValidationError(msg)
+        if payload.foreground_treatment not in _VALID_FOREGROUND:
+            msg = f'Invalid foreground_treatment: {payload.foreground_treatment}'
+            raise ValidationError(msg)
+        if payload.background_mode not in _VALID_BACKGROUND:
+            msg = f'Invalid background_mode: {payload.background_mode}'
+            raise ValidationError(msg)
         if payload.logo_position not in _VALID_POSITIONS:
             msg = f'Invalid logo_position: {payload.logo_position}'
             raise ValidationError(msg)
+        _ = normalize_background_color(payload.background_color)
+        _ = normalize_blur_strength(payload.blur_strength)

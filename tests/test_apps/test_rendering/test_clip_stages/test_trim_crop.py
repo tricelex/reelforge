@@ -12,6 +12,10 @@ def _make_layout(render_mode: str) -> MagicMock:
     lc = MagicMock()
     lc.render_mode = render_mode
     lc.fit_mode = 'CROP'
+    lc.foreground_treatment = 'FILL'
+    lc.background_mode = 'SOLID'
+    lc.background_color = '#000000'
+    lc.blur_strength = 20
     lc.has_manual_smart_crop = False
     lc.manual_crop_x = None
     lc.manual_crop_y = None
@@ -270,6 +274,14 @@ def test_center_crop_blur_fill_mode() -> None:
     layout = MagicMock()
     layout.render_mode = 'CENTER_CROP'
     layout.fit_mode = 'BLUR_FILL'
+    layout.foreground_treatment = 'FILL'
+    layout.background_mode = 'SOLID'
+    layout.background_color = '#000000'
+    layout.blur_strength = 20
+    layout.manual_crop_x = None
+    layout.manual_crop_y = None
+    layout.manual_crop_w = None
+    layout.manual_crop_h = None
     stage = TrimAndCropStage(
         source_path=Path('/in.mp4'),
         start_sec=0.0,
@@ -287,10 +299,53 @@ def test_center_crop_blur_fill_mode() -> None:
     assert 'overlay' in vf
 
 
+def test_contain_solid_background_composes_middle_zone() -> None:
+    layout = _make_layout('CENTER_CROP')
+    layout.foreground_treatment = 'CONTAIN'
+    layout.background_mode = 'SOLID'
+    layout.background_color = '#112233'
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=0.0,
+        end_sec=10.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    assert '-filter_complex' in cmd
+    fc = cmd[cmd.index('-filter_complex') + 1]
+    assert 'color=c=#112233:s=1080x1920' in fc
+    assert 'scale=1080:1080:force_original_aspect_ratio=decrease' in fc
+    assert 'overlay=0+(1080-w)/2:420+(1080-h)/2' in fc
+
+
+def test_square_crop_blurred_background() -> None:
+    layout = _make_layout('CENTER_CROP')
+    layout.foreground_treatment = 'SQUARE_CROP'
+    layout.background_mode = 'BLURRED_SOURCE'
+    layout.blur_strength = 15
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=1.0,
+        end_sec=5.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    fc = cmd[cmd.index('-filter_complex') + 1]
+    assert 'boxblur=15:5' in fc
+    assert "crop='min(iw,ih)':'min(iw,ih)'" in fc
+    assert 'scale=1080:1080' in fc
+
+
 def test_center_crop_default_fit_mode_unchanged() -> None:
     layout = MagicMock()
     layout.render_mode = 'CENTER_CROP'
     layout.fit_mode = 'CROP'
+    layout.foreground_treatment = 'FILL'
+    layout.background_mode = 'SOLID'
+    layout.background_color = '#000000'
+    layout.blur_strength = 20
     stage = TrimAndCropStage(
         source_path=Path('/in.mp4'),
         start_sec=0.0,
@@ -312,6 +367,10 @@ def test_center_crop_landscape_format() -> None:
     layout = MagicMock()
     layout.render_mode = 'CENTER_CROP'
     layout.fit_mode = 'CROP'
+    layout.foreground_treatment = 'FILL'
+    layout.background_mode = 'SOLID'
+    layout.background_color = '#000000'
+    layout.blur_strength = 20
     stage = TrimAndCropStage(
         source_path=Path('/in.mp4'),
         start_sec=0.0,

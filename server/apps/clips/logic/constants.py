@@ -192,10 +192,36 @@ class ColorFilterPreset(models.TextChoices):
 
 
 class FitMode(models.TextChoices):
-    """How the source video fills a mismatched target aspect ratio."""
+    """Legacy fill mode; prefer foreground/background composition fields.
+
+    Kept for API compatibility. ``BLUR_FILL`` maps to
+    ``CONTAIN`` + ``BLURRED_SOURCE``.
+    """
 
     CROP = 'CROP', 'Crop'
     BLUR_FILL = 'BLUR_FILL', 'Blurred Background Fill'
+
+
+class ForegroundTreatment(models.TextChoices):
+    """How the source is placed inside the output canvas."""
+
+    FILL = 'FILL', 'Fill (crop to canvas)'
+    CONTAIN = 'CONTAIN', 'Contain (preserve aspect in middle zone)'
+    SQUARE_CROP = 'SQUARE_CROP', 'Square crop (1:1 in middle zone)'
+
+
+class BackgroundMode(models.TextChoices):
+    """How empty canvas regions are filled around a contained foreground."""
+
+    SOLID = 'SOLID', 'Solid color'
+    BLURRED_SOURCE = 'BLURRED_SOURCE', 'Blurred source video'
+
+
+#: Default and allowed bounds for background blur radius.
+DEFAULT_BLUR_STRENGTH = 20
+MIN_BLUR_STRENGTH = 1
+MAX_BLUR_STRENGTH = 50
+DEFAULT_BACKGROUND_COLOR = '#000000'
 
 
 class OverlayShape(models.TextChoices):
