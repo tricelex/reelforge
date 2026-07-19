@@ -97,33 +97,37 @@ def preview_worker_lock_key(candidate_id: str) -> str:
 
 
 def preview_config_version(candidate_id: str) -> int:
-    """Return a monotonic-ish version from candidate + config timestamps."""
+    """Return a monotonic-ish version from candidate + config timestamps.
+
+    Issues a single ORM query (with joins/aggregates) so status polling does
+    not pay four remote round trips to Postgres.
+    """
     from django.db.models import Max  # noqa: PLC0415
 
-    from server.apps.clips.models import (  # noqa: PLC0415
-        ClipCandidate,
-        ClipLayoutConfig,
-        ClipStyleConfig,
-        ClipTimedOverlay,
-    )
+    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-    candidate = ClipCandidate.objects.get(id=candidate_id)
+    candidate = (
+        ClipCandidate.objects.filter(id=candidate_id)
+        .select_related('layout_config', 'style_config')
+        .annotate(
+            overlay_updated_at=Max('timed_overlays__updated_at'),
+            sfx_updated_at=Max('timed_sfx__updated_at'),
+        )
+        .get()
+    )
     version = int(candidate.updated_at.timestamp())
-    try:
-        layout = ClipLayoutConfig.objects.get(candidate_id=candidate_id)
+    layout = getattr(candidate, 'layout_config', None)
+    if layout is not None:
         version += int(layout.updated_at.timestamp())
-    except ClipLayoutConfig.DoesNotExist:
-        pass
-    try:
-        style = ClipStyleConfig.objects.get(candidate_id=candidate_id)
+    style = getattr(candidate, 'style_config', None)
+    if style is not None:
         version += int(style.updated_at.timestamp())
-    except ClipStyleConfig.DoesNotExist:
-        pass
-    overlay_max = ClipTimedOverlay.objects.filter(
-        candidate_id=candidate_id,
-    ).aggregate(updated_at__max=Max('updated_at'))['updated_at__max']
+    overlay_max = candidate.overlay_updated_at
     if overlay_max is not None:
         version += int(overlay_max.timestamp())
+    sfx_max = candidate.sfx_updated_at
+    if sfx_max is not None:
+        version += int(sfx_max.timestamp())
     return version
 
 
@@ -135,12 +139,18 @@ def invalidate_preview_cache(candidate_id: str) -> None:
     cache.delete(preview_worker_lock_key(candidate_id))
 
 
-def _set_preview_failed(candidate_id: str, error: str) -> None:
+def _set_preview_failed(
+    candidate_id: str,
+    error: str,
+    *,
+    config_version: int = 0,
+) -> None:
     from django.core.cache import cache  # noqa: PLC0415
 
     entry: dict[str, object] = {
         'status': 'failed',
         'error': error[:500],
+        'config_version': config_version,
         'at': time.time(),
     }
     cache.set(
@@ -150,12 +160,19 @@ def _set_preview_failed(candidate_id: str, error: str) -> None:
     )
 
 
-def _set_preview_ready(candidate_id: str, config_version: int) -> None:
+def _set_preview_ready(
+    candidate_id: str,
+    config_version: int,
+    *,
+    asset_file_name: str,
+) -> None:
     from django.core.cache import cache  # noqa: PLC0415
 
+    entry = preview_job_entry('ready', config_version)
+    entry['asset_file_name'] = asset_file_name
     cache.set(
         preview_cache_key(candidate_id),
-        preview_job_entry('ready', config_version),
+        entry,
         timeout=PREVIEW_CACHE_TIMEOUT,
     )
     cache.delete(preview_worker_lock_key(candidate_id))
@@ -194,7 +211,7 @@ def _save_preview_asset(
     run_id: uuid.UUID,
     candidate_id: str,
     content: bytes,
-) -> uuid.UUID:
+) -> tuple[uuid.UUID, str]:
     from django.core.files.base import ContentFile  # noqa: PLC0415
 
     from server.apps.assets.models import Asset, AssetKind  # noqa: PLC0415
@@ -212,7 +229,7 @@ def _save_preview_asset(
         save=False,
     )
     asset.save()
-    return asset.id
+    return asset.id, asset.file.name or ''
 
 
 def _load_transcript_json(manifest_asset_id: str) -> dict[str, Any]:
@@ -245,8 +262,15 @@ def _run_preview_pipeline(
         tmp = Path(tmpdir)
         src_path = tmp / 'source.mp4'
         out_path = tmp / 'preview.mp4'
-        with source_asset.file.open('rb') as fh:
-            src_path.write_bytes(fh.read())
+        from server.common.asset_cache import (  # noqa: PLC0415
+            materialize_to_path,
+        )
+
+        materialize_to_path(
+            checksum=source_asset.checksum,
+            open_stream=lambda: source_asset.file.open('rb'),
+            destination=src_path,
+        )
 
         preview_w, preview_h = preview_dimensions(candidate)
         config = PipelineRenderConfig(
@@ -281,7 +305,7 @@ def _persist_preview(
     candidate_id: str,
     rendered_bytes: bytes,
 ) -> None:
-    preview_asset_id = _save_preview_asset(
+    preview_asset_id, asset_file_name = _save_preview_asset(
         run_id=candidate.run_id,
         candidate_id=candidate_id,
         content=rendered_bytes,
@@ -291,6 +315,7 @@ def _persist_preview(
     _set_preview_ready(
         candidate_id,
         preview_config_version(candidate_id),
+        asset_file_name=asset_file_name,
     )
     logger.info(
         'clip_preview_rendered',

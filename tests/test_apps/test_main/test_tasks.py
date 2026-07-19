@@ -25,7 +25,11 @@ def test_notify_blog_post_created(blog_post: BlogPost) -> None:
 
 def test_hourly_cleanup() -> None:
     """Smoke-tests the hourly_cleanup task by calling its unwrapped function."""
-    hourly_cleanup.original_func()  # type: ignore[attr-defined]
+    with patch(
+        'server.common.asset_cache.cleanup_asset_cache',
+        return_value=0,
+    ):
+        hourly_cleanup.original_func()  # type: ignore[attr-defined]
 
 
 def test_handle_blog_post_created() -> None:

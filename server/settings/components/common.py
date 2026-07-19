@@ -109,7 +109,10 @@ DATABASES = {
         'PASSWORD': config('POSTGRES_PASSWORD'),
         'HOST': config('DJANGO_DATABASE_HOST'),
         'PORT': config('DJANGO_DATABASE_PORT', cast=int),
-        'CONN_MAX_AGE': config('CONN_MAX_AGE', cast=int, default=60),
+        # Persist connections across requests. With a remote Postgres host the
+        # reconnect handshake is expensive; 600s keeps sockets warm for Gunicorn
+        # workers while CONN_HEALTH_CHECKS heals dead ones.
+        'CONN_MAX_AGE': config('CONN_MAX_AGE', cast=int, default=600),
         # Heal stale sockets before reuse (Taskiq workers call
         # close_old_connections via DjangoDbMiddleware).
         'CONN_HEALTH_CHECKS': True,

@@ -114,8 +114,15 @@ def _run_export_pipeline(
         tmp = Path(tmpdir)
         src_path = tmp / 'source.mp4'
         out_path = tmp / 'export.mp4'
-        with source_asset.file.open('rb') as fh:
-            src_path.write_bytes(fh.read())
+        from server.common.asset_cache import (  # noqa: PLC0415
+            materialize_to_path,
+        )
+
+        materialize_to_path(
+            checksum=source_asset.checksum,
+            open_stream=lambda: source_asset.file.open('rb'),
+            destination=src_path,
+        )
 
         config = PipelineRenderConfig(
             source_path=src_path,

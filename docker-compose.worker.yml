@@ -17,9 +17,11 @@ services:
         GID: ${GID:-1000}
     environment:
       LOGFIRE_SERVICE_NAME: ***REMOVED***-worker
+      ASSET_CACHE_DIR: /tmp/***REMOVED***/assets
     env_file: ./config/.env
     volumes:
       - .:/code
+      - source-cache:/tmp/***REMOVED***/assets
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -28,3 +30,6 @@ services:
       server.apps.clips.tasks
       server.apps.pipelines.tasks
       server.apps.analytics.tasks
+
+volumes:
+  source-cache:

@@ -247,8 +247,44 @@ curl -I https://***REMOVED***.29signals.net/health/?format=json   # 200
 docker compose exec -T web python manage.py trigger_test_task
 docker compose logs worker --tail=50 | grep add_task_executed
 # expect: add_task_executed result=8
+
+# Dependency latency baseline (run ON the app VPS, not a laptop):
+docker compose exec -T web python manage.py benchmark_dependencies
+# Record min/avg/max for Postgres warm/cold and Redis. A large warm→cold
+# gap means CONN_MAX_AGE is too low (should be 600 in /opt/***REMOVED***/.env).
+# Target after tuning: warm SELECT 1 and Redis set+get under ~5ms when the
+# Coolify data VPS is in the same Contabo region.
 ```
 
+Confirm `/opt/***REMOVED***/.env` includes `CONN_MAX_AGE=600` (repository default). Restart
+web/worker/scheduler after changing it:
+
+```bash
+docker compose up -d web worker scheduler
+```
+
+### Source-video cache (cross-VPS performance)
+
+`web` and `worker` share a `source-cache` volume at `/var/cache/***REMOVED***/assets`
+(`ASSET_CACHE_DIR`). Preview/export/frame/smart-crop reuse checksum-keyed files so
+the same immutable source is not re-downloaded from R2 on every job.
+
+After deploy, confirm the volume exists and cleanup is scheduled:
+
+```bash
+docker compose exec -T web printenv ASSET_CACHE_DIR
+docker compose exec -T worker ls -la /var/cache/***REMOVED***/assets | head
+# Hourly Taskiq cron: hourly_cleanup — check scheduler logs if disk grows unbounded
+```
+
+Rollback: unset `ASSET_CACHE_DIR` / remove the volume mount and redeploy; callers fall
+back to downloading into temp dirs (slower, but correct).
+
+### Preview status / frontend note
+
+Preview status is cache-first (Redis). The Railway frontend should write the POST
+`/preview/` response into the TanStack Query cache (no immediate invalidate+GET) and
+poll with adaptive backoff only while queued/rendering.
 ---
 
 ## 9. Rollback

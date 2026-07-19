@@ -37,7 +37,12 @@ def handle_blog_post_created(event: BlogPostCreated) -> None:
     kiq_task(notify_blog_post_created, event.blog_post_id)
 
 
-@broker.task(schedule=[{'cron': '*/2 * * * *'}])
+@broker.task(schedule=[{'cron': '0 * * * *'}])
 def hourly_cleanup() -> None:
-    """Sample scheduled task — runs at the top of every hour."""
-    logger.info('hourly_cleanup_run')
+    """Evict LRU local asset cache files over the configured byte budget."""
+    from server.common.asset_cache import (  # noqa: PLC0415
+        cleanup_asset_cache,
+    )
+
+    removed = cleanup_asset_cache()
+    logger.info('hourly_cleanup_run', removed_files=removed)

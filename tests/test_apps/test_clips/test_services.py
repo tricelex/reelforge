@@ -405,6 +405,72 @@ def test_get_preview_status_failed(candidate: ClipCandidate) -> None:
 
 
 @pytest.mark.django_db
+def test_get_preview_status_cache_first_skips_db(
+    candidate: ClipCandidate,
+) -> None:
+    """Queued/ready cache hits require no Postgres queries."""
+    from django.core.cache import cache
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from server.apps.clips.preview_render import (
+        preview_cache_key,
+        preview_job_entry,
+    )
+
+    service = _clips_service()
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        preview_job_entry('queued', 42),
+    )
+    with CaptureQueriesContext(connection) as ctx:
+        queued = service.get_preview_status(str(candidate.id))
+    assert queued.status == 'queued'
+    assert queued.config_version == 42
+    assert len(ctx) == 0
+
+    ready_entry = preview_job_entry('ready', 99)
+    ready_entry['asset_file_name'] = 'assets/preview.mp4'
+    cache.set(preview_cache_key(str(candidate.id)), ready_entry)
+    with CaptureQueriesContext(connection) as ctx:
+        ready = service.get_preview_status(str(candidate.id))
+    assert ready.status == 'ready'
+    assert ready.config_version == 99
+    assert ready.url == 'https://storage.example/file'
+    assert len(ctx) == 0
+
+
+@pytest.mark.django_db
+def test_preview_config_version_single_query_includes_sfx(
+    candidate: ClipCandidate,
+) -> None:
+    """Config version is one query and changes when timed SFX update."""
+    from django.core.files.base import ContentFile
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from server.apps.clips.models import ClipTimedSfx
+    from server.apps.clips.preview_render import preview_config_version
+
+    with CaptureQueriesContext(connection) as ctx:
+        before = preview_config_version(str(candidate.id))
+    assert len(ctx) == 1
+
+    sfx_asset = LibraryAsset.objects.create(
+        kind=LibraryAssetKind.SFX,
+        name='whoosh.mp3',
+        file=ContentFile(b'audio', name='whoosh.mp3'),
+    )
+    ClipTimedSfx.objects.create(
+        candidate=candidate,
+        sfx_asset=sfx_asset,
+        start_sec=1.0,
+    )
+    after = preview_config_version(str(candidate.id))
+    assert after != before
+
+
+@pytest.mark.django_db
 def test_trigger_preview_enqueues_task(candidate: ClipCandidate) -> None:
     """trigger_preview enqueues the render worker task."""
     with patch('server.apps.clips.services.kiq_task') as mock_kiq:
