@@ -38,21 +38,22 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _make_landscape_source(path: Path) -> None:
+def _make_landscape_source(path: Path, *, duration_sec: float = 1.0) -> None:
     """Create a short deterministic 16:9 green clip."""
     ffmpeg = shutil.which('ffmpeg')
     assert ffmpeg is not None
+    duration = f'{duration_sec:g}'
     cmd = [
         ffmpeg,
         '-y',
         '-f',
         'lavfi',
         '-i',
-        'color=c=0x00FF00:s=640x360:d=1',
+        f'color=c=0x00FF00:s=640x360:d={duration}',
         '-f',
         'lavfi',
         '-i',
-        'sine=frequency=440:duration=1',
+        f'sine=frequency=440:duration={duration}',
         '-c:v',
         'libx264',
         '-pix_fmt',
@@ -64,6 +65,13 @@ def _make_landscape_source(path: Path) -> None:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
     assert result.returncode == 0, result.stderr
+
+
+def _stream_duration(stream: dict[str, object]) -> float:
+    raw = stream.get('duration')
+    if raw is not None:
+        return float(raw)  # type: ignore[arg-type]
+    return 0.0
 
 
 def _ffprobe(path: Path) -> dict[str, object]:
@@ -191,3 +199,36 @@ def test_real_ffmpeg_contain_blurred_portrait(tmp_path: Path) -> None:
     assert int(video['height']) == _OUT_H  # type: ignore[index]
     mid = _frame_pixel(output, x=540, y=960)
     assert mid[1] > _GREEN_MIN
+
+
+def test_real_ffmpeg_mid_source_clip_keeps_av_duration(
+    tmp_path: Path,
+) -> None:
+    """Composition must trim audio to the clip window, not source start."""
+    source = tmp_path / 'source.mp4'
+    output = tmp_path / 'out.mp4'
+    _make_landscape_source(source, duration_sec=5.0)
+
+    layout = _Layout()
+    stage = TrimAndCropStage(
+        source_path=source,
+        start_sec=2.0,
+        end_sec=4.0,
+        output_path=output,
+        layout_config=layout,  # type: ignore[arg-type]
+        width=_OUT_W,
+        height=_OUT_H,
+        crf=28,
+        preset='ultrafast',
+    )
+    stage.run(source)
+    probe = _ffprobe(output)
+    streams = probe['streams']
+    assert isinstance(streams, list)
+    video = next(s for s in streams if s['codec_type'] == 'video')  # type: ignore[index]
+    audio = next(s for s in streams if s['codec_type'] == 'audio')  # type: ignore[index]
+    video_dur = _stream_duration(video)  # type: ignore[arg-type]
+    audio_dur = _stream_duration(audio)  # type: ignore[arg-type]
+    assert 1.8 <= video_dur <= 2.2
+    assert 1.8 <= audio_dur <= 2.2
+    assert abs(video_dur - audio_dur) < 0.15

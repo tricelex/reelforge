@@ -317,6 +317,8 @@ def test_contain_solid_background_composes_middle_zone() -> None:
     assert 'color=c=#112233:s=1080x1920' in fc
     assert 'scale=1080:1080:force_original_aspect_ratio=decrease' in fc
     assert 'overlay=0+(1080-w)/2:420+(1080-h)/2' in fc
+    af = cmd[cmd.index('-af') + 1]
+    assert af == 'atrim=start=0.000000:end=10.000000,asetpts=PTS-STARTPTS'
 
 
 def test_square_crop_blurred_background() -> None:
@@ -336,6 +338,53 @@ def test_square_crop_blurred_background() -> None:
     assert 'boxblur=15:5' in fc
     assert "crop='min(iw,ih)':'min(iw,ih)'" in fc
     assert 'scale=1080:1080' in fc
+    af = cmd[cmd.index('-af') + 1]
+    assert af == 'atrim=start=1.000000:end=5.000000,asetpts=PTS-STARTPTS'
+
+
+def test_contain_trims_audio_to_clip_window_with_speed() -> None:
+    layout = _make_layout('CENTER_CROP')
+    layout.foreground_treatment = 'CONTAIN'
+    layout.background_mode = 'SOLID'
+    layout.background_color = '#000000'
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=12.5,
+        end_sec=22.5,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+        playback_speed=1.5,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    af = cmd[cmd.index('-af') + 1]
+    assert af.startswith(
+        'atrim=start=12.500000:end=22.500000,asetpts=PTS-STARTPTS,',
+    )
+    assert 'atempo=1.5000' in af
+
+
+def test_spatial_stack_trims_audio_to_clip_window() -> None:
+    layout = _make_layout('SPATIAL_STACK')
+    layout.has_spatial_regions = True
+    layout.region_a_x = 0
+    layout.region_a_y = 0
+    layout.region_a_w = 640
+    layout.region_a_h = 360
+    layout.region_b_x = 0
+    layout.region_b_y = 360
+    layout.region_b_w = 640
+    layout.region_b_h = 360
+    layout.stack_ratio = 0.6
+    stage = TrimAndCropStage(
+        source_path=Path('/in.mp4'),
+        start_sec=3.0,
+        end_sec=8.0,
+        output_path=Path('/out.mp4'),
+        layout_config=layout,
+    )
+    cmd = stage._build_command(Path('/in.mp4'))
+    af = cmd[cmd.index('-af') + 1]
+    assert af == 'atrim=start=3.000000:end=8.000000,asetpts=PTS-STARTPTS'
 
 
 def test_center_crop_default_fit_mode_unchanged() -> None:
