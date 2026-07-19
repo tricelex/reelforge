@@ -99,6 +99,27 @@ class TrimAndCropStage(RenderStage):
         atempo_parts.append(f'atempo={remaining:.4f}')
         return video, ','.join(atempo_parts)
 
+    def _clip_audio_af(self, speed_af: str) -> str:
+        """Trim source audio to the clip window, then apply optional speed.
+
+        Composition/stack paths trim video in filter_complex but map the
+        raw source audio stream. Without atrim, ``-shortest`` keeps the
+        first N seconds of the full source instead of the clip window.
+        """
+        if self.end_sec <= self.start_sec:
+            msg = (
+                f'Invalid clip window: start={self.start_sec} '
+                f'end={self.end_sec}'
+            )
+            raise ValueError(msg)
+        parts = [
+            f'atrim=start={self.start_sec:.6f}:end={self.end_sec:.6f}',
+            'asetpts=PTS-STARTPTS',
+        ]
+        if speed_af:
+            parts.append(speed_af)
+        return ','.join(parts)
+
     def _encode_tail(self, audio_af: str) -> list[str]:
         cmd: list[str] = []
         if audio_af:
@@ -250,7 +271,7 @@ class TrimAndCropStage(RenderStage):
             '0:a?',
             '-shortest',
         ]
-        cmd += self._encode_tail(audio_af)
+        cmd += self._encode_tail(self._clip_audio_af(audio_af))
         return cmd
 
     def _fill_cmd(self, input_path: Path) -> list[str]:
@@ -408,5 +429,5 @@ class TrimAndCropStage(RenderStage):
             '-map',
             '0:a',
         ]
-        cmd += self._encode_tail(audio_af)
+        cmd += self._encode_tail(self._clip_audio_af(audio_af))
         return cmd
