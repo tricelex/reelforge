@@ -16,6 +16,7 @@ from dmr.plugins.msgspec import MsgspecSerializer
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
     ApproveGatePayload,
+    CaptionPresetListPayload,
     ClipCandidateListPayload,
     ClipCandidatePatchPayload,
     ClipCandidatePayload,
@@ -266,6 +267,39 @@ class ClipCandidateRejectView(
             str(self.kwargs['candidate_id']),
             reason=parsed_body.reason,
         )
+
+
+@final
+class ClipCandidateDuplicateView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Duplicate a clip candidate for A/B styling."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(self) -> ClipCandidatePayload:
+        """Clone the candidate and its layout/style configs."""
+        return self.resolve(ClipsService).duplicate(
+            str(self.kwargs['candidate_id']),
+        )
+
+
+@final
+class CaptionPresetListView(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """List caption style presets for galleries and templates."""
+
+    auth = (jwt_sync_auth,)
+
+    def get(self) -> CaptionPresetListPayload:
+        """Return the seeded caption preset catalog."""
+        return self.resolve(ClipsService).list_caption_presets()
 
 
 @final

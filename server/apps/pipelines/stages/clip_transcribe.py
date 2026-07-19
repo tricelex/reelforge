@@ -72,6 +72,12 @@ def _run_scene_detection(video_path: str) -> list[float]:
         return []
 
 
+#: Pause gap (seconds) that starts a new caption segment.
+_SEGMENT_PAUSE_GAP_SEC = 0.6
+#: Soft max words per caption segment before forcing a split.
+_SEGMENT_MAX_WORDS = 24
+
+
 def _build_enriched_transcript(
     transcript_json: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -86,6 +92,85 @@ def _build_enriched_transcript(
         for w in transcript_json.get('words', [])
         if w.get('type', 'word') == 'word'
     ]
+
+
+def _build_caption_segments(
+    enriched_words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group Scribe words into ASS-compatible segments.
+
+    Splits on speaker changes, pause gaps, and a soft word-count bound so
+    CaptionStage can render without a Whisper-style ``segments`` payload.
+    """
+    assert isinstance(enriched_words, list), 'enriched_words must be a list'  # noqa: S101
+    if not enriched_words:
+        return []
+
+    segments: list[dict[str, Any]] = []
+    current_words: list[dict[str, Any]] = []
+    current_speaker: str | None = None
+
+    def _flush() -> None:
+        if not current_words:
+            return
+        parts = [
+            str(w.get('word', '')).strip()
+            for w in current_words
+            if w.get('word')
+        ]
+        segments.append({
+            'text': ' '.join(parts).strip(),
+            'start': float(current_words[0]['start']),
+            'end': float(current_words[-1]['end']),
+            'words': list(current_words),
+        })
+        current_words.clear()
+
+    max_words = len(enriched_words)
+    for idx, word in enumerate(enriched_words):
+        assert idx < max_words, f'word index exceeded bound: {idx}'  # noqa: S101
+        speaker = str(word.get('speaker_id') or 'UNKNOWN')
+        if _should_split_segment(
+            current_words,
+            current_speaker,
+            word,
+            speaker,
+        ):
+            _flush()
+        current_words.append(word)
+        current_speaker = speaker
+
+    _flush()
+    assert len(segments) <= max_words, 'segment count exceeded word count'  # noqa: S101
+    return segments
+
+
+def _should_split_segment(
+    current_words: list[dict[str, Any]],
+    current_speaker: str | None,
+    word: dict[str, Any],
+    speaker: str,
+) -> bool:
+    if not current_words:
+        return False
+    prev = current_words[-1]
+    gap = float(word['start']) - float(prev['end'])
+    speaker_changed = speaker != current_speaker
+    too_long = len(current_words) >= _SEGMENT_MAX_WORDS
+    return speaker_changed or gap >= _SEGMENT_PAUSE_GAP_SEC or too_long
+
+
+def _with_caption_segments(
+    transcript_json: dict[str, Any],
+    enriched_words: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return transcript JSON with ASS-compatible ``segments`` populated."""
+    adapted = dict(transcript_json)
+    existing = adapted.get('segments')
+    if isinstance(existing, list) and existing:
+        return adapted
+    adapted['segments'] = _build_caption_segments(enriched_words)
+    return adapted
 
 
 @register_stage
@@ -144,10 +229,11 @@ class ClipTranscribeStage(Stage):
 
         transcript_text = transcript_json.get('text', '')
         enriched = _build_enriched_transcript(transcript_json)
+        caption_ready = _with_caption_segments(transcript_json, enriched)
 
         manifest: dict[str, Any] = {
             'transcript_text': transcript_text,
-            'transcript_json': transcript_json,
+            'transcript_json': caption_ready,
             'enriched_transcript': enriched,
             'scene_cuts': scene_cuts,
             'source_duration_sec': source_duration_sec,
@@ -155,7 +241,7 @@ class ClipTranscribeStage(Stage):
 
         transcript_asset = await ctx.assets.save(
             kind=AssetKind.TRANSCRIPT,
-            content=json.dumps(transcript_json).encode(),
+            content=json.dumps(caption_ready).encode(),
             filename='transcript.json',
             mime='application/json',
         )

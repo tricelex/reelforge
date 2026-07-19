@@ -54,7 +54,7 @@ class ASSGenerator:
         """Generate the full .ass file content."""
         sc = self.style_config
         style = sc.caption_style if sc else CaptionStyle.CHUNKED
-        segments = self.transcript_json.get('segments', [])
+        segments = self._resolve_segments()
         if sc and sc.caption_uppercase:
             segments = _uppercase_segments(segments)
         header = self._header()
@@ -75,6 +75,45 @@ class ASSGenerator:
             dialogues = self._chunked(segments)
 
         return header + '\n'.join(dialogues) + '\n'
+
+    def _resolve_segments(self) -> list[dict[str, Any]]:
+        """Return caption segments, adapting Scribe words when needed."""
+        existing = self.transcript_json.get('segments', [])
+        if isinstance(existing, list) and existing:
+            return existing
+        adapted = self._words_from_scribe()
+        if not adapted:
+            return []
+        text = ' '.join(w['word'] for w in adapted)
+        return [{
+            'text': text,
+            'start': float(adapted[0]['start']),
+            'end': float(adapted[-1]['end']),
+            'words': adapted,
+        }]
+
+    def _words_from_scribe(self) -> list[dict[str, Any]]:
+        words_raw = self.transcript_json.get('words', [])
+        if not isinstance(words_raw, list) or not words_raw:
+            return []
+        adapted: list[dict[str, Any]] = []
+        max_words = len(words_raw)
+        for idx, raw in enumerate(words_raw):
+            assert idx < max_words  # noqa: S101
+            if not isinstance(raw, dict):
+                continue
+            if raw.get('type', 'word') != 'word':
+                continue
+            word = str(raw.get('text') or raw.get('word') or '').strip()
+            if not word:
+                continue
+            adapted.append({
+                'word': word,
+                'start': float(raw.get('start', 0)),
+                'end': float(raw.get('end', 0)),
+                'speaker_id': raw.get('speaker_id') or 'UNKNOWN',
+            })
+        return adapted
 
     def _header(self) -> str:
         from server.apps.rendering.clip_stages.fonts import (  # noqa: PLC0415

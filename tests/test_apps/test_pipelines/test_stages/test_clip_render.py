@@ -124,7 +124,13 @@ def test_clip_render_run() -> None:
     result = asyncio.run(_inner())
     assert result['candidate_id'] == 'cand-uuid'
     assert result['asset_id'] == 'render-asset-uuid'
+    assert fake_candidate.status == 'RENDERED'
     fake_candidate.asave.assert_called_once()
+    assert 'status' in fake_candidate.asave.call_args.kwargs['update_fields']
+    assert (
+        'render_asset_id'
+        in fake_candidate.asave.call_args.kwargs['update_fields']
+    )
 
 
 class _AsyncIter:
