@@ -11,8 +11,11 @@ from server.apps.assets.models import Asset, AssetKind
 from server.apps.channels.models import Channel, ChannelKind, PublishMode
 from server.apps.clips.models import ClipCandidate
 from server.apps.clips.preview_render import (
+    PREVIEW_QUEUED_STALE_SEC,
+    is_preview_job_stale,
     preview_cache_key,
     preview_dimensions,
+    preview_job_entry,
     render_clip_preview_sync,
 )
 from server.apps.pipelines.models import (
@@ -132,6 +135,35 @@ def test_preview_dimensions_landscape(
 def test_preview_dimensions_without_layout_config() -> None:
     """A candidate without a layout config row falls back to 9:16."""
     assert preview_dimensions(ClipCandidate()) == (540, 960)
+
+
+def test_preview_job_entry_has_timestamp() -> None:
+    """New job entries carry a wall-clock timestamp for stale detection."""
+    entry = preview_job_entry('queued', 42)
+    assert entry['status'] == 'queued'
+    assert entry['config_version'] == 42
+    assert isinstance(entry['at'], float)
+
+
+def test_is_preview_job_stale_ignores_terminal_states() -> None:
+    """Only queued/rendering entries can go stale."""
+    assert is_preview_job_stale({'status': 'ready'}) is False
+    assert is_preview_job_stale({'status': 'failed'}) is False
+
+
+def test_is_preview_job_stale_fresh_and_expired() -> None:
+    """Fresh entries are live; expired and legacy entries are stale."""
+    import time
+
+    fresh = preview_job_entry('queued', 1)
+    assert is_preview_job_stale(fresh) is False
+    expired = {
+        'status': 'queued',
+        'at': time.time() - PREVIEW_QUEUED_STALE_SEC - 1,
+    }
+    assert is_preview_job_stale(expired) is True
+    legacy = {'status': 'rendering'}
+    assert is_preview_job_stale(legacy) is True
 
 
 @pytest.mark.django_db

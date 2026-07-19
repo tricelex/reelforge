@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,43 @@ PREVIEW_CACHE_TIMEOUT = 3600
 PREVIEW_DOWNSCALE = 2
 PREVIEW_CRF = 28
 PREVIEW_PRESET = 'veryfast'
+
+#: A 'queued' job that no worker picked up within this window is stale.
+PREVIEW_QUEUED_STALE_SEC = 180
+#: A 'rendering' job that never finished within this window is stale
+#: (worker crashed mid-render, message lost, etc.).
+PREVIEW_RENDERING_STALE_SEC = 900
+
+PREVIEW_STALL_ERROR = 'Preview render stalled and was reset. Refresh to retry.'
+
+
+def preview_job_entry(status: str, config_version: int) -> dict[str, object]:
+    """Build a timestamped cache entry for one preview job state."""
+    return {
+        'status': status,
+        'config_version': config_version,
+        'at': time.time(),
+    }
+
+
+def is_preview_job_stale(entry: dict[str, object]) -> bool:
+    """Return True when a queued/rendering entry outlived its state window.
+
+    Entries without a timestamp (written before this field existed) are
+    treated as stale so previously stuck jobs self-heal on the next poll.
+    """
+    status = entry.get('status')
+    if status not in {'queued', 'rendering'}:
+        return False
+    raw_at = entry.get('at')
+    if not isinstance(raw_at, (int, float)):
+        return True
+    limit = (
+        PREVIEW_QUEUED_STALE_SEC
+        if status == 'queued'
+        else PREVIEW_RENDERING_STALE_SEC
+    )
+    return (time.time() - float(raw_at)) > limit
 
 
 def preview_dimensions(candidate: 'ClipCandidate') -> tuple[int, int]:
@@ -100,9 +138,14 @@ def invalidate_preview_cache(candidate_id: str) -> None:
 def _set_preview_failed(candidate_id: str, error: str) -> None:
     from django.core.cache import cache  # noqa: PLC0415
 
+    entry: dict[str, object] = {
+        'status': 'failed',
+        'error': error[:500],
+        'at': time.time(),
+    }
     cache.set(
         preview_cache_key(candidate_id),
-        {'status': 'failed', 'error': error[:500]},
+        entry,
         timeout=PREVIEW_CACHE_TIMEOUT,
     )
 
@@ -112,7 +155,7 @@ def _set_preview_ready(candidate_id: str, config_version: int) -> None:
 
     cache.set(
         preview_cache_key(candidate_id),
-        {'status': 'ready', 'config_version': config_version},
+        preview_job_entry('ready', config_version),
         timeout=PREVIEW_CACHE_TIMEOUT,
     )
     cache.delete(preview_worker_lock_key(candidate_id))
@@ -302,7 +345,7 @@ def render_clip_preview_sync(candidate_id: str) -> None:
     version = preview_config_version(candidate_id)
     cache.set(
         preview_cache_key(candidate_id),
-        {'status': 'rendering', 'config_version': version},
+        preview_job_entry('rendering', version),
         timeout=PREVIEW_CACHE_TIMEOUT,
     )
 

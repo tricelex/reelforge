@@ -337,6 +337,56 @@ def test_get_preview_status_ready_prefers_preview_asset(
 
 
 @pytest.mark.django_db
+def test_get_preview_status_queued_fresh(candidate: ClipCandidate) -> None:
+    """A fresh queued cache entry reports queued status."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import (
+        preview_cache_key,
+        preview_job_entry,
+    )
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        preview_job_entry('queued', 1),
+    )
+
+    result = _clips_service().get_preview_status(str(candidate.id))
+    assert result.status == 'queued'
+    assert result.url is None
+
+
+@pytest.mark.django_db
+def test_get_preview_status_stale_job_self_heals(
+    candidate: ClipCandidate,
+) -> None:
+    """A stalled queued/rendering job reports failed and clears the cache."""
+    import time
+
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import (
+        PREVIEW_RENDERING_STALE_SEC,
+        PREVIEW_STALL_ERROR,
+        preview_cache_key,
+    )
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {
+            'status': 'rendering',
+            'config_version': 1,
+            'at': time.time() - PREVIEW_RENDERING_STALE_SEC - 1,
+        },
+    )
+
+    result = _clips_service().get_preview_status(str(candidate.id))
+    assert result.status == 'failed'
+    assert result.error == PREVIEW_STALL_ERROR
+    assert cache.get(preview_cache_key(str(candidate.id))) is None
+
+
+@pytest.mark.django_db
 def test_get_preview_status_failed(candidate: ClipCandidate) -> None:
     """Preview status is failed when the cache records a failure."""
     from django.core.cache import cache
@@ -372,8 +422,31 @@ def test_trigger_preview_skips_when_already_queued(
     """trigger_preview does not enqueue a second job while one is active."""
     from django.core.cache import cache
 
+    from server.apps.clips.preview_render import (
+        preview_cache_key,
+        preview_job_entry,
+    )
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        preview_job_entry('rendering', 1),
+    )
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_preview(str(candidate.id))
+    assert result.status == 'queued'
+    mock_kiq.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_trigger_preview_requeues_stale_rendering(
+    candidate: ClipCandidate,
+) -> None:
+    """A rendering entry without a fresh timestamp is stale and re-enqueued."""
+    from django.core.cache import cache
+
     from server.apps.clips.preview_render import preview_cache_key
 
+    # Legacy entry with no 'at' timestamp — treated as stale.
     cache.set(
         preview_cache_key(str(candidate.id)),
         {'status': 'rendering'},
@@ -381,7 +454,58 @@ def test_trigger_preview_skips_when_already_queued(
     with patch('server.apps.clips.services.kiq_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
     assert result.status == 'queued'
-    mock_kiq.assert_not_called()
+    mock_kiq.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_trigger_preview_requeues_expired_queued(
+    candidate: ClipCandidate,
+) -> None:
+    """A queued entry older than the stale window is re-enqueued."""
+    import time
+
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import (
+        PREVIEW_QUEUED_STALE_SEC,
+        preview_cache_key,
+    )
+
+    cache.set(
+        preview_cache_key(str(candidate.id)),
+        {
+            'status': 'queued',
+            'config_version': 1,
+            'at': time.time() - PREVIEW_QUEUED_STALE_SEC - 1,
+        },
+    )
+    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+        result = _clips_service().trigger_preview(str(candidate.id))
+    assert result.status == 'queued'
+    mock_kiq.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_trigger_preview_enqueue_failure_returns_failed(
+    candidate: ClipCandidate,
+) -> None:
+    """Broker failures surface as a failed payload instead of hanging."""
+    from django.core.cache import cache
+
+    from server.apps.clips.preview_render import preview_cache_key
+
+    with patch(
+        'server.apps.clips.services.kiq_task',
+        side_effect=RuntimeError('broker down'),
+    ):
+        result = _clips_service().trigger_preview(str(candidate.id))
+
+    assert result.status == 'failed'
+    assert result.error is not None
+    assert 'broker down' in result.error
+    cached = cache.get(preview_cache_key(str(candidate.id)))
+    assert cached is not None
+    assert cached['status'] == 'failed'
 
 
 @pytest.mark.django_db

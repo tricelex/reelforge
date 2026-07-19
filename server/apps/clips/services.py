@@ -45,9 +45,12 @@ from server.apps.clips.logic.value_objects import (
 )
 from server.apps.clips.preview_render import (
     PREVIEW_CACHE_TIMEOUT,
+    PREVIEW_STALL_ERROR,
     invalidate_preview_cache,
+    is_preview_job_stale,
     preview_cache_key,
     preview_config_version,
+    preview_job_entry,
 )
 from server.apps.clips.selectors import (
     get_candidate_source_dimensions,
@@ -157,6 +160,54 @@ def _preview_queued_payload(
     )
 
 
+def _preview_failed_payload(
+    candidate_id: str,
+    version: int,
+    error: str,
+) -> ClipPreviewStatusPayload:
+    return ClipPreviewStatusPayload(
+        candidate_id=candidate_id,
+        status='failed',
+        url=None,
+        config_version=version,
+        error=error[:500],
+    )
+
+
+def _preview_poll_status_from_cache(
+    cached: dict[str, object],
+    *,
+    candidate_id: str,
+    version: int,
+) -> ClipPreviewStatusPayload | None:
+    """Map a cached job entry to a poll response, healing stalled jobs."""
+    cached_status = cached.get('status')
+    if cached_status in {'queued', 'rendering'}:
+        if is_preview_job_stale(cached):
+            invalidate_preview_cache(candidate_id)
+            return _preview_failed_payload(
+                candidate_id,
+                version,
+                PREVIEW_STALL_ERROR,
+            )
+        return _preview_queued_payload(candidate_id, version)
+    if cached_status == 'failed':
+        raw_error = cached.get('error')
+        error = (
+            str(raw_error)[:500]
+            if isinstance(raw_error, str) and raw_error
+            else None
+        )
+        return ClipPreviewStatusPayload(
+            candidate_id=candidate_id,
+            status='failed',
+            url=None,
+            config_version=version,
+            error=error,
+        )
+    return None
+
+
 def _preview_status_from_cache(
     cached: dict[str, object],
     *,
@@ -167,6 +218,8 @@ def _preview_status_from_cache(
 ) -> ClipPreviewStatusPayload | None:
     cached_status = cached.get('status')
     if cached_status in {'queued', 'rendering'}:
+        if is_preview_job_stale(cached):
+            return None
         return _preview_queued_payload(candidate_id, version)
     if (
         not force
@@ -224,7 +277,9 @@ def _prepare_preview_cache_state(
         invalidate_preview_cache(candidate_id)
         return
     cached = cache.get(cache_key)
-    if isinstance(cached, dict) and cached.get('status') == 'failed':
+    if isinstance(cached, dict) and (
+        cached.get('status') == 'failed' or is_preview_job_stale(cached)
+    ):
         invalidate_preview_cache(candidate_id)
 
 
@@ -263,10 +318,7 @@ def _enqueue_clip_preview(
         force=force,
     )
 
-    queued_entry: dict[str, object] = {
-        'status': 'queued',
-        'config_version': version,
-    }
+    queued_entry = preview_job_entry('queued', version)
     if not _claim_preview_slot(
         cache,
         cache_key,
@@ -285,7 +337,16 @@ def _enqueue_clip_preview(
             return short_circuit
         return _preview_queued_payload(candidate_id, version)
 
-    kiq_task(render_clip_preview_task, candidate_id)
+    try:
+        kiq_task(render_clip_preview_task, candidate_id)
+    except Exception as exc:
+        error = f'Could not queue preview render: {exc}'
+        cache.set(
+            cache_key,
+            {'status': 'failed', 'error': error[:500]},
+            timeout=PREVIEW_CACHE_TIMEOUT,
+        )
+        return _preview_failed_payload(candidate_id, version, error)
     return _preview_queued_payload(candidate_id, version)
 
 
@@ -1495,28 +1556,13 @@ class ClipsService:
         candidate = ClipCandidate.objects.get(id=candidate_id)
         cached = cache.get(preview_cache_key(candidate_id))
         if isinstance(cached, dict):
-            cached_status = cached.get('status')
-            if cached_status in {'queued', 'rendering'}:
-                return ClipPreviewStatusPayload(
-                    candidate_id=candidate_id,
-                    status='queued',
-                    url=None,
-                    config_version=version,
-                )
-            if cached_status == 'failed':
-                raw_error = cached.get('error')
-                error = (
-                    str(raw_error)[:500]
-                    if isinstance(raw_error, str) and raw_error
-                    else None
-                )
-                return ClipPreviewStatusPayload(
-                    candidate_id=candidate_id,
-                    status='failed',
-                    url=None,
-                    config_version=version,
-                    error=error,
-                )
+            from_cache = _preview_poll_status_from_cache(
+                cached,
+                candidate_id=candidate_id,
+                version=version,
+            )
+            if from_cache is not None:
+                return from_cache
         if candidate.preview_asset_id is not None:
             asset = Asset.objects.get(id=candidate.preview_asset_id)
             return ClipPreviewStatusPayload(
