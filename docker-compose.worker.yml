@@ -17,9 +17,11 @@ services:
         GID: ${GID:-1000}
     environment:
       LOGFIRE_SERVICE_NAME: reelforge-worker
+      ASSET_CACHE_DIR: /tmp/reelforge/assets
     env_file: ./config/.env
     volumes:
       - .:/code
+      - source-cache:/tmp/reelforge/assets
     command: >-
       python -m taskiq worker server.common.broker:broker
       server.common.django_setup
@@ -28,3 +30,6 @@ services:
       server.apps.clips.tasks
       server.apps.pipelines.tasks
       server.apps.analytics.tasks
+
+volumes:
+  source-cache:

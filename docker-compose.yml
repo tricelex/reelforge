@@ -23,8 +23,10 @@ services:
           - "reelforge:latest"
       environment:
         DJANGO_ENV: development
+        ASSET_CACHE_DIR: /tmp/reelforge/assets
       volumes:
         - .:/code
+        - source-cache:/tmp/reelforge/assets
       env_file: ./config/.env
       depends_on:
         db:
@@ -34,6 +36,7 @@ services:
     environment:
       DJANGO_ENV: development
       LOGFIRE_SERVICE_NAME: reelforge-web
+      ASSET_CACHE_DIR: /tmp/reelforge/assets
     healthcheck:
       test: /bin/sh /code/docker/django/healthcheck.sh
       interval: 10s
@@ -51,6 +54,7 @@ services:
     environment:
       DJANGO_ENV: development
       LOGFIRE_SERVICE_NAME: reelforge-scheduler
+      ASSET_CACHE_DIR: /tmp/reelforge/assets
 
   # Local PostgreSQL — used ONLY for running the test suite fast.
   # The app itself (web/scheduler/worker) connects to the remote DB via
@@ -72,3 +76,6 @@ services:
       start_period: 10s
     expose:
       - "5432"
+
+volumes:
+  source-cache:

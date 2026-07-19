@@ -79,8 +79,15 @@ def get_asset_dimensions(asset_id: str) -> tuple[int | None, int | None]:
     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
         tmp_path = tmp.name
     try:
-        with asset.file.open('rb') as fh:
-            Path(tmp_path).write_bytes(fh.read())
+        from server.common.asset_cache import (  # noqa: PLC0415
+            materialize_to_path,
+        )
+
+        materialize_to_path(
+            checksum=asset.checksum,
+            open_stream=lambda: asset.file.open('rb'),
+            destination=Path(tmp_path),
+        )
         probed_w, probed_h = probe_local_video_dimensions(tmp_path)
     finally:
         Path(tmp_path).unlink(missing_ok=True)

@@ -178,9 +178,15 @@ def _preview_poll_status_from_cache(
     cached: dict[str, object],
     *,
     candidate_id: str,
-    version: int,
+    presign: PresignUrlHelper | None = None,
 ) -> ClipPreviewStatusPayload | None:
-    """Map a cached job entry to a poll response, healing stalled jobs."""
+    """Map a cached job entry to a poll response without hitting Postgres.
+
+    Uses ``config_version`` and ``asset_file_name`` stored on the cache entry
+    so active polls are a single Redis read (+ local URL signing when ready).
+    """
+    raw_version = cached.get('config_version')
+    version = int(raw_version) if isinstance(raw_version, int) else 0
     cached_status = cached.get('status')
     if cached_status in {'queued', 'rendering'}:
         if is_preview_job_stale(cached):
@@ -205,6 +211,15 @@ def _preview_poll_status_from_cache(
             config_version=version,
             error=error,
         )
+    if cached_status == 'ready' and presign is not None:
+        raw_name = cached.get('asset_file_name')
+        if isinstance(raw_name, str) and raw_name:
+            return ClipPreviewStatusPayload(
+                candidate_id=candidate_id,
+                status='ready',
+                url=presign.presign_get(raw_name),
+                config_version=version,
+            )
     return None
 
 
@@ -226,6 +241,14 @@ def _preview_status_from_cache(
         and cached_status == 'ready'
         and cached.get('config_version') == version
     ):
+        raw_name = cached.get('asset_file_name')
+        if isinstance(raw_name, str) and raw_name:
+            return ClipPreviewStatusPayload(
+                candidate_id=candidate_id,
+                status='ready',
+                url=presign.presign_get(raw_name),
+                config_version=version,
+            )
         return _preview_ready_payload(presign, candidate_id, version)
     return None
 
@@ -1035,8 +1058,15 @@ class ClipsService:
                 config.render_format,
             )
             try:
-                with asset.file.open('rb') as fh:
-                    Path(tmp_path).write_bytes(fh.read())
+                from server.common.asset_cache import (  # noqa: PLC0415
+                    materialize_to_path,
+                )
+
+                materialize_to_path(
+                    checksum=asset.checksum,
+                    open_stream=lambda: asset.file.open('rb'),
+                    destination=Path(tmp_path),
+                )
                 result = SpeakerDetectionService().detect(
                     video_path=Path(tmp_path),
                     start_sec=candidate.start_sec,
@@ -1546,23 +1576,29 @@ class ClipsService:
         self,
         candidate_id: str,
     ) -> ClipPreviewStatusPayload:
-        """Return preview job state for one candidate."""
+        """Return preview job state for one candidate.
+
+        Active cache entries (queued/rendering/failed/ready with a stored
+        file name) are served from Redis only — no Postgres round trips.
+        Idle and expired-cache paths fall back to the database.
+        """
         from django.core.cache import cache  # noqa: PLC0415
 
         from server.apps.assets.models import Asset  # noqa: PLC0415
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
 
-        version = _config_version(candidate_id)
-        candidate = ClipCandidate.objects.get(id=candidate_id)
         cached = cache.get(preview_cache_key(candidate_id))
         if isinstance(cached, dict):
             from_cache = _preview_poll_status_from_cache(
                 cached,
                 candidate_id=candidate_id,
-                version=version,
+                presign=self._presign,
             )
             if from_cache is not None:
                 return from_cache
+
+        version = _config_version(candidate_id)
+        candidate = ClipCandidate.objects.get(id=candidate_id)
         if candidate.preview_asset_id is not None:
             asset = Asset.objects.get(id=candidate.preview_asset_id)
             return ClipPreviewStatusPayload(
@@ -1591,16 +1627,24 @@ class ClipsService:
         candidate_id: str,
         time_sec: float,
     ) -> ClipSourceFramePayload:
-        """Extract a JPEG frame from the source video at the given time."""
+        """Extract a JPEG frame from the source video at the given time.
+
+        Results are cached by source checksum and quantized timestamp so
+        repeated editor loads do not re-download or re-encode.
+        """
         import hashlib
         import subprocess  # noqa: S404
         import tempfile
         from pathlib import Path
 
+        from django.core.cache import cache  # noqa: PLC0415
         from django.core.files.base import ContentFile  # noqa: PLC0415
 
         from server.apps.assets.models import Asset, AssetKind  # noqa: PLC0415
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+        from server.common.asset_cache import (  # noqa: PLC0415
+            materialize_to_path,
+        )
 
         candidate = ClipCandidate.objects.select_related('run').get(
             id=candidate_id,
@@ -1609,6 +1653,7 @@ class ClipsService:
             candidate.start_sec,
             min(time_sec, candidate.end_sec),
         )
+        quantized = round(clamped, 2)
         asset_id = get_run_source_asset_id(str(candidate.run_id))
         if asset_id is None:
             msg = 'Source video not available for this candidate'
@@ -1616,17 +1661,34 @@ class ClipsService:
 
         source_asset = Asset.objects.get(id=uuid.UUID(asset_id))
         source_w, source_h = get_candidate_source_dimensions(candidate_id)
+        frame_key = (
+            f'clip_source_frame:{source_asset.checksum}:{quantized}'
+        )
+        cached_frame = cache.get(frame_key)
+        if isinstance(cached_frame, dict):
+            raw_name = cached_frame.get('file_name')
+            if isinstance(raw_name, str) and raw_name:
+                return ClipSourceFramePayload(
+                    candidate_id=candidate_id,
+                    time_sec=quantized,
+                    url=self._presign.presign_get(raw_name),
+                    width=source_w,
+                    height=source_h,
+                )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             video_path = Path(tmpdir) / 'source.mp4'
             frame_path = Path(tmpdir) / 'frame.jpg'
-            with source_asset.file.open('rb') as fh:
-                video_path.write_bytes(fh.read())
+            materialize_to_path(
+                checksum=source_asset.checksum,
+                open_stream=lambda: source_asset.file.open('rb'),
+                destination=video_path,
+            )
             cmd = [
                 'ffmpeg',
                 '-y',
                 '-ss',
-                f'{clamped:.3f}',
+                f'{quantized:.3f}',
                 '-i',
                 str(video_path),
                 '-frames:v',
@@ -1654,15 +1716,21 @@ class ClipsService:
             run=candidate.run,
         )
         thumb.file.save(
-            f'source_frame_{candidate_id}_{int(clamped)}.jpg',
+            f'source_frame_{candidate_id}_{int(quantized)}.jpg',
             ContentFile(frame_bytes),
             save=False,
         )
         thumb.save()
+        file_name = thumb.file.name or ''
+        cache.set(
+            frame_key,
+            {'file_name': file_name},
+            timeout=86_400,
+        )
         return ClipSourceFramePayload(
             candidate_id=candidate_id,
-            time_sec=clamped,
-            url=self._presign.presign_get(thumb.file.name or ''),
+            time_sec=quantized,
+            url=self._presign.presign_get(file_name),
             width=source_w,
             height=source_h,
         )
