@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/reelforge.iml" filepath="$PROJECT_DIR$/.idea/reelforge.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../reelforge-frontend/.idea/reelforge-frontend.iml" filepath="$PROJECT_DIR$/../reelforge-frontend/.idea/reelforge-frontend.iml" />
     </modules>
   </component>
 </project>

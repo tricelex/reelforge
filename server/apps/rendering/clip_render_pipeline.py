@@ -31,13 +31,149 @@ class GatePausedException(Exception):  # noqa: N818
         super().__init__(f'Render paused at gate after stage {stage_order}')
 
 
+def _shift_time(
+    value: Any,
+    *,
+    start_sec: float,
+    clip_dur: float,
+) -> float | None:
+    """Shift an absolute timestamp into [0, clip_dur], or None if invalid."""
+    try:
+        absolute = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(absolute - start_sec, clip_dur))
+
+
+def _rebase_timed_words(
+    words: list[Any],
+    *,
+    start_sec: float,
+    end_sec: float,
+    clip_dur: float,
+) -> list[dict[str, Any]]:
+    """Filter and rebase word-level timestamps into the clip window."""
+    rebased: list[dict[str, Any]] = []
+    max_words = len(words)
+    for idx, raw in enumerate(words):
+        assert idx < max_words  # noqa: S101
+        if not isinstance(raw, dict):
+            continue
+        try:
+            word_start = float(raw.get('start', 0))
+            word_end = float(raw.get('end', word_start))
+        except (TypeError, ValueError):
+            continue
+        if word_end <= start_sec or word_start >= end_sec:
+            continue
+        new_start = _shift_time(
+            word_start,
+            start_sec=start_sec,
+            clip_dur=clip_dur,
+        )
+        new_end = _shift_time(
+            word_end,
+            start_sec=start_sec,
+            clip_dur=clip_dur,
+        )
+        if new_start is None or new_end is None or new_end <= new_start:
+            continue
+        rebased.append({**raw, 'start': new_start, 'end': new_end})
+    return rebased
+
+
+def _rebase_segment(
+    seg: dict[str, Any],
+    *,
+    start_sec: float,
+    end_sec: float,
+    clip_dur: float,
+) -> dict[str, Any] | None:
+    """Rebase one transcript segment into the clip window, or None."""
+    try:
+        seg_start = float(seg.get('start', 0))
+        seg_end = float(seg.get('end', seg_start))
+    except (TypeError, ValueError):
+        return None
+    if seg_end <= start_sec or seg_start >= end_sec:
+        return None
+    new_start = _shift_time(
+        seg_start,
+        start_sec=start_sec,
+        clip_dur=clip_dur,
+    )
+    new_end = _shift_time(
+        seg_end,
+        start_sec=start_sec,
+        clip_dur=clip_dur,
+    )
+    if new_start is None or new_end is None or new_end <= new_start:
+        return None
+    new_seg = dict(seg)
+    new_seg['start'] = new_start
+    new_seg['end'] = new_end
+    words = seg.get('words')
+    if isinstance(words, list):
+        new_seg['words'] = _rebase_timed_words(
+            words,
+            start_sec=start_sec,
+            end_sec=end_sec,
+            clip_dur=clip_dur,
+        )
+    return new_seg
+
+
+def _rebase_transcript(
+    transcript_json: dict[str, Any],
+    *,
+    start_sec: float,
+    end_sec: float,
+) -> dict[str, Any]:
+    """Filter and shift transcript times into the trimmed clip timeline.
+
+    Source transcripts use absolute times on the full video. After trim the
+    output starts at t=0, so captions must be rebased by subtracting
+    ``start_sec`` and clamped to ``[0, end_sec - start_sec]``.
+    """
+    clip_dur = max(0.0, end_sec - start_sec)
+    result = dict(transcript_json)
+
+    segments = transcript_json.get('segments', [])
+    if isinstance(segments, list):
+        rebased_segments: list[dict[str, Any]] = []
+        max_segments = len(segments)
+        for idx, seg in enumerate(segments):
+            assert idx < max_segments  # noqa: S101
+            if not isinstance(seg, dict):
+                continue
+            rebased = _rebase_segment(
+                seg,
+                start_sec=start_sec,
+                end_sec=end_sec,
+                clip_dur=clip_dur,
+            )
+            if rebased is not None:
+                rebased_segments.append(rebased)
+        result['segments'] = rebased_segments
+
+    top_words = transcript_json.get('words')
+    if isinstance(top_words, list):
+        result['words'] = _rebase_timed_words(
+            top_words,
+            start_sec=start_sec,
+            end_sec=end_sec,
+            clip_dur=clip_dur,
+        )
+    return result
+
+
 def _scale_transcript(
     transcript_json: dict[str, Any],
     *,
     playback_speed: float,
 ) -> dict[str, Any]:
     """Scale caption/hook timestamps to match a sped-up/slowed-down clip."""
-    if playback_speed == 1.0:
+    if abs(playback_speed - 1.0) < 1e-9:
         return transcript_json
     factor = 1.0 / playback_speed
     scaled_segments = []
@@ -51,7 +187,15 @@ def _scale_transcript(
                 for w in seg['words']
             ]
         scaled_segments.append(new_seg)
-    return {**transcript_json, 'segments': scaled_segments}
+    result = {**transcript_json, 'segments': scaled_segments}
+    top_words = transcript_json.get('words')
+    if isinstance(top_words, list):
+        result['words'] = [
+            {**w, 'start': w['start'] * factor, 'end': w['end'] * factor}
+            for w in top_words
+            if isinstance(w, dict)
+        ]
+    return result
 
 
 @dataclass
@@ -135,7 +279,11 @@ class ClipRenderPipeline:
             c.style_config.playback_speed if c.style_config else 1.0
         )
         transcript_json = _scale_transcript(
-            c.transcript_json,
+            _rebase_transcript(
+                c.transcript_json,
+                start_sec=c.start_sec,
+                end_sec=c.end_sec,
+            ),
             playback_speed=playback_speed,
         )
         font_assets: list = []
