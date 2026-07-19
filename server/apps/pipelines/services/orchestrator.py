@@ -241,14 +241,74 @@ def _try_park_gate_sync(
     states: dict[str, str | None],
     key: str,
 ) -> bool:
-    """Park an armed gate when deps are terminal; return True if parked."""
+    """Park an armed gate when deps are terminal; return True if handled."""
     if not node.get('gate'):
         return False
     deps: list[str] = node.get('depends_on', [])
     if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
         return False
+    if _auto_approve_clip_gate(run, key, states):
+        return True
     _park_gate_sync(run, key)
     states[key] = GATE_PARKED_STATUS
+    return True
+
+
+def _auto_approve_clip_gate(
+    run: 'PipelineRun',
+    key: str,
+    states: dict[str, str | None],
+) -> bool:
+    """Auto-complete clip approval when one-click mode is enabled.
+
+    Marks proposed candidates approved, writes a succeeded gate execution,
+    updates ``states`` so downstream render can enqueue in the same advance
+    pass, and returns True when handled.
+    """
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+
+    if key != 'clip_approval_gate':
+        return False
+    clip_opts = (run.prompt_snapshot or {}).get('clip_options') or {}
+    if not isinstance(clip_opts, dict) or not clip_opts.get('auto_approve'):
+        return False
+
+    from server.apps.clips.logic.constants import (  # noqa: PLC0415
+        CandidateStatus,
+    )
+    from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+    )
+
+    candidates = list(
+        ClipCandidate.objects.filter(
+            run=run,
+            status=CandidateStatus.PROPOSED,
+        ).order_by('-virality_score', '-relevance_score'),
+    )
+    if not candidates:
+        return False
+
+    approved_ids = [str(c.id) for c in candidates]
+    ClipCandidate.objects.filter(
+        id__in=[c.id for c in candidates],
+    ).update(status=CandidateStatus.APPROVED)
+    StageExecution.objects.create(
+        run=run,
+        stage_key=key,
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
+        output={'approved_candidate_ids': approved_ids},
+        finished_at=tz.now(),
+    )
+    states[key] = StageStatus.SUCCEEDED
+    logger.info(
+        'pipeline_gate_auto_approved',
+        run_id=str(run.id),
+        gate_key=key,
+        candidate_count=len(approved_ids),
+    )
     return True
 
 

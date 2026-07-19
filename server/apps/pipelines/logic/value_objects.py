@@ -61,6 +61,22 @@ class RunDetailPayload(msgspec.Struct, frozen=True):
     external_video_id: str | None = None
 
 
+class ClipRunOptionsPayload(msgspec.Struct, frozen=True):
+    """Pre-run discovery controls for a clipping pipeline run."""
+
+    genre: str = 'auto'
+    clip_length: str = 'auto'
+    moments_prompt: str = ''
+    timeframe_start: float | None = None
+    timeframe_end: float | None = None
+    custom_min_sec: float | None = None
+    custom_max_sec: float | None = None
+    auto_headline: bool = True
+    candidate_count: int = 5
+    brand_template_id: str | None = None
+    auto_approve: bool = False
+
+
 class RunCreatePayload(msgspec.Struct, frozen=True):
     """Input for creating a new pipeline run."""
 
@@ -69,6 +85,8 @@ class RunCreatePayload(msgspec.Struct, frozen=True):
     blueprint_name: str | None = None
     source_idea_id: str | None = None
     source_id: str | None = None
+    clip_options: ClipRunOptionsPayload | None = None
+    auto_approve: bool = False
 
 
 class RunListPayload(msgspec.Struct, frozen=True):

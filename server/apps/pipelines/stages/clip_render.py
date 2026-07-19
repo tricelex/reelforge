@@ -42,6 +42,7 @@ class ClipRenderStage(Stage):
         """Run ClipRenderPipeline for one candidate; save FINAL_VIDEO asset."""
         from server.apps.assets.models import Asset, AssetKind  # noqa: PLC0415
         from server.apps.clips.logic.constants import (  # noqa: PLC0415
+            CandidateStatus,
             render_format_dimensions,
         )
         from server.apps.clips.models import ClipCandidate  # noqa: PLC0415
@@ -105,6 +106,7 @@ class ClipRenderStage(Stage):
             mime='video/mp4',
         )
         candidate.render_asset_id = asset.id
-        await candidate.asave(update_fields=['render_asset_id'])
+        candidate.status = CandidateStatus.RENDERED
+        await candidate.asave(update_fields=['render_asset_id', 'status'])
 
         return {'candidate_id': candidate_id, 'asset_id': str(asset.id)}

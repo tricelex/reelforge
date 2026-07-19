@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from server.apps.pipelines.stages.clip_transcribe import (
     ClipTranscribeStage,
+    _build_caption_segments,
     _build_enriched_transcript,
     _extract_audio,
     _run_scene_detection,
     _try_scene_detect,
+    _with_caption_segments,
 )
 
 
@@ -88,6 +90,56 @@ def test_build_enriched_transcript_skips_non_word_entries() -> None:
 def test_build_enriched_transcript_empty() -> None:
     assert _build_enriched_transcript({}) == []
     assert _build_enriched_transcript({'words': []}) == []
+
+
+def test_build_caption_segments_splits_on_pause_and_speaker() -> None:
+    words = [
+        {'word': 'Hello', 'start': 0.0, 'end': 0.3, 'speaker_id': 'A'},
+        {'word': 'there', 'start': 0.3, 'end': 0.6, 'speaker_id': 'A'},
+        {'word': 'Now', 'start': 2.0, 'end': 2.3, 'speaker_id': 'A'},
+        {'word': 'what', 'start': 2.3, 'end': 2.5, 'speaker_id': 'B'},
+    ]
+    segments = _build_caption_segments(words)
+    assert len(segments) == 3
+    assert segments[0]['text'] == 'Hello there'
+    assert segments[1]['text'] == 'Now'
+    assert segments[2]['text'] == 'what'
+    assert segments[0]['words'][0]['word'] == 'Hello'
+
+
+def test_with_caption_segments_preserves_existing() -> None:
+    existing = [{'text': 'keep', 'start': 0.0, 'end': 1.0, 'words': []}]
+    result = _with_caption_segments(
+        {'text': 'keep', 'segments': existing, 'words': []},
+        [],
+    )
+    assert result['segments'] is existing
+
+
+def test_with_caption_segments_builds_when_missing() -> None:
+    transcript = {
+        'text': 'Hello world',
+        'words': [
+            {
+                'text': 'Hello',
+                'start': 0.0,
+                'end': 0.4,
+                'type': 'word',
+                'speaker_id': 'A',
+            },
+            {
+                'text': 'world',
+                'start': 0.4,
+                'end': 0.8,
+                'type': 'word',
+                'speaker_id': 'A',
+            },
+        ],
+    }
+    enriched = _build_enriched_transcript(transcript)
+    result = _with_caption_segments(transcript, enriched)
+    assert len(result['segments']) == 1
+    assert result['segments'][0]['text'] == 'Hello world'
 
 
 def test_run_scene_detection_returns_empty_on_exception() -> None:

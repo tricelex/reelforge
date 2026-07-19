@@ -17,6 +17,8 @@ from server.apps.clips.logic.constants import (
 )
 from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
+    CaptionPresetListPayload,
+    CaptionPresetPayload,
     ClipCandidateListPayload,
     ClipCandidatePatchPayload,
     ClipCandidatePayload,
@@ -288,6 +290,10 @@ def _enqueue_clip_preview(
 
 
 def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
+    from server.apps.clips.logic.constants import (  # noqa: PLC0415
+        score_to_letter_grade,
+    )
+
     channel_id = str(candidate.run.channel_id)
     return ClipCandidatePayload(
         id=str(candidate.id),
@@ -310,6 +316,23 @@ def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
             else None
         ),
         is_manual=candidate.is_manual,
+        headline=candidate.headline,
+        hook_score=candidate.hook_score,
+        flow_score=candidate.flow_score,
+        value_score=candidate.value_score,
+        trend_score=candidate.trend_score,
+        virality_score=candidate.virality_score,
+        intent_match_score=candidate.intent_match_score,
+        confidence=candidate.confidence,
+        score_version=candidate.score_version,
+        hook_reason=candidate.hook_reason,
+        flow_reason=candidate.flow_reason,
+        value_reason=candidate.value_reason,
+        trend_reason=candidate.trend_reason,
+        hook_grade=score_to_letter_grade(candidate.hook_score),
+        flow_grade=score_to_letter_grade(candidate.flow_score),
+        value_grade=score_to_letter_grade(candidate.value_score),
+        trend_grade=score_to_letter_grade(candidate.trend_score),
     )
 
 
@@ -571,7 +594,7 @@ class ClipsService:
             for c in ClipCandidate.objects.select_related('run').filter(
                 run_id=uuid.UUID(run_id),
                 status=CandidateStatus.APPROVED,
-            ).order_by('-relevance_score')
+            ).order_by('-virality_score', '-relevance_score')
         ]
 
     def get_by_id(self, candidate_id: str) -> ClipCandidatePayload:
@@ -580,6 +603,84 @@ class ClipsService:
 
         return _to_candidate_payload(
             ClipCandidate.objects.select_related('run').get(id=candidate_id),
+        )
+
+    def duplicate(self, candidate_id: str) -> ClipCandidatePayload:
+        """Clone a candidate with its layout and style configs."""
+        from django.db import transaction  # noqa: PLC0415
+
+        from server.apps.clips.models import (  # noqa: PLC0415
+            ClipCandidate,
+            ClipLayoutConfig,
+            ClipStyleConfig,
+        )
+
+        with transaction.atomic():
+            source = ClipCandidate.objects.select_related(
+                'run',
+                'layout_config',
+                'style_config',
+            ).get(id=candidate_id)
+            clone = ClipCandidate.objects.create(
+                run=source.run,
+                start_sec=source.start_sec,
+                end_sec=source.end_sec,
+                title=f'{source.title} (copy)'[:200],
+                hook_text=source.hook_text,
+                headline=source.headline,
+                caption_template=source.caption_template,
+                relevance_score=source.relevance_score,
+                hook_score=source.hook_score,
+                flow_score=source.flow_score,
+                value_score=source.value_score,
+                trend_score=source.trend_score,
+                virality_score=source.virality_score,
+                intent_match_score=source.intent_match_score,
+                confidence=source.confidence,
+                score_version=source.score_version,
+                hook_reason=source.hook_reason,
+                flow_reason=source.flow_reason,
+                value_reason=source.value_reason,
+                trend_reason=source.trend_reason,
+                reason=source.reason,
+                transcript_excerpt=source.transcript_excerpt,
+                status=CandidateStatus.PROPOSED,
+                is_manual=True,
+            )
+            # Signal creates empty configs; overwrite from source.
+            layout = clone.layout_config
+            src_layout = source.layout_config
+            for field in (
+                f.name
+                for f in ClipLayoutConfig._meta.fields
+                if f.name not in {'id', 'candidate', 'created_at', 'updated_at'}
+            ):
+                setattr(layout, field, getattr(src_layout, field))
+            layout.save()
+            style = clone.style_config
+            src_style = source.style_config
+            for field in (
+                f.name
+                for f in ClipStyleConfig._meta.fields
+                if f.name not in {'id', 'candidate', 'created_at', 'updated_at'}
+            ):
+                setattr(style, field, getattr(src_style, field))
+            style.save()
+        return _to_candidate_payload(
+            ClipCandidate.objects.select_related('run').get(id=clone.id),
+        )
+
+    def list_caption_presets(self) -> CaptionPresetListPayload:
+        """Return the seeded caption preset gallery."""
+        from server.apps.clips.caption_presets import (  # noqa: PLC0415
+            list_caption_presets,
+        )
+
+        return CaptionPresetListPayload(
+            items=[
+                CaptionPresetPayload(**preset)
+                for preset in list_caption_presets()
+            ],
         )
 
     def patch(
