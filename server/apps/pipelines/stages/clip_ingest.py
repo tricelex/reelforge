@@ -91,18 +91,22 @@ class ClipIngestStage(Stage):
 
             video_bytes = await asyncio.to_thread(Path(out_path).read_bytes)
 
-        from server.apps.clips.selectors import (
-            dimensions_from_probe,
-        )
-        from server.apps.rendering.ffmpeg import async_ffprobe  # noqa: PLC0415
+            from server.apps.clips.selectors import (  # noqa: PLC0415
+                dimensions_from_probe,
+            )
+            from server.apps.rendering.ffmpeg import (  # noqa: PLC0415
+                async_ffprobe,
+            )
 
-        width: int | None = None
-        height: int | None = None
-        try:
-            probe = await async_ffprobe(out_path)
-            width, height = dimensions_from_probe(probe)
-        except RuntimeError:
-            pass
+            width: int | None = None
+            height: int | None = None
+            try:
+                # Probe while the temp file still exists.
+                probe = await async_ffprobe(out_path)
+                width, height = dimensions_from_probe(probe)
+            except RuntimeError:
+                width = None
+                height = None
 
         asset = await ctx.assets.save(
             kind=AssetKind.VIDEO_SEGMENT,

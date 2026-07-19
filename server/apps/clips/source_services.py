@@ -57,6 +57,76 @@ def display_topic_for_source(source: ClipSource) -> str:
     return 'Untitled clip source'
 
 
+def _clip_options_dict(options: object | None) -> dict[str, object]:
+    if options is None:
+        return {}
+    if hasattr(options, '__struct_fields__'):
+        return {
+            field: getattr(options, field)
+            for field in options.__struct_fields__  # type: ignore[attr-defined]
+        }
+    if isinstance(options, dict):
+        return dict(options)
+    return {}
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None or value == '':  # noqa: PLC1901
+        return None
+    return float(value)  # type: ignore[arg-type]
+
+
+def _maybe_auto_start_run(source: ClipSource) -> None:
+    """Create a clipping run when the source is ready and auto_start is set."""
+    if not source.auto_start:
+        return
+    if source.status != ClipSourceStatus.READY:
+        return
+    if source.run_id is not None:
+        return
+
+    from server.apps.pipelines.logic.value_objects import (  # noqa: PLC0415
+        ClipRunOptionsPayload,
+        RunCreatePayload,
+    )
+    from server.apps.pipelines.services.pipeline_run import (  # noqa: PLC0415
+        PipelineRunService,
+    )
+    from server.common.container import container  # noqa: PLC0415
+
+    opts = source.pending_run_options or {}
+    clip_options = ClipRunOptionsPayload(
+        genre=str(opts.get('genre') or 'auto'),
+        clip_length=str(opts.get('clip_length') or 'auto'),
+        moments_prompt=str(opts.get('moments_prompt') or ''),
+        timeframe_start=_optional_float(opts.get('timeframe_start')),
+        timeframe_end=_optional_float(opts.get('timeframe_end')),
+        custom_min_sec=_optional_float(opts.get('custom_min_sec')),
+        custom_max_sec=_optional_float(opts.get('custom_max_sec')),
+        auto_headline=bool(opts.get('auto_headline', True)),
+        candidate_count=int(opts.get('candidate_count') or 5),
+        brand_template_id=(
+            str(opts['brand_template_id'])
+            if opts.get('brand_template_id')
+            else None
+        ),
+        auto_approve=bool(opts.get('auto_approve', False)),
+    )
+    container.resolve(PipelineRunService).create(
+        RunCreatePayload(
+            channel_id=str(source.channel_id),
+            source_id=str(source.id),
+            clip_options=clip_options,
+            auto_approve=clip_options.auto_approve,
+        ),
+    )
+    source.auto_start = False
+    source.pending_run_options = {}
+    source.save(
+        update_fields=['auto_start', 'pending_run_options', 'updated_at'],
+    )
+
+
 @final
 @attrs.define(slots=True, frozen=True)
 class ClipSourceService:
@@ -140,10 +210,14 @@ class ClipSourceService:
             title=title,
             duration_sec=duration_sec,
             status=status,
+            auto_start=payload.auto_start,
+            pending_run_options=_clip_options_dict(payload.clip_options),
         )
 
         if source_type in (ClipSourceType.YOUTUBE, ClipSourceType.RSS):
             kiq_task(probe_clip_source_task, str(source.id))
+        elif payload.auto_start:
+            _maybe_auto_start_run(source)
         return get_clip_source(str(source.id))
 
     def prepare_for_run(

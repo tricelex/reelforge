@@ -45,8 +45,21 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
     end_sec = models.FloatField()
     title = models.CharField(max_length=200)
     hook_text = models.CharField(max_length=200, blank=True)
+    headline = models.CharField(max_length=200, blank=True)
     caption_template = models.TextField(blank=True)
     relevance_score = models.FloatField(default=0.0)
+    hook_score = models.FloatField(default=0.0)
+    flow_score = models.FloatField(default=0.0)
+    value_score = models.FloatField(default=0.0)
+    trend_score = models.FloatField(default=0.0)
+    virality_score = models.FloatField(default=0.0)
+    intent_match_score = models.FloatField(default=0.0)
+    confidence = models.FloatField(default=0.0)
+    score_version = models.CharField(max_length=16, blank=True, default='')
+    hook_reason = models.TextField(blank=True)
+    flow_reason = models.TextField(blank=True)
+    value_reason = models.TextField(blank=True)
+    trend_reason = models.TextField(blank=True)
     reason = models.TextField(blank=True)
     transcript_excerpt = models.TextField(blank=True)
     status = models.CharField(
@@ -60,7 +73,7 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
     is_manual = models.BooleanField(default=False)
 
     class Meta:
-        ordering: ClassVar = ['-relevance_score']
+        ordering: ClassVar = ['-virality_score', '-relevance_score']
         constraints: ClassVar = [
             models.CheckConstraint(
                 name='clips_clipcandidate_status_valid',
@@ -651,6 +664,8 @@ class ClipSource(UUIDModel, TimeStampedModel):
         default=ClipSourceStatus.INGESTING,
     )
     error_message = models.TextField(blank=True)
+    auto_start = models.BooleanField(default=False)
+    pending_run_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         constraints: ClassVar = [
@@ -696,6 +711,97 @@ class Earning(UUIDModel, TimeStampedModel):
     @override
     def __str__(self) -> str:
         return f'{self.platform} earning — {self.campaign}'
+
+
+class ClipBrandTemplate(UUIDModel, TimeStampedModel):
+    """Reusable visual style applied to candidates at analysis time."""
+
+    channel = models.ForeignKey(
+        'channels.Channel',
+        on_delete=models.CASCADE,
+        related_name='clip_brand_templates',
+    )
+    name = models.CharField(max_length=120)
+    archived = models.BooleanField(default=False)
+    render_format = models.CharField(
+        max_length=20,
+        choices=RenderFormat.choices,
+        default=RenderFormat.VERTICAL_9_16,
+    )
+    render_mode = models.CharField(
+        max_length=20,
+        choices=RenderMode.choices,
+        default=RenderMode.SMART_CROP,
+    )
+    fit_mode = models.CharField(
+        max_length=10,
+        choices=FitMode.choices,
+        default=FitMode.CROP,
+    )
+    caption_preset_key = models.CharField(max_length=40, blank=True, default='')
+    logo_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    logo_position = models.CharField(
+        max_length=15,
+        choices=WatermarkPosition.choices,
+        default=WatermarkPosition.BOTTOM_RIGHT,
+    )
+    logo_opacity = models.FloatField(default=0.85)
+    intro_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    outro_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    music_asset = models.ForeignKey(
+        'assets.LibraryAsset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    music_volume_db = models.FloatField(default=-20.0)
+    keyword_highlighter = models.BooleanField(default=True)
+    auto_transitions = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering: ClassVar = ['name', 'id']
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_render_format_valid',
+                condition=models.Q(render_format__in=RenderFormat.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_render_mode_valid',
+                condition=models.Q(render_mode__in=RenderMode.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_fit_mode_valid',
+                condition=models.Q(fit_mode__in=FitMode.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipbrandtemplate_logo_position_valid',
+                condition=models.Q(logo_position__in=WatermarkPosition.values),
+            ),
+        ]
+
+    @override
+    def __str__(self) -> str:
+        return self.name
 
 
 @receiver(post_save, sender=ClipCandidate)
