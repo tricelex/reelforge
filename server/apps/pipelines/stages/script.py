@@ -1,13 +1,14 @@
 """Script stage — full narration script generation."""
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, cast, override
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.clients.embeddings import embed_text
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.logic.similarity import is_too_similar
 from server.apps.pipelines.schemas import ScriptOutput
 from server.apps.pipelines.services.prompt_variables import (
@@ -26,11 +27,11 @@ _SIMILARITY_RETRY_HINT = (
 )
 
 
-@cache
-def _agent() -> Agent[StageContext, ScriptOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, ScriptOutput]:
     """Create and cache the script agent on first call."""
     a: Agent[StageContext, ScriptOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=ScriptOutput,
         deps_type=StageContext,
     )
@@ -89,11 +90,13 @@ async def _generate_script(
     )
     if extra_hint:
         user_prompt = f'{user_prompt}\n\n{extra_hint}'
+    model_slug = await resolve_stage_model(ctx, ScriptStage.key)
     output: ScriptOutput = await llm_client.run_agent(
-        _agent(),
+        _agent(to_pydantic_ai_model(model_slug)),
         user_prompt,
         ctx,
         stage_key=ScriptStage.key,
+        model_slug=model_slug,
     )
     return output
 

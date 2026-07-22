@@ -19,6 +19,7 @@ def _make_ctx(topic: str = 'The fall of Rome') -> MagicMock:
     ctx.costs = AsyncMock()
     ctx.assets = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     return ctx
 
 

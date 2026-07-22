@@ -78,6 +78,7 @@ def _make_ctx() -> MagicMock:
     ctx.config = {}
     ctx.costs = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     return ctx
 
 
@@ -153,6 +154,7 @@ def test_outline_run_with_no_niche_config() -> None:
     ctx.config = {'total_target_seconds': 600}
     ctx.costs = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
 
     fake_output = OutlineOutput(
         chapters=[
