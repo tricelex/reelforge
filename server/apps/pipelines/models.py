@@ -47,6 +47,15 @@ class CastDesignStatus(models.TextChoices):
     PROPOSED = 'PROPOSED', 'Proposed'
     APPROVED = 'APPROVED', 'Approved'
     DEMOTED = 'DEMOTED', 'Demoted'
+    TEXT_ONLY = 'TEXT_ONLY', 'Text only'
+
+
+class CastImportance(models.TextChoices):
+    """How central a cast member is to visual consistency."""
+
+    MAIN = 'MAIN', 'Main'
+    SECONDARY = 'SECONDARY', 'Secondary'
+    BACKGROUND = 'BACKGROUND', 'Background'
 
 
 class PipelineBlueprint(UUIDModel, TimeStampedModel):
@@ -212,6 +221,12 @@ class RunCast(UUIDModel):
     )
     role = models.CharField(max_length=60)
     is_ephemeral = models.BooleanField(default=False)
+    importance = models.CharField(
+        max_length=10,
+        choices=CastImportance.choices,
+        default=CastImportance.SECONDARY,
+    )
+    draft_prompt = models.TextField(blank=True, default='')
     design_status = models.CharField(
         max_length=10,
         choices=CastDesignStatus.choices,
@@ -223,6 +238,10 @@ class RunCast(UUIDModel):
             models.CheckConstraint(
                 name='pipelines_runcast_design_status_valid',
                 condition=models.Q(design_status__in=CastDesignStatus.values),
+            ),
+            models.CheckConstraint(
+                name='pipelines_runcast_importance_valid',
+                condition=models.Q(importance__in=CastImportance.values),
             ),
         ]
 

@@ -198,6 +198,12 @@ def _node_should_skip(
 ) -> bool:
     """Return True if this node should be skipped."""
     if node.get('gate') and node['key'] not in armed_gates:
+        # Auto mode still evaluates character_gate so Studio can run.
+        if (
+            node['key'] == 'character_gate'
+            and getattr(run.channel, 'character_design_mode', None) == 'auto'
+        ):
+            return False
         return True
     return bool(node.get('conditional')) and not _eval_condition(node, run)
 
@@ -255,9 +261,122 @@ def _try_park_gate_sync(
         return False
     if _auto_approve_clip_gate(run, key, states):
         return True
+    if _handle_character_gate_sync(run, key, states):
+        return True
     _park_gate_sync(run, key)
     states[key] = GATE_PARKED_STATUS
     return True
+
+
+def _latest_stage_output(run: 'PipelineRun', stage_key: str) -> dict[str, Any]:
+    """Return output dict for the latest parent execution of stage_key."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    row = (
+        StageExecution.objects
+        .filter(
+            run=run,
+            stage_key=stage_key,
+            parent=None,
+            status=StageStatus.SUCCEEDED,
+        )
+        .order_by('-attempt', '-created_at')
+        .first()
+    )
+    if row is None or not isinstance(row.output, dict):
+        return {}
+    return dict(row.output)
+
+
+def _succeed_gate_sync(
+    run: 'PipelineRun',
+    key: str,
+    states: dict[str, str | None],
+    output: dict[str, Any],
+) -> None:
+    """Mark a gate SUCCEEDED with output and update in-memory states."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key=key,
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
+        output=output,
+        finished_at=tz.now(),
+    )
+    states[key] = StageStatus.SUCCEEDED
+
+
+def _handle_character_gate_sync(
+    run: 'PipelineRun',
+    key: str,
+    states: dict[str, str | None],
+) -> bool:
+    """Skip, auto-design, or defer park for character_gate; True if handled."""
+    if key != 'character_gate':
+        return False
+
+    from server.apps.channels.models import (  # noqa: PLC0415
+        CharacterDesignMode,
+    )
+
+    proposal = _latest_stage_output(run, 'cast_proposal')
+    requires = bool(proposal.get('requires_character_design'))
+    mode = getattr(
+        run.channel,
+        'character_design_mode',
+        CharacterDesignMode.INTERACTIVE,
+    )
+
+    if not requires:
+        _succeed_gate_sync(
+            run,
+            key,
+            states,
+            {
+                'skipped_reason': 'no_characters',
+                'reason': proposal.get('reason', ''),
+            },
+        )
+        logger.info(
+            'pipeline_character_gate_skipped',
+            run_id=str(run.id),
+            reason='no_characters',
+        )
+        return True
+
+    if mode == CharacterDesignMode.NONE:
+        _succeed_gate_sync(
+            run,
+            key,
+            states,
+            {'skipped_reason': 'mode_none'},
+        )
+        logger.info(
+            'pipeline_character_gate_skipped',
+            run_id=str(run.id),
+            reason='mode_none',
+        )
+        return True
+
+    if mode == CharacterDesignMode.AUTO:
+        from server.apps.pipelines.services.auto_character_design import (  # noqa: PLC0415
+            run_auto_character_design,
+        )
+
+        output = run_auto_character_design(run)
+        _succeed_gate_sync(run, key, states, output)
+        return True
+
+    # interactive — caller parks when gate is armed
+    return False
 
 
 def _auto_approve_clip_gate(

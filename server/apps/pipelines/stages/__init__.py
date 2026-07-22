@@ -3,6 +3,8 @@
 from server.apps.pipelines.stages import (
     alignment,  # noqa: F401
     assembly,  # noqa: F401
+    cast_proposal,  # noqa: F401
+    character_gate,  # noqa: F401
     clip_analyze,  # noqa: F401
     clip_approval_gate,  # noqa: F401
     clip_distribute,  # noqa: F401
@@ -10,6 +12,7 @@ from server.apps.pipelines.stages import (
     clip_manual_setup,  # noqa: F401
     clip_render,  # noqa: F401
     clip_transcribe,  # noqa: F401
+    final_gate,  # noqa: F401
     image_gen,  # noqa: F401
     metadata,  # noqa: F401
     motion,  # noqa: F401
@@ -22,6 +25,8 @@ from server.apps.pipelines.stages import (
     review_gate,  # noqa: F401
     scene_breakdown,  # noqa: F401
     script,  # noqa: F401
+    script_gate,  # noqa: F401
+    storyboard_gate,  # noqa: F401
     thumbnail,  # noqa: F401
     tts,  # noqa: F401
     visual_prompts,  # noqa: F401

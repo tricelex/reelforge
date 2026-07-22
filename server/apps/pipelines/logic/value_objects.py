@@ -55,6 +55,7 @@ class RunDetailPayload(msgspec.Struct, frozen=True):
     started_at: str | None
     finished_at: str | None
     stages: list[StageSummaryPayload]
+    blueprint_snapshot: dict[str, Any] = {}
     source_idea_id: str | None = None
     source_id: str | None = None
     watch_url: str | None = None
@@ -215,6 +216,8 @@ class RunCastPayload(msgspec.Struct, frozen=True):
     is_ephemeral: bool
     design_status: str
     hero_ref_asset_id: str | None
+    importance: str = 'SECONDARY'
+    draft_prompt: str = ''
 
 
 class RunCastListPayload(msgspec.Struct, frozen=True):

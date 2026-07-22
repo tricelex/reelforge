@@ -65,7 +65,11 @@ class PublishStage(Stage):
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Upload the assembled video to YouTube and record the publish job."""
         meta = ctx.upstream['metadata']
-        gate = ctx.upstream.get('review_gate', {})
+        gate = (
+            ctx.upstream.get('final_gate')
+            or ctx.upstream.get('review_gate')
+            or {}
+        )
         final_asset_id: str = ctx.upstream['assembly']['asset_id']
         thumbnail_asset_id: str | None = gate.get('thumbnail_asset_id')
         schedule_at_str: str | None = gate.get('schedule_at')

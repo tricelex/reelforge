@@ -97,4 +97,44 @@ class VisualPromptsStage(Stage):
                 provider='visual_prompts',
                 error_code='prompt_coverage',
             )
-        return output.model_dump()
+        cast_by_name = await _approved_cast_refs(ctx.run.id)
+        dumped = output.model_dump()
+        for prompt in dumped['prompts']:
+            scene = next(
+                (
+                    s
+                    for s in scenes
+                    if int(s.get('idx', -1)) == int(prompt['scene_idx'])
+                ),
+                None,
+            )
+            if scene is None or prompt.get('character_ref_id'):
+                continue
+            for name in scene.get('foreground_cast') or []:
+                ref = cast_by_name.get(str(name).casefold())
+                if ref:
+                    prompt['character_ref_id'] = ref
+                    break
+        return dumped
+
+
+async def _approved_cast_refs(run_id: object) -> dict[str, str]:
+    """Map character name → hero_ref asset id for approved cast members."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        CastDesignStatus,
+        RunCast,
+    )
+
+    rows = [
+        row
+        async for row in RunCast.objects
+        .filter(run_id=run_id, design_status=CastDesignStatus.APPROVED)
+        .select_related('character')
+    ]
+    mapping: dict[str, str] = {}
+    for row in rows:
+        if row.character.hero_ref_id:
+            mapping[row.character.name.casefold()] = str(
+                row.character.hero_ref_id,
+            )
+    return mapping
