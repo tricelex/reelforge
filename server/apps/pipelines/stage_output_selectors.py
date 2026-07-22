@@ -218,7 +218,10 @@ def _build_qc(_run_id: str, execution: StageExecution) -> _BuildResult:
 
 def _build_publish(run_id: str, execution: StageExecution) -> _BuildResult:
     video_id = execution.output.get('youtube_video_id')
-    gate = _latest_succeeded(run_id, 'review_gate')
+    gate = _latest_succeeded(run_id, 'final_gate') or _latest_succeeded(
+        run_id,
+        'review_gate',
+    )
     scheduled_at = gate.output.get('schedule_at') if gate is not None else None
     data: dict[str, Any] = {
         'status': 'COMPLETED' if video_id else 'PENDING',

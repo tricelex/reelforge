@@ -40,6 +40,10 @@ def _agent(model: str) -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C9
             'Assign is_hero=true to ~15% of scenes '
             '(hooks, chapter opens, climaxes). '
             'foreground_cast must list ≤2 characters per scene. '
+            'Also emit a top-level cast list of distinct characters '
+            'the script implies (name, role, importance, appearance_brief). '
+            'Use empty cast when the niche has no visual protagonists '
+            '(e.g. pure history explainers). '
             'Return valid JSON matching the SceneBreakdownOutput schema.'
         )
 
@@ -95,7 +99,10 @@ class SceneBreakdownStage(Stage):
             f'(mark ~{int(hero_ratio * 100)}% scenes as is_hero=true).\n'
             f'Each scene: idx, chapter_idx, beat, narration_text, '
             f'visual_concept, shot_type, est_seconds (6-12), is_hero, '
-            f'foreground_cast (≤2 names), word_count (word count).'
+            f'foreground_cast (≤2 names), word_count (word count).\n'
+            f'Also return cast: distinct characters with name, role, '
+            f'importance (main|secondary|background), appearance_brief. '
+            f'Empty cast is correct when no visual protagonists are needed.'
         )
         model_slug = await resolve_stage_model(ctx, self.key)
         output: SceneBreakdownOutput = await llm_client.run_agent(

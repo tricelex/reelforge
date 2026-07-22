@@ -160,7 +160,10 @@ def test_get_run_detail(
     )
 
     assert response.status_code == HTTPStatus.OK
-    assert response.json()['id'] == str(run.id)
+    body = response.json()
+    assert body['id'] == str(run.id)
+    assert 'blueprint_snapshot' in body
+    assert 'stages' in body['blueprint_snapshot']
 
 
 @pytest.mark.django_db

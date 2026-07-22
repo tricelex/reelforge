@@ -6,6 +6,8 @@ requires output_type to be a pydantic BaseModel for structured extraction.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -152,10 +154,20 @@ class Scene(BaseModel):
     word_count: int = Field(ge=1)
 
 
+class CastMember(BaseModel):
+    """A distinct character implied by the script / scene breakdown."""
+
+    name: str
+    role: str = ''
+    importance: Literal['main', 'secondary', 'background'] = 'secondary'
+    appearance_brief: str = ''
+
+
 class SceneBreakdownOutput(BaseModel):
     """Full output of the scene_breakdown stage."""
 
     scenes: list[Scene]
+    cast: list[CastMember] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def enforce_invariants(self) -> SceneBreakdownOutput:

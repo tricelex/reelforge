@@ -45,13 +45,30 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
         {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
         {
-            'key': 'narrative_qc',
+            'key': 'script_gate',
+            'depends_on': ['scene_breakdown'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
+            'key': 'cast_proposal',
             'depends_on': ['scene_breakdown'],
             'queue': 'api',
         },
         {
+            'key': 'narrative_qc',
+            'depends_on': ['script_gate'],
+            'queue': 'api',
+        },
+        {
+            'key': 'character_gate',
+            'depends_on': ['cast_proposal', 'narrative_qc'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
             'key': 'visual_prompts',
-            'depends_on': ['narrative_qc'],
+            'depends_on': ['character_gate'],
             'queue': 'api',
         },
         {
@@ -65,20 +82,28 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             },
         },
         {
+            'key': 'storyboard_gate',
+            'depends_on': ['image_gen'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
             'key': 'tts',
-            'depends_on': ['narrative_qc'],
+            'depends_on': ['storyboard_gate'],
             'queue': 'api',
             'fan_out': 'chapters',
             'config': {'provider': 'elevenlabs'},
         },
         {
             'key': 'motion',
-            'depends_on': ['image_gen'],
+            'depends_on': ['storyboard_gate'],
             'queue': 'render',
             'fan_out': 'scenes',
             'config': {
                 'hero_ratio': 0.15,
-                'i2v_model': 'fal-ai/kling-video/v2.1/standard/image-to-video',
+                'i2v_model': (
+                    'fal-ai/kling-video/v2.1/standard/image-to-video'
+                ),
             },
         },
         {
@@ -111,6 +136,17 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'key': 'qc',
             'depends_on': ['assembly'],
             'queue': 'render',
+        },
+        {
+            'key': 'final_gate',
+            'depends_on': ['qc', 'thumbnail', 'metadata'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
+            'key': 'publish',
+            'depends_on': ['final_gate'],
+            'queue': 'api',
         },
     ],
 }

@@ -20,6 +20,8 @@ def _to_cast(row: RunCast) -> RunCastPayload:
         hero_ref_asset_id=(
             str(character.hero_ref_id) if character.hero_ref_id else None
         ),
+        importance=row.importance,
+        draft_prompt=row.draft_prompt,
     )
 
 
