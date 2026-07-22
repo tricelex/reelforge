@@ -45,33 +45,36 @@ def _agent() -> Agent[StageContext, VideoMetadata]:
 def _build_chapter_timestamps(
     scenes: list[dict[str, Any]],
     chapters: list[dict[str, Any]],
+    *,
+    transition_s: float = 0.5,
 ) -> str:
-    """Build YouTube chapter timestamp string from alignment scene data.
+    """Build YouTube chapter timestamp string from absolute alignment scenes.
 
-    Alignment ``start_s`` / ``end_s`` are chapter-relative (per TTS file).
-    YouTube chapter markers need absolute offsets in the final video, so
-    each chapter's duration is summed from its scenes before advancing.
+    Alignment ``start_s`` / ``end_s`` are absolute on the narration timeline.
+    Assembly inserts ``transition_s`` between scenes within a chapter, so
+    markers add cumulative transition padding to match the final mux.
     """
-    spans: dict[int, tuple[float, float]] = {}
+    chapter_starts: dict[int, float] = {}
+    scenes_per_chapter: dict[int, int] = {}
     for seg in scenes:
         ch_idx = int(seg.get('chapter_idx', 0))
         start_s = float(seg.get('start_s', 0.0))
-        end_s = float(seg.get('end_s', start_s))
-        if ch_idx not in spans:
-            spans[ch_idx] = (start_s, end_s)
+        if ch_idx not in chapter_starts:
+            chapter_starts[ch_idx] = start_s
         else:
-            prev_start, prev_end = spans[ch_idx]
-            spans[ch_idx] = (min(prev_start, start_s), max(prev_end, end_s))
+            chapter_starts[ch_idx] = min(chapter_starts[ch_idx], start_s)
+        scenes_per_chapter[ch_idx] = scenes_per_chapter.get(ch_idx, 0) + 1
 
     lines: list[str] = []
-    offset = 0.0
+    transition_pad = 0.0
     for ch in sorted(chapters, key=operator.itemgetter('idx')):
+        abs_start = chapter_starts.get(ch['idx'], 0.0)
+        offset = abs_start + transition_pad
         m = int(offset // 60)
         s = int(offset % 60)
         lines.append(f'{m}:{s:02d} {ch["title"]}')
-        if ch['idx'] in spans:
-            local_start, local_end = spans[ch['idx']]
-            offset += max(0.0, local_end - local_start)
+        n_scenes = scenes_per_chapter.get(ch['idx'], 0)
+        transition_pad += max(0, n_scenes - 1) * transition_s
     return '\n'.join(lines)
 
 

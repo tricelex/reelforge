@@ -32,6 +32,7 @@ _KNOWN_STAGE_KEYS: Final[frozenset[str]] = frozenset({
     'outline',
     'script',
     'scene_breakdown',
+    'narrative_qc',
     'visual_prompts',
     'image_gen',
     'motion',
@@ -168,6 +169,26 @@ def _build_visual_prompts(
     return f'{len(prompts)} prompts', None, data
 
 
+def _build_narrative_qc(
+    _run_id: str,
+    execution: StageExecution,
+) -> _BuildResult:
+    out = execution.output
+    passed = bool(out.get('passed', False))
+    score = out.get('score')
+    issues = out.get('issues', [])
+    data: dict[str, Any] = {
+        'passed': passed,
+        'score': score,
+        'issues': issues,
+    }
+    if score is not None:
+        summary = f'{"passed" if passed else "failed"} · score {score}'
+    else:
+        summary = 'passed' if passed else f'{len(issues)} issues'
+    return summary, None, data
+
+
 def _build_alignment(_run_id: str, execution: StageExecution) -> _BuildResult:
     scenes = execution.output.get('scenes', [])
     return f'{len(scenes)} aligned segments', None, {'scenes': scenes}
@@ -298,6 +319,7 @@ _BUILDERS: Final[dict[str, _Builder]] = {
     'outline': _build_outline,
     'script': _build_script,
     'scene_breakdown': _build_scene_breakdown,
+    'narrative_qc': _build_narrative_qc,
     'visual_prompts': _build_visual_prompts,
     'alignment': _build_alignment,
     'music_plan': _build_music_plan,

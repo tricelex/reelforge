@@ -88,19 +88,19 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'music_plan',
-            'depends_on': ['scene_breakdown'],
+            'depends_on': ['narrative_qc'],
             'queue': 'api',
-        },
-        {
-            'key': 'thumbnail',
-            'depends_on': ['script'],
-            'queue': 'api',
-            'config': {'candidates': 3},
         },
         {
             'key': 'metadata',
             'depends_on': ['script', 'alignment'],
             'queue': 'api',
+        },
+        {
+            'key': 'thumbnail',
+            'depends_on': ['metadata'],
+            'queue': 'api',
+            'config': {'candidates': 3},
         },
         {
             'key': 'assembly',

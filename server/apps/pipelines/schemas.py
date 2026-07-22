@@ -161,6 +161,12 @@ class SceneBreakdownOutput(BaseModel):
     def enforce_invariants(self) -> SceneBreakdownOutput:
         """Validate per-scene word count and cast limits."""
         for s in self.scenes:
+            narrated = len(s.narration_text.split())
+            if s.word_count != narrated:
+                raise ValueError(
+                    f'scene {s.idx} word_count {s.word_count} != '
+                    f'narration_text tokens {narrated}',
+                )
             if not (10 <= s.word_count <= 35):
                 raise ValueError(
                     f'scene {s.idx} word_count {s.word_count} outside [10,35]',

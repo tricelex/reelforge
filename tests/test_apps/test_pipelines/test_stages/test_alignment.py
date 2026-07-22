@@ -129,6 +129,46 @@ def test_fmt_srt_time_carries_millisecond_rounding_into_seconds() -> None:
     assert _fmt_srt_time(61.234) == '00:01:01,234'
 
 
+def test_offset_segment_and_scenes_shift_absolute_timeline() -> None:
+    """Chapter-relative FA times gain a cumulative absolute offset."""
+    from server.apps.pipelines.stages.alignment import (
+        _offset_scenes,
+        _offset_segment,
+        _subtitle_segments_from_scenes,
+    )
+
+    segment = {
+        'text': 'Hello world',
+        'start': 0.1,
+        'end': 2.0,
+        'words': [
+            {'word': 'Hello', 'start': 0.1, 'end': 0.5, 'score': 0.1},
+            {'word': 'world', 'start': 0.6, 'end': 2.0, 'score': 0.1},
+        ],
+    }
+    offset = _offset_segment(segment, 10.0)
+    assert offset['start'] == 10.1
+    assert offset['end'] == 12.0
+    assert offset['words'][0]['start'] == 10.1
+
+    scenes = _offset_scenes(
+        [
+            {
+                'scene_idx': 1,
+                'start_s': 0.1,
+                'end_s': 2.0,
+                'text': 'Hello world',
+                'words': segment['words'],
+            },
+        ],
+        10.0,
+    )
+    assert scenes[0]['start_s'] == 10.1
+    assert scenes[0]['end_s'] == 12.0
+    cues = _subtitle_segments_from_scenes(scenes)
+    assert cues == [{'start': 10.1, 'end': 12.0, 'text': 'Hello world'}]
+
+
 def test_map_aligned_words_maps_text_and_loss() -> None:
     """ElevenLabs word fields map to word/start/end/score."""
     mapped = _map_aligned_words([

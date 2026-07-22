@@ -68,3 +68,6 @@ def test_longform_v1_graph_includes_narrative_qc_between_breakdown_and_visuals()
     assert by_key['narrative_qc']['depends_on'] == ['scene_breakdown']
     assert by_key['visual_prompts']['depends_on'] == ['narrative_qc']
     assert by_key['tts']['depends_on'] == ['narrative_qc']
+    assert by_key['music_plan']['depends_on'] == ['narrative_qc']
+    assert by_key['metadata']['depends_on'] == ['script', 'alignment']
+    assert by_key['thumbnail']['depends_on'] == ['metadata']

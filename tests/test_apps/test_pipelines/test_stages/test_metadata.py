@@ -30,8 +30,8 @@ def _make_ctx() -> MagicMock:
                 },
                 {
                     'chapter_idx': 1,
-                    'start_s': 0.5,
-                    'end_s': 60.0,
+                    'start_s': 60.0,
+                    'end_s': 120.0,
                     'text': 'It fell...',
                 },
             ],
@@ -55,10 +55,10 @@ def test_metadata_fan_out_none() -> None:
 
 
 def test_build_chapter_timestamps() -> None:
-    """Chapter-relative scene times become absolute YouTube offsets."""
+    """Absolute scene starts become YouTube chapter offsets."""
     scenes = [
         {'chapter_idx': 0, 'start_s': 0.1, 'end_s': 65.0},
-        {'chapter_idx': 1, 'start_s': 0.2, 'end_s': 60.0},
+        {'chapter_idx': 1, 'start_s': 65.0, 'end_s': 125.0},
     ]
     chapters = [
         {'idx': 0, 'title': 'The Beginning'},
@@ -66,8 +66,8 @@ def test_build_chapter_timestamps() -> None:
     ]
     result = _build_chapter_timestamps(scenes, chapters)
     assert '0:00 The Beginning' in result
-    # ch0 duration ≈ 64.9s → ch1 absolute start ≈ 1:04
-    assert '1:04 The Fall' in result
+    # ch0 has one scene → no transition pad; ch1 starts at 65s
+    assert '1:05 The Fall' in result
 
 
 def test_metadata_run_returns_title_and_tags() -> None:
@@ -111,11 +111,11 @@ def test_build_chapter_timestamps_chapter_without_scene() -> None:
 
 
 def test_build_chapter_timestamps_uses_span_across_scenes() -> None:
-    """Chapter duration is min(start)→max(end) across all scenes in chapter."""
+    """Multi-scene chapters add transition padding before the next chapter."""
     scenes = [
         {'chapter_idx': 0, 'start_s': 0.0, 'end_s': 10.0},
         {'chapter_idx': 0, 'start_s': 10.0, 'end_s': 90.0},
-        {'chapter_idx': 1, 'start_s': 0.0, 'end_s': 30.0},
+        {'chapter_idx': 1, 'start_s': 90.0, 'end_s': 120.0},
     ]
     chapters = [
         {'idx': 0, 'title': 'Intro'},
@@ -123,4 +123,5 @@ def test_build_chapter_timestamps_uses_span_across_scenes() -> None:
     ]
     result = _build_chapter_timestamps(scenes, chapters)
     assert '0:00 Intro' in result
+    # 90s absolute + one 0.5s inter-scene transition in ch0
     assert '1:30 Next' in result

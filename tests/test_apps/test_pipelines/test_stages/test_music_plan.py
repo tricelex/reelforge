@@ -156,12 +156,14 @@ def test_fetch_music_library_returns_empty_list_when_no_assets() -> None:
     assert result == []
 
 
-def test_music_plan_empty_library_returns_empty_entries() -> None:
-    """run() short-circuits with no entries when the library is empty."""
+def test_music_plan_empty_library_raises() -> None:
+    """run() fatals when the music library is empty."""
+    from server.common.exceptions import FatalProviderError
+
     ctx = _make_ctx()
     run_agent = AsyncMock()
 
-    async def _inner() -> dict[str, object]:
+    async def _inner() -> None:
         with (
             patch(
                 'server.apps.generation.clients.llm.run_agent',
@@ -172,10 +174,10 @@ def test_music_plan_empty_library_returns_empty_entries() -> None:
                 new=AsyncMock(return_value=[]),
             ),
         ):
-            return await MusicPlanStage().run(ctx)
+            await MusicPlanStage().run(ctx)
 
-    result = asyncio.run(_inner())
-    assert result == {'entries': []}
+    with pytest.raises(FatalProviderError, match='music library'):
+        asyncio.run(_inner())
     run_agent.assert_not_called()
 
 

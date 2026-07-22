@@ -55,12 +55,21 @@ class ImageGenStage(Stage):
             )
 
         model = ctx.config.get('model', 'fal-ai/flux/dev')
+        image_url: str | None = None
+        if ctx.config.get('use_character_ref'):
+            ref_id = snap.get('character_ref_id')
+            if ref_id:
+                from server.apps.assets.models import Asset  # noqa: PLC0415
+
+                ref_asset = await Asset.objects.aget(id=ref_id)
+                image_url = ref_asset.file.url if ref_asset.file else None
         result = await fal_client.generate_image(
             prompt=prompt,
             model=model,
             negative_prompt=negative,
             width=1920,
             height=1080,
+            image_url=image_url,
         )
 
         if result.get('content_policy_violation'):

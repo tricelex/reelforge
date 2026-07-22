@@ -149,13 +149,19 @@ def _apply_terminal_status(
 ) -> None:
     """Apply FAILED, COMPLETED, or RUNNING to the run based on stage values."""
     terminal = {stage_status.SUCCEEDED, stage_status.SKIPPED}
+    in_flight = (
+        stage_status.QUEUED in values or stage_status.RUNNING in values
+    )
     if stage_status.FAILED in values:
         run.status = run_status.FAILED
         run.finished_at = tz.now()
+    elif stage_status.NEEDS_INPUT in values and not in_flight:
+        # Non-gate creative/QC fatals park the run for operator action.
+        run.status = run_status.AWAITING_REVIEW
     elif all(s in terminal for s in values):
         run.status = run_status.COMPLETED
         run.finished_at = tz.now()
-    elif stage_status.QUEUED in values or stage_status.RUNNING in values:
+    elif in_flight:
         if run.status == run_status.PENDING:
             run.status = run_status.RUNNING
             run.started_at = tz.now()

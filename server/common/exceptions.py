@@ -32,8 +32,10 @@ class FatalProviderError(Exception):
         message: str,
         provider: str,
         error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         """Initialise with message, provider name, and error code."""
         super().__init__(message)
         self.provider = provider
         self.error_code = error_code
+        self.details = details

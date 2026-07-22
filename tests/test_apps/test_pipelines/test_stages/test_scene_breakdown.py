@@ -64,12 +64,14 @@ def test_scene_breakdown_run_returns_scenes() -> None:
             idx=0,
             chapter_idx=0,
             beat='intro',
-            narration_text='Rome was great once, long ago.',
+            narration_text=(
+                'Rome was great once long ago in the ancient world of days.'
+            ),
             visual_concept='Wide aerial Rome',
             shot_type='aerial',
             est_seconds=8.0,
             is_hero=True,
-            word_count=20,
+            word_count=12,
         ),
     ]
     fake_output = SceneBreakdownOutput(scenes=scenes)

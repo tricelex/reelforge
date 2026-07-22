@@ -940,16 +940,15 @@ def test_advance_uses_latest_attempt_for_stage_state(run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_advance_pending_run_needs_input_stage_no_save(
+def test_advance_pending_run_needs_input_parks_awaiting_review(
     run: PipelineRun,
 ) -> None:
-    """PENDING run + NEEDS_INPUT stage: no status change, no save."""
+    """PENDING run + NEEDS_INPUT stage parks as AWAITING_REVIEW."""
     from server.apps.pipelines.services.orchestrator import (
         advance_pipeline_impl,
     )
 
     async def _inner() -> None:
-        # NEEDS_INPUT → no QUEUED/RUNNING in values → elif False (112->exit)
         await StageExecution.objects.acreate(
             run=run,
             stage_key='dummy_a',
@@ -969,8 +968,7 @@ def test_advance_pending_run_needs_input_stage_no_save(
             await advance_pipeline_impl(str(run.id))
 
         refreshed = await PipelineRun.objects.aget(id=run.id)
-        assert refreshed.status == RunStatus.PENDING  # unchanged, no save
-        assert refreshed.started_at is None
+        assert refreshed.status == RunStatus.AWAITING_REVIEW
 
     _run(_inner())
 
@@ -1260,6 +1258,46 @@ def test_maybe_complete_fan_out_parent_fails_parent_when_shard_failed_and_no_in_
         refreshed = await StageExecution.objects.aget(id=parent.id)
         assert refreshed.status == StageStatus.FAILED
         assert refreshed.error == {'message': 'one or more shards failed'}
+        mock_advance.assert_called_once()
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_maybe_complete_fan_out_parent_needs_input_parks_parent(
+    run: PipelineRun,
+) -> None:
+    """Parent is marked NEEDS_INPUT when a shard needs input and none in-flight."""
+    from server.apps.pipelines.services.executor import (
+        _maybe_complete_fan_out_parent,
+    )
+
+    async def _inner() -> None:
+        parent = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        child = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            parent=parent,
+            shard_index=0,
+            status=StageStatus.NEEDS_INPUT,
+            input_hash='',
+        )
+        with patch(
+            'server.apps.pipelines.services.executor.advance_pipeline_kiq',
+            new=AsyncMock(),
+        ) as mock_advance:
+            await _maybe_complete_fan_out_parent(child)
+
+        refreshed = await StageExecution.objects.aget(id=parent.id)
+        assert refreshed.status == StageStatus.NEEDS_INPUT
+        assert refreshed.error == {
+            'message': 'one or more shards need input',
+        }
         mock_advance.assert_called_once()
 
     _run(_inner())
