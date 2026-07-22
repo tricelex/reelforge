@@ -16,6 +16,7 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 
 async def _music_plan_variables(
@@ -112,7 +113,11 @@ class MusicPlanStage(Stage):
         """Ask the LLM to pick library music for each chapter."""
         library, variables = await _music_plan_variables(ctx)
         if not library:
-            return {'entries': []}
+            raise FatalProviderError(
+                'No licensed music library assets available for this channel',
+                provider='music_plan',
+                error_code='empty_music_library',
+            )
 
         chapters = ctx.upstream.get('outline', {}).get('chapters', [])
         niche = getattr(ctx.channel, 'niche_config', None)

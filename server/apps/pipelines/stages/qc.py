@@ -260,6 +260,19 @@ def _loudness_failures(loudness: dict[str, float]) -> list[dict[str, Any]]:
     return failures
 
 
+def _expected_duration_s(ctx: StageContext) -> float:
+    """Prefer alignment/outline length over assembly self-probe."""
+    scenes = ctx.upstream.get('alignment', {}).get('scenes', [])
+    if scenes:
+        return max(float(s.get('end_s', 0.0)) for s in scenes)
+    outline_target = ctx.upstream.get('outline', {}).get(
+        'total_target_seconds',
+    )
+    if outline_target:
+        return float(outline_target)
+    return float(ctx.upstream.get('assembly', {}).get('duration_s', 0))
+
+
 @register_stage
 class QCStage(Stage):
     """Stage 14: quality control checks on the assembled final video."""
@@ -276,7 +289,7 @@ class QCStage(Stage):
 
         assembly = ctx.upstream.get('assembly', {})
         final_asset_id: str = assembly['asset_id']
-        expected_duration = float(assembly.get('duration_s', 0))
+        expected_duration = _expected_duration_s(ctx)
 
         video_path = await _fetch_asset_to_tempfile(final_asset_id)
         loudness: dict[str, float] = {}
@@ -306,5 +319,6 @@ class QCStage(Stage):
                 f'{[f["check"] for f in failures]}',
                 provider='qc',
                 error_code='QC_FAILED',
+                details={'passed': False, 'qc_report': qc_report},
             )
         return {'passed': True, 'qc_report': qc_report}

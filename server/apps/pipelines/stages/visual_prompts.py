@@ -16,6 +16,7 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 
 @cache
@@ -75,4 +76,22 @@ class VisualPromptsStage(Stage):
             ctx,
             stage_key=self.key,
         )
+        prompts = output.prompts
+        scene_idxs = {int(s['idx']) for s in scenes}
+        prompt_idxs = {int(p.scene_idx) for p in prompts}
+        if not scenes:
+            raise FatalProviderError(
+                'scene_breakdown has no scenes for visual prompts',
+                provider='visual_prompts',
+                error_code='missing_scenes',
+            )
+        if prompt_idxs != scene_idxs:
+            missing = sorted(scene_idxs - prompt_idxs)
+            extra = sorted(prompt_idxs - scene_idxs)
+            raise FatalProviderError(
+                f'visual_prompts coverage mismatch — '
+                f'missing={missing} extra={extra}',
+                provider='visual_prompts',
+                error_code='prompt_coverage',
+            )
         return output.model_dump()

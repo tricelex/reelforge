@@ -1,3 +1,6 @@
+# foglamp codebase-scan output (contains a secret edit token)
+.foglamp/
+
 #### joe made this: https://goel.io/joe
 
 # Git style-guide:

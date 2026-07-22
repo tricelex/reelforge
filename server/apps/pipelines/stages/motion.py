@@ -58,47 +58,53 @@ async def _run_ken_burns(
     ):
         img_path = img_f.name
         vid_path = vid_f.name
-    await asyncio.to_thread(Path(img_path).write_bytes, image_bytes)
+    try:
+        await asyncio.to_thread(Path(img_path).write_bytes, image_bytes)
 
-    frames = int(duration_s * 30)
-    vf = _KEN_BURNS_PRESETS[preset_idx % len(_KEN_BURNS_PRESETS)].replace(
-        'd=150',
-        f'd={frames}',
-    )
-    cmd = [
-        'ffmpeg',
-        '-y',
-        '-loop',
-        '1',
-        '-i',
-        img_path,
-        '-vf',
-        vf,
-        '-t',
-        str(duration_s),
-        '-r',
-        '30',
-        '-c:v',
-        'libx264',
-        '-crf',
-        '16',
-        '-pix_fmt',
-        'yuv420p',
-        '-an',
-        vid_path,
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(f'FFmpeg Ken Burns failed: {stderr.decode()[:300]}')
+        frames = int(duration_s * 30)
+        vf = _KEN_BURNS_PRESETS[preset_idx % len(_KEN_BURNS_PRESETS)].replace(
+            'd=150',
+            f'd={frames}',
+        )
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-loop',
+            '1',
+            '-i',
+            img_path,
+            '-vf',
+            vf,
+            '-t',
+            str(duration_s),
+            '-r',
+            '30',
+            '-c:v',
+            'libx264',
+            '-crf',
+            '16',
+            '-pix_fmt',
+            'yuv420p',
+            '-an',
+            vid_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f'FFmpeg Ken Burns failed: {stderr.decode()[:300]}',
+            )
 
-    video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
-    assert video_bytes, 'Ken Burns produced empty video'
-    return video_bytes
+        video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
+        assert video_bytes, 'Ken Burns produced empty video'
+        return video_bytes
+    finally:
+        await asyncio.to_thread(Path(img_path).unlink, missing_ok=True)
+        await asyncio.to_thread(Path(vid_path).unlink, missing_ok=True)
 
 
 @register_stage

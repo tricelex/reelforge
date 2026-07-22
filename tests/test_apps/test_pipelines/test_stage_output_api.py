@@ -218,6 +218,26 @@ def test_outline_text(
 
 
 @pytest.mark.django_db
+def test_narrative_qc_json(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """Narrative QC stage returns score and issues."""
+    _stage(
+        run,
+        'narrative_qc',
+        {'passed': False, 'score': 0.4, 'issues': ['weak hook']},
+    )
+    body = _get(dmr_client, run.id, 'narrative_qc', auth_headers).json()
+    assert body['kind'] == 'json'
+    assert body['data']['passed'] is False
+    assert body['data']['score'] == 0.4
+    assert body['data']['issues'] == ['weak hook']
+    assert 'failed' in body['summary']
+
+
+@pytest.mark.django_db
 def test_script_text(
     dmr_client: DMRClient,
     run: PipelineRun,

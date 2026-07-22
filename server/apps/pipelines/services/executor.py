@@ -125,14 +125,40 @@ async def _mark_needs_input(
     execution: 'StageExecution',
     error: FatalProviderError,
 ) -> None:
+    from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+        publish_sse,
+    )
+
     execution.status = 'NEEDS_INPUT'
     execution.error = {
         'type': type(error).__name__,
         'message': str(error),
         'retryable': False,
     }
+    if getattr(error, 'error_code', None):
+        execution.error['error_code'] = error.error_code
+    update_fields = ['status', 'error', 'finished_at']
+    if getattr(error, 'details', None):
+        execution.output = error.details
+        update_fields.append('output')
     execution.finished_at = tz.now()
-    await execution.asave(update_fields=['status', 'error', 'finished_at'])
+    await execution.asave(update_fields=update_fields)
+
+    log_fields = _execution_log_fields(execution)
+    log_fields['error'] = execution.error
+    logger.error('stage_needs_input', **log_fields)
+
+    await publish_sse(
+        str(execution.run_id),
+        {
+            'type': 'stage.needs_input',
+            'stage_key': execution.stage_key,
+            'attempt': execution.attempt,
+            'error_type': execution.error['type'],
+            'error_message': execution.error['message'],
+            'retryable': False,
+        },
+    )
 
 
 async def _schedule_retry(
@@ -262,14 +288,23 @@ async def _maybe_complete_fan_out_parent(  # noqa: C901
         parent.finished_at = tz.now()
         await parent.asave(update_fields=['status', 'output', 'finished_at'])
         await advance_pipeline_kiq(str(parent.run_id))
-    elif StageStatus.FAILED in values:
+    elif (
+        StageStatus.FAILED in values
+        or StageStatus.NEEDS_INPUT in values
+    ):
         in_flight = await StageExecution.objects.filter(
             parent=parent,
             status__in=[StageStatus.QUEUED, StageStatus.RUNNING],
         ).aexists()
         if not in_flight:
-            parent.status = StageStatus.FAILED
-            parent.error = {'message': 'one or more shards failed'}
+            if StageStatus.NEEDS_INPUT in values:
+                parent.status = StageStatus.NEEDS_INPUT
+                parent.error = {
+                    'message': 'one or more shards need input',
+                }
+            else:
+                parent.status = StageStatus.FAILED
+                parent.error = {'message': 'one or more shards failed'}
             parent.finished_at = tz.now()
             await parent.asave(
                 update_fields=['status', 'error', 'finished_at'],

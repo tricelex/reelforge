@@ -39,7 +39,7 @@ def _make_ctx(duration_s: float = 30.0) -> MagicMock:
                     'chapter_idx': 0,
                     'segment_idx': 0,
                     'start_s': 0.0,
-                    'end_s': 5.0,
+                    'end_s': duration_s,
                     'text': 'A',
                     'words': [{'word': 'A', 'start': 0.1, 'end': 0.5}],
                 },
