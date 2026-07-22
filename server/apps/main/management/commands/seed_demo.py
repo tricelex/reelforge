@@ -911,6 +911,9 @@ class Command(BaseCommand):
         from server.apps.generation.logic.constants import (  # noqa: PLC0415
             DEFAULT_LLM_MODEL,
         )
+        from server.apps.generation.logic.model_resolver import (  # noqa: PLC0415
+            STAGE_MODEL_DEFAULTS,
+        )
         from server.apps.prompts.models import (  # noqa: PLC0415
             PromptTemplate,
             PromptVersion,
@@ -935,7 +938,7 @@ class Command(BaseCommand):
                 defaults={
                     'system_prompt': data['system_prompt'],
                     'user_prompt': data['user_prompt'],
-                    'model': DEFAULT_LLM_MODEL,
+                    'model': STAGE_MODEL_DEFAULTS.get(key, DEFAULT_LLM_MODEL),
                     'temperature': 1.0,
                     'max_tokens': 8192,
                     'is_active': True,

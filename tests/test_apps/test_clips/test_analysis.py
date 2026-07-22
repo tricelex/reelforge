@@ -222,9 +222,11 @@ def test_analyze_creates_candidates() -> None:
     )
     mock_result = MagicMock()
     mock_result.output = mock_output
+    mock_agent = MagicMock()
+    mock_agent.run_sync.return_value = mock_result
 
-    with patch('server.apps.clips.analysis.clip_analysis_agent') as mock_agent:
-        mock_agent.run_sync.return_value = mock_result
+    with patch.object(ClipAnalysisService, '_agent_for_prompt') as mock_factory:
+        mock_factory.return_value = mock_agent
         svc = ClipAnalysisService(run=run, clips_requested=5)
         candidates = svc.analyze(
             transcript_text='Hello world',
@@ -286,13 +288,15 @@ def test_analyze_skips_invalid_candidates_with_warning() -> None:
     mock_output = ClipsOutput(clips=[_segment(title='Valid clip')])
     mock_result = MagicMock()
     mock_result.output = mock_output
+    mock_agent = MagicMock()
+    mock_agent.run_sync.return_value = mock_result
 
-    with patch('server.apps.clips.analysis.clip_analysis_agent') as mock_agent:
+    with patch.object(ClipAnalysisService, '_agent_for_prompt') as mock_factory:
         with patch(
             'server.apps.clips.models.ClipCandidate.objects.create',
         ) as mock_create:
             mock_create.side_effect = [ValueError('DB error')]
-            mock_agent.run_sync.return_value = mock_result
+            mock_factory.return_value = mock_agent
             svc = ClipAnalysisService(run=run, clips_requested=5)
             candidates = svc.analyze(
                 transcript_text='text',
@@ -353,9 +357,11 @@ def test_analyze_clips_requested_limits_results() -> None:
     )
     mock_result = MagicMock()
     mock_result.output = mock_output
+    mock_agent = MagicMock()
+    mock_agent.run_sync.return_value = mock_result
 
-    with patch('server.apps.clips.analysis.clip_analysis_agent') as mock_agent:
-        mock_agent.run_sync.return_value = mock_result
+    with patch.object(ClipAnalysisService, '_agent_for_prompt') as mock_factory:
+        mock_factory.return_value = mock_agent
         svc = ClipAnalysisService(run=run, clips_requested=2)
         candidates = svc.analyze(
             transcript_text='text',

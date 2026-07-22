@@ -52,6 +52,7 @@ def _make_ctx() -> MagicMock:
     ctx.assets = AsyncMock()
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='video-uuid'))
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     ctx.channel.assembly_style_camera_movements = []
     return ctx
 

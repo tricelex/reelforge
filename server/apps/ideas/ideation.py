@@ -1,12 +1,15 @@
 """LLM-powered topic ideation — single structured call, pre-fetched context."""
 
 import json
-from functools import cache
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
 
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import (
+    resolve_model,
+    to_pydantic_ai_model,
+)
 from server.apps.ideas.logic.schemas import (
     IdeationOutput,
     OutlierVideo,
@@ -27,10 +30,10 @@ _SYSTEM_PROMPT = (
 )
 
 
-@cache
-def _agent() -> Agent[None, IdeationOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[None, IdeationOutput]:
     return Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=IdeationOutput,
         system_prompt=_SYSTEM_PROMPT,
     )
@@ -130,5 +133,6 @@ def run_ideation_agent(
 ) -> IdeationOutput:
     """Run one bounded ideation LLM call and return structured candidates."""
     prompt = _build_prompt(context, source, count, outliers=outliers)
-    result = _agent().run_sync(prompt)
+    model_slug = resolve_model('ideation', None)
+    result = _agent(to_pydantic_ai_model(model_slug)).run_sync(prompt)
     return result.output

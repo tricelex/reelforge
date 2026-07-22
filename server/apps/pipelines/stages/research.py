@@ -1,6 +1,6 @@
 """Research stage — web search + LLM synthesis."""
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, override
 
 from django.conf import settings
@@ -8,7 +8,8 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.clients import search as search_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.schemas import ResearchOutput
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
@@ -20,11 +21,11 @@ from server.apps.pipelines.stages.base import (
 )
 
 
-@cache
-def _agent() -> Agent[StageContext, ResearchOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, ResearchOutput]:
     """Create and cache the research agent on first call."""
     a: Agent[StageContext, ResearchOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=ResearchOutput,
         deps_type=StageContext,
     )
@@ -104,11 +105,13 @@ class ResearchStage(Stage):
             f"source's own key_facts list) — prefer primary/archival/academic "
             f'sources when available.'
         )
+        model_slug = await resolve_stage_model(ctx, self.key)
         output: ResearchOutput = await llm_client.run_agent(
-            _agent(),
+            _agent(to_pydantic_ai_model(model_slug)),
             user_prompt,
             ctx,
             stage_key=self.key,
             request_limit=5,
+            model_slug=model_slug,
         )
         return output.model_dump()

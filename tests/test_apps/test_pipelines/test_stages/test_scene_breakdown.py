@@ -28,6 +28,7 @@ def _make_ctx() -> MagicMock:
     ctx.config = {'hero_ratio': 0.15}
     ctx.costs = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     return ctx
 
 
@@ -44,11 +45,16 @@ def test_scene_breakdown_fan_out_none() -> None:
 
 def test_scene_breakdown_has_output_validator() -> None:
     """The PydanticAI agent has an output validator registered."""
+    from server.apps.generation.logic.model_resolver import (
+        resolve_model,
+        to_pydantic_ai_model,
+    )
     from server.apps.pipelines.stages.scene_breakdown import (
         _agent,
     )
 
-    assert hasattr(_agent(), 'output_validator')
+    model = to_pydantic_ai_model(resolve_model('scene_breakdown', None))
+    assert hasattr(_agent(model), 'output_validator')
 
 
 def test_scene_breakdown_run_returns_scenes() -> None:

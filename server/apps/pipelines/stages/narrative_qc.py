@@ -6,13 +6,14 @@ FatalProviderError (-> NEEDS_INPUT), requiring a human to inspect and rerun
 upstream stages. It does not auto-retry script generation itself.
 """
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, override
 
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.schemas import NarrativeQCOutput
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
@@ -27,11 +28,11 @@ from server.common.exceptions import FatalProviderError
 _PASS_THRESHOLD = 0.5
 
 
-@cache
-def _agent() -> Agent[StageContext, NarrativeQCOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, NarrativeQCOutput]:
     """Create and cache the narrative QC agent on first call."""
     a: Agent[StageContext, NarrativeQCOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=NarrativeQCOutput,
         deps_type=StageContext,
     )
@@ -76,11 +77,13 @@ class NarrativeQCStage(Stage):
             f'Scene breakdown: {scenes.get("scenes", [])}\n'
             'Score this and list issues.'
         )
+        model_slug = await resolve_stage_model(ctx, self.key)
         output: NarrativeQCOutput = await llm_client.run_agent(
-            _agent(),
+            _agent(to_pydantic_ai_model(model_slug)),
             user_prompt,
             ctx,
             stage_key=self.key,
+            model_slug=model_slug,
         )
 
         if not output.passed or output.score < _PASS_THRESHOLD:

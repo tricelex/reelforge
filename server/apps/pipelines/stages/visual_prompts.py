@@ -1,12 +1,13 @@
 """Visual prompts stage — generates Flux image prompts per scene."""
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, override
 
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.schemas import VisualPromptsOutput
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
@@ -19,11 +20,11 @@ from server.apps.pipelines.stages.base import (
 from server.common.exceptions import FatalProviderError
 
 
-@cache
-def _agent() -> Agent[StageContext, VisualPromptsOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, VisualPromptsOutput]:
     """Create and cache the visual prompts agent on first call."""
     a: Agent[StageContext, VisualPromptsOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=VisualPromptsOutput,
         deps_type=StageContext,
     )
@@ -70,11 +71,13 @@ class VisualPromptsStage(Stage):
             f'Style guide: {style or "cinematic, photorealistic, 16:9"}.\n'
             f'Return one VisualPrompt per scene, same order as input scenes.'
         )
+        model_slug = await resolve_stage_model(ctx, self.key)
         output: VisualPromptsOutput = await llm_client.run_agent(
-            _agent(),
+            _agent(to_pydantic_ai_model(model_slug)),
             user_prompt,
             ctx,
             stage_key=self.key,
+            model_slug=model_slug,
         )
         prompts = output.prompts
         scene_idxs = {int(s['idx']) for s in scenes}

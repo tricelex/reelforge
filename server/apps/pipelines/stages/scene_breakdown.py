@@ -1,12 +1,13 @@
 """Scene breakdown stage — chapters split into scenes with validation."""
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, override
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 from server.apps.generation.clients import llm as llm_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.schemas import SceneBreakdownOutput
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
@@ -18,11 +19,11 @@ from server.apps.pipelines.stages.base import (
 )
 
 
-@cache
-def _agent() -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C901
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C901
     """Create and cache the scene breakdown agent on first call."""
     a: Agent[StageContext, SceneBreakdownOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=SceneBreakdownOutput,
         deps_type=StageContext,
     )
@@ -96,10 +97,12 @@ class SceneBreakdownStage(Stage):
             f'visual_concept, shot_type, est_seconds (6-12), is_hero, '
             f'foreground_cast (≤2 names), word_count (word count).'
         )
+        model_slug = await resolve_stage_model(ctx, self.key)
         output: SceneBreakdownOutput = await llm_client.run_agent(
-            _agent(),
+            _agent(to_pydantic_ai_model(model_slug)),
             user_prompt,
             ctx,
             stage_key=self.key,
+            model_slug=model_slug,
         )
         return output.model_dump()

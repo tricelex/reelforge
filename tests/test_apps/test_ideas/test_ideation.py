@@ -274,9 +274,15 @@ def niche(db) -> NicheConfig:  # type: ignore[no-untyped-def]
 
 def test_cached_agent_is_created() -> None:
     """Agent factory returns a configured PydanticAI agent."""
+    from server.apps.generation.logic.model_resolver import (
+        resolve_model,
+        to_pydantic_ai_model,
+    )
+
     _agent.cache_clear()
-    agent = _agent()
-    assert agent is _agent()
+    model = to_pydantic_ai_model(resolve_model('ideation', None))
+    agent = _agent(model)
+    assert agent is _agent(model)
 
 
 def test_filter_skips_empty_topic() -> None:

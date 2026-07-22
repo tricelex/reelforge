@@ -1,14 +1,15 @@
 """Outline stage — chapter structure generation."""
 
 import random
-from functools import cache
+from functools import lru_cache
 from typing import Any, override
 
 from pydantic_ai import Agent, RunContext
 
 from server.apps.analytics.retention_rollup import compute_soft_spots
 from server.apps.generation.clients import llm as llm_client
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
+from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.schemas import OutlineOutput
 from server.apps.pipelines.services.prompt_variables import (
     _format_dict,
@@ -61,11 +62,11 @@ async def _recent_format_keys(
     return keys
 
 
-@cache
-def _agent() -> Agent[StageContext, OutlineOutput]:
+@lru_cache(maxsize=4)
+def _agent(model: str) -> Agent[StageContext, OutlineOutput]:
     """Create and cache the outline agent on first call."""
     a: Agent[StageContext, OutlineOutput] = Agent(
-        PYDANTIC_AI_MODEL,
+        model,
         output_type=OutlineOutput,
         deps_type=StageContext,
     )
@@ -147,11 +148,13 @@ class OutlineStage(Stage):
             + (f'{soft_spots}\n' if soft_spots else '')
             + 'Write a chapter outline with 6-10 chapters.'
         )
+        model_slug = await resolve_stage_model(ctx, self.key)
         output: OutlineOutput = await llm_client.run_agent(
-            _agent(),
+            _agent(to_pydantic_ai_model(model_slug)),
             user_prompt,
             ctx,
             stage_key=self.key,
+            model_slug=model_slug,
         )
         result = output.model_dump()
         result['format_key'] = format_key

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -20,7 +21,10 @@ from server.apps.clips.logic.constants import (
     ClipGenre,
     ClipLengthBucket,
 )
-from server.apps.generation.logic.constants import PYDANTIC_AI_MODEL
+from server.apps.generation.logic.model_resolver import (
+    resolve_model,
+    to_pydantic_ai_model,
+)
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipCandidate
@@ -60,18 +64,27 @@ class ClipsOutput(pydantic.BaseModel):
     clips: list[ClipSegment]
 
 
-clip_analysis_agent: Agent[None, ClipsOutput] = Agent(
-    PYDANTIC_AI_MODEL,
-    output_type=ClipsOutput,
-    system_prompt=(
-        'You are an expert short-form video editor and virality analyst. '
-        'Identify the most engaging, self-contained moments for Shorts, '
-        'TikTok, and Reels. Score each clip 0-100 for Hook (opening impact), '
-        'Flow (coherence/pacing), Value (viewer benefit), and Trend '
-        '(platform/format fit — not live social trends). Prefer complete '
-        'ideas with a strong opening line. Return valid structured output.'
-    ),
+_CLIP_ANALYSIS_SYSTEM_PROMPT = (
+    'You are an expert short-form video editor and virality analyst. '
+    'Identify the most engaging, self-contained moments for Shorts, '
+    'TikTok, and Reels. Score each clip 0-100 for Hook (opening impact), '
+    'Flow (coherence/pacing), Value (viewer benefit), and Trend '
+    '(platform/format fit — not live social trends). Prefer complete '
+    'ideas with a strong opening line. Return valid structured output.'
 )
+
+
+@lru_cache(maxsize=8)
+def _clip_analysis_agent(
+    model: str,
+    system_prompt: str | None,
+) -> Agent[None, ClipsOutput]:
+    prompt = system_prompt or _CLIP_ANALYSIS_SYSTEM_PROMPT
+    return Agent(
+        model,
+        output_type=ClipsOutput,
+        system_prompt=prompt,
+    )
 
 
 class ClipAnalysisOptions:
@@ -228,12 +241,10 @@ class ClipAnalysisService:
         self,
         system_prompt: str | None,
     ) -> Agent[None, ClipsOutput]:
-        if not system_prompt:
-            return clip_analysis_agent
-        return Agent(
-            PYDANTIC_AI_MODEL,
-            output_type=ClipsOutput,
-            system_prompt=system_prompt,
+        model_slug = resolve_model('clip_analyze', None)
+        return _clip_analysis_agent(
+            to_pydantic_ai_model(model_slug),
+            system_prompt,
         )
 
     def _persist_candidates(

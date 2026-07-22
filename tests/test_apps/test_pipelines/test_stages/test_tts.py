@@ -36,6 +36,7 @@ def _make_ctx(n_chapters: int = 2) -> MagicMock:
     ctx.assets = AsyncMock()
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='audio-uuid'))
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     return ctx
 
 

@@ -33,6 +33,7 @@ def _make_ctx() -> MagicMock:
     ctx.config = {}
     ctx.costs = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_model = AsyncMock(return_value=None)
     return ctx
 
 
