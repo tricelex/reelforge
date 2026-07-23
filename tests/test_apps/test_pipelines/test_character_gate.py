@@ -215,6 +215,100 @@ def test_character_gate_auto_mode_runs_studio() -> None:
     assert run.status != RunStatus.AWAITING_REVIEW
 
 
+def test_run_auto_character_design_does_not_crash_on_cast_ordering() -> None:
+    """Regression: RunCast has no created_at column.
+
+    run_auto_character_design used to order RunCast rows by 'created_at',
+    which RunCast does not have (it only extends UUIDModel), raising
+    FieldError on every invocation. It must now query and design cast
+    members without crashing.
+    """
+    from server.apps.channels.logic.value_objects import (
+        CharacterRoundResultPayload,
+        CharacterSessionPayload,
+    )
+    from server.apps.channels.models import (
+        Character,
+        CharacterOrigin,
+        CharacterStatus,
+    )
+    from server.apps.pipelines.services.auto_character_design import (
+        run_auto_character_design,
+    )
+
+    channel = Channel.objects.create(
+        name='Auto Design Channel',
+        kind=ChannelKind.LONGFORM,
+        character_design_mode=CharacterDesignMode.AUTO,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='auto_design_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph=_graph_with_character_gate(),
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='auto character design test',
+    )
+    character = Character.objects.create(
+        name='Hero',
+        channel=channel,
+        appearance_prompt='A brave hero',
+        status=CharacterStatus.DRAFT,
+        origin=CharacterOrigin.RUN,
+        source_run=run,
+    )
+    run_cast = RunCast.objects.create(
+        run=run,
+        character=character,
+        role='protagonist',
+        importance=CastImportance.MAIN,
+        design_status=CastDesignStatus.PROPOSED,
+    )
+
+    session_payload = CharacterSessionPayload(
+        id='11111111-1111-1111-1111-111111111111',
+        character_id=str(character.id),
+        rounds=[],
+        created_at='2026-01-01T00:00:00Z',
+    )
+    round_payload = CharacterRoundResultPayload(
+        session_id=session_payload.id,
+        candidate_asset_ids=['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],
+        cost_usd='0.10',
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.auto_character_design.'
+            'CharacterStudioService.start_session',
+            return_value=session_payload,
+        ),
+        patch(
+            'server.apps.pipelines.services.auto_character_design.'
+            'CharacterStudioService.generate_round',
+            return_value=round_payload,
+        ),
+        patch(
+            'server.apps.pipelines.services.auto_character_design.'
+            'CharacterStudioService.approve',
+            return_value=MagicMock(),
+        ),
+    ):
+        output = run_auto_character_design(run)
+
+    assert output['auto_designed'] is True
+    assert len(output['designed']) == 1
+    assert output['designed'][0]['winning_asset_id'] == (
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    )
+    assert output['approved_cast_ids'] == [str(run_cast.id)]
+    run_cast.refresh_from_db()
+    assert run_cast.design_status == CastDesignStatus.APPROVED
+
+
 def test_cast_proposal_empty_cast_sets_requires_false() -> None:
     from server.apps.pipelines.stages.base import StageContext
     from server.apps.pipelines.stages.cast_proposal import CastProposalStage

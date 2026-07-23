@@ -109,7 +109,7 @@ def run_auto_character_design(run: PipelineRun) -> dict[str, Any]:
         RunCast.objects
         .filter(run=run)
         .select_related('character')
-        .order_by('created_at'),
+        .order_by('id'),
     )
     for row in rows:
         if row.importance == CastImportance.BACKGROUND:

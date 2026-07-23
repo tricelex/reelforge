@@ -386,6 +386,7 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
 
     if shard_inputs is None:
         cached = await find_cached_output(
+            run_id=execution.run_id,
             stage_key=execution.stage_key,
             shard_index=execution.shard_index,
             input_hash=execution.input_hash,
