@@ -1566,6 +1566,239 @@ def test_rerun_fan_out_stage_creates_children_with_new_attempt(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_with_shard_indices_reruns_only_that_shard(
+    run: PipelineRun,
+) -> None:
+    """Regression: shard-scoped rerun must not touch sibling shards.
+
+    _rerun_stage_sync used to filter candidate rows by
+    (parent=None, shard_index__in=shard_indices) when computing the next
+    attempt — but parent-level rows always have shard_index=None, so that
+    filter was always empty and the code fell through to a full top-level
+    requeue, silently regenerating every shard instead of the one
+    requested.
+    """
+    from server.apps.pipelines.services.orchestrator import _rerun_stage_sync
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': '_fan_rerun_shard_cov', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+
+    from server.apps.pipelines.stages.base import (
+        Stage,
+        StageContext,
+        register_stage,
+    )
+
+    @register_stage
+    class _FanRerunShardCovStage(Stage):
+        """Fan-out stage for shard-scoped rerun coverage."""
+
+        key = '_fan_rerun_shard_cov'
+        queue = 'api'
+        max_retries = 2
+        timeout_s = 10
+
+        def fan_out(
+            self,
+            ctx: StageContext,
+        ) -> list[dict[str, object]] | None:  # pragma: no cover
+            """Not exercised — rerun only requeues, it doesn't fan out."""
+            return [{'idx': 0}, {'idx': 1}]
+
+        async def run(
+            self,
+            ctx: StageContext,
+        ) -> dict[str, object]:  # pragma: no cover
+            """Return empty dict."""
+            return {}
+
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_shard_cov',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        input_hash='',
+        output={'shards': [{'shard_index': 0}, {'shard_index': 1}]},
+    )
+    shard_0 = StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_shard_cov',
+        parent=parent,
+        shard_index=0,
+        attempt=0,
+        status=StageStatus.FAILED,
+        input_hash='',
+        input_snapshot={'idx': 0, 'prompt': 'bad prompt'},
+    )
+    shard_1 = StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_shard_cov',
+        parent=parent,
+        shard_index=1,
+        attempt=0,
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
+        input_snapshot={'idx': 1, 'prompt': 'good prompt'},
+    )
+
+    exec_ids = _rerun_stage_sync(
+        str(run.id),
+        '_fan_rerun_shard_cov',
+        [0],
+    )
+
+    assert len(exec_ids) == 1
+    new_child = StageExecution.objects.get(id=exec_ids[0])
+    assert new_child.shard_index == 0
+    assert new_child.parent_id == parent.id
+    assert new_child.attempt == 1
+    assert new_child.status == StageStatus.QUEUED
+    assert new_child.input_snapshot == {'idx': 0, 'prompt': 'bad prompt'}
+
+    # Sibling shard 1 must be untouched — no new attempt, still SUCCEEDED.
+    assert not StageExecution.objects.filter(
+        run=run,
+        stage_key='_fan_rerun_shard_cov',
+        shard_index=1,
+        attempt__gt=0,
+    ).exists()
+    shard_1.refresh_from_db()
+    assert shard_1.status == StageStatus.SUCCEEDED
+
+    # The old shard-0 row is untouched (a fresh attempt row was added
+    # instead of stomping history), and the fan-out parent is reopened so
+    # the completion aggregator re-evaluates once the new child finishes.
+    shard_0.refresh_from_db()
+    assert shard_0.status == StageStatus.FAILED
+    parent.refresh_from_db()
+    assert parent.status == StageStatus.RUNNING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_with_unknown_shard_index_enqueues_nothing(
+    run: PipelineRun,
+) -> None:
+    """Requesting a shard index with no existing child is a safe no-op."""
+    from server.apps.pipelines.models import RunStatus
+    from server.apps.pipelines.services.orchestrator import _rerun_stage_sync
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': '_fan_rerun_unknown_cov', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+
+    from server.apps.pipelines.stages.base import (
+        Stage,
+        StageContext,
+        register_stage,
+    )
+
+    @register_stage
+    class _FanRerunUnknownCovStage(Stage):
+        """Fan-out stage for the unknown-shard-index rerun edge case."""
+
+        key = '_fan_rerun_unknown_cov'
+        queue = 'api'
+        max_retries = 2
+        timeout_s = 10
+
+        def fan_out(
+            self,
+            ctx: StageContext,
+        ) -> list[dict[str, object]] | None:  # pragma: no cover
+            """Not exercised — rerun only requeues, it doesn't fan out."""
+            return [{'idx': 0}]
+
+        async def run(
+            self,
+            ctx: StageContext,
+        ) -> dict[str, object]:  # pragma: no cover
+            """Return empty dict."""
+            return {}
+
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_unknown_cov',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        input_hash='',
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='_fan_rerun_unknown_cov',
+        parent=parent,
+        shard_index=0,
+        attempt=0,
+        status=StageStatus.SUCCEEDED,
+        input_hash='',
+    )
+
+    exec_ids = _rerun_stage_sync(
+        str(run.id),
+        '_fan_rerun_unknown_cov',
+        [99],
+    )
+
+    assert exec_ids == []
+    run.refresh_from_db()
+    assert run.status != RunStatus.RUNNING
+    parent.refresh_from_db()
+    assert parent.status == StageStatus.SUCCEEDED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_with_shard_indices_and_no_parent_is_noop(
+    run: PipelineRun,
+) -> None:
+    """Shard-scoped rerun with no prior fan-out parent enqueues nothing."""
+    from server.apps.pipelines.services.orchestrator import _rerun_stage_sync
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': '_fan_rerun_no_parent_cov', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+
+    from server.apps.pipelines.stages.base import (
+        Stage,
+        StageContext,
+        register_stage,
+    )
+
+    @register_stage
+    class _FanRerunNoParentCovStage(Stage):
+        """Fan-out stage never previously executed for this run."""
+
+        key = '_fan_rerun_no_parent_cov'
+        queue = 'api'
+        max_retries = 2
+        timeout_s = 10
+
+        def fan_out(
+            self,
+            ctx: StageContext,
+        ) -> list[dict[str, object]] | None:  # pragma: no cover
+            """Not exercised — rerun only requeues, it doesn't fan out."""
+            return [{'idx': 0}]
+
+        async def run(
+            self,
+            ctx: StageContext,
+        ) -> dict[str, object]:  # pragma: no cover
+            """Return empty dict."""
+            return {}
+
+    exec_ids = _rerun_stage_sync(
+        str(run.id),
+        '_fan_rerun_no_parent_cov',
+        [0],
+    )
+
+    assert exec_ids == []
+
+
+@pytest.mark.django_db(transaction=True)
 def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
     """_rerun_stage_sync stales downstream and creates a queued execution."""
     import server.apps.pipelines.stages.dummy  # noqa: F401

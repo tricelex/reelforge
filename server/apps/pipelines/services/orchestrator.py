@@ -518,6 +518,12 @@ def _resolve_armed_gates(
     return gates
 
 
+def _over_budget(run: 'PipelineRun') -> bool:
+    """True when the channel has a spend cap and the run has hit it."""
+    cap = run.channel.default_budget_usd
+    return cap is not None and run.total_cost_usd >= cap
+
+
 def _advance_in_transaction(
     run_id: str,
 ) -> tuple[list[str], dict[str, str | None]]:
@@ -548,6 +554,20 @@ def _advance_in_transaction(
             return to_enqueue, states
 
         if run.is_paused:
+            return to_enqueue, states
+
+        if run.status == RunStatus.BUDGET_HOLD:
+            return to_enqueue, states
+
+        if _over_budget(run):
+            run.status = RunStatus.BUDGET_HOLD
+            run.save(update_fields=['status'])
+            logger.info(
+                'pipeline_budget_hold',
+                run_id=str(run.id),
+                spent_usd=str(run.total_cost_usd),
+                budget_usd=str(run.channel.default_budget_usd),
+            )
             return to_enqueue, states
 
         graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
@@ -789,12 +809,83 @@ async def resume_run_impl(run_id: str) -> None:
     await advance_pipeline_impl(run_id)
 
 
+def _requeue_shards_sync(
+    run: 'PipelineRun',
+    stage_key: str,
+    node: dict[str, Any],
+    stage_cls: 'type[Any]',
+    shard_indices: list[int],
+) -> list[str]:
+    """Queue fresh child executions for specific fan-out shards only.
+
+    Reuses each shard's latest input_snapshot (same job, fresh attempt) and
+    resets the fan-out parent off its terminal status so
+    ``_maybe_complete_fan_out_parent`` re-aggregates once these children
+    finish, instead of leaving it stuck on the old shard output.
+    """
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    parent = (
+        StageExecution.objects
+        .filter(run=run, stage_key=stage_key, parent=None)
+        .order_by('-attempt')
+        .first()
+    )
+    if parent is None:
+        return []
+
+    to_enqueue: list[str] = []
+    for idx in shard_indices:
+        latest_child = (
+            StageExecution.objects
+            .filter(run=run, stage_key=stage_key, shard_index=idx)
+            .order_by('-attempt')
+            .first()
+        )
+        if latest_child is None:
+            continue
+        child = StageExecution.objects.create(
+            run=run,
+            stage_key=stage_key,
+            parent=parent,
+            shard_index=idx,
+            attempt=latest_child.attempt + 1,
+            status=StageStatus.QUEUED,
+            queue=node.get('queue', stage_cls.queue),
+            max_retries=stage_cls.max_retries,
+            input_snapshot=latest_child.input_snapshot,
+            input_hash='',
+        )
+        to_enqueue.append(str(child.id))
+
+    if to_enqueue and parent.status in {
+        StageStatus.SUCCEEDED,
+        StageStatus.FAILED,
+        StageStatus.NEEDS_INPUT,
+    }:
+        parent.status = StageStatus.RUNNING
+        parent.finished_at = None
+        parent.save(update_fields=['status', 'finished_at'])
+
+    return to_enqueue
+
+
 def _rerun_stage_sync(
     run_id: str,
     stage_key: str,
     shard_indices: list[int] | None,
 ) -> list[str]:
-    """Stale downstream stages and queue fresh attempts; return exec IDs."""
+    """Stale downstream stages and queue fresh attempt(s); return exec IDs.
+
+    A whole-stage rerun (``shard_indices=None``) stales the stage itself
+    plus everything downstream. A shard-scoped rerun only re-queues the
+    requested fan-out children — sibling shards and their downstream
+    consumers are left untouched, so re-rendering one bad scene doesn't
+    blow away the rest of a fan-out batch.
+    """
     from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineRun,
         RunStatus,
@@ -822,7 +913,11 @@ def _rerun_stage_sync(
         )
         graph: list[dict[str, Any]] = run.blueprint_snapshot.get('stages', [])
         downstream = _downstream_stage_keys(graph, stage_key)
-        stale_keys = downstream | {stage_key}
+        stale_keys = (
+            downstream
+            if shard_indices is not None
+            else downstream | {stage_key}
+        )
 
         StageExecution.objects.filter(
             run=run,
@@ -838,44 +933,47 @@ def _rerun_stage_sync(
         if stage_cls is None:
             return to_enqueue
 
-        qs = StageExecution.objects.filter(
-            run=run,
-            stage_key=stage_key,
-            parent=None,
-        )
         if shard_indices is not None:
-            qs = qs.filter(shard_index__in=shard_indices)
-        else:
-            qs = qs.filter(shard_index__isnull=True)
-
-        latest_attempt = (
-            qs
-            .order_by('-attempt')
-            .values_list(
-                'attempt',
-                flat=True,
+            to_enqueue = _requeue_shards_sync(
+                run,
+                stage_key,
+                node,
+                stage_cls,
+                shard_indices,
             )
-            .first()
-        )
-        next_attempt = (
-            latest_attempt if latest_attempt is not None else -1
-        ) + 1
+        else:
+            qs = StageExecution.objects.filter(
+                run=run,
+                stage_key=stage_key,
+                parent=None,
+                shard_index__isnull=True,
+            )
+            latest_attempt = (
+                qs
+                .order_by('-attempt')
+                .values_list('attempt', flat=True)
+                .first()
+            )
+            next_attempt = (
+                latest_attempt if latest_attempt is not None else -1
+            ) + 1
 
-        exec_ = StageExecution.objects.create(
-            run=run,
-            stage_key=stage_key,
-            status=StageStatus.QUEUED,
-            queue=node.get('queue', stage_cls.queue),
-            max_retries=stage_cls.max_retries,
-            attempt=next_attempt,
-            input_hash='',
-        )
-        to_enqueue.append(str(exec_.id))
+            exec_ = StageExecution.objects.create(
+                run=run,
+                stage_key=stage_key,
+                status=StageStatus.QUEUED,
+                queue=node.get('queue', stage_cls.queue),
+                max_retries=stage_cls.max_retries,
+                attempt=next_attempt,
+                input_hash='',
+            )
+            to_enqueue.append(str(exec_.id))
 
-        run.status = RunStatus.RUNNING
-        run.is_paused = False
-        run.finished_at = None
-        run.save(update_fields=['status', 'is_paused', 'finished_at'])
+        if to_enqueue:
+            run.status = RunStatus.RUNNING
+            run.is_paused = False
+            run.finished_at = None
+            run.save(update_fields=['status', 'is_paused', 'finished_at'])
 
     return to_enqueue
 

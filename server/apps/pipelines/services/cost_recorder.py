@@ -20,8 +20,13 @@ class CostRecorder:
         units: float | Decimal,
         unit_cost_usd: float | Decimal,
     ) -> None:
-        """Write a CostRecord row and add to the running total."""
-        from server.apps.pipelines.models import CostRecord  # noqa: PLC0415
+        """Write a CostRecord row; roll the cost onto the run and self total."""
+        from django.db.models import F  # noqa: PLC0415
+
+        from server.apps.pipelines.models import (  # noqa: PLC0415
+            CostRecord,
+            PipelineRun,
+        )
 
         units_d = Decimal(str(units))
         unit_cost_d = Decimal(str(unit_cost_usd))
@@ -33,6 +38,9 @@ class CostRecorder:
             units=units_d,
             unit_cost_usd=unit_cost_d,
             total_usd=total,
+        )
+        await PipelineRun.objects.filter(id=self._execution.run_id).aupdate(
+            total_cost_usd=F('total_cost_usd') + total,
         )
         self._total += total
 

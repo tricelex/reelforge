@@ -66,21 +66,82 @@ def test_cost_recorder_accumulates_total() -> None:
 
     mock_exec = MagicMock()
     mock_exec.id = 'test-id'
+    mock_exec.run_id = 'test-run-id'
     recorder = CostRecorder(mock_exec)
 
     async def _inner():
-        with patch(
-            'server.apps.pipelines.models.CostRecord',
-        ) as mock_cost_record_cls:
+        with (
+            patch(
+                'server.apps.pipelines.models.CostRecord',
+            ) as mock_cost_record_cls,
+            patch(
+                'server.apps.pipelines.models.PipelineRun',
+            ) as mock_run_cls,
+        ):
             mock_cost_record_cls.objects.acreate = AsyncMock()
+            mock_run_cls.objects.filter.return_value.aupdate = AsyncMock()
             await recorder.record('fal_flux', 'image_gen', 1, 0.025)
             await recorder.record('fal_flux', 'image_gen', 2, 0.025)
 
         from decimal import Decimal
 
         assert recorder.total_usd == Decimal('0.075')
+        assert mock_run_cls.objects.filter.call_count == 2
+        mock_run_cls.objects.filter.assert_any_call(id='test-run-id')
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cost_recorder_rolls_up_onto_pipeline_run() -> None:
+    """CostRecorder.record() atomically adds cost onto PipelineRun.total_cost_usd.
+
+    Regression: PipelineRun.total_cost_usd was write-only-by-default — it
+    is displayed to operators (gate queue "spent so far", run detail API)
+    but nothing ever summed CostRecord entries back onto it, so it always
+    read $0.00 regardless of actual spend.
+    """
+    from decimal import Decimal
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+    )
+    from server.apps.pipelines.services.cost_recorder import CostRecorder
+
+    channel = Channel.objects.create(
+        name='Cost Rollup Channel',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='cost_rollup_test_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': [{'key': 'dummy_a', 'depends_on': []}]},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='cost rollup test',
+    )
+    execution = StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_a',
+        input_hash='',
+    )
+    recorder = CostRecorder(execution)
+
+    async def _inner() -> None:
+        await recorder.record('fal_flux', 'image_gen', 2, 0.025)
+        await recorder.record('elevenlabs', 'tts_chars', 100, 0.00003)
+
+    _run(_inner())
+
+    run.refresh_from_db()
+    assert run.total_cost_usd == Decimal('0.0530')
 
 
 @pytest.mark.django_db(transaction=True)
@@ -153,6 +214,7 @@ def test_find_cached_output_returns_none_when_no_match(
 
     async def _inner() -> None:
         result = await find_cached_output(
+            run_id=run.id,
             stage_key='outline',
             shard_index=None,
             input_hash='nonexistent_hash',
@@ -184,6 +246,7 @@ def test_find_cached_output_returns_succeeded_execution(
             output={'data': 'some_output'},
         )
         found = await find_cached_output(
+            run_id=run.id,
             stage_key='outline',
             shard_index=None,
             input_hash='hash_abc',
@@ -216,9 +279,58 @@ def test_find_cached_output_ignores_failed_executions(
             output={},
         )
         result = await find_cached_output(
+            run_id=run.id,
             stage_key='outline',
             shard_index=None,
             input_hash='hash_xyz',
+        )
+        assert result is None
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_find_cached_output_does_not_leak_across_runs(
+    run: PipelineRun,
+    blueprint: PipelineBlueprint,
+    channel,
+) -> None:
+    """A SUCCEEDED execution on another run must never be returned as cache.
+
+    Regression test: the cache used to be keyed only on
+    (stage_key, shard_index, input_hash) with no run/channel scoping, so two
+    different runs (potentially different channels, different niches/lore)
+    that happened to hash identically would silently share output.
+    """
+    from server.apps.pipelines.models import (
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.idempotency import (
+        find_cached_output,
+    )
+
+    other_run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=blueprint,
+        blueprint_snapshot=blueprint.graph,
+        topic='Idempotency test topic',
+    )
+
+    async def _inner() -> None:
+        await StageExecution.objects.acreate(
+            run=other_run,
+            stage_key='outline',
+            input_hash='shared_hash',
+            status=StageStatus.SUCCEEDED,
+            output={'data': 'other_run_output'},
+        )
+        result = await find_cached_output(
+            run_id=run.id,
+            stage_key='outline',
+            shard_index=None,
+            input_hash='shared_hash',
         )
         assert result is None
 
@@ -611,6 +723,147 @@ def test_advance_enqueues_first_stage(orch_run: PipelineRun) -> None:
         assert a_exec.status == StageStatus.QUEUED
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_parks_run_at_budget_hold_when_cap_exceeded(
+    orch_run: PipelineRun,
+    orch_channel,
+) -> None:
+    """advance_pipeline_impl parks the run once spend hits the channel cap.
+
+    Regression: RunStatus.BUDGET_HOLD and channel.default_budget_usd both
+    existed, but nothing ever compared spend to the cap — a run could spend
+    without limit. dummy_a must not be (re)enqueued once over budget.
+    """
+    from decimal import Decimal
+    from unittest.mock import AsyncMock, patch
+
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.models import RunStatus, StageExecution
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    orch_channel.default_budget_usd = Decimal('5.00')
+    orch_channel.save(update_fields=['default_budget_usd'])
+    orch_run.total_cost_usd = Decimal('5.01')
+    orch_run.save(update_fields=['total_cost_usd'])
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ) as mock_enqueue,
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(orch_run.id))
+
+        mock_enqueue.assert_not_called()
+        assert not await StageExecution.objects.filter(
+            run=orch_run,
+        ).aexists()
+
+    _run(_inner())
+
+    orch_run.refresh_from_db()
+    assert orch_run.status == RunStatus.BUDGET_HOLD
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_short_circuits_when_already_at_budget_hold(
+    orch_run: PipelineRun,
+    orch_channel,
+) -> None:
+    """A subsequent advance on an already-held run is a cheap no-op.
+
+    Once parked, advance_pipeline_impl should not repeat the over-budget
+    check/log every time an in-flight sibling stage's completion re-kicks
+    the DAG evaluation — it just re-confirms the hold.
+    """
+    from decimal import Decimal
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.models import RunStatus, StageExecution
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    orch_channel.default_budget_usd = Decimal('5.00')
+    orch_channel.save(update_fields=['default_budget_usd'])
+    orch_run.total_cost_usd = Decimal('5.01')
+    orch_run.status = RunStatus.BUDGET_HOLD
+    orch_run.save(update_fields=['total_cost_usd', 'status'])
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ) as mock_enqueue,
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(orch_run.id))
+
+        mock_enqueue.assert_not_called()
+        assert not await StageExecution.objects.filter(
+            run=orch_run,
+        ).aexists()
+
+    _run(_inner())
+
+    orch_run.refresh_from_db()
+    assert orch_run.status == RunStatus.BUDGET_HOLD
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_does_not_hold_when_under_budget(
+    orch_run: PipelineRun,
+    orch_channel,
+) -> None:
+    """A run under the channel's budget cap advances normally."""
+    from decimal import Decimal
+    from unittest.mock import AsyncMock, patch
+
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.models import RunStatus, StageStatus
+    from server.apps.pipelines.selectors import get_run_detail
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    orch_channel.default_budget_usd = Decimal('5.00')
+    orch_channel.save(update_fields=['default_budget_usd'])
+    orch_run.total_cost_usd = Decimal('1.00')
+    orch_run.save(update_fields=['total_cost_usd'])
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(orch_run.id))
+
+    _run(_inner())
+
+    orch_run.refresh_from_db()
+    assert orch_run.status != RunStatus.BUDGET_HOLD
+    detail = get_run_detail(str(orch_run.id))
+    dummy_a = next(s for s in detail.stages if s.stage_key == 'dummy_a')
+    assert dummy_a.status == StageStatus.QUEUED
 
 
 @pytest.mark.django_db(transaction=True)
