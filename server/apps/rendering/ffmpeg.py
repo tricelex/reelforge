@@ -510,8 +510,13 @@ def _build_complex_filter(
     watermark_path: str | None,
     wm_idx: int,
     loudnorm_af: str,
+    duration_s: float = 0.0,
 ) -> tuple[str, str, str]:
-    """Return (filter_complex, video_map, audio_map) for final_pass."""
+    """Return (filter_complex, video_map, audio_map) for final_pass.
+
+    Music beds are looped/trimmed to ``duration_s`` so short library tracks
+    cover the full VO timeline. SFX are left unlooped.
+    """
     filter_parts: list[str] = []
     if watermark_path:
         filter_parts.append(
@@ -525,12 +530,24 @@ def _build_complex_filter(
         filter_parts.append(f"{v_out}subtitles='{ass_path}'[vout]")
         v_out = '[vout]'
 
+    music_count = len(music_paths)
     extra_paths = music_paths + sfx_paths
     extra_gains = music_gains_db + sfx_gains_db
     if extra_paths:
         for i, gain_db in enumerate(extra_gains, start=1):
             gain_linear = 10 ** (gain_db / 20.0)
-            filter_parts.append(f'[{i}:a]volume={gain_linear:.4f}[m{i}]')
+            is_music = i <= music_count
+            if is_music and duration_s > 0:
+                filter_parts.append(
+                    f'[{i}:a]aloop=loop=-1:size=2e+09,'
+                    f'atrim=0:{duration_s:.3f},'
+                    f'asetpts=PTS-STARTPTS,'
+                    f'volume={gain_linear:.4f}[m{i}]',
+                )
+            else:
+                filter_parts.append(
+                    f'[{i}:a]volume={gain_linear:.4f}[m{i}]',
+                )
         music_refs = ''.join(f'[m{i}]' for i in range(1, len(extra_paths) + 1))
         n = 1 + len(extra_paths)
         filter_parts.append(
@@ -557,6 +574,7 @@ def _build_final_pass_cmd(
     watermark_path: str | None,
     loudnorm_af: str,
     out_path: str,
+    duration_s: float = 0.0,
 ) -> list[str]:
     """Assemble the ffmpeg argv for the final encode pass."""
     use_complex = bool(music_paths or sfx_paths or watermark_path)
@@ -572,6 +590,7 @@ def _build_final_pass_cmd(
             watermark_path=watermark_path,
             wm_idx=wm_idx,
             loudnorm_af=loudnorm_af,
+            duration_s=duration_s,
         )
         return [
             'ffmpeg',
@@ -651,6 +670,8 @@ async def final_pass(
     try:
         await concat_chapter(chapter_paths, concat_tmp)
         stats = await loudnorm_pass1(concat_tmp)
+        probe = await async_ffprobe(concat_tmp)
+        duration_s = float(probe.get('format', {}).get('duration', 0.0) or 0.0)
 
         inputs = ['-i', concat_tmp]
         for mp in music_paths:
@@ -670,6 +691,7 @@ async def final_pass(
             watermark_path=watermark_path,
             loudnorm_af=_loudnorm_audio_filter(stats),
             out_path=out_path,
+            duration_s=duration_s,
         )
         await _run_ffmpeg_cmd(cmd, label='final_pass')
     finally:

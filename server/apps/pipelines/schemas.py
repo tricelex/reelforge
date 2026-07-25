@@ -222,7 +222,7 @@ class MusicEntry(BaseModel):
 
     chapter_idx: int
     library_asset_id: str
-    gain_db: float = 0.0
+    gain_db: float = -18.0
 
 
 class MusicPlanOutput(BaseModel):

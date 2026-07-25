@@ -17,6 +17,8 @@ from server.common.exceptions import FatalProviderError
 _DURATION_DRIFT_MAX = 0.03
 _SILENCE_MAX_S = 1.8
 _BLACK_FREEZE_MAX_S = 0.5
+_FREEZE_MAX_S = 2.5
+_FREEZE_NOISE_DB = -50
 _LOUDNESS_TARGET_I = -14.0
 _LOUDNESS_TOLERANCE = 0.7
 _LOUDNESS_MAX_TP = -1.0
@@ -123,14 +125,14 @@ async def _run_black_detect(path: str) -> list[dict[str, float]]:
 
 
 async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
-    """Run freezedetect; return list of {start, end, duration} events > 0.5s."""
+    """Run freezedetect; return freeze events longer than ``_FREEZE_MAX_S``."""
     proc = await asyncio.create_subprocess_exec(
         'ffmpeg',
         '-y',
         '-i',
         path,
         '-vf',
-        'freezedetect=n=-60dB:d=0.5',
+        f'freezedetect=n={_FREEZE_NOISE_DB}dB:d={_FREEZE_MAX_S}',
         '-f',
         'null',
         '-',
@@ -146,7 +148,7 @@ async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
         re.DOTALL,
     ):
         duration = float(m.group(2)) - float(m.group(1))
-        if duration > _BLACK_FREEZE_MAX_S:
+        if duration > _FREEZE_MAX_S:
             events.append({
                 'start': float(m.group(1)),
                 'end': float(m.group(2)),

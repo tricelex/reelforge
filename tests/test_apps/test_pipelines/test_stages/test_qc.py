@@ -411,8 +411,8 @@ def test_run_black_detect_empty_on_no_events() -> None:
 
 
 def test_run_freeze_detect_parses_long_freeze() -> None:
-    """Freeze events longer than _BLACK_FREEZE_MAX_S (0.5s) are returned."""
-    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 2.0\n'
+    """Freeze events longer than _FREEZE_MAX_S (2.5s) are returned."""
+    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 4.5\n'
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))
@@ -426,13 +426,30 @@ def test_run_freeze_detect_parses_long_freeze() -> None:
 
     result = asyncio.run(_run())
     assert len(result) == 1
-    assert result[0]['duration'] == pytest.approx(1.0)
+    assert result[0]['duration'] == pytest.approx(3.5)
+
+
+def test_run_freeze_detect_uses_tolerant_threshold() -> None:
+    """freezedetect filter uses -50dB noise and 2.5s minimum duration."""
+    fake_stderr = b''
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))
+    mock_exec = AsyncMock(return_value=mock_proc)
+
+    async def _run() -> list:  # type: ignore[type-arg]
+        with patch('asyncio.create_subprocess_exec', new=mock_exec):
+            return await _run_freeze_detect('/tmp/f.mp4')
+
+    assert asyncio.run(_run()) == []
+    argv = mock_exec.await_args.args
+    assert 'freezedetect=n=-50dB:d=2.5' in argv
 
 
 def test_run_freeze_detect_excludes_short_freezes() -> None:
-    """Freeze events <= _BLACK_FREEZE_MAX_S are filtered out."""
-    # 0.3 s freeze — below 0.5 s threshold
-    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 1.3\n'
+    """Freeze events <= _FREEZE_MAX_S are filtered out."""
+    # 2.0 s freeze — below 2.5 s threshold
+    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 3.0\n'
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))

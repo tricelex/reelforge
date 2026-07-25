@@ -271,19 +271,55 @@ def _offset_scenes(
     return out
 
 
+_SUBTITLE_CHUNK_WORDS = 4
+
+
+def _chunk_words_into_cues(
+    words: list[dict[str, Any]],
+    *,
+    chunk_size: int = _SUBTITLE_CHUNK_WORDS,
+) -> list[dict[str, Any]]:
+    """Split word timings into short subtitle cues (start/end/text)."""
+    assert chunk_size > 0, f'chunk_size must be > 0, got {chunk_size}'  # noqa: S101
+    cues: list[dict[str, Any]] = []
+    max_words = len(words)
+    for start_i in range(0, max_words, chunk_size):
+        assert start_i < max_words, 'chunk start exceeded word list'  # noqa: S101
+        chunk = words[start_i : start_i + chunk_size]
+        texts = [str(w.get('word', '')).strip() for w in chunk]
+        text = ' '.join(t for t in texts if t)
+        if not text:
+            continue
+        cues.append({
+            'start': float(chunk[0]['start']),
+            'end': float(chunk[-1]['end']),
+            'text': text,
+        })
+    return cues
+
+
 def _subtitle_segments_from_scenes(
     scenes: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """One subtitle cue per aligned scene (readable burn-in)."""
-    return [
-        {
-            'start': float(scene['start_s']),
-            'end': float(scene['end_s']),
-            'text': str(scene.get('text', '')).strip(),
-        }
-        for scene in scenes
-        if str(scene.get('text', '')).strip()
-    ]
+    """Chunked subtitle cues from aligned scene word timings.
+
+    Uses ~4 words per cue so burn-in stays in sync with narration instead of
+    lingering for the full scene.
+    """
+    segments: list[dict[str, Any]] = []
+    for scene in scenes:
+        words = scene.get('words') or []
+        if isinstance(words, list) and words:
+            segments.extend(_chunk_words_into_cues(words))
+            continue
+        text = str(scene.get('text', '')).strip()
+        if text:
+            segments.append({
+                'start': float(scene['start_s']),
+                'end': float(scene['end_s']),
+                'text': text,
+            })
+    return segments
 
 
 async def _align_one_chapter(

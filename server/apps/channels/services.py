@@ -302,6 +302,7 @@ class ChannelService:
             sfx_pool_tags=list(style.sfx_pool_tags),
             min_cuts_per_minute=style.min_cuts_per_minute,
             max_cuts_per_minute=style.max_cuts_per_minute,
+            music_bed_gain_db=float(style.music_bed_gain_db),
         )
 
     def patch_assembly_style(
@@ -321,6 +322,7 @@ class ChannelService:
                 'sfx_pool_tags',
                 'min_cuts_per_minute',
                 'max_cuts_per_minute',
+                'music_bed_gain_db',
             ),
         )
         if update_fields:

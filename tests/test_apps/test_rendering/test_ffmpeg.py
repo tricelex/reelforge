@@ -400,6 +400,12 @@ def test_final_pass_calls_ffmpeg_with_subtitle_filter() -> None:
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
+            ),
         ):
             await final_pass(
                 chapter_paths=['/tmp/ch0.mp4'],
@@ -438,6 +444,12 @@ def test_final_pass_omits_overlay_when_no_watermark() -> None:
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
+            ),
         ):
             await final_pass(
                 chapter_paths=['/tmp/ch0.mp4'],
@@ -474,6 +486,12 @@ def test_final_pass_includes_amix_when_music_provided() -> None:
             patch(
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
             ),
         ):
             await final_pass(
@@ -549,6 +567,12 @@ def test_final_pass_with_watermark_and_no_music() -> None:
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
+            ),
         ):
             await final_pass(
                 chapter_paths=['/tmp/ch0.mp4'],
@@ -587,6 +611,12 @@ def test_final_pass_with_watermark_and_subtitles_no_music() -> None:
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
+            ),
         ):
             await final_pass(
                 chapter_paths=['/tmp/ch0.mp4'],
@@ -621,6 +651,12 @@ def test_final_pass_raises_on_ffmpeg_failure() -> None:
             patch(
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
             ),
         ):
             await final_pass(
@@ -843,6 +879,12 @@ def test_final_pass_includes_sfx_in_amix() -> None:
                 'server.apps.rendering.ffmpeg.concat_chapter',
                 new=AsyncMock(),
             ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
+            ),
         ):
             await final_pass(
                 chapter_paths=['/tmp/ch0.mp4'],
@@ -870,19 +912,39 @@ def test_loudnorm_audio_filter_builds_string() -> None:
 def test_build_complex_filter_watermark_and_music() -> None:
     fc, vmap, aout = _build_complex_filter(
         music_paths=['/tmp/music.mp3'],
-        music_gains_db=[-3.0],
+        music_gains_db=[-18.0],
         sfx_paths=[],
         sfx_gains_db=[],
         ass_path='/tmp/subs.ass',
         watermark_path='/tmp/wm.png',
         wm_idx=2,
         loudnorm_af='loudnorm=I=-14',
+        duration_s=120.0,
     )
     assert 'overlay' in fc
     assert 'subtitles=' in fc
     assert 'amix' in fc
+    assert 'aloop=loop=-1' in fc
+    assert 'atrim=0:120.000' in fc
+    assert 'volume=0.1259' in fc  # 10**(-18/20)
     assert vmap == '[vout]'
     assert aout == '[aout]'
+
+
+def test_build_complex_filter_music_loop_skipped_without_duration() -> None:
+    fc, _, _ = _build_complex_filter(
+        music_paths=['/tmp/music.mp3'],
+        music_gains_db=[-18.0],
+        sfx_paths=[],
+        sfx_gains_db=[],
+        ass_path=None,
+        watermark_path=None,
+        wm_idx=1,
+        loudnorm_af='loudnorm=I=-14',
+        duration_s=0.0,
+    )
+    assert 'aloop' not in fc
+    assert 'volume=0.1259' in fc
 
 
 def test_build_final_pass_cmd_simple_vf_path() -> None:
@@ -938,6 +1000,12 @@ def test_final_pass_temp_file_cleanup() -> None:
             patch(
                 'server.apps.rendering.ffmpeg.loudnorm_pass1',
                 new=AsyncMock(return_value=_FAKE_STATS),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={'format': {'duration': '120.0'}},
+                ),
             ),
             patch(
                 'server.apps.rendering.ffmpeg.asyncio.to_thread',

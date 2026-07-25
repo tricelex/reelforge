@@ -101,6 +101,26 @@ def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
     )
 
 
+def _next_stage_attempt(
+    run: 'PipelineRun',
+    stage_key: str,
+    *,
+    shard_index: int | None = None,
+) -> int:
+    """Return the next attempt number for a top-level or shard execution."""
+    from server.apps.pipelines.models import StageExecution  # noqa: PLC0415
+
+    qs = StageExecution.objects.filter(
+        run=run,
+        stage_key=stage_key,
+        shard_index=shard_index,
+    )
+    if shard_index is None:
+        qs = qs.filter(parent=None)
+    latest = qs.order_by('-attempt').values_list('attempt', flat=True).first()
+    return (latest if latest is not None else -1) + 1
+
+
 def _create_queued_stage_sync(
     run: 'PipelineRun',
     node: dict[str, Any],
@@ -121,9 +141,47 @@ def _create_queued_stage_sync(
         status=StageStatus.QUEUED,
         queue=node.get('queue', stage_cls.queue),
         max_retries=stage_cls.max_retries,
+        attempt=_next_stage_attempt(run, node['key']),
         input_hash='',
     )
     return str(exec_.id)
+
+
+def _seed_pending_downstream_sync(
+    run: 'PipelineRun',
+    graph: list[dict[str, Any]],
+    downstream_keys: set[str],
+) -> None:
+    """Create PENDING attempts for downstream keys after an explicit rerun.
+
+    Scene-edit STALE markers intentionally do not call this — only
+    ``_rerun_stage_sync`` seeds PENDING so advance can resume the DAG
+    without auto-spending on storyboard text edits.
+    """
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.stages.base import (  # noqa: PLC0415
+        STAGE_REGISTRY,
+    )
+
+    for key in sorted(downstream_keys):
+        node = next((n for n in graph if n['key'] == key), None)
+        if node is None:
+            continue
+        stage_cls = STAGE_REGISTRY.get(key)
+        if stage_cls is None:
+            continue
+        StageExecution.objects.create(
+            run=run,
+            stage_key=key,
+            status=StageStatus.PENDING,
+            queue=node.get('queue', stage_cls.queue),
+            max_retries=stage_cls.max_retries,
+            attempt=_next_stage_attempt(run, key),
+            input_hash='',
+        )
 
 
 def _gate_keys(graph: list[dict[str, Any]]) -> set[str]:
@@ -566,7 +624,10 @@ def _try_enqueue_stage_sync(
     key: str,
 ) -> None:
     """Enqueue a stage when dependencies are terminal."""
-    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
     from server.apps.pipelines.stages.base import (  # noqa: PLC0415
         STAGE_REGISTRY,
     )
@@ -581,6 +642,25 @@ def _try_enqueue_stage_sync(
     deps: list[str] = node.get('depends_on', [])
     if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
         return
+
+    pending = (
+        StageExecution.objects
+        .filter(
+            run=run,
+            stage_key=key,
+            parent=None,
+            status=StageStatus.PENDING,
+        )
+        .order_by('-attempt')
+        .first()
+    )
+    if pending is not None:
+        pending.status = StageStatus.QUEUED
+        pending.save(update_fields=['status'])
+        to_enqueue.append(str(pending.id))
+        states[key] = StageStatus.QUEUED
+        return
+
     exec_id = _create_queued_stage_sync(run, node)
     to_enqueue.append(exec_id)
     states[key] = StageStatus.QUEUED
@@ -1125,6 +1205,7 @@ def _rerun_stage_sync(
                 input_hash='',
             )
             to_enqueue.append(str(exec_.id))
+            _seed_pending_downstream_sync(run, graph, downstream)
 
         if to_enqueue:
             run.status = RunStatus.RUNNING

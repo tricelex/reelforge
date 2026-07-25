@@ -19,6 +19,29 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_TRANSITION = 'hard_cut'
 _TRANSITION_DURATION_S = 0.5
+_MUSIC_GAIN_DEFAULT_DB = -18.0
+_MUSIC_GAIN_MIN_DB = -24.0
+_MUSIC_GAIN_MAX_DB = -6.0
+
+
+def _clamp_music_gain_db(gain_db: float) -> float:
+    """Clamp bed music gain into the safe documentary range."""
+    return max(_MUSIC_GAIN_MIN_DB, min(_MUSIC_GAIN_MAX_DB, gain_db))
+
+
+def _resolve_channel_music_bed_gain_db(channel: object) -> float | None:
+    """Return channel AssemblyStyleConfig.music_bed_gain_db when present."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        AssemblyStyleConfig,
+    )
+
+    try:
+        style = channel.assembly_style  # type: ignore[attr-defined]
+    except AssemblyStyleConfig.DoesNotExist:
+        return None
+    except AttributeError:
+        return None
+    return float(style.music_bed_gain_db)
 
 
 def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
@@ -175,8 +198,7 @@ def _chapter_relative_window(
     """Convert absolute alignment times to chapter-TTS atrim window."""
     rel_start = start_s - chapter_origin_s
     rel_end = end_s - chapter_origin_s
-    if rel_start < 0.0:
-        rel_start = 0.0
+    rel_start = max(rel_start, 0.0)
     if rel_end <= rel_start:
         raise ValueError(
             'chapter-relative atrim window is empty '
@@ -274,6 +296,8 @@ async def _build_music_paths(
     tmp: Path,
     scene_groups: dict[int, list[dict[str, Any]]],
     music_map: dict[int, dict[str, Any]],
+    *,
+    channel_bed_gain_db: float | None = None,
 ) -> tuple[list[str], list[float]]:
     """Download music library assets; return paths and per-track gain_db.
 
@@ -281,6 +305,8 @@ async def _build_music_paths(
     library_asset_id doesn't resolve to a real LibraryAsset — e.g. the
     music_plan LLM hallucinated an ID because the selectable library was
     empty for this channel.
+
+    Channel ``music_bed_gain_db`` wins over per-entry gains when set.
     """
     from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
 
@@ -302,7 +328,13 @@ async def _build_music_paths(
         music_file = tmp / f'music_{ch_idx:03d}.mp3'
         await asyncio.to_thread(music_file.write_bytes, music_bytes)
         music_paths.append(str(music_file))
-        music_gains.append(float(entry.get('gain_db', 0.0)))
+        entry_gain = float(entry.get('gain_db', _MUSIC_GAIN_DEFAULT_DB))
+        raw_gain = (
+            channel_bed_gain_db
+            if channel_bed_gain_db is not None
+            else entry_gain
+        )
+        music_gains.append(_clamp_music_gain_db(raw_gain))
     return music_paths, music_gains
 
 
@@ -404,6 +436,9 @@ class AssemblyStage(Stage):
                 tmp,
                 scene_groups,
                 music_map,
+                channel_bed_gain_db=_resolve_channel_music_bed_gain_db(
+                    ctx.channel,
+                ),
             )
             sfx_paths, sfx_gains = await _build_sfx_paths(tmp, ctx)
 
