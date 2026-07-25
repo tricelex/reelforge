@@ -40,11 +40,12 @@ def test_scene_breakdown_rejects_word_count_above_35() -> None:
         SceneBreakdownOutput(scenes=[scene])
 
 
-def test_scene_breakdown_rejects_word_count_mismatch() -> None:
-    """word_count must equal narration_text token count."""
-    scene = _valid_scene(word_count=15)
-    with pytest.raises(ValidationError, match='!='):
-        SceneBreakdownOutput(scenes=[scene])
+def test_scene_syncs_word_count_from_narration() -> None:
+    """LLM miscounts are corrected from narration_text.split()."""
+    scene = _valid_scene(word_count=15)  # narration is 20 words
+    assert scene.word_count == 20
+    result = SceneBreakdownOutput(scenes=[scene])
+    assert result.scenes[0].word_count == 20
 
 
 def test_scene_breakdown_rejects_more_than_two_foreground_cast() -> None:

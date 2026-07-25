@@ -26,6 +26,7 @@ def _agent(model: str) -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C9
         model,
         output_type=SceneBreakdownOutput,
         deps_type=StageContext,
+        retries={'output': 3},
     )
 
     @a.system_prompt
@@ -79,7 +80,7 @@ class SceneBreakdownStage(Stage):
     key = 'scene_breakdown'
     queue = 'api'
     max_retries = 3
-    timeout_s = 300
+    timeout_s = 600
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
@@ -111,5 +112,6 @@ class SceneBreakdownStage(Stage):
             ctx,
             stage_key=self.key,
             model_slug=model_slug,
+            request_limit=5,
         )
         return output.model_dump()

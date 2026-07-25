@@ -153,6 +153,14 @@ class Scene(BaseModel):
     foreground_cast: list[str] = Field(default_factory=list)
     word_count: int = Field(ge=1)
 
+    @model_validator(mode='after')
+    def sync_word_count(self) -> Scene:
+        """Derive word_count from narration — LLMs routinely miscount by 1."""
+        counted = len(self.narration_text.split())
+        if self.word_count != counted:
+            self.word_count = counted
+        return self
+
 
 class CastMember(BaseModel):
     """A distinct character implied by the script / scene breakdown."""
@@ -171,14 +179,8 @@ class SceneBreakdownOutput(BaseModel):
 
     @model_validator(mode='after')
     def enforce_invariants(self) -> SceneBreakdownOutput:
-        """Validate per-scene word count and cast limits."""
+        """Validate per-scene word count range and cast limits."""
         for s in self.scenes:
-            narrated = len(s.narration_text.split())
-            if s.word_count != narrated:
-                raise ValueError(
-                    f'scene {s.idx} word_count {s.word_count} != '
-                    f'narration_text tokens {narrated}',
-                )
             if not (10 <= s.word_count <= 35):
                 raise ValueError(
                     f'scene {s.idx} word_count {s.word_count} outside [10,35]',
