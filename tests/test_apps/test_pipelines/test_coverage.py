@@ -395,6 +395,46 @@ def test_prompt_renderer_render_applies_jinja2_variables() -> None:
     asyncio.run(_inner())
 
 
+def test_prompt_renderer_get_generation_settings_defaults() -> None:
+    """get_generation_settings returns PromptVersion defaults when unset."""
+    from server.apps.pipelines.services.prompt_renderer import (
+        PromptRenderer,
+    )
+
+    async def _inner() -> None:
+        renderer = PromptRenderer({})
+        with patch('server.apps.prompts.models.PromptVersion') as mock_pv_cls:
+            mock_pv_cls.objects.filter.return_value.afirst = AsyncMock(
+                return_value=None,
+            )
+            settings = await renderer.get_generation_settings('script')
+            assert settings == {'max_tokens': 8192, 'temperature': 1.0}
+
+    asyncio.run(_inner())
+
+
+def test_prompt_renderer_get_generation_settings_from_version() -> None:
+    """get_generation_settings reads max_tokens/temperature from PromptVersion."""
+    from server.apps.pipelines.services.prompt_renderer import (
+        PromptRenderer,
+    )
+
+    mock_pv = MagicMock()
+    mock_pv.max_tokens = 16384
+    mock_pv.temperature = 0.2
+
+    async def _inner() -> None:
+        renderer = PromptRenderer({})
+        with patch('server.apps.prompts.models.PromptVersion') as mock_pv_cls:
+            mock_pv_cls.objects.filter.return_value.afirst = AsyncMock(
+                return_value=mock_pv,
+            )
+            settings = await renderer.get_generation_settings('script')
+            assert settings == {'max_tokens': 16384, 'temperature': 0.2}
+
+    asyncio.run(_inner())
+
+
 def test_build_prompt_variables_includes_niche_for_jinja() -> None:
     """build_prompt_variables supplies niche.* keys used by seeded templates."""
     from unittest.mock import MagicMock

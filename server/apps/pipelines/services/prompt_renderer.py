@@ -46,6 +46,22 @@ class PromptRenderer:
             return None
         return str(pv.model)
 
+    async def get_generation_settings(
+        self,
+        stage_key: str,
+    ) -> dict[str, Any]:
+        """Return max_tokens / temperature for this stage's PromptVersion.
+
+        Falls back to PromptVersion field defaults when no version is pinned.
+        """
+        pv = await self._get_prompt_version(stage_key)
+        if pv is None:
+            return {'max_tokens': 8192, 'temperature': 1.0}
+        return {
+            'max_tokens': int(pv.max_tokens),
+            'temperature': float(pv.temperature),
+        }
+
     async def render(
         self,
         stage_key: str,
