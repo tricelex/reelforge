@@ -1050,11 +1050,15 @@ def _rerun_stage_sync(
     )
 
     to_enqueue: list[str] = []
+    # QUEUED is included so a lost/stuck message can be abandoned and a
+    # fresh attempt enqueued; otherwise the old row stays QUEUED forever
+    # and later advances skip it.
     terminal = {
         StageStatus.SUCCEEDED,
         StageStatus.FAILED,
         StageStatus.NEEDS_INPUT,
         StageStatus.SKIPPED,
+        StageStatus.QUEUED,
     }
 
     with transaction.atomic():

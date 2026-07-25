@@ -1880,6 +1880,37 @@ def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_rerun_stage_sync_stales_stuck_queued(
+    run: PipelineRun,
+) -> None:
+    """Whole-stage rerun abandons a stuck QUEUED row and queues attempt N+1."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.pipelines.services.orchestrator import (
+        _rerun_stage_sync,
+    )
+
+    run.blueprint_snapshot = {
+        'stages': [{'key': 'dummy_a', 'depends_on': []}],
+    }
+    run.save(update_fields=['blueprint_snapshot'])
+    stuck = StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_a',
+        status=StageStatus.QUEUED,
+        attempt=0,
+    )
+
+    exec_ids = _rerun_stage_sync(str(run.id), 'dummy_a', None)
+
+    stuck.refresh_from_db()
+    assert stuck.status == StageStatus.STALE
+    assert len(exec_ids) == 1
+    created = StageExecution.objects.get(id=exec_ids[0])
+    assert created.status == StageStatus.QUEUED
+    assert created.attempt == 1
+
+
+@pytest.mark.django_db(transaction=True)
 def test_rerun_stage_impl_enqueues_and_publishes_sse(run: PipelineRun) -> None:
     """rerun_stage_impl enqueues executions and emits SSE."""
     import server.apps.pipelines.stages.dummy  # noqa: F401
