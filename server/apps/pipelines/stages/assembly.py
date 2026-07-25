@@ -123,20 +123,93 @@ async def _write_chapter_audio_files(
     return chapter_audio_files
 
 
+def _normalize_chapter_origins(
+    raw: dict[Any, Any] | None,
+) -> dict[int, float] | None:
+    """Coerce alignment ``chapter_origins`` keys to int (JSON may stringify)."""
+    if not raw:
+        return None
+    return {int(k): float(v) for k, v in raw.items()}
+
+
+async def _probe_chapter_audio_origins(
+    chapter_audio_files: dict[int, str],
+    chapter_idxs: list[int],
+) -> dict[int, float]:
+    """Infer absolute t=0 per chapter from cumulative TTS file durations."""
+    from server.apps.rendering.ffmpeg import async_ffprobe  # noqa: PLC0415
+
+    origins: dict[int, float] = {}
+    cumulative = 0.0
+    for ch_idx in chapter_idxs:
+        origins[ch_idx] = cumulative
+        path = chapter_audio_files.get(ch_idx)
+        if not path:
+            continue
+        probe = await async_ffprobe(path)
+        duration = float(probe.get('format', {}).get('duration', 0.0) or 0.0)
+        cumulative += max(0.0, duration)
+    return origins
+
+
+async def _resolve_chapter_origins(
+    chapter_audio_files: dict[int, str],
+    chapter_idxs: list[int],
+    alignment_origins: dict[Any, Any] | None,
+) -> dict[int, float]:
+    """Prefer alignment-stored origins; fall back to probing TTS durations."""
+    normalized = _normalize_chapter_origins(alignment_origins)
+    if normalized is not None:
+        return normalized
+    return await _probe_chapter_audio_origins(
+        chapter_audio_files,
+        chapter_idxs,
+    )
+
+
+def _chapter_relative_window(
+    start_s: float,
+    end_s: float,
+    chapter_origin_s: float,
+) -> tuple[float, float]:
+    """Convert absolute alignment times to chapter-TTS atrim window."""
+    rel_start = start_s - chapter_origin_s
+    rel_end = end_s - chapter_origin_s
+    if rel_start < 0.0:
+        rel_start = 0.0
+    if rel_end <= rel_start:
+        raise ValueError(
+            'chapter-relative atrim window is empty '
+            f'(absolute {start_s}-{end_s}, origin {chapter_origin_s})',
+        )
+    return rel_start, rel_end
+
+
 async def _build_chapter_files(
     tmp: Path,
     scene_groups: dict[int, list[dict[str, Any]]],
     scene_asset_map: dict[int, str],
     chapter_audio_files: dict[int, str],
     transition_pool: list[str],
+    chapter_origins: dict[Any, Any] | None = None,
 ) -> list[str]:
     """Mux scenes per chapter and concat; return ordered chapter file paths.
+
+    Alignment ``start_s`` / ``end_s`` are absolute on the narration timeline.
+    Each chapter TTS file is timed from zero, so windows are shifted by the
+    chapter origin before ``mux_scene``.
 
     Raises:
         ValueError: If a scene lacks ``scene_idx``, its motion asset is
             missing, or a chapter would concat zero mezzanine files.
     """
     from server.apps.rendering import ffmpeg  # noqa: PLC0415
+
+    origins = await _resolve_chapter_origins(
+        chapter_audio_files,
+        list(scene_groups.keys()),
+        chapter_origins,
+    )
 
     chapter_files: list[str] = []
     for ch_idx, ch_scenes in scene_groups.items():
@@ -146,6 +219,7 @@ async def _build_chapter_files(
             raise ValueError(
                 f'assembly chapter {ch_idx}: missing TTS audio asset',
             )
+        origin = origins.get(ch_idx, 0.0)
         missing: list[int] = []
         for scene in sorted(ch_scenes, key=operator.itemgetter('segment_idx')):
             if 'scene_idx' not in scene:
@@ -162,11 +236,16 @@ async def _build_chapter_files(
             vid_file = tmp / f'vid_{scene_idx:04d}.mp4'
             await asyncio.to_thread(vid_file.write_bytes, vid_bytes)
             mezz_file = tmp / f'mezz_{scene_idx:04d}.mp4'
+            rel_start, rel_end = _chapter_relative_window(
+                float(scene['start_s']),
+                float(scene['end_s']),
+                origin,
+            )
             await ffmpeg.mux_scene(
                 video_path=str(vid_file),
                 audio_path=audio_path,
-                start_s=scene['start_s'],
-                end_s=scene['end_s'],
+                start_s=rel_start,
+                end_s=rel_end,
                 out_path=str(mezz_file),
             )
             scene_mezz_files.append(str(mezz_file))
@@ -319,6 +398,7 @@ class AssemblyStage(Stage):
                 scene_asset_map,
                 chapter_audio_files,
                 transition_pool,
+                chapter_origins=alignment.get('chapter_origins'),
             )
             music_paths, music_gains = await _build_music_paths(
                 tmp,

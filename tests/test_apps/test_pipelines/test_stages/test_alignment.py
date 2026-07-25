@@ -324,6 +324,7 @@ def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     result = asyncio.run(_inner())
     assert 'scenes' in result
     assert 'ass_asset_id' in result
+    assert result['chapter_origins'] == {0: 0.0}
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
     assert result['scenes'][0]['scene_idx'] == 0  # type: ignore[index]
     ctx.costs.record.assert_awaited()

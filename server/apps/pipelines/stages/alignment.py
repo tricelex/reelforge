@@ -394,8 +394,10 @@ class AlignmentStage(Stage):
         all_segments: list[dict[str, Any]] = []
         total_duration_sec = 0.0
         chapter_offset = 0.0
+        chapter_origins: dict[int, float] = {}
 
         for shard in tts_shards:
+            chapter_origins[int(shard['chapter_idx'])] = chapter_offset
             segment, scenes, span = await _align_one_chapter(
                 shard=shard,
                 script_chapters=script_chapters,
@@ -434,6 +436,7 @@ class AlignmentStage(Stage):
         )
         return {
             'scenes': all_scenes,
+            'chapter_origins': chapter_origins,
             'ass_asset_id': str(ass_asset.id),
             'srt_asset_id': str(srt_asset.id),
         }
