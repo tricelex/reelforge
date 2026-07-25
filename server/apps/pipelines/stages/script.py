@@ -34,6 +34,9 @@ def _agent(model: str) -> Agent[StageContext, ScriptOutput]:
         model,
         output_type=ScriptOutput,
         deps_type=StageContext,
+        # Default output retries is 1 — too tight for ScriptOutput's
+        # commentary-distinct validator + large Anthropic tool payloads.
+        retries={'output': 3},
     )
 
     @a.system_prompt
@@ -97,6 +100,8 @@ async def _generate_script(
         ctx,
         stage_key=ScriptStage.key,
         model_slug=model_slug,
+        # 1 initial + up to 3 output-validation retries.
+        request_limit=5,
     )
     return output
 
@@ -134,7 +139,8 @@ class ScriptStage(Stage):
     key = 'script'
     queue = 'api'
     max_retries = 3
-    timeout_s = 300
+    # Claude multi-chapter tool output can take ~75s/attempt; allow retries.
+    timeout_s = 600
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:

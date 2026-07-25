@@ -953,3 +953,96 @@ def test_run_agent_passes_input_token_limit_to_usage_limits() -> None:
     assert isinstance(limits, UsageLimits)
     assert limits.input_tokens_limit == 250_000
     assert limits.count_tokens_before_request is True
+
+
+def test_run_agent_passes_default_max_tokens_model_settings() -> None:
+    """run_agent() sets max_tokens so Anthropic does not use 4096 default."""
+    from server.apps.generation.clients.llm import run_agent
+
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 0
+    mock_usage.output_tokens = 0
+    mock_result = MagicMock()
+    mock_result.usage = mock_usage
+    mock_result.output = 'done'
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=mock_result)
+    mock_ctx = MagicMock()
+    mock_ctx.costs.record = AsyncMock()
+    # Non-dict MagicMock settings must be ignored.
+    mock_ctx.prompts.get_generation_settings = MagicMock(return_value=None)
+
+    async def _inner() -> object:
+        return await run_agent(mock_agent, 'prompt', mock_ctx, stage_key='script')
+
+    asyncio.run(_inner())
+    settings = mock_agent.run.await_args.kwargs['model_settings']
+    assert settings['max_tokens'] == 8192
+
+
+def test_run_agent_uses_prompt_generation_settings() -> None:
+    """run_agent() prefers PromptRenderer generation settings when present."""
+    from server.apps.generation.clients.llm import run_agent
+
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 0
+    mock_usage.output_tokens = 0
+    mock_result = MagicMock()
+    mock_result.usage = mock_usage
+    mock_result.output = 'done'
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=mock_result)
+    mock_ctx = MagicMock()
+    mock_ctx.costs.record = AsyncMock()
+    mock_ctx.prompts.get_generation_settings = AsyncMock(
+        return_value={'max_tokens': 16384, 'temperature': 0.4},
+    )
+
+    async def _inner() -> object:
+        return await run_agent(
+            mock_agent,
+            'prompt',
+            mock_ctx,
+            stage_key='script',
+        )
+
+    asyncio.run(_inner())
+    settings = mock_agent.run.await_args.kwargs['model_settings']
+    assert settings['max_tokens'] == 16384
+    assert settings['temperature'] == 0.4
+
+
+def test_run_agent_wraps_unexpected_model_behavior_as_retryable() -> None:
+    """UnexpectedModelBehavior becomes RetryableProviderError for stage retries."""
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from server.apps.generation.clients.llm import run_agent
+    from server.common.exceptions import RetryableProviderError
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(
+        side_effect=UnexpectedModelBehavior(
+            'Exceeded maximum output retries (1)',
+        ),
+    )
+    mock_ctx = MagicMock()
+    mock_ctx.costs.record = AsyncMock()
+    mock_ctx.prompts.get_generation_settings = AsyncMock(
+        return_value={'max_tokens': 8192, 'temperature': 1.0},
+    )
+
+    async def _inner() -> None:
+        await run_agent(
+            mock_agent,
+            'prompt',
+            mock_ctx,
+            stage_key='script',
+            model_slug='claude-opus-4-8',
+        )
+
+    try:
+        asyncio.run(_inner())
+        raise AssertionError('expected RetryableProviderError')
+    except RetryableProviderError as exc:
+        assert 'Exceeded maximum output retries' in str(exc)
+        assert exc.provider == 'anthropic'
