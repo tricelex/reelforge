@@ -1756,3 +1756,75 @@ def test_resume_publish_held_runs_advances_each_held_run(
 
     run.refresh_from_db()
     assert run.status != RunStatus.PUBLISH_HOLD
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_promotes_pending_seeded_by_rerun(
+    orch_channel,
+    dummy_blueprint,
+) -> None:
+    """After explicit rerun, PENDING downstream enqueues when deps succeed."""
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.pipelines.models import StageExecution, StageStatus
+    from server.apps.pipelines.services.orchestrator import (
+        _rerun_stage_sync,
+        advance_pipeline_impl,
+    )
+
+    run = PipelineRun.objects.create(
+        channel=orch_channel,
+        blueprint=dummy_blueprint,
+        blueprint_snapshot=dummy_blueprint.graph,
+        topic='rerun cascade',
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_a',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+
+    _rerun_stage_sync(str(run.id), 'dummy_a', None)
+    assert StageExecution.objects.filter(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.PENDING,
+    ).exists()
+
+    # Simulate the rerun of dummy_a completing successfully.
+    StageExecution.objects.filter(
+        run=run,
+        stage_key='dummy_a',
+        status=StageStatus.QUEUED,
+    ).update(status=StageStatus.SUCCEEDED)
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    assert StageExecution.objects.filter(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.QUEUED,
+    ).exists()
+    assert not StageExecution.objects.filter(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.PENDING,
+    ).exists()

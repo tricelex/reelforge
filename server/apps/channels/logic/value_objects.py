@@ -156,6 +156,7 @@ class AssemblyStyleConfigPayload(msgspec.Struct, frozen=True):
     sfx_pool_tags: list[str]
     min_cuts_per_minute: int
     max_cuts_per_minute: int
+    music_bed_gain_db: float = -18.0
 
 
 class AssemblyStyleConfigPatchPayload(msgspec.Struct, frozen=True):
@@ -166,6 +167,7 @@ class AssemblyStyleConfigPatchPayload(msgspec.Struct, frozen=True):
     sfx_pool_tags: list[str] | None = None
     min_cuts_per_minute: int | None = None
     max_cuts_per_minute: int | None = None
+    music_bed_gain_db: float | None = None
 
 
 class YouTubeConnectPayload(msgspec.Struct, frozen=True):

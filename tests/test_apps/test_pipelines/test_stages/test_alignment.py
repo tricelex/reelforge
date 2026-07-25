@@ -169,6 +169,33 @@ def test_offset_segment_and_scenes_shift_absolute_timeline() -> None:
     assert cues == [{'start': 10.1, 'end': 12.0, 'text': 'Hello world'}]
 
 
+def test_subtitle_segments_chunk_words_by_four() -> None:
+    """Long scenes emit multiple cues timed to word ends, not scene end."""
+    from server.apps.pipelines.stages.alignment import (
+        _subtitle_segments_from_scenes,
+    )
+
+    words = [
+        {'word': f'w{i}', 'start': float(i), 'end': float(i) + 0.5}
+        for i in range(9)
+    ]
+    cues = _subtitle_segments_from_scenes([
+        {
+            'scene_idx': 1,
+            'start_s': 0.0,
+            'end_s': 100.0,
+            'text': 'ignored when words present',
+            'words': words,
+        },
+    ])
+    assert len(cues) == 3
+    assert cues[0] == {'start': 0.0, 'end': 3.5, 'text': 'w0 w1 w2 w3'}
+    assert cues[1] == {'start': 4.0, 'end': 7.5, 'text': 'w4 w5 w6 w7'}
+    assert cues[2] == {'start': 8.0, 'end': 8.5, 'text': 'w8'}
+    assert cues[-1]['end'] == 8.5
+    assert cues[-1]['end'] != 100.0
+
+
 def test_map_aligned_words_maps_text_and_loss() -> None:
     """ElevenLabs word fields map to word/start/end/score."""
     mapped = _map_aligned_words([

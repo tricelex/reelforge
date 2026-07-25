@@ -613,10 +613,15 @@ def test_rerun_stage(
     )
     assert rerun_stage['attempt'] == 1
     assert rerun_stage['status'] == StageStatus.QUEUED
-    downstream = StageExecution.objects.get(
-        run=rerun_run,
-        stage_key='dummy_b',
+    downstream_rows = list(
+        StageExecution.objects.filter(
+            run=rerun_run,
+            stage_key='dummy_b',
+        ).order_by('attempt')
     )
-    assert downstream.status == StageStatus.STALE
+    assert len(downstream_rows) == 2
+    assert downstream_rows[0].status == StageStatus.STALE
+    assert downstream_rows[1].status == StageStatus.PENDING
+    assert downstream_rows[1].attempt == downstream_rows[0].attempt + 1
     rerun_run.refresh_from_db()
     assert rerun_run.status == RunStatus.RUNNING

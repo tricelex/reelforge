@@ -1871,6 +1871,12 @@ def test_rerun_stage_sync_creates_fresh_attempt(run: PipelineRun) -> None:
     assert len(exec_ids) == 1
     downstream.refresh_from_db()
     assert downstream.status == StageStatus.STALE
+    pending = StageExecution.objects.get(
+        run=run,
+        stage_key='dummy_b',
+        status=StageStatus.PENDING,
+    )
+    assert pending.attempt == 1
     rerun_run = PipelineRun.objects.get(id=run.id)
     assert rerun_run.status == RunStatus.RUNNING
     created = StageExecution.objects.get(id=exec_ids[0])

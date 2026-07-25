@@ -174,6 +174,7 @@ class AssemblyStyleConfigAdmin(ReelForgeAdmin):
         'transition_styles',
         'min_cuts_per_minute',
         'max_cuts_per_minute',
+        'music_bed_gain_db',
     )
     search_fields = ('channel__name',)
     autocomplete_fields = ('channel',)
