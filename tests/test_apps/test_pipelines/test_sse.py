@@ -80,6 +80,7 @@ def test_produce_pipeline_events_yields_typed_sse(run: PipelineRun) -> None:
         mock_pubsub = MagicMock()
         mock_pubsub.subscribe = AsyncMock()
         mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.aclose = AsyncMock()
         mock_pubsub.listen = _fake_listen
         mock_client = MagicMock()
         mock_client.pubsub.return_value = mock_pubsub
@@ -126,6 +127,7 @@ def test_produce_pipeline_events_emits_ping_when_idle(
         mock_pubsub = MagicMock()
         mock_pubsub.subscribe = AsyncMock()
         mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.aclose = AsyncMock()
         mock_pubsub.listen = _fake_listen
         mock_client = MagicMock()
         mock_client.pubsub.return_value = mock_pubsub
@@ -142,11 +144,83 @@ def test_produce_pipeline_events_emits_ping_when_idle(
             ),
         ):
             agen = produce_pipeline_events(str(run.id))
-            event = await agen.__anext__()
+            event = await anext(agen)
             await agen.aclose()
 
         assert event.comment == 'ping'
         assert event.data is None
+        mock_pubsub.unsubscribe.assert_called_once()
+        mock_client.aclose.assert_called_once()
+
+    asyncio.run(_inner())
+
+
+@pytest.mark.django_db
+def test_produce_pipeline_events_aclose_does_not_orphan_listen_agen(
+    run: PipelineRun,
+) -> None:
+    """Disconnect mid-listen closes the Redis async generator cleanly."""
+    import asyncio
+    import contextlib
+
+    from server.apps.pipelines.api.events_views import produce_pipeline_events
+
+    async def _inner() -> None:
+        listen_closed = asyncio.Event()
+
+        async def _fake_listen():
+            try:
+                await asyncio.Event().wait()
+                yield {'type': 'message', 'data': b'{}'}  # pragma: no cover
+            finally:
+                listen_closed.set()
+
+        mock_pubsub = MagicMock()
+        mock_pubsub.subscribe = AsyncMock()
+        mock_pubsub.unsubscribe = AsyncMock()
+        mock_pubsub.aclose = AsyncMock()
+        mock_pubsub.listen = _fake_listen
+        mock_client = MagicMock()
+        mock_client.pubsub.return_value = mock_pubsub
+        mock_client.aclose = AsyncMock()
+
+        orphaned: list[str] = []
+
+        def _exception_handler(
+            _loop: asyncio.AbstractEventLoop,
+            context: dict[str, object],
+        ) -> None:
+            message = str(context.get('message', ''))
+            if 'destroyed but it is pending' in message:
+                orphaned.append(message)
+
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(_exception_handler)
+        try:
+            with (
+                patch(
+                    'server.apps.pipelines.api.events_views.get_redis',
+                    return_value=mock_client,
+                ),
+                patch(
+                    'server.apps.pipelines.api.events_views._SSE_PING_SECONDS',
+                    60.0,
+                ),
+            ):
+                agen = produce_pipeline_events(str(run.id))
+                consumer = asyncio.create_task(anext(agen))
+                await asyncio.sleep(0.05)
+                consumer.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await consumer
+                await agen.aclose()
+                await asyncio.sleep(0.05)
+                assert listen_closed.is_set()
+                assert orphaned == []
+        finally:
+            loop.set_exception_handler(previous_handler)
+
         mock_pubsub.unsubscribe.assert_called_once()
         mock_client.aclose.assert_called_once()
 

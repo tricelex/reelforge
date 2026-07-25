@@ -90,11 +90,46 @@ def _decode_pubsub_event(message: dict[str, Any]) -> PipelineRunEvent | None:
 
 async def _cancel_task(task: asyncio.Task[Any] | None) -> None:
     """Cancel a task and wait for it to finish cancelling."""
-    if task is None:
+    if task is None or task.done():
         return
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+async def _aclose_agen(agen: AsyncIterator[Any]) -> None:
+    """Close an async iterator/generator if it supports aclose."""
+    aclose = getattr(agen, 'aclose', None)
+    if aclose is None:
+        return
+    with contextlib.suppress(
+        asyncio.CancelledError,
+        GeneratorExit,
+        StopAsyncIteration,
+    ):
+        await aclose()
+
+
+async def _cleanup_sse_subscription(
+    *,
+    client: Any,
+    pubsub: Any,
+    channel: str,
+    listen_iter: AsyncIterator[Any],
+    next_msg_task: asyncio.Task[Any] | None,
+    ping_task: asyncio.Task[Any] | None,
+) -> None:
+    """Cancel pending tasks and close Redis pub/sub resources."""
+    await _cancel_task(ping_task)
+    await _cancel_task(next_msg_task)
+    await _aclose_agen(listen_iter)
+    with contextlib.suppress(Exception):
+        await pubsub.unsubscribe(channel)
+    aclose_pubsub = getattr(pubsub, 'aclose', None)
+    if aclose_pubsub is not None:
+        with contextlib.suppress(Exception):
+            await aclose_pubsub()
+    await client.aclose()
 
 
 async def produce_pipeline_events(
@@ -103,7 +138,7 @@ async def produce_pipeline_events(
     """Yield typed SSE events from the pipeline Redis pub/sub channel.
 
     Emits comment-only ping events when idle so proxies keep the connection
-    open, and cancels outstanding listen tasks on disconnect.
+    open, and cancels outstanding listen/ping tasks on disconnect.
     """
     client = get_redis()
     pubsub = client.pubsub()
@@ -111,19 +146,22 @@ async def produce_pipeline_events(
     await pubsub.subscribe(channel)
     listen_iter = aiter(pubsub.listen())
     next_msg_task: asyncio.Task[Any] | None = None
+    ping_task: asyncio.Task[Any] | None = None
     try:
         while True:
             if next_msg_task is None:
-                next_msg_task = asyncio.ensure_future(anext(listen_iter))
-            ping_task = asyncio.ensure_future(asyncio.sleep(_SSE_PING_SECONDS))
+                next_msg_task = asyncio.create_task(anext(listen_iter))
+            ping_task = asyncio.create_task(asyncio.sleep(_SSE_PING_SECONDS))
             done, _pending = await asyncio.wait(
                 {next_msg_task, ping_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if ping_task in done and next_msg_task not in done:
+                ping_task = None
                 yield SSEvent(comment='ping')
                 continue
             await _cancel_task(ping_task)
+            ping_task = None
             try:
                 message = next_msg_task.result()
             except StopAsyncIteration:
@@ -134,9 +172,14 @@ async def produce_pipeline_events(
             if event is not None:
                 yield SSEvent(event)
     finally:
-        await _cancel_task(next_msg_task)
-        await pubsub.unsubscribe(channel)
-        await client.aclose()
+        await _cleanup_sse_subscription(
+            client=client,
+            pubsub=pubsub,
+            channel=channel,
+            listen_iter=listen_iter,
+            next_msg_task=next_msg_task,
+            ping_task=ping_task,
+        )
 
 
 @final
