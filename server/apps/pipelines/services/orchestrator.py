@@ -134,9 +134,13 @@ def _has_parked_gate(
     states: dict[str, str | None],
     graph: list[dict[str, Any]],
 ) -> bool:
-    """Return True when an armed gate stage is waiting for human approval."""
+    """Return True when a gate is waiting for human approval (NEEDS_INPUT).
+
+    Auto character_gate claims use RUNNING for in-flight fal work — that is
+    not a human park, so it must not flip the run to AWAITING_REVIEW.
+    """
     for key in _gate_keys(graph):
-        if states.get(key) in GATE_PARKED_STATUSES:
+        if states.get(key) == GATE_PARKED_STATUS:
             return True
     return False
 
@@ -155,15 +159,21 @@ def _apply_terminal_status(
     if stage_status.FAILED in values:
         run.status = run_status.FAILED
         run.finished_at = tz.now()
-    elif stage_status.NEEDS_INPUT in values and not in_flight:
+        return
+    if stage_status.NEEDS_INPUT in values and not in_flight:
         # Non-gate creative/QC fatals park the run for operator action.
         run.status = run_status.AWAITING_REVIEW
-    elif all(s in terminal for s in values):
+        return
+    if all(s in terminal for s in values):
         run.status = run_status.COMPLETED
         run.finished_at = tz.now()
-    elif in_flight:
-        if run.status == run_status.PENDING:
-            run.status = run_status.RUNNING
+        return
+    if in_flight and run.status in {
+        run_status.PENDING,
+        run_status.AWAITING_REVIEW,
+    }:
+        run.status = run_status.RUNNING
+        if run.started_at is None:
             run.started_at = tz.now()
 
 
@@ -367,16 +377,127 @@ def _handle_character_gate_sync(
         return True
 
     if mode == CharacterDesignMode.AUTO:
-        from server.apps.pipelines.services.auto_character_design import (  # noqa: PLC0415
-            run_auto_character_design,
-        )
-
-        output = run_auto_character_design(run)
-        _succeed_gate_sync(run, key, states, output)
+        # Claim RUNNING inside the advance lock; fal work runs after commit
+        # so we never hold SELECT FOR UPDATE across minutes of image gen,
+        # and we never nest asyncio.run inside the worker event loop.
+        _claim_auto_character_gate_sync(run, key, states)
         return True
 
     # interactive — caller parks when gate is armed
     return False
+
+
+def _claim_auto_character_gate_sync(
+    run: 'PipelineRun',
+    key: str,
+    states: dict[str, str | None],
+) -> None:
+    """Mark character_gate RUNNING so post-commit auto-design can finish it."""
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        StageExecution,
+        StageStatus,
+    )
+
+    latest = (
+        StageExecution.objects
+        .filter(run=run, stage_key=key, parent=None)
+        .order_by('-attempt', '-created_at')
+        .first()
+    )
+    if latest is not None and latest.status in {
+        StageStatus.SUCCEEDED,
+        StageStatus.RUNNING,
+        StageStatus.FAILED,
+        StageStatus.NEEDS_INPUT,
+    }:
+        states[key] = latest.status
+        return
+
+    StageExecution.objects.create(
+        run=run,
+        stage_key=key,
+        status=StageStatus.RUNNING,
+        input_hash='',
+        started_at=tz.now(),
+    )
+    states[key] = StageStatus.RUNNING
+    logger.info(
+        'pipeline_character_gate_auto_claimed',
+        run_id=str(run.id),
+    )
+
+
+def _finish_auto_character_gate_sync(run_id: str) -> bool:
+    """Complete a RUNNING auto character_gate with Studio fal work.
+
+    Returns True when a RUNNING claim was found and finalized (success or
+    failure), so the caller can re-advance the DAG.
+    """
+    from server.apps.channels.models import (  # noqa: PLC0415
+        CharacterDesignMode,
+    )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.auto_character_design import (  # noqa: PLC0415
+        run_auto_character_design,
+    )
+
+    run = (
+        PipelineRun.objects
+        .select_related('channel')
+        .get(id=uuid.UUID(run_id))
+    )
+    if (
+        getattr(run.channel, 'character_design_mode', None)
+        != CharacterDesignMode.AUTO
+    ):
+        return False
+
+    execution = (
+        StageExecution.objects
+        .filter(
+            run=run,
+            stage_key='character_gate',
+            parent=None,
+            status=StageStatus.RUNNING,
+        )
+        .order_by('-attempt', '-created_at')
+        .first()
+    )
+    if execution is None:
+        return False
+
+    try:
+        output = run_auto_character_design(run)
+    except Exception as exc:
+        execution.status = StageStatus.FAILED
+        execution.error = {
+            'type': type(exc).__name__,
+            'message': str(exc),
+            'retryable': True,
+        }
+        execution.finished_at = tz.now()
+        execution.save(update_fields=['status', 'error', 'finished_at'])
+        logger.exception(
+            'pipeline_character_gate_auto_failed',
+            run_id=run_id,
+            error=execution.error,
+        )
+        return True
+
+    execution.status = StageStatus.SUCCEEDED
+    execution.output = output
+    execution.finished_at = tz.now()
+    execution.save(update_fields=['status', 'output', 'finished_at'])
+    logger.info(
+        'pipeline_character_gate_auto_succeeded',
+        run_id=run_id,
+        designed_count=len(output.get('designed', [])),
+    )
+    return True
 
 
 def _auto_approve_clip_gate(
@@ -678,12 +799,19 @@ _get_failed_stage_summaries_async = sync_to_async(
 )
 
 
-async def advance_pipeline_impl(run_id: str) -> None:
+async def advance_pipeline_impl(
+    run_id: str,
+    *,
+    _auto_design_depth: int = 0,
+) -> None:
     """Re-evaluate the DAG and enqueue any newly-ready stages.
 
     Called at run start and after every stage terminal event.
     The inner DAG evaluation runs in a sync thread with SELECT FOR UPDATE.
+    Auto character design (fal) runs after that transaction commits.
     """
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+
     to_enqueue, states = await _advance_in_transaction_async(run_id)
 
     log_kwargs: dict[str, Any] = {
@@ -695,6 +823,20 @@ async def advance_pipeline_impl(run_id: str) -> None:
         log_kwargs['failures'] = await _get_failed_stage_summaries_async(run_id)
 
     logger.info('pipeline_advanced', **log_kwargs)
+
+    if (
+        states.get('character_gate') == StageStatus.RUNNING
+        and _auto_design_depth < 1
+    ):
+        finished = await sync_to_async(_finish_auto_character_gate_sync)(
+            run_id,
+        )
+        if finished:
+            await advance_pipeline_impl(
+                run_id,
+                _auto_design_depth=_auto_design_depth + 1,
+            )
+            return
 
     for exec_id in to_enqueue:
         await execute_stage_kiq(exec_id)

@@ -1,6 +1,5 @@
 """Character Studio business logic."""
 
-import asyncio
 import uuid
 from decimal import Decimal
 from typing import Any, final
@@ -67,17 +66,18 @@ def _save_character_ref(
     )
 
 
-async def _generate_candidates_async(
+def _generate_candidates(
     prompt: str,
     *,
     model: str,
     n: int,
     ref_asset_ids: list[str] | None,
 ) -> list[str]:
+    """Generate candidate image URLs via fal's sync client (no asyncio.run)."""
     ref_url = _ref_image_url(ref_asset_ids[0]) if ref_asset_ids else None
     urls: list[str] = []
     for _ in range(min(n, 4)):
-        result = await fal_client.generate_image(
+        result = fal_client.generate_image_sync(
             prompt=prompt,
             model=model,
             image_url=ref_url,
@@ -143,13 +143,11 @@ class CharacterStudioService:
             id=uuid.UUID(session_id),
             character=character,
         )
-        urls = asyncio.run(
-            _generate_candidates_async(
-                payload.prompt,
-                model=payload.model,
-                n=payload.n,
-                ref_asset_ids=payload.ref_asset_ids,
-            ),
+        urls = _generate_candidates(
+            payload.prompt,
+            model=payload.model,
+            n=payload.n,
+            ref_asset_ids=payload.ref_asset_ids,
         )
         candidate_ids: list[str] = []
         for index, url in enumerate(urls):
@@ -231,13 +229,11 @@ class CharacterStudioService:
         ref_ids = [str(character.hero_ref_id)]
         for label in payload.labels[:8]:
             prompt = f'{character.appearance_prompt}, {label}'
-            urls = asyncio.run(
-                _generate_candidates_async(
-                    prompt,
-                    model=payload.model,
-                    n=1,
-                    ref_asset_ids=ref_ids,
-                ),
+            urls = _generate_candidates(
+                prompt,
+                model=payload.model,
+                n=1,
+                ref_asset_ids=ref_ids,
             )
             asset = _save_character_ref(
                 character,

@@ -188,8 +188,8 @@ def test_expand_sheet_success(
     mock_result = {'url': 'https://example.com/sheet.png', 'seed': 1}
     with (
         patch(
-            'server.apps.channels.character_studio.fal_client.generate_image',
-            new=AsyncMock(return_value=mock_result),
+            'server.apps.channels.character_studio.fal_client.generate_image_sync',
+            return_value=mock_result,
         ),
         patch(
             'server.apps.channels.character_studio._download_image',
@@ -252,8 +252,8 @@ def test_generate_round_with_ref_asset(
     mock_result = {'url': 'https://example.com/gen.png', 'seed': 1}
     with (
         patch(
-            'server.apps.channels.character_studio.fal_client.generate_image',
-            new=AsyncMock(return_value=mock_result),
+            'server.apps.channels.character_studio.fal_client.generate_image_sync',
+            return_value=mock_result,
         ),
         patch(
             'server.apps.channels.character_studio._download_image',
@@ -304,8 +304,8 @@ def test_character_promote_and_expand_api(
     mock_result = {'url': 'https://example.com/sheet.png', 'seed': 1}
     with (
         patch(
-            'server.apps.channels.character_studio.fal_client.generate_image',
-            new=AsyncMock(return_value=mock_result),
+            'server.apps.channels.character_studio.fal_client.generate_image_sync',
+            return_value=mock_result,
         ),
         patch(
             'server.apps.channels.character_studio._download_image',
