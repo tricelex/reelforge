@@ -3,6 +3,7 @@
 from typing import Any, override
 
 import httpx
+import structlog
 
 from server.apps.assets.models import AssetKind
 from server.apps.generation.clients import fal as fal_client
@@ -12,6 +13,31 @@ from server.apps.pipelines.stages.base import (
     register_stage,
 )
 from server.common.exceptions import FatalProviderError
+
+logger = structlog.get_logger(__name__)
+
+
+async def _library_ref_url(ref_id: object, scene_idx: int) -> str | None:
+    """Resolve a Character.hero_ref LibraryAsset id to a public file URL."""
+    from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
+
+    try:
+        ref_asset = await LibraryAsset.objects.aget(id=ref_id)
+    except LibraryAsset.DoesNotExist:
+        logger.warning(
+            'image_gen_character_ref_missing',
+            character_ref_id=str(ref_id),
+            scene_idx=scene_idx,
+        )
+        return None
+    if not ref_asset.file:
+        logger.warning(
+            'image_gen_character_ref_empty_file',
+            character_ref_id=str(ref_id),
+            scene_idx=scene_idx,
+        )
+        return None
+    return ref_asset.file.url
 
 
 @register_stage
@@ -59,10 +85,7 @@ class ImageGenStage(Stage):
         if ctx.config.get('use_character_ref'):
             ref_id = snap.get('character_ref_id')
             if ref_id:
-                from server.apps.assets.models import Asset  # noqa: PLC0415
-
-                ref_asset = await Asset.objects.aget(id=ref_id)
-                image_url = ref_asset.file.url if ref_asset.file else None
+                image_url = await _library_ref_url(ref_id, scene_idx)
         result = await fal_client.generate_image(
             prompt=prompt,
             model=model,
