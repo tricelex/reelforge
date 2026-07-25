@@ -153,3 +153,116 @@ def test_image_gen_content_policy_violation_after_gen_raises_fatal() -> None:
         raise AssertionError('expected FatalProviderError')
     except FatalProviderError:
         pass
+
+
+def test_image_gen_uses_library_asset_character_ref_url() -> None:
+    """character_ref_id is a LibraryAsset id; pass its file URL to fal."""
+    import httpx
+
+    from server.apps.assets.models import LibraryAsset
+
+    ctx = _make_ctx()
+    ctx.config = {'model': 'fal-ai/flux/dev', 'use_character_ref': True}
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'p'
+    ref_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'prompt': 'Hero walks',
+        'negative_prompt': '',
+        'safety_flagged': False,
+        'character_ref_id': ref_id,
+    }
+
+    lib_asset = MagicMock()
+    lib_asset.file.url = 'https://cdn.example/hero-ref.jpg'
+    fal_mock = AsyncMock(
+        return_value={
+            'url': 'https://fal.ai/out.jpg',
+            'seed': 7,
+            'content_policy_violation': False,
+        },
+    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.content = b'jpg'
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch.object(
+                LibraryAsset.objects,
+                'aget',
+                new=AsyncMock(return_value=lib_asset),
+            ) as lib_aget,
+            patch(
+                'server.apps.generation.clients.fal.generate_image',
+                new=fal_mock,
+            ),
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+        ):
+            result = await ImageGenStage().run(ctx)
+            lib_aget.assert_awaited_once_with(id=ref_id)
+            return result
+
+    result = asyncio.run(_inner())
+    assert result['scene_idx'] == 0
+    fal_mock.assert_awaited_once()
+    assert fal_mock.await_args is not None
+    assert fal_mock.await_args.kwargs['image_url'] == (
+        'https://cdn.example/hero-ref.jpg'
+    )
+
+
+def test_image_gen_missing_library_ref_continues_without_url() -> None:
+    """Missing LibraryAsset skips the ref instead of failing the shard."""
+    import httpx
+
+    from server.apps.assets.models import LibraryAsset
+
+    ctx = _make_ctx()
+    ctx.config = {'model': 'fal-ai/flux/dev', 'use_character_ref': True}
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'p'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'prompt': 'Hero walks',
+        'negative_prompt': '',
+        'safety_flagged': False,
+        'character_ref_id': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    }
+
+    fal_mock = AsyncMock(
+        return_value={
+            'url': 'https://fal.ai/out.jpg',
+            'seed': 9,
+            'content_policy_violation': False,
+        },
+    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.content = b'jpg'
+
+    async def _inner() -> None:
+        with (
+            patch.object(
+                LibraryAsset.objects,
+                'aget',
+                new=AsyncMock(side_effect=LibraryAsset.DoesNotExist),
+            ),
+            patch(
+                'server.apps.generation.clients.fal.generate_image',
+                new=fal_mock,
+            ),
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+        ):
+            await ImageGenStage().run(ctx)
+
+    asyncio.run(_inner())
+    assert fal_mock.await_args is not None
+    assert fal_mock.await_args.kwargs['image_url'] is None
