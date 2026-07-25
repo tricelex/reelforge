@@ -1,6 +1,7 @@
 """Tests for the assembly pipeline stage."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from server.apps.pipelines.models import (
 from server.apps.pipelines.stages.assembly import (
     AssemblyStage,
     _build_chapter_audio_map,
+    _build_chapter_files,
     _build_music_map,
     _build_music_paths,
     _build_scene_asset_map,
@@ -46,6 +48,80 @@ def test_group_scenes_by_chapter() -> None:
     assert list(result.keys()) == [0, 1]
     assert len(result[0]) == 2
     assert len(result[1]) == 1
+
+
+def test_build_chapter_files_converts_absolute_times_to_chapter_relative(
+    tmp_path: Path,
+) -> None:
+    """Alignment start_s/end_s are absolute; mux atrim must be TTS-relative.
+
+    Regression: chapter 1+ absolute windows past the chapter MP3 length
+    produced video-only mezzanines (empty atrim).
+    """
+    scene_groups = {
+        0: [
+            {
+                'chapter_idx': 0,
+                'segment_idx': 0,
+                'scene_idx': 0,
+                'start_s': 0.1,
+                'end_s': 10.0,
+            },
+        ],
+        1: [
+            {
+                'chapter_idx': 1,
+                'segment_idx': 0,
+                'scene_idx': 5,
+                'start_s': 100.0,
+                'end_s': 110.0,
+            },
+        ],
+    }
+    (tmp_path / 'ch_000.mp3').write_bytes(b'a')
+    (tmp_path / 'ch_001.mp3').write_bytes(b'b')
+    chapter_audio_files = {
+        0: str(tmp_path / 'ch_000.mp3'),
+        1: str(tmp_path / 'ch_001.mp3'),
+    }
+    mux_calls: list[dict[str, object]] = []
+
+    async def capture_mux(**kwargs: object) -> None:
+        mux_calls.append(dict(kwargs))
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'vid'),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.mux_scene',
+                new=AsyncMock(side_effect=capture_mux),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.concat_chapter_with_transition',
+                new=AsyncMock(),
+            ),
+        ):
+            await _build_chapter_files(
+                tmp_path,
+                scene_groups,
+                {0: 'vid-0', 5: 'vid-5'},
+                chapter_audio_files,
+                [],
+                chapter_origins={0: 0.0, 1: 100.0},
+            )
+
+    asyncio.run(_inner())
+    assert len(mux_calls) == 2
+    by_out = {str(c['out_path']): c for c in mux_calls}
+    ch0 = by_out[str(tmp_path / 'mezz_0000.mp4')]
+    ch1 = by_out[str(tmp_path / 'mezz_0005.mp4')]
+    assert ch0['start_s'] == pytest.approx(0.1)
+    assert ch0['end_s'] == pytest.approx(10.0)
+    assert ch1['start_s'] == pytest.approx(0.0)
+    assert ch1['end_s'] == pytest.approx(10.0)
 
 
 def test_build_music_map() -> None:
@@ -692,6 +768,19 @@ def test_assembly_run_fails_when_motion_asset_missing() -> None:
                 'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
                 new=AsyncMock(return_value={0: 'audio-uuid-0'}),
             ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'fake-bytes'),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={
+                        'format': {'duration': '10.0'},
+                        'streams': [],
+                    },
+                ),
+            ),
         ):
             return await AssemblyStage().run(ctx)
 
@@ -713,6 +802,19 @@ def test_assembly_run_fails_when_scene_idx_missing() -> None:
             patch(
                 'server.apps.pipelines.stages.assembly._build_chapter_audio_map',
                 new=AsyncMock(return_value={0: 'audio-uuid-0'}),
+            ),
+            patch(
+                'server.apps.pipelines.stages.assembly._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'fake-bytes'),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(
+                    return_value={
+                        'format': {'duration': '10.0'},
+                        'streams': [],
+                    },
+                ),
             ),
         ):
             return await AssemblyStage().run(ctx)
