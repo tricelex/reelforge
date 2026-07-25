@@ -29,8 +29,8 @@ def _clamp_music_gain_db(gain_db: float) -> float:
     return max(_MUSIC_GAIN_MIN_DB, min(_MUSIC_GAIN_MAX_DB, gain_db))
 
 
-def _resolve_channel_music_bed_gain_db(channel: object) -> float | None:
-    """Return channel AssemblyStyleConfig.music_bed_gain_db when present."""
+def _resolve_channel_music_bed_gain_db(channel: object) -> float:
+    """Return channel bed gain, or the quiet documentary default (−18)."""
     from server.apps.channels.models import (  # noqa: PLC0415
         AssemblyStyleConfig,
     )
@@ -38,10 +38,25 @@ def _resolve_channel_music_bed_gain_db(channel: object) -> float | None:
     try:
         style = channel.assembly_style  # type: ignore[attr-defined]
     except AssemblyStyleConfig.DoesNotExist:
-        return None
+        return _MUSIC_GAIN_DEFAULT_DB
     except AttributeError:
-        return None
-    return float(style.music_bed_gain_db)
+        return _MUSIC_GAIN_DEFAULT_DB
+    return _clamp_music_gain_db(float(style.music_bed_gain_db))
+
+
+def _effective_music_gain_db(
+    entry: dict[str, Any],
+    *,
+    channel_bed_gain_db: float,
+) -> float:
+    """Apply channel bed gain (default −18); ignore legacy loud plan values.
+
+    ``music_plan.gain_db`` historically defaulted to ``0.0`` and often stays
+    too hot. Channel style (or the −18 fallback) is the operator control.
+    """
+    del entry  # plan picks the track; channel style owns bed level
+    return _clamp_music_gain_db(channel_bed_gain_db)
+
 
 
 def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
@@ -297,7 +312,7 @@ async def _build_music_paths(
     scene_groups: dict[int, list[dict[str, Any]]],
     music_map: dict[int, dict[str, Any]],
     *,
-    channel_bed_gain_db: float | None = None,
+    channel_bed_gain_db: float = _MUSIC_GAIN_DEFAULT_DB,
 ) -> tuple[list[str], list[float]]:
     """Download music library assets; return paths and per-track gain_db.
 
@@ -306,7 +321,8 @@ async def _build_music_paths(
     music_plan LLM hallucinated an ID because the selectable library was
     empty for this channel.
 
-    Channel ``music_bed_gain_db`` wins over per-entry gains when set.
+    Channel ``music_bed_gain_db`` (default −18) wins over loud/legacy plan
+    gains so assembly-only reruns stay quiet without re-running music_plan.
     """
     from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
 
@@ -328,14 +344,45 @@ async def _build_music_paths(
         music_file = tmp / f'music_{ch_idx:03d}.mp3'
         await asyncio.to_thread(music_file.write_bytes, music_bytes)
         music_paths.append(str(music_file))
-        entry_gain = float(entry.get('gain_db', _MUSIC_GAIN_DEFAULT_DB))
-        raw_gain = (
-            channel_bed_gain_db
-            if channel_bed_gain_db is not None
-            else entry_gain
+        music_gains.append(
+            _effective_music_gain_db(
+                entry,
+                channel_bed_gain_db=channel_bed_gain_db,
+            ),
         )
-        music_gains.append(_clamp_music_gain_db(raw_gain))
     return music_paths, music_gains
+
+
+async def _resolve_ass_path(
+    tmp: Path,
+    *,
+    scenes: list[dict[str, Any]],
+    ass_asset_id: str | None,
+) -> str | None:
+    """Build chunked ASS from alignment words; fall back to stored ASS asset.
+
+    Regenerating at assembly time means an assembly-only rerun picks up
+    caption timing fixes without re-calling forced alignment.
+    """
+    from server.apps.pipelines.stages.alignment import (  # noqa: PLC0415
+        _build_ass_content,
+        _subtitle_segments_from_scenes,
+    )
+
+    segments = _subtitle_segments_from_scenes(scenes)
+    if segments:
+        ass_file = tmp / 'captions.ass'
+        await asyncio.to_thread(
+            ass_file.write_bytes,
+            _build_ass_content(segments),
+        )
+        return str(ass_file)
+    if not ass_asset_id:
+        return None
+    ass_bytes = await _fetch_asset_bytes(ass_asset_id)
+    ass_file = tmp / 'captions.ass'
+    await asyncio.to_thread(ass_file.write_bytes, ass_bytes)
+    return str(ass_file)
 
 
 _SFX_GAIN_DB = -12.0
@@ -401,12 +448,11 @@ class AssemblyStage(Stage):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
 
-            ass_path: str | None = None
-            if ass_asset_id:
-                ass_bytes = await _fetch_asset_bytes(ass_asset_id)
-                ass_file = tmp / 'captions.ass'
-                await asyncio.to_thread(ass_file.write_bytes, ass_bytes)
-                ass_path = str(ass_file)
+            ass_path = await _resolve_ass_path(
+                tmp,
+                scenes=scenes,
+                ass_asset_id=ass_asset_id,
+            )
 
             watermark_path: str | None = None
             if watermark_asset_id:

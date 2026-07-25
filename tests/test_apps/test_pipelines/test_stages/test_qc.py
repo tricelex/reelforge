@@ -148,6 +148,7 @@ def test_qc_run_passes_and_returns_report() -> None:
     result = asyncio.run(_run())
     assert result['passed'] is True
     assert 'qc_report' in result
+    assert result['qc_report'].get('warnings') == []
 
 
 def test_qc_raises_fatal_on_duration_drift() -> None:
@@ -411,8 +412,8 @@ def test_run_black_detect_empty_on_no_events() -> None:
 
 
 def test_run_freeze_detect_parses_long_freeze() -> None:
-    """Freeze events longer than _FREEZE_MAX_S (2.5s) are returned."""
-    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 4.5\n'
+    """Freeze events longer than _FREEZE_DETECT_S (8s) are returned."""
+    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 12.0\n'
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))
@@ -426,11 +427,11 @@ def test_run_freeze_detect_parses_long_freeze() -> None:
 
     result = asyncio.run(_run())
     assert len(result) == 1
-    assert result[0]['duration'] == pytest.approx(3.5)
+    assert result[0]['duration'] == pytest.approx(11.0)
 
 
 def test_run_freeze_detect_uses_tolerant_threshold() -> None:
-    """freezedetect filter uses -50dB noise and 2.5s minimum duration."""
+    """freezedetect filter uses -40dB noise and 8s minimum duration."""
     fake_stderr = b''
     mock_proc = MagicMock()
     mock_proc.returncode = 0
@@ -443,13 +444,13 @@ def test_run_freeze_detect_uses_tolerant_threshold() -> None:
 
     assert asyncio.run(_run()) == []
     argv = mock_exec.await_args.args
-    assert 'freezedetect=n=-50dB:d=2.5' in argv
+    assert 'freezedetect=n=-40dB:d=8.0' in argv
 
 
 def test_run_freeze_detect_excludes_short_freezes() -> None:
-    """Freeze events <= _FREEZE_MAX_S are filtered out."""
-    # 2.0 s freeze — below 2.5 s threshold
-    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 3.0\n'
+    """Freeze events <= _FREEZE_DETECT_S are filtered out."""
+    # 5.0 s freeze — below 8.0 s detect threshold
+    fake_stderr = b'freeze_start: 1.0\nfreeze_end: 6.0\n'
     mock_proc = MagicMock()
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(b'', fake_stderr))
@@ -779,7 +780,7 @@ def test_qc_raises_fatal_on_black_frames() -> None:
 
 
 def test_qc_raises_fatal_on_frozen_frames() -> None:
-    """QC fails when freeze events are detected."""
+    """QC fails when a freeze exceeds the hard-fail duration."""
     ctx = _make_ctx(30.0)
 
     async def _run() -> None:
@@ -804,7 +805,7 @@ def test_qc_raises_fatal_on_frozen_frames() -> None:
                 'server.apps.pipelines.stages.qc._run_freeze_detect',
                 new=AsyncMock(
                     return_value=[
-                        {'start': 2.0, 'end': 4.0, 'duration': 2.0},
+                        {'start': 2.0, 'end': 25.0, 'duration': 23.0},
                     ],
                 ),
             ),
@@ -819,6 +820,51 @@ def test_qc_raises_fatal_on_frozen_frames() -> None:
     with pytest.raises(FatalProviderError) as exc_info:
         asyncio.run(_run())
     assert 'frozen_frames' in str(exc_info.value)
+
+
+def test_qc_passes_with_ken_burns_length_freeze_as_warning() -> None:
+    """Scene-length freezes warn but do not hard-fail documentary QC."""
+    ctx = _make_ctx(30.0)
+
+    async def _run() -> dict:  # type: ignore[type-arg]
+        with (
+            patch(
+                'server.apps.pipelines.stages.qc._fetch_asset_to_tempfile',
+                new=AsyncMock(return_value='/tmp/f.mp4'),
+            ),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=_PASSING_PROBE),
+            ),
+            patch(
+                'server.apps.pipelines.stages.qc._run_silence_detect',
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                'server.apps.pipelines.stages.qc._run_black_detect',
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                'server.apps.pipelines.stages.qc._run_freeze_detect',
+                new=AsyncMock(
+                    return_value=[
+                        {'start': 2.0, 'end': 12.0, 'duration': 10.0},
+                    ],
+                ),
+            ),
+            patch(
+                'server.apps.pipelines.stages.qc._run_loudness_check',
+                new=AsyncMock(return_value=_PASSING_LOUDNESS),
+            ),
+            patch.object(Path, 'unlink'),
+        ):
+            return await QCStage().run(ctx)
+
+    result = asyncio.run(_run())
+    assert result['passed'] is True
+    assert result['qc_report']['failures'] == []
+    assert len(result['qc_report']['warnings']) == 1
+    assert result['qc_report']['warnings'][0]['check'] == 'frozen_frames'
 
 
 def test_qc_raises_fatal_on_true_peak_exceeded() -> None:

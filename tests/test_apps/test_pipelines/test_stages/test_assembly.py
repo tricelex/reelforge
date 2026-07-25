@@ -151,7 +151,28 @@ def test_build_music_paths_downloads_each_chapter_track(tmp_path) -> None:  # ty
 
     paths, gains = asyncio.run(_inner())
     assert len(paths) == 2
-    assert gains == [-3.0, -6.0]
+    assert gains == [-18.0, -18.0]
+
+
+def test_build_music_paths_uses_channel_bed_gain(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Channel music_bed_gain_db overrides legacy music_plan gain_db=0."""
+    scene_groups = {0: []}
+    music_map = {0: {'library_asset_id': 'uuid-a', 'gain_db': 0.0}}
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        with patch(
+            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+            new=AsyncMock(return_value=b'music bytes'),
+        ):
+            return await _build_music_paths(
+                tmp_path,
+                scene_groups,
+                music_map,
+                channel_bed_gain_db=-20.0,
+            )
+
+    _, gains = asyncio.run(_inner())
+    assert gains == [-20.0]
 
 
 def test_build_music_paths_skips_chapter_with_missing_asset(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -175,7 +196,7 @@ def test_build_music_paths_skips_chapter_with_missing_asset(tmp_path) -> None:  
 
     paths, gains = asyncio.run(_inner())
     assert len(paths) == 1
-    assert gains == [-6.0]
+    assert gains == [-18.0]
 
 
 def _make_ctx() -> MagicMock:
