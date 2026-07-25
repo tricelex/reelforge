@@ -421,6 +421,24 @@ def test_fal_generate_image_success_returns_dict() -> None:
     assert result['content_policy_violation'] is False
 
 
+def test_fal_generate_image_sync_success_returns_dict() -> None:
+    """generate_image_sync uses fal_client.run (no event loop)."""
+    from server.apps.generation.clients.fal import generate_image_sync
+
+    with patch(
+        'fal_client.run',
+        return_value={
+            'images': [{'url': 'https://cdn.example/x.png'}],
+            'seed': 7,
+            'has_nsfw_concepts': [False],
+        },
+    ):
+        result = generate_image_sync('a lion', seed=7)
+    assert result['url'] == 'https://cdn.example/x.png'
+    assert result['seed'] == 7
+    assert result['content_policy_violation'] is False
+
+
 def test_fal_generate_image_with_image_url_arg() -> None:
     """generate_image includes image_url in arguments when provided."""
     from server.apps.generation.clients.fal import (

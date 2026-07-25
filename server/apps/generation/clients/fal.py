@@ -54,7 +54,63 @@ async def generate_image(
     seed: int | None = None,
     image_url: str | None = None,
 ) -> dict[str, Any]:
-    """Run a Flux image generation job."""
+    """Run a Flux image generation job (async)."""
+    arguments = _image_arguments(
+        prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        seed=seed,
+        image_url=image_url,
+    )
+    try:
+        result = await fal_client.run_async(model, arguments=arguments)
+    except FalClientError as exc:
+        _raise_fal_error(exc)
+
+    return _parse_image_result(result)
+
+
+def generate_image_sync(
+    prompt: str,
+    model: str = 'fal-ai/flux/dev',
+    negative_prompt: str = '',
+    width: int = 1920,
+    height: int = 1080,
+    seed: int | None = None,
+    image_url: str | None = None,
+) -> dict[str, Any]:
+    """Run a Flux image generation job (sync).
+
+    Prefer this from sync call sites (Character Studio, auto design).
+    ``asyncio.run(generate_image(...))`` binds fal/httpx to a loop that is
+    closed on exit, which breaks the next generation in the same worker.
+    """
+    arguments = _image_arguments(
+        prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        seed=seed,
+        image_url=image_url,
+    )
+    try:
+        result = fal_client.run(model, arguments=arguments)
+    except FalClientError as exc:
+        _raise_fal_error(exc)
+
+    return _parse_image_result(result)
+
+
+def _image_arguments(
+    prompt: str,
+    *,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    seed: int | None,
+    image_url: str | None,
+) -> dict[str, Any]:
     arguments: dict[str, Any] = {
         'prompt': prompt,
         'negative_prompt': negative_prompt,
@@ -65,12 +121,10 @@ async def generate_image(
         arguments['seed'] = seed
     if image_url is not None:
         arguments['image_url'] = image_url
+    return arguments
 
-    try:
-        result = await fal_client.run_async(model, arguments=arguments)
-    except FalClientError as exc:
-        _raise_fal_error(exc)
 
+def _parse_image_result(result: dict[str, Any]) -> dict[str, Any]:
     images = result.get('images', [])
     if not images:
         raise RetryableProviderError('fal returned no images', provider='fal')
