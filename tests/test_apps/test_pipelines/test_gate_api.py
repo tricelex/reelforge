@@ -146,6 +146,31 @@ def test_gate_approve_thumbnail_and_schedule(
 
 
 @pytest.mark.django_db(transaction=True)
+def test_gate_approve_wrong_key_returns_400(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    gate_execution: StageExecution,
+    auth_headers: dict[str, str],
+) -> None:
+    """Approving a gate that is not parked returns 400, not 500."""
+    assert gate_execution.stage_key == 'final_gate'
+    with patch('server.common.taskiq_sender.kiq_task'):
+        resp = dmr_client.post(
+            reverse(
+                'api:pipelines_api:gate-approve',
+                kwargs={'run_id': run.id, 'gate_key': 'storyboard_gate'},
+            ),
+            data={'thumbnail_asset_id': None, 'schedule_at': None},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    detail = body.get('detail') or body.get('message') or str(body)
+    assert 'storyboard_gate' in str(detail)
+
+
+@pytest.mark.django_db(transaction=True)
 def test_clip_approval_gate_syncs_candidates(
     dmr_client: DMRClient,
     auth_headers: dict[str, str],

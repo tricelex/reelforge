@@ -273,7 +273,15 @@ class RunGateApproveController(
 
     auth = (jwt_sync_auth,)
 
-    @modify(status_code=HTTPStatus.OK)
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.BAD_REQUEST,
+            ),
+        ],
+    )
     def post(
         self,
         parsed_body: Body[GateApprovePayload],
@@ -306,6 +314,25 @@ class RunGateApproveController(
             status='ok',
             approved_count=approved_count,
         )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        """Map missing parked gate to a 400 response."""
+        if isinstance(exc, ValidationError):
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            return self.to_error(
+                self.format_error(
+                    '; '.join(str(m) for m in messages),
+                    error_type=ErrorType.value_error,
+                ),
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final

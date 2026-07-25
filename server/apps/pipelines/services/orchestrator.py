@@ -723,6 +723,8 @@ def _approve_gate_sync(
     output: dict[str, Any],
 ) -> None:
     """Mark gate SUCCEEDED and resume the run (sync wrapper)."""
+    from django.core.exceptions import ValidationError  # noqa: PLC0415
+
     from server.apps.pipelines.models import (  # noqa: PLC0415
         PipelineRun,
         RunStatus,
@@ -737,12 +739,16 @@ def _approve_gate_sync(
             .select_related('channel')
             .get(id=uuid.UUID(run_id))
         )
-        execution = StageExecution.objects.select_for_update().get(
-            run=run,
-            stage_key=gate_key,
-            parent=None,
-            status__in=GATE_PARKED_STATUSES,
-        )
+        try:
+            execution = StageExecution.objects.select_for_update().get(
+                run=run,
+                stage_key=gate_key,
+                parent=None,
+                status__in=GATE_PARKED_STATUSES,
+            )
+        except StageExecution.DoesNotExist as exc:
+            msg = f'No parked gate "{gate_key}" for this run'
+            raise ValidationError(msg) from exc
         execution.status = StageStatus.SUCCEEDED
         execution.output = output
         execution.finished_at = tz.now()
