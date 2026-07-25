@@ -17,8 +17,12 @@ from server.common.exceptions import FatalProviderError
 _DURATION_DRIFT_MAX = 0.03
 _SILENCE_MAX_S = 1.8
 _BLACK_FREEZE_MAX_S = 0.5
-_FREEZE_MAX_S = 2.5
-_FREEZE_NOISE_DB = -50
+# Ken Burns / static documentary holds look "frozen" to freezedetect.
+# Detect from 8s, but only hard-fail stuck holds beyond a scene-length
+# budget so normal longform stills do not block publish.
+_FREEZE_DETECT_S = 8.0
+_FREEZE_FAIL_S = 20.0
+_FREEZE_NOISE_DB = -40
 _LOUDNESS_TARGET_I = -14.0
 _LOUDNESS_TOLERANCE = 0.7
 _LOUDNESS_MAX_TP = -1.0
@@ -125,14 +129,14 @@ async def _run_black_detect(path: str) -> list[dict[str, float]]:
 
 
 async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
-    """Run freezedetect; return freeze events longer than ``_FREEZE_MAX_S``."""
+    """Run freezedetect; return freeze events longer than ``_FREEZE_DETECT_S``."""
     proc = await asyncio.create_subprocess_exec(
         'ffmpeg',
         '-y',
         '-i',
         path,
         '-vf',
-        f'freezedetect=n={_FREEZE_NOISE_DB}dB:d={_FREEZE_MAX_S}',
+        f'freezedetect=n={_FREEZE_NOISE_DB}dB:d={_FREEZE_DETECT_S}',
         '-f',
         'null',
         '-',
@@ -148,7 +152,7 @@ async def _run_freeze_detect(path: str) -> list[dict[str, float]]:
         re.DOTALL,
     ):
         duration = float(m.group(2)) - float(m.group(1))
-        if duration > _FREEZE_MAX_S:
+        if duration > _FREEZE_DETECT_S:
             events.append({
                 'start': float(m.group(1)),
                 'end': float(m.group(2)),
@@ -221,9 +225,17 @@ def _probe_stream_failures(
     return actual_duration, failures
 
 
-async def _collect_media_failures(video_path: str) -> list[dict[str, Any]]:
-    """Run silence/black/freeze detectors and return QC failure dicts."""
+async def _collect_media_failures(
+    video_path: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run silence/black/freeze detectors; return (failures, warnings).
+
+    Short freezes are expected for documentary Ken Burns holds and are
+    reported as warnings. Only freezes longer than ``_FREEZE_FAIL_S``
+    hard-fail QC (stuck encode / dead picture).
+    """
     failures: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     silences = await _run_silence_detect(video_path)
     failures.extend(
         {'check': 'dead_air', 'event': sil}
@@ -239,8 +251,13 @@ async def _collect_media_failures(video_path: str) -> list[dict[str, Any]]:
     )
 
     freezes = await _run_freeze_detect(video_path)
-    failures.extend({'check': 'frozen_frames', 'event': frz} for frz in freezes)
-    return failures
+    for frz in freezes:
+        entry: dict[str, Any] = {'check': 'frozen_frames', 'event': frz}
+        if frz['duration'] > _FREEZE_FAIL_S:
+            failures.append(entry)
+        else:
+            warnings.append(entry)
+    return failures, warnings
 
 
 def _loudness_failures(loudness: dict[str, float]) -> list[dict[str, Any]]:
@@ -297,13 +314,16 @@ class QCStage(Stage):
         loudness: dict[str, float] = {}
         actual_duration = 0.0
         failures: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         try:
             probe = await ffmpeg.async_ffprobe(video_path)
             actual_duration, failures = _probe_stream_failures(
                 probe,
                 expected_duration,
             )
-            failures.extend(await _collect_media_failures(video_path))
+            media_fails, media_warns = await _collect_media_failures(video_path)
+            failures.extend(media_fails)
+            warnings.extend(media_warns)
             loudness = await _run_loudness_check(video_path)
             failures.extend(_loudness_failures(loudness))
         finally:
@@ -314,6 +334,7 @@ class QCStage(Stage):
             'expected_duration_s': expected_duration,
             'loudness': loudness,
             'failures': failures,
+            'warnings': warnings,
         }
         if failures:
             raise FatalProviderError(

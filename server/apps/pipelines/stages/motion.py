@@ -17,10 +17,10 @@ from server.apps.pipelines.stages.base import (
 )
 
 _KEN_BURNS_PRESETS = [
-    "zoompan=z='zoom+0.003':d=150:s=1920x1080",
-    "zoompan=z='1.08-0.003*on':d=150:s=1920x1080",
-    "zoompan=x='iw/2-(iw/zoom/2)+on*4':z=1.05:d=150:s=1920x1080",
-    "zoompan=x='iw-(iw/zoom/2)-on*4':z=1.05:d=150:s=1920x1080",
+    "zoompan=z='zoom+0.008':d=150:s=1920x1080",
+    "zoompan=z='1.12-0.008*on':d=150:s=1920x1080",
+    "zoompan=x='iw/2-(iw/zoom/2)+on*8':z=1.08:d=150:s=1920x1080",
+    "zoompan=x='iw-(iw/zoom/2)-on*8':z=1.08:d=150:s=1920x1080",
 ]
 
 _DEFAULT_CAMERA_MOVEMENT = 'push_in'
