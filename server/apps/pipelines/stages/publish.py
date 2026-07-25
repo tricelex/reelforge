@@ -17,6 +17,7 @@ from server.apps.pipelines.stages.base import (
     register_stage,
 )
 from server.apps.publishing.models import PublishJob, PublishStatus
+from server.common.exceptions import FatalProviderError
 
 _CATEGORY_NAME_TO_ID: dict[str, str] = {
     'film & animation': '1',
@@ -64,13 +65,26 @@ class PublishStage(Stage):
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Upload the assembled video to YouTube and record the publish job."""
-        meta = ctx.upstream['metadata']
+        meta = ctx.upstream.get('metadata')
+        assembly = ctx.upstream.get('assembly')
+        if not isinstance(meta, dict):
+            raise FatalProviderError(
+                'publish missing upstream metadata',
+                provider='publish',
+                error_code='MISSING_UPSTREAM_METADATA',
+            )
+        if not isinstance(assembly, dict) or not assembly.get('asset_id'):
+            raise FatalProviderError(
+                'publish missing upstream assembly.asset_id',
+                provider='publish',
+                error_code='MISSING_UPSTREAM_ASSEMBLY',
+            )
         gate = (
             ctx.upstream.get('final_gate')
             or ctx.upstream.get('review_gate')
             or {}
         )
-        final_asset_id: str = ctx.upstream['assembly']['asset_id']
+        final_asset_id: str = assembly['asset_id']
         thumbnail_asset_id: str | None = gate.get('thumbnail_asset_id')
         schedule_at_str: str | None = gate.get('schedule_at')
 
