@@ -983,6 +983,106 @@ def test_advance_skips_unarmed_gate(orch_channel) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_advance_waits_before_skipping_unarmed_gate() -> None:
+    """Unarmed gates must not skip until depends_on are terminal.
+
+    Early skip unblocks downstream stages with empty upstream (the longform
+    narrative_qc / publish failure mode when channel.gates is empty).
+    """
+    from unittest.mock import AsyncMock, patch
+
+    import server.apps.pipelines.stages.dummy  # noqa: F401
+    from server.apps.channels.models import (
+        Channel,
+        ChannelKind,
+    )
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    async def _inner() -> None:
+        bp = await PipelineBlueprint.objects.acreate(
+            name='gated_wait_v1',
+            kind=PipelineKind.LONGFORM,
+            graph={
+                'stages': [
+                    {'key': 'dummy_a', 'depends_on': [], 'queue': 'api'},
+                    {
+                        'key': 'my_gate',
+                        'depends_on': ['dummy_a'],
+                        'gate': True,
+                        'queue': 'api',
+                    },
+                    {
+                        'key': 'dummy_b',
+                        'depends_on': ['my_gate'],
+                        'queue': 'api',
+                    },
+                ],
+            },
+        )
+        ch = await Channel.objects.acreate(
+            name='gated_wait_ch',
+            kind=ChannelKind.LONGFORM,
+            gates=[],
+        )
+        gated_run = await PipelineRun.objects.acreate(
+            channel=ch,
+            blueprint=bp,
+            blueprint_snapshot=bp.graph,
+            topic='Gate wait test',
+        )
+
+        with (
+            patch(
+                'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+                new=AsyncMock(),
+            ),
+            patch(
+                'server.apps.pipelines.services.orchestrator.publish_sse',
+                new=AsyncMock(),
+            ),
+        ):
+            await advance_pipeline_impl(str(gated_run.id))
+
+            assert not await StageExecution.objects.filter(
+                run=gated_run,
+                stage_key='my_gate',
+            ).aexists()
+            assert not await StageExecution.objects.filter(
+                run=gated_run,
+                stage_key='dummy_b',
+            ).aexists()
+
+            await StageExecution.objects.filter(
+                run=gated_run,
+                stage_key='dummy_a',
+            ).aupdate(status=StageStatus.SUCCEEDED)
+            await advance_pipeline_impl(str(gated_run.id))
+
+        gate_exec = await StageExecution.objects.aget(
+            run=gated_run,
+            stage_key='my_gate',
+        )
+        assert gate_exec.status == StageStatus.SKIPPED
+        downstream = await StageExecution.objects.filter(
+            run=gated_run,
+            stage_key='dummy_b',
+        ).afirst()
+        assert downstream is not None
+        assert downstream.status == StageStatus.QUEUED
+
+    _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
     """An armed gate sets run.status=AWAITING_REVIEW and creates a parked execution."""
     from unittest.mock import AsyncMock, patch

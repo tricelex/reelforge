@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from server.apps.pipelines.stages.publish import (
     PublishStage,
@@ -383,3 +384,25 @@ def test_publish_run_with_schedule_at_parses_datetime() -> None:
 
     result = asyncio.run(_inner())
     assert result['youtube_video_id'] == 'yt_sched999'
+
+
+def test_publish_missing_metadata_raises_fatal() -> None:
+    from server.common.exceptions import FatalProviderError
+
+    ctx = _make_ctx()
+    del ctx.upstream['metadata']
+
+    with pytest.raises(FatalProviderError, match='metadata') as exc_info:
+        asyncio.run(PublishStage().run(ctx))
+    assert exc_info.value.error_code == 'MISSING_UPSTREAM_METADATA'
+
+
+def test_publish_missing_assembly_raises_fatal() -> None:
+    from server.common.exceptions import FatalProviderError
+
+    ctx = _make_ctx()
+    del ctx.upstream['assembly']
+
+    with pytest.raises(FatalProviderError, match='assembly') as exc_info:
+        asyncio.run(PublishStage().run(ctx))
+    assert exc_info.value.error_code == 'MISSING_UPSTREAM_ASSEMBLY'

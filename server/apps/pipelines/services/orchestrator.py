@@ -484,6 +484,11 @@ def _process_node_sync(
         return
 
     if _node_should_skip(node, run, armed_gates):
+        # Wait for depends_on before auto-skipping — otherwise downstream
+        # stages that only depend on this gate enqueue with empty upstream.
+        deps: list[str] = node.get('depends_on', [])
+        if not _deps_terminal(deps, states, _TERMINAL_STAGE_STATES):
+            return
         _mark_skipped_sync(run, key)
         states[key] = StageStatus.SKIPPED
         return
