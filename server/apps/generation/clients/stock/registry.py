@@ -35,6 +35,12 @@ def build_providers(enabled: Sequence[str]) -> list[FootageProvider]:
         ),
         'wikimedia': WikimediaProvider,
         'openverse': lambda: OpenverseProvider(
+            client_id=getattr(settings, 'OPENVERSE_CLIENT_ID', ''),
+            client_secret=getattr(
+                settings,
+                'OPENVERSE_CLIENT_SECRET',
+                '',
+            ),
             token=getattr(settings, 'OPENVERSE_API_TOKEN', ''),
         ),
         'archive_org': ArchiveOrgProvider,

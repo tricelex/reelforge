@@ -565,5 +565,11 @@ ANTHROPIC_API_KEY: str = config('ANTHROPIC_API_KEY', default='')
 EXA_API_KEY: str = config('EXA_API_KEY', default='')
 PEXELS_API_KEY: str = config('PEXELS_API_KEY', default='')
 PIXABAY_API_KEY: str = config('PIXABAY_API_KEY', default='')
+OPENVERSE_CLIENT_ID: str = config('OPENVERSE_CLIENT_ID', default='')
+OPENVERSE_CLIENT_SECRET: str = config(
+    'OPENVERSE_CLIENT_SECRET',
+    default='',
+)
+# Optional Bearer override for tests/dev; production uses client credentials.
 OPENVERSE_API_TOKEN: str = config('OPENVERSE_API_TOKEN', default='')
 ELEVENLABS_API_KEY: str = config('ELEVENLABS_API_KEY', default='')

@@ -193,6 +193,10 @@ nano /opt/***REMOVED***/.env
 | `RABBITMQ_URL` | `amqp://<user>:<password>@<coolify-host>:<port>/` (or `amqps://` if available) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_STORAGE_BUCKET_NAME` / `AWS_S3_ENDPOINT_URL` / `AWS_S3_PUBLIC_ENDPOINT_URL` / `AWS_S3_CUSTOM_DOMAIN` | Same Cloudflare R2 credentials already used today |
 | `OPENAI_API_KEY` / `PYANNOTEAI_API_KEY` / `ELEVENLABS_API_KEY` | Same as today |
+| `PEXELS_API_KEY` | Pexels stock video/photo (documentary footage pipeline) |
+| `PIXABAY_API_KEY` | Pixabay stock video/photo (documentary footage pipeline) |
+| `OPENVERSE_CLIENT_ID` / `OPENVERSE_CLIENT_SECRET` | Openverse OAuth app (register + email-verify at https://api.openverse.org/); access tokens are refreshed automatically |
+| `OPENVERSE_API_TOKEN` | Optional Bearer override for debugging; leave empty in production |
 | `SENTRY_DSN`, `LOGFIRE_TOKEN` | Optional, same as today |
 | `TASKIQ_WORKERS`, `TASKIQ_MAX_ASYNC_TASKS` | Optional — only set if you want to override the conservative defaults (1 worker process / 2 concurrent tasks) baked into `docker-compose.vps.yml` |
 
