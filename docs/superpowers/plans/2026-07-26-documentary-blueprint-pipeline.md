@@ -43,6 +43,16 @@ and `FootageSourcingConfig` from it.
 - API tests use `dmr.test.DMRClient`, not Django's `Client`.
 - Migrations backward-compatible; verified with `lintmigrations`.
 
+## mypy baseline — IMPORTANT
+
+`mypy server` reports **78 pre-existing errors across 31 files** on this branch
+(measured 2026-07-26). That is the baseline, not a regression you caused.
+
+- Never expect `mypy server` to print zero errors.
+- The bar is **no NEW errors in files you touched**. Check with
+  `docker compose exec web mypy server 2>&1 | grep '<your-file>'` — that must
+  be empty — and confirm the trailing total has not risen above 78.
+
 ## Verification Commands
 
 ```bash
