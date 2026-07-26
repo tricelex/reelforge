@@ -15,3 +15,17 @@ Plans (in order):
 - FAL_KEY empty: AI fallback leg untestable end-to-end; unit tests mock it.
 
 ## Task log
+
+### Environment baselines (measured 2026-07-26, all PRE-EXISTING)
+- `mypy server`: 78 errors / 31 files. Bar = no new errors in touched files.
+- `lint-imports`: 3 of 6 contracts broken, ~50 violating imports. Bar = new
+  stage->client imports declared; no new violation in touched files.
+- `.git/hooks/pre-commit` is not executable, so it never runs.
+- Removed one dead `.importlinter` entry (alignment -> whisperx client, deleted
+  when transcription moved to ElevenLabs).
+
+### Task log
+- Task F1: complete (commit 1f3720a, review APPROVED)
+  Minor findings deferred to final review:
+  * no test exercises the non-dict `roles` defensive branch in resolve_role
+  * report's justification for the doctest reformat was imprecise (cosmetic)
