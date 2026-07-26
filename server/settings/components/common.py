@@ -563,4 +563,7 @@ YTDLP_POT_PROVIDER_BASE_URL: str = config(
 OPENAI_API_KEY: str = config('OPENAI_API_KEY', default='')
 ANTHROPIC_API_KEY: str = config('ANTHROPIC_API_KEY', default='')
 EXA_API_KEY: str = config('EXA_API_KEY', default='')
+PEXELS_API_KEY: str = config('PEXELS_API_KEY', default='')
+PIXABAY_API_KEY: str = config('PIXABAY_API_KEY', default='')
+OPENVERSE_API_TOKEN: str = config('OPENVERSE_API_TOKEN', default='')
 ELEVENLABS_API_KEY: str = config('ELEVENLABS_API_KEY', default='')
