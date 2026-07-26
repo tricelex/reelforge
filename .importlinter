@@ -51,6 +51,7 @@ ignore_imports =
   server.apps.pipelines.stages.thumbnail -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.metadata -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.narrative_qc -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.footage_queries -> server.apps.generation.clients.llm
   # Pipeline stages save assets and reference AssetKind from the assets app
   server.apps.pipelines.stages.image_gen -> server.apps.assets.models
   server.apps.pipelines.stages.tts -> server.apps.assets.models
