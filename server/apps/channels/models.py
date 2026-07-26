@@ -1,6 +1,6 @@
 """ORM models for the channels app."""
 
-from typing import ClassVar, override
+from typing import ClassVar, Final, override
 
 from django.contrib.***REMOVED***.fields import ArrayField
 from django.db import models
@@ -37,6 +37,21 @@ class SourcingMode(models.TextChoices):
     STOCK_FIRST = 'stock_first', 'Stock first'
     ARCHIVAL_FIRST = 'archival_first', 'Archival first'
     BALANCED = 'balanced', 'Balanced'
+
+
+# Aligns with ***REMOVED***-frontend PROVIDER_OPTIONS / stock-first cascade.
+DEFAULT_ENABLED_PROVIDERS: Final[tuple[str, ...]] = (
+    'pexels',
+    'pixabay',
+    'wikimedia',
+    'openverse',
+    'archive_org',
+)
+
+
+def _default_enabled_providers() -> list[str]:
+    """Callable default for FootageSourcingConfig.enabled_providers."""
+    return list(DEFAULT_ENABLED_PROVIDERS)
 
 
 class RerankMode(models.TextChoices):
@@ -161,7 +176,11 @@ class Channel(UUIDModel, TimeStampedModel):
         try:
             return self.footage_sourcing
         except FootageSourcingConfig.DoesNotExist:
-            return FootageSourcingConfig(channel=self, id=None)
+            return FootageSourcingConfig(
+                channel=self,
+                id=None,
+                enabled_providers=_default_enabled_providers(),
+            )
 
 
 class NicheConfig(UUIDModel, TimeStampedModel):
@@ -427,7 +446,7 @@ class FootageSourcingConfig(UUIDModel, TimeStampedModel):
     )
     enabled_providers = ArrayField(
         models.CharField(max_length=32),
-        default=list,
+        default=_default_enabled_providers,
         blank=True,
         help_text='Ordered provider priority. Order is significant.',
     )

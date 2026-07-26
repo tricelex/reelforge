@@ -49,17 +49,24 @@ def _channel_dict(channel: Any) -> dict[str, Any]:
 
 def _footage_dict(channel: Any) -> dict[str, Any]:
     """Expose footage sourcing settings to prompt templates."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        DEFAULT_ENABLED_PROVIDERS,
+    )
+
     config = getattr(channel, 'footage_sourcing', None)
     if config is None:
         return {
-            'providers': [],
+            'providers': list(DEFAULT_ENABLED_PROVIDERS),
             'sourcing_mode': 'stock_first',
             'ai_fallback_enabled': True,
             'min_width': 1280,
             'attribution_required': True,
         }
+    providers = list(getattr(config, 'enabled_providers', []) or [])
+    if not providers:
+        providers = list(DEFAULT_ENABLED_PROVIDERS)
     return {
-        'providers': list(getattr(config, 'enabled_providers', []) or []),
+        'providers': providers,
         'sourcing_mode': getattr(config, 'sourcing_mode', 'stock_first'),
         'ai_fallback_enabled': bool(
             getattr(config, 'ai_fallback_enabled', True),

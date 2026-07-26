@@ -4,6 +4,7 @@ import pytest
 from django.contrib import admin
 
 from server.apps.channels.models import (
+    DEFAULT_ENABLED_PROVIDERS,
     Channel,
     ChannelKind,
     FootageSourcingConfig,
@@ -33,7 +34,7 @@ def test_defaults_are_documentary_safe(channel: Channel) -> None:
     assert config.min_clip_width == 1280
     assert config.min_clip_duration_s == pytest.approx(3.0)
     assert config.require_attribution is True
-    assert config.enabled_providers == []
+    assert config.enabled_providers == list(DEFAULT_ENABLED_PROVIDERS)
 
 
 @pytest.mark.django_db
@@ -56,6 +57,7 @@ def test_channel_without_config_gets_unsaved_defaults(
     assert config.pk is None
     assert config.ai_fallback_enabled is True
     assert config.rerank_mode == RerankMode.VISION
+    assert config.enabled_providers == list(DEFAULT_ENABLED_PROVIDERS)
 
 
 @pytest.mark.django_db

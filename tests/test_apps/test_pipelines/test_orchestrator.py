@@ -662,12 +662,24 @@ def test_build_context_minimal_channel_avoids_sync_orm() -> None:
             pass
         # Missing footage_sourcing must not raise SynchronousOnlyOperation.
         config = ctx.channel.footage_sourcing_or_default()
-        assert config.enabled_providers == []
+        assert list(config.enabled_providers) == [
+            'pexels',
+            'pixabay',
+            'wikimedia',
+            'openverse',
+            'archive_org',
+        ]
         variables = await build_prompt_variables(
             ctx,
             include_character=False,
         )
-        assert variables['footage']['providers'] == []
+        assert variables['footage']['providers'] == [
+            'pexels',
+            'pixabay',
+            'wikimedia',
+            'openverse',
+            'archive_org',
+        ]
         assert variables['footage']['sourcing_mode'] == 'stock_first'
 
     _run(_inner())

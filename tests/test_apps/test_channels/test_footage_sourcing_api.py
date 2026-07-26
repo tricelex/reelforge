@@ -35,7 +35,13 @@ def test_channel_detail_includes_footage_sourcing_defaults(
     assert response.status_code == HTTPStatus.OK
     body = response.json()['footage_sourcing']
     assert body is not None
-    assert body['enabled_providers'] == []
+    assert body['enabled_providers'] == [
+        'pexels',
+        'pixabay',
+        'wikimedia',
+        'openverse',
+        'archive_org',
+    ]
     assert body['sourcing_mode'] == 'stock_first'
     assert body['ai_fallback_enabled'] is True
     assert body['rerank_mode'] == 'vision'

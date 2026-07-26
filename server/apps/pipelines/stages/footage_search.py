@@ -210,9 +210,29 @@ class FootageSearchStage(Stage):
         snap = ctx.execution.input_snapshot
         scene_idx = int(snap['scene_idx'])
         config = ctx.channel.footage_sourcing_or_default()
-        providers = build_providers(list(config.enabled_providers))
+        provider_names = list(config.enabled_providers)
+        if not provider_names:
+            from server.apps.channels.models import (  # noqa: PLC0415
+                DEFAULT_ENABLED_PROVIDERS,
+            )
+
+            provider_names = list(DEFAULT_ENABLED_PROVIDERS)
+            logger.warning(
+                'footage_providers_empty_using_defaults',
+                run_id=str(ctx.run.id),
+                scene_idx=scene_idx,
+                defaults=provider_names,
+            )
+        providers = build_providers(provider_names)
         media_type: MediaType = (
             'image' if snap.get('media_preference') == 'image' else 'video'
+        )
+        logger.info(
+            'footage_search_started',
+            run_id=str(ctx.run.id),
+            scene_idx=scene_idx,
+            providers=[p.name for p in providers],
+            media_type=media_type,
         )
 
         queries = [snap['primary_query'], *snap.get('fallback_queries', [])]
