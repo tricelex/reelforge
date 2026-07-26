@@ -375,3 +375,47 @@ class GateCatalogPayload(msgspec.Struct, frozen=True):
     """Catalog of gate keys for channel configuration."""
 
     items: list[GateCatalogEntryPayload]
+
+
+class FootageCandidatePayload(msgspec.Struct, frozen=True):
+    """One alternate footage option offered at the review gate."""
+
+    external_id: str
+    provider: str
+    thumb_url: str
+    preview_url: str
+    width: int
+    height: int
+    duration_s: float | None
+    license: str
+    author: str
+    source_url: str
+
+
+class FootageSceneRow(msgspec.Struct, frozen=True):
+    """One scene row in the documentary storyboard."""
+
+    idx: int
+    narration_text: str
+    visual_concept: str
+    status: str
+    est_seconds: float
+    asset_url: str | None
+    media_type: str
+    source: str
+    license: str
+    license_url: str
+    attribution_required: bool
+    author: str
+    source_url: str
+    rerank_score: float | None
+    candidates: list[FootageCandidatePayload]
+
+
+class FootageStoryboardPayload(msgspec.Struct, frozen=True):
+    """Documentary storyboard review payload."""
+
+    profile: str
+    run: StoryboardRunSummaryPayload
+    scenes: list[FootageSceneRow]
+    ai_fallback_count: int
