@@ -3,7 +3,7 @@
 import asyncio
 import datetime as dt
 import uuid
-from typing import final
+from typing import TYPE_CHECKING, final
 
 import attrs
 import django.utils.timezone as tz
@@ -24,9 +24,48 @@ from server.apps.pipelines.tasks import advance_pipeline, execute_stage
 from server.common.events import EventBus
 from server.common.taskiq_sender import kiq_task
 
+if TYPE_CHECKING:
+    from server.apps.channels.models import Channel
+
 _IDEMPOTENCY_TTL = 60 * 60 * 24
 _SSE_TOKEN_MAX_AGE = 300
 _SSE_SIGNER_SALT = 'pipeline-sse-token'
+
+
+def build_prompt_overrides_snapshot(channel: 'Channel') -> dict[str, str]:
+    """Resolve a channel's StoryFormat prompt overrides to version ids.
+
+    ``StoryFormat.prompt_overrides`` maps a stage key to a *template* key.
+    Each is resolved to the currently-active PromptVersion id so the run is
+    pinned to an immutable version. Overrides naming an unknown template are
+    skipped, falling back to the global default for that stage.
+    """
+    from server.apps.prompts.models import PromptVersion  # noqa: PLC0415
+
+    niche = getattr(channel, 'niche_config', None)
+    fmt = getattr(niche, 'format', None) if niche else None
+    overrides = getattr(fmt, 'prompt_overrides', None) or {}
+    if not isinstance(overrides, dict):
+        return {}
+
+    resolved: dict[str, str] = {}
+    for stage_key, template_key in overrides.items():
+        version_id = (
+            PromptVersion.objects
+            .filter(template__key=str(template_key), is_active=True)
+            .values_list('id', flat=True)
+            .first()
+        )
+        if version_id is not None:
+            resolved[str(stage_key)] = str(version_id)
+    return resolved
+
+
+def _initial_prompt_snapshot(
+    resolved_prompts: dict[str, str],
+) -> dict[str, object]:
+    """Seed a fresh run's prompt_snapshot with any resolved overrides."""
+    return {'prompts': resolved_prompts} if resolved_prompts else {}
 
 
 @final
@@ -171,7 +210,10 @@ class PipelineRunService:
             raise ValidationError(msg) from exc
 
         topic = payload.topic
-        prompt_snapshot: dict[str, object] = {}
+        resolved_prompts = build_prompt_overrides_snapshot(channel)
+        prompt_snapshot: dict[str, object] = _initial_prompt_snapshot(
+            resolved_prompts,
+        )
         source_service = ClipSourceService()
         if payload.source_id:
             if payload.topic:
@@ -210,6 +252,7 @@ class PipelineRunService:
                     'source_title': clip_source.title,
                     'source_id': str(clip_source.id),
                     'clip_options': clip_options,
+                    'prompts': resolved_prompts,
                 }
                 run = PipelineRun.objects.create(
                     channel=channel,
