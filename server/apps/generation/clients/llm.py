@@ -1,6 +1,7 @@
 """PydanticAI agent runner — records token costs and returns typed output."""
 
 import inspect
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import Agent
@@ -79,7 +80,7 @@ async def _resolve_generation_settings(
 
 async def run_agent(
     agent: 'Agent[Any, Any]',
-    user_prompt: str,
+    user_prompt: 'str | Sequence[Any]',
     ctx: 'StageContext',
     stage_key: str,
     request_limit: int = 4,
