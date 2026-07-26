@@ -159,3 +159,174 @@ async def test_server_error_raises_retryable() -> None:
 
     assert exc_info.value.provider == 'openverse'
     assert exc_info.value.status_code == 503
+
+
+@pytest.mark.anyio
+async def test_client_credentials_fetch_bearer_header() -> None:
+    """OAuth client credentials mint a Bearer token used on search."""
+    token_resp = MagicMock()
+    token_resp.is_success = True
+    token_resp.status_code = 200
+    token_resp.json.return_value = {
+        'access_token': 'fresh-token',
+        'expires_in': 36000,
+        'token_type': 'Bearer',
+    }
+    search_resp = _mock_response({'results': []})
+
+    with (
+        patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=token_resp),
+        ) as post_mock,
+        patch(
+            'httpx.AsyncClient.get',
+            new=AsyncMock(return_value=search_resp),
+        ) as get_mock,
+    ):
+        results = await OpenverseProvider(
+            client_id='cid',
+            client_secret='csecret',
+        ).search(
+            'coral',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    assert results == []
+    post_mock.assert_awaited_once()
+    get_headers = get_mock.await_args.kwargs['headers']
+    assert get_headers['Authorization'] == 'Bearer fresh-token'
+
+
+@pytest.mark.anyio
+async def test_cached_token_skips_second_exchange() -> None:
+    """A still-valid cached token is reused without another token POST."""
+    token_resp = MagicMock()
+    token_resp.is_success = True
+    token_resp.status_code = 200
+    token_resp.json.return_value = {
+        'access_token': 'fresh-token',
+        'expires_in': 36000,
+        'token_type': 'Bearer',
+    }
+    search_resp = _mock_response({'results': []})
+    provider = OpenverseProvider(
+        client_id='cid',
+        client_secret='csecret',
+    )
+
+    with (
+        patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=token_resp),
+        ) as post_mock,
+        patch(
+            'httpx.AsyncClient.get',
+            new=AsyncMock(return_value=search_resp),
+        ),
+    ):
+        await provider.search(
+            'a',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+        await provider.search(
+            'b',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    assert post_mock.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_token_override_skips_oauth_exchange() -> None:
+    """OPENVERSE_API_TOKEN override never hits the token endpoint."""
+    search_resp = _mock_response({'results': []})
+
+    with (
+        patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(),
+        ) as post_mock,
+        patch(
+            'httpx.AsyncClient.get',
+            new=AsyncMock(return_value=search_resp),
+        ) as get_mock,
+    ):
+        await OpenverseProvider(token='static-token').search(
+            'x',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    post_mock.assert_not_awaited()
+    assert (
+        get_mock.await_args.kwargs['headers']['Authorization']
+        == 'Bearer static-token'
+    )
+
+
+@pytest.mark.anyio
+async def test_anonymous_search_when_credentials_empty() -> None:
+    """Empty client credentials search without an Authorization header."""
+    search_resp = _mock_response({'results': []})
+
+    with (
+        patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(),
+        ) as post_mock,
+        patch(
+            'httpx.AsyncClient.get',
+            new=AsyncMock(return_value=search_resp),
+        ) as get_mock,
+    ):
+        await OpenverseProvider().search(
+            'x',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    post_mock.assert_not_awaited()
+    assert get_mock.await_args.kwargs['headers'] == {}
+
+
+@pytest.mark.anyio
+async def test_token_exchange_failure_raises_retryable() -> None:
+    """A failed token exchange surfaces as RetryableProviderError."""
+    token_resp = MagicMock()
+    token_resp.is_success = False
+    token_resp.status_code = 401
+    token_resp.text = 'invalid_client'
+
+    with patch(
+        'httpx.AsyncClient.post',
+        new=AsyncMock(return_value=token_resp),
+    ):
+        search = OpenverseProvider(
+            client_id='cid',
+            client_secret='bad',
+        ).search(
+            'x',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+        with pytest.raises(RetryableProviderError) as exc_info:
+            await search
+
+    assert exc_info.value.provider == 'openverse'
+    assert exc_info.value.status_code == 401
