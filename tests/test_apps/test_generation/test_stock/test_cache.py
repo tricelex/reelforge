@@ -47,6 +47,7 @@ async def test_cache_miss_calls_provider_and_stores() -> None:
     redis = MagicMock()
     redis.get = AsyncMock(return_value=None)
     redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
 
     with patch(
         'server.apps.generation.clients.stock.cache.get_redis',
@@ -64,6 +65,7 @@ async def test_cache_miss_calls_provider_and_stores() -> None:
     assert len(results) == 1
     provider.search.assert_awaited_once()
     redis.set.assert_awaited_once()
+    redis.aclose.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -77,6 +79,7 @@ async def test_cache_hit_skips_the_provider() -> None:
     redis = MagicMock()
     redis.get = AsyncMock(return_value=payload)
     redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
 
     with patch(
         'server.apps.generation.clients.stock.cache.get_redis',
@@ -93,6 +96,7 @@ async def test_cache_hit_skips_the_provider() -> None:
 
     assert len(results) == 1
     provider.search.assert_not_awaited()
+    redis.aclose.assert_awaited_once()
 
 
 def attrs_asdict_of(candidate: FootageCandidate) -> dict[str, object]:
@@ -104,16 +108,23 @@ def attrs_asdict_of(candidate: FootageCandidate) -> dict[str, object]:
     return data
 
 
+@pytest.mark.parametrize(
+    'raw_payload',
+    [b'not json', b'{}', b'[1]'],
+)
 @pytest.mark.anyio
-async def test_corrupt_cache_entry_falls_back_to_provider() -> None:
-    """Unparseable cached bytes must not break the search."""
+async def test_corrupt_cache_entry_falls_back_to_provider(
+    raw_payload: bytes,
+) -> None:
+    """Unusable cached bytes must not break the search."""
     provider = MagicMock()
     provider.name = 'pexels'
     provider.search = AsyncMock(return_value=[_candidate()])
 
     redis = MagicMock()
-    redis.get = AsyncMock(return_value=b'not json')
+    redis.get = AsyncMock(return_value=raw_payload)
     redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
 
     with patch(
         'server.apps.generation.clients.stock.cache.get_redis',
@@ -130,3 +141,4 @@ async def test_corrupt_cache_entry_falls_back_to_provider() -> None:
 
     assert len(results) == 1
     provider.search.assert_awaited_once()
+    redis.aclose.assert_awaited_once()
