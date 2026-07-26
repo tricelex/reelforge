@@ -47,6 +47,30 @@ def _channel_dict(channel: Any) -> dict[str, Any]:
     }
 
 
+def _footage_dict(channel: Any) -> dict[str, Any]:
+    """Expose footage sourcing settings to prompt templates."""
+    config = getattr(channel, 'footage_sourcing', None)
+    if config is None:
+        return {
+            'providers': [],
+            'sourcing_mode': 'stock_first',
+            'ai_fallback_enabled': True,
+            'min_width': 1280,
+            'attribution_required': True,
+        }
+    return {
+        'providers': list(getattr(config, 'enabled_providers', []) or []),
+        'sourcing_mode': getattr(config, 'sourcing_mode', 'stock_first'),
+        'ai_fallback_enabled': bool(
+            getattr(config, 'ai_fallback_enabled', True),
+        ),
+        'min_width': int(getattr(config, 'min_clip_width', 1280)),
+        'attribution_required': bool(
+            getattr(config, 'require_attribution', True),
+        ),
+    }
+
+
 def _default_format(channel: Any) -> dict[str, Any] | None:
     niche = getattr(channel, 'niche_config', None)
     if niche is None:
@@ -103,6 +127,7 @@ async def build_prompt_variables(
         'upstream': ctx.upstream,
         'config': ctx.config,
         'character': None,
+        'footage': _footage_dict(ctx.channel),
     }
     if include_character:
         variables['character'] = await _character_dict(str(ctx.run.id))

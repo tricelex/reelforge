@@ -20,7 +20,11 @@ class PromptRenderer:
 
     async def get_version_id(self, stage_key: str) -> str | None:
         """Return the PromptVersion UUID pinned for this stage, or None."""
-        return self._snapshot.get(stage_key)
+        nested = self._snapshot.get('prompts')
+        if isinstance(nested, dict) and stage_key in nested:
+            return str(nested[stage_key])
+        value = self._snapshot.get(stage_key)
+        return str(value) if value else None
 
     async def _get_prompt_version(
         self,
@@ -28,7 +32,10 @@ class PromptRenderer:
     ) -> 'PromptVersion | None':
         from server.apps.prompts.models import PromptVersion  # noqa: PLC0415
 
-        version_id = self._snapshot.get(stage_key)
+        nested = self._snapshot.get('prompts')
+        version_id = (
+            nested.get(stage_key) if isinstance(nested, dict) else None
+        ) or self._snapshot.get(stage_key)
         if version_id:
             try:
                 return await PromptVersion.objects.aget(id=version_id)
