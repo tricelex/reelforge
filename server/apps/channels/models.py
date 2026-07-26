@@ -31,6 +31,22 @@ class CharacterDesignMode(models.TextChoices):
     NONE = 'none', 'None'
 
 
+class SourcingMode(models.TextChoices):
+    """Which family of providers a channel prefers."""
+
+    STOCK_FIRST = 'stock_first', 'Stock first'
+    ARCHIVAL_FIRST = 'archival_first', 'Archival first'
+    BALANCED = 'balanced', 'Balanced'
+
+
+class RerankMode(models.TextChoices):
+    """How footage candidates are scored before selection."""
+
+    VISION = 'vision', 'Vision model'
+    METADATA = 'metadata', 'Metadata only'
+    NONE = 'none', 'No re-ranking'
+
+
 class CharacterStatus(models.TextChoices):
     """Lifecycle state of a Character."""
 
@@ -139,6 +155,13 @@ class Channel(UUIDModel, TimeStampedModel):
         except AssemblyStyleConfig.DoesNotExist:
             return []
         return list(style.sfx_pool_tags)
+
+    def footage_sourcing_or_default(self) -> 'FootageSourcingConfig':
+        """Return this channel's footage config, or unsaved defaults."""
+        try:
+            return self.footage_sourcing
+        except FootageSourcingConfig.DoesNotExist:
+            return FootageSourcingConfig(channel=self, id=None)
 
 
 class NicheConfig(UUIDModel, TimeStampedModel):
@@ -392,3 +415,59 @@ class CharacterGenerationSession(UUIDModel, TimeStampedModel):
     def __str__(self) -> str:
         """Return session identifier."""
         return f'Session for {self.character} ({self.created_at})'
+
+
+class FootageSourcingConfig(UUIDModel, TimeStampedModel):
+    """Per-channel stock/archival footage sourcing rules."""
+
+    channel = models.OneToOneField(
+        Channel,
+        on_delete=models.CASCADE,
+        related_name='footage_sourcing',
+    )
+    enabled_providers = ArrayField(
+        models.CharField(max_length=32),
+        default=list,
+        blank=True,
+        help_text='Ordered provider priority. Order is significant.',
+    )
+    sourcing_mode = models.CharField(
+        max_length=15,
+        choices=SourcingMode.choices,
+        default=SourcingMode.STOCK_FIRST,
+    )
+    ai_fallback_enabled = models.BooleanField(default=True)
+    rerank_mode = models.CharField(
+        max_length=10,
+        choices=RerankMode.choices,
+        default=RerankMode.VISION,
+    )
+    candidates_per_scene = models.PositiveSmallIntegerField(default=8)
+    min_clip_width = models.PositiveIntegerField(default=1280)
+    min_clip_duration_s = models.FloatField(default=3.0)
+    allowed_licenses = ArrayField(
+        models.CharField(max_length=40),
+        default=list,
+        blank=True,
+    )
+    require_attribution = models.BooleanField(default=True)
+
+    class Meta:
+        """Meta options for FootageSourcingConfig."""
+
+        verbose_name = 'Footage sourcing config'
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                name='channels_footagesourcing_mode_valid',
+                condition=models.Q(sourcing_mode__in=SourcingMode.values),
+            ),
+            models.CheckConstraint(
+                name='channels_footagesourcing_rerank_valid',
+                condition=models.Q(rerank_mode__in=RerankMode.values),
+            ),
+        ]
+
+    @override
+    def __str__(self) -> str:
+        """Return a reference to the parent channel."""
+        return f'FootageSourcingConfig for {self.channel}'
