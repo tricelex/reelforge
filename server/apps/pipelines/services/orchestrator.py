@@ -64,34 +64,59 @@ def _eval_condition(node: dict[str, Any], run: 'PipelineRun') -> bool:
     return False
 
 
-def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
-    """Create a SKIPPED StageExecution for a gate or disabled conditional."""
+def _promote_or_create_stage_sync(
+    run: 'PipelineRun',
+    stage_key: str,
+    status: str,
+) -> None:
+    """Promote a PENDING row to *status*, or create with the next attempt.
+
+    Rerun seeds PENDING downstream rows (including gates). Park/skip must
+    reuse those rows — creating attempt=0 always collides with
+    ``uq_stage_attempt`` when a PENDING/STALE row already exists.
+    """
     from server.apps.pipelines.models import (  # noqa: PLC0415
         StageExecution,
         StageStatus,
     )
 
+    pending = (
+        StageExecution.objects
+        .filter(
+            run=run,
+            stage_key=stage_key,
+            parent=None,
+            status=StageStatus.PENDING,
+        )
+        .order_by('-attempt')
+        .first()
+    )
+    if pending is not None:
+        pending.status = status
+        pending.save(update_fields=['status'])
+        return
+
     StageExecution.objects.create(
         run=run,
         stage_key=stage_key,
-        status=StageStatus.SKIPPED,
+        status=status,
+        attempt=_next_stage_attempt(run, stage_key),
         input_hash='',
     )
+
+
+def _mark_skipped_sync(run: 'PipelineRun', stage_key: str) -> None:
+    """Create a SKIPPED StageExecution for a gate or disabled conditional."""
+    from server.apps.pipelines.models import StageStatus  # noqa: PLC0415
+
+    _promote_or_create_stage_sync(run, stage_key, StageStatus.SKIPPED)
 
 
 def _park_gate_sync(run: 'PipelineRun', stage_key: str) -> None:
     """Park the run at AWAITING_REVIEW and open a gate StageExecution."""
-    from server.apps.pipelines.models import (  # noqa: PLC0415
-        RunStatus,
-        StageExecution,
-    )
+    from server.apps.pipelines.models import RunStatus  # noqa: PLC0415
 
-    StageExecution.objects.create(
-        run=run,
-        stage_key=stage_key,
-        status=GATE_PARKED_STATUS,
-        input_hash='',
-    )
+    _promote_or_create_stage_sync(run, stage_key, GATE_PARKED_STATUS)
     run.status = RunStatus.AWAITING_REVIEW
     run.save(update_fields=['status'])
     logger.info(
