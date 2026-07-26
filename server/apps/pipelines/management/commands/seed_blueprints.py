@@ -152,14 +152,114 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
 }
 
 
+_LONGFORM_DOC_V1_GRAPH: dict[str, object] = {
+    'profile': 'documentary_footage',
+    'stages': [
+        {'key': 'research', 'depends_on': [], 'queue': 'api'},
+        {'key': 'outline', 'depends_on': ['research'], 'queue': 'api'},
+        {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
+        {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
+        {
+            'key': 'script_gate',
+            'depends_on': ['scene_breakdown'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
+            'key': 'narrative_qc',
+            'depends_on': ['script_gate'],
+            'queue': 'api',
+        },
+        {
+            'key': 'footage_queries',
+            'depends_on': ['narrative_qc'],
+            'queue': 'api',
+        },
+        {
+            'key': 'footage_search',
+            'depends_on': ['footage_queries'],
+            'queue': 'api',
+            'fan_out': 'scenes',
+            'config': {'ai_model': 'fal-ai/flux/dev'},
+        },
+        {
+            'key': 'storyboard_gate',
+            'depends_on': ['footage_search'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {
+            'key': 'tts',
+            'depends_on': ['storyboard_gate'],
+            'queue': 'api',
+            'fan_out': 'chapters',
+            'config': {'provider': 'elevenlabs'},
+        },
+        {
+            'key': 'footage_prep',
+            'depends_on': ['storyboard_gate'],
+            'queue': 'render',
+            'fan_out': 'scenes',
+            'config': {
+                'target_width': 1920,
+                'target_height': 1080,
+                'fps': 30,
+            },
+        },
+        {
+            'key': 'alignment',
+            'depends_on': ['tts', 'scene_breakdown'],
+            'queue': 'api',
+        },
+        {
+            'key': 'music_plan',
+            'depends_on': ['narrative_qc'],
+            'queue': 'api',
+        },
+        {
+            'key': 'metadata',
+            'depends_on': ['script', 'alignment', 'footage_search'],
+            'queue': 'api',
+        },
+        {
+            'key': 'thumbnail',
+            'depends_on': ['metadata'],
+            'queue': 'api',
+            'config': {'candidates': 3},
+        },
+        {
+            'key': 'assembly',
+            'depends_on': [
+                'footage_prep',
+                'tts',
+                'alignment',
+                'music_plan',
+            ],
+            'queue': 'render',
+        },
+        {'key': 'qc', 'depends_on': ['assembly'], 'queue': 'render'},
+        {
+            'key': 'final_gate',
+            'depends_on': ['qc', 'thumbnail', 'metadata'],
+            'gate': True,
+            'queue': 'api',
+        },
+        {'key': 'publish', 'depends_on': ['final_gate'], 'queue': 'api'},
+    ],
+}
+
+
 class Command(BaseCommand):
     """Seed pipeline blueprints (idempotent upsert)."""
 
-    help = 'Seed pipeline blueprints (longform + clipping, idempotent)'
+    help = (
+        'Seed pipeline blueprints (longform, longform documentary + '
+        'clipping, idempotent)'
+    )
 
     @override
     def handle(self, *args: object, **options: object) -> None:
-        """Create or update the longform_v1 and clipping_v1* blueprints."""
+        """Create or update the longform, documentary, and clipping blueprints."""
         from server.apps.pipelines.models import (  # noqa: PLC0415
             PipelineBlueprint,
             PipelineKind,
@@ -167,6 +267,11 @@ class Command(BaseCommand):
 
         specs = [
             ('longform_v1', PipelineKind.LONGFORM, _LONGFORM_V1_GRAPH),
+            (
+                'longform_documentary_v1',
+                PipelineKind.LONGFORM,
+                _LONGFORM_DOC_V1_GRAPH,
+            ),
             ('clipping_v1', PipelineKind.CLIPPING, _CLIPPING_V1_GRAPH),
             (
                 'clipping_v1_manual',
