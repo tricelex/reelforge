@@ -139,6 +139,41 @@ def test_primary_query_hit_selects_a_candidate() -> None:
     assert len(result['candidates']) == 1
 
 
+def test_empty_providers_falls_back_to_defaults_before_search() -> None:
+    """Empty enabled_providers still builds the stock-first default list."""
+    from server.apps.channels.models import DEFAULT_ENABLED_PROVIDERS
+
+    ctx = _make_ctx()
+    ctx.channel.footage_sourcing_or_default.return_value.enabled_providers = []
+    built: list[str] = []
+
+    def _capture_build(names: object) -> list[object]:
+        built.extend(list(names))  # type: ignore[arg-type]
+        return []
+
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.build_providers',
+            side_effect=_capture_build,
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=AsyncMock(return_value={'url': 'https://e.test/ai.jpg'}),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._fetch_bytes',
+            new=AsyncMock(return_value=b'img'),
+        ),
+    ):
+        result = asyncio.run(FootageSearchStage().run(ctx))
+    assert built == list(DEFAULT_ENABLED_PROVIDERS)
+    assert result['source'] == 'ai_flux'
+
+
 def test_broadens_to_fallback_query_when_primary_is_empty() -> None:
     """An empty primary result retries with the broadened query."""
     ctx = _make_ctx()

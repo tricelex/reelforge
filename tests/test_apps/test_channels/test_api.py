@@ -65,6 +65,16 @@ def test_create_channel(
     body = response.json()
     assert body['name'] == 'New Channel'
     assert Channel.objects.filter(id=body['id']).exists()
+    from server.apps.channels.models import (  # noqa: PLC0415
+        DEFAULT_ENABLED_PROVIDERS,
+        FootageSourcingConfig,
+    )
+
+    sourcing = FootageSourcingConfig.objects.get(channel_id=body['id'])
+    assert sourcing.enabled_providers == list(DEFAULT_ENABLED_PROVIDERS)
+    assert body['footage_sourcing']['enabled_providers'] == list(
+        DEFAULT_ENABLED_PROVIDERS,
+    )
 
 
 @pytest.mark.django_db

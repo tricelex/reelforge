@@ -32,6 +32,7 @@ from server.apps.channels.logic.value_objects import (
     YouTubeStatusPayload,
 )
 from server.apps.channels.models import (
+    DEFAULT_ENABLED_PROVIDERS,
     _DEFAULT_CAMERA_MOVEMENTS,
     _DEFAULT_TRANSITION_STYLES,
     AssemblyStyleConfig,
@@ -248,6 +249,12 @@ class ChannelService:
             max_publishes_per_day=payload.max_publishes_per_day,
         )
         ChannelBranding.objects.get_or_create(channel=channel)
+        FootageSourcingConfig.objects.get_or_create(
+            channel=channel,
+            defaults={
+                'enabled_providers': list(DEFAULT_ENABLED_PROVIDERS),
+            },
+        )
         if payload.niche is not None:
             NicheConfig.objects.create(
                 channel=channel,
