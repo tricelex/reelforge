@@ -75,11 +75,16 @@ def _deserialize(raw: bytes) -> list[FootageCandidate] | None:
     """Decode cached bytes, returning None when the entry is unusable."""
     try:
         rows = json.loads(raw)
+        if not isinstance(rows, list):
+            raise TypeError('cached payload is not a list')
+        for row in rows:
+            if not isinstance(row, dict):
+                raise TypeError('cached row is not a dict')
         return [
             FootageCandidate(**{**row, 'tags': tuple(row.get('tags', []))})
             for row in rows
         ]
-    except (ValueError, TypeError) as exc:
+    except Exception as exc:
         logger.warning('footage_cache_corrupt', error=str(exc))
         return None
 
@@ -97,19 +102,22 @@ async def cached_search(
     """Search a provider, reading through a Redis cache."""
     key = _cache_key(provider.name, query, media_type, orientation, limit)
     redis = get_redis()
-    raw = await redis.get(key)
-    if raw:
-        cached = _deserialize(raw)
-        if cached is not None:
-            return cached
+    try:
+        raw = await redis.get(key)
+        if raw:
+            cached = _deserialize(raw)
+            if cached is not None:
+                return cached
 
-    async with _semaphore(provider.name):
-        results = await provider.search(
-            query,
-            media_type=media_type,
-            orientation=orientation,
-            min_width=min_width,
-            limit=limit,
-        )
-    await redis.set(key, _serialize(results), ex=ttl_s)
-    return results
+        async with _semaphore(provider.name):
+            results = await provider.search(
+                query,
+                media_type=media_type,
+                orientation=orientation,
+                min_width=min_width,
+                limit=limit,
+            )
+        await redis.set(key, _serialize(results), ex=ttl_s)
+        return results
+    finally:
+        await redis.aclose()
