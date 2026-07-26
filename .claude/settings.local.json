@@ -61,7 +61,12 @@
       "mcp__railway__get_service_config",
       "Bash(find /Users/chuckz/.cache/uv/archive-v0/ogQBua5ILAmUbkRk7ew6e/pyannoteai -type f -name \"*.py\" | sort)",
       "Read(//Users/chuckz/.cache/uv/archive-v0/ogQBua5ILAmUbkRk7ew6e/pyannoteai/**)",
-      "Bash(git show HEAD:tests/test_apps/test_rendering/test_speaker_detection.py > /tmp/old_test_speaker_detection.py 2>&1 *)"
+      "Bash(git show HEAD:tests/test_apps/test_rendering/test_speaker_detection.py > /tmp/old_test_speaker_detection.py 2>&1 *)",
+      "Read(//Users/chuckz/Code/29SignalsDev/**)",
+      "Read(//Users/chuckz/Code/**)",
+      "WebFetch(domain:api.openverse.org)",
+      "Bash(git add *)",
+      "Read(//Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/**)"
     ],
     "additionalDirectories": [
       "/tmp"
