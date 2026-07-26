@@ -1,6 +1,7 @@
 """Tests for per-channel footage sourcing configuration."""
 
 import pytest
+from django.contrib import admin
 
 from server.apps.channels.models import (
     Channel,
@@ -9,6 +10,11 @@ from server.apps.channels.models import (
     RerankMode,
     SourcingMode,
 )
+
+
+def test_footage_sourcing_config_is_registered_in_admin() -> None:
+    """Operators can manage footage sourcing rules in Django admin."""
+    assert admin.site.is_registered(FootageSourcingConfig)
 
 
 @pytest.fixture

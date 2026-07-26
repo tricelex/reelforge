@@ -49,7 +49,7 @@ class FootageProvider(Protocol):
 
 
 def is_commercially_usable(license_code: str) -> bool:
-    """Return False for NonCommercial or NoDerivatives licences.
+    """Return False for missing, unknown, NC, or ND licences.
 
     These channels are monetized and every clip is edited into a longer
     work, so ``nc`` (no commercial use) and ``nd`` (no derivative works)
@@ -60,8 +60,13 @@ def is_commercially_usable(license_code: str) -> bool:
     True
     >>> is_commercially_usable('by-nc-nd-2.0')
     False
+    >>> is_commercially_usable('unknown')
+    False
     """
-    parts = set(license_code.casefold().replace('_', '-').split('-'))
+    normalized = license_code.strip().casefold()
+    if not normalized or normalized == 'unknown':
+        return False
+    parts = set(normalized.replace('_', '-').split('-'))
     return not ({'nc', 'nd'} & parts)
 
 

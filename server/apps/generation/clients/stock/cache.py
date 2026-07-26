@@ -51,13 +51,14 @@ def _cache_key(
     query: str,
     media_type: MediaType,
     orientation: str,
+    min_width: int,
     limit: int,
 ) -> str:
     """Build the Redis key for one provider search."""
     normalized = normalize_query(query)
     return (
         f'footage:{provider_name}:{media_type}:'
-        f'{orientation}:{limit}:{normalized}'
+        f'{orientation}:{min_width}:{limit}:{normalized}'
     )
 
 
@@ -104,7 +105,14 @@ async def cached_search(
     ttl_s: int = _DEFAULT_TTL_S,
 ) -> list[FootageCandidate]:
     """Search a provider, reading through a Redis cache."""
-    key = _cache_key(provider.name, query, media_type, orientation, limit)
+    key = _cache_key(
+        provider.name,
+        query,
+        media_type,
+        orientation,
+        min_width,
+        limit,
+    )
     redis = get_redis()
     try:
         raw = await redis.get(key)

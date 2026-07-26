@@ -9,7 +9,7 @@ from django.test import Client
 from django.urls import reverse
 
 from server.apps.analytics.models import PublishJobMetric
-from server.apps.assets.models import Asset
+from server.apps.assets.models import Asset, FootageCredit
 from server.apps.ideas.models import NicheOutlierScan
 from server.apps.main.models import BlogPost
 
@@ -19,6 +19,7 @@ _RESTRICTED_ADMIN_ADD_MODELS = frozenset((
     AccessLog,
     AccessFailureLog,
     Asset,
+    FootageCredit,
     PublishJobMetric,
     NicheOutlierScan,
 ))

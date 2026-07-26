@@ -13,7 +13,10 @@ from server.apps.generation.clients.stock.archive_org import (
     _license_label,
     _optional_float,
 )
-from server.apps.generation.clients.stock.base import FootageCandidate
+from server.apps.generation.clients.stock.base import (
+    FootageCandidate,
+    passes_quality_floor,
+)
 from server.common.exceptions import RetryableProviderError
 
 _FIXTURES = Path(__file__).parent / 'fixtures'
@@ -94,6 +97,66 @@ async def test_search_maps_playable_mp4_candidate() -> None:
 
 
 @pytest.mark.anyio
+async def test_search_selects_highest_resolution_mp4_with_dimensions() -> None:
+    """A dimensionless first MP4 cannot hide a better declared rendition."""
+    search_payload = _load_fixture()
+    response = cast(dict[str, object], search_payload['response'])
+    docs = cast(list[dict[str, object]], response['docs'])
+    response['docs'] = [docs[1]]
+    metadata_payload: dict[str, object] = {
+        'files': [
+            {'name': 'first.mp4'},
+            {'name': 'medium.mp4', 'width': '1280', 'height': '720'},
+            {'name': 'highest.mp4', 'width': '1920', 'height': '1080'},
+        ],
+    }
+
+    results = await _search_with_responses(
+        _mock_response(search_payload),
+        _mock_response(metadata_payload),
+    )
+
+    assert len(results) == 1
+    assert results[0].download_url.endswith('/highest.mp4')
+    assert results[0].width == 1920
+    assert results[0].height == 1080
+
+
+@pytest.mark.parametrize(
+    ('length', 'expected_duration_s'),
+    [('1:02:03', 3723.0), ('2:03', 123.0)],
+)
+@pytest.mark.anyio
+async def test_search_parses_colon_separated_duration(
+    length: str,
+    expected_duration_s: float,
+) -> None:
+    """Archive clock durations map to seconds."""
+    search_payload = _load_fixture()
+    response = cast(dict[str, object], search_payload['response'])
+    docs = cast(list[dict[str, object]], response['docs'])
+    response['docs'] = [docs[1]]
+    metadata_payload: dict[str, object] = {
+        'files': [
+            {
+                'name': 'clock-duration.mp4',
+                'width': '1920',
+                'height': '1080',
+                'length': length,
+            },
+        ],
+    }
+
+    results = await _search_with_responses(
+        _mock_response(search_payload),
+        _mock_response(metadata_payload),
+    )
+
+    assert len(results) == 1
+    assert results[0].duration_s == expected_duration_s
+
+
+@pytest.mark.anyio
 async def test_missing_license_defaults_to_unknown_and_attribution() -> None:
     """An omitted archive.org license errs toward requiring attribution."""
     search_payload = _load_fixture()
@@ -101,7 +164,9 @@ async def test_missing_license_defaults_to_unknown_and_attribution() -> None:
     docs = cast(list[dict[str, object]], response['docs'])
     response['docs'] = [docs[0]]
     metadata_payload: dict[str, object] = {
-        'files': [{'name': 'clip.mp4'}],
+        'files': [
+            {'name': 'clip.mp4', 'width': '1920', 'height': '1080'},
+        ],
     }
 
     results = await _search_with_responses(
@@ -112,6 +177,12 @@ async def test_missing_license_defaults_to_unknown_and_attribution() -> None:
     assert results[0].license == 'unknown'
     assert results[0].license_url == ''
     assert results[0].attribution_required is True
+    assert not passes_quality_floor(
+        results[0],
+        min_width=1280,
+        min_duration_s=0.0,
+        allowed_licenses=[],
+    )
 
 
 @pytest.mark.anyio

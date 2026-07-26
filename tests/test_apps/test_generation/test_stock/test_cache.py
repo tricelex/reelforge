@@ -69,6 +69,38 @@ async def test_cache_miss_calls_provider_and_stores() -> None:
 
 
 @pytest.mark.anyio
+async def test_cache_key_separates_minimum_widths() -> None:
+    """Searches with different width floors use separate cache entries."""
+    provider = MagicMock()
+    provider.name = 'pexels'
+    provider.search = AsyncMock(return_value=[_candidate()])
+
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
+
+    with patch(
+        'server.apps.generation.clients.stock.cache.get_redis',
+        return_value=redis,
+    ):
+        for min_width in (1280, 1920):
+            await cached_search(
+                provider,
+                'ocean waves',
+                media_type='video',
+                orientation='landscape',
+                min_width=min_width,
+                limit=3,
+            )
+
+    cache_keys = [call.args[0] for call in redis.get.await_args_list]
+    assert cache_keys[0] != cache_keys[1]
+    assert ':1280:' in cache_keys[0]
+    assert ':1920:' in cache_keys[1]
+
+
+@pytest.mark.anyio
 async def test_cache_hit_skips_the_provider() -> None:
     """A cached payload is returned without spending provider quota."""
     provider = MagicMock()

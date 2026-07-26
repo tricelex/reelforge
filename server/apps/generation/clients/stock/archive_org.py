@@ -1,9 +1,11 @@
 """Internet Archive provider for archival video.
 
 Search results identify archive items; a metadata request then locates the
-first playable MP4 file for each item. No API key is required.
+best declared-resolution MP4 file for each item. No API key is required.
 """
 
+import math
+import re
 from typing import Any, final
 from urllib.parse import quote, urlparse
 
@@ -22,6 +24,10 @@ _DETAILS_URL = 'https://archive.org/details'
 _THUMB_URL = 'https://archive.org/services/img'
 _TIMEOUT_S = 25.0
 _MAX_FILES_PER_ITEM = 10_000
+_CLOCK_DURATION_RE = re.compile(
+    r'^(?:(?P<hours>\d+):)?'
+    r'(?P<minutes>\d+):(?P<seconds>\d+(?:\.\d+)?)$',
+)
 
 
 def _license_label(license_url: str) -> str:
@@ -51,22 +57,62 @@ def _integer(value: object) -> int:
         return 0
     try:
         return int(value)
-    except ValueError:
+    except (OverflowError, ValueError):
         return 0
+
+
+def _clock_duration(value: str) -> float | None:
+    """Convert an H:MM:SS or M:SS duration to seconds."""
+    match = _CLOCK_DURATION_RE.fullmatch(value)
+    if match is None:
+        return None
+    hours_text = match.group('hours')
+    hours = int(hours_text or 0)
+    minutes = int(match.group('minutes'))
+    seconds = float(match.group('seconds'))
+    if not math.isfinite(seconds) or seconds >= 60:
+        return None
+    if hours_text is not None and minutes >= 60:
+        return None
+    return (hours * 3600) + (minutes * 60) + seconds
+
+
+def _numeric_duration(value: str | int | float) -> float | None:
+    """Convert a scalar duration to finite non-negative seconds."""
+    try:
+        duration = float(value)
+    except ValueError:
+        return None
+    if not math.isfinite(duration) or duration < 0:
+        return None
+    return duration
 
 
 def _optional_float(value: object) -> float | None:
     """Convert optional duration metadata, preserving an absent value."""
-    if value is None:
-        return None
-    if isinstance(value, str) and not value:
-        return None
-    if not isinstance(value, (str, int, float)):
-        return None
-    try:
-        return float(value)
-    except ValueError:
-        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return (
+            _clock_duration(stripped)
+            if ':' in stripped
+            else _numeric_duration(stripped)
+        )
+    if isinstance(value, (int, float)):
+        return _numeric_duration(value)
+    return None
+
+
+def _mp4_pixels(file_info: object) -> tuple[dict[str, Any] | None, int]:
+    """Return an MP4 metadata row and its declared pixel count."""
+    if not isinstance(file_info, dict):
+        return None, 0
+    name = str(file_info.get('name', ''))
+    if not name.casefold().endswith('.mp4'):
+        return None, 0
+    width = _integer(file_info.get('width'))
+    height = _integer(file_info.get('height'))
+    pixels = width * height if width > 0 and height > 0 else 0
+    return file_info, pixels
 
 
 @final
@@ -84,7 +130,7 @@ class ArchiveOrgProvider:
         min_width: int,
         limit: int,
     ) -> list[FootageCandidate]:
-        """Search archive.org and resolve each item to its first MP4."""
+        """Search archive.org and resolve each item to its best MP4."""
         del orientation, min_width
         if media_type != 'video':
             return []
@@ -110,28 +156,38 @@ class ArchiveOrgProvider:
         client: httpx.AsyncClient,
         doc: dict[str, Any],
     ) -> FootageCandidate | None:
-        """Fetch item metadata and map its first MP4, if present."""
+        """Fetch item metadata and map its best MP4, if present."""
         identifier = str(doc['identifier'])
         response = await client.get(
             f'{_METADATA_URL}/{quote(identifier, safe="")}',
         )
         self._raise_for_error(response, f'metadata for {identifier}')
-        files = response.json().get('files') or []
-        mp4_file = self._first_mp4(files)
+        metadata = response.json()
+        files = metadata.get('files') if isinstance(metadata, dict) else None
+        mp4_file = self._best_mp4(files)
         if mp4_file is None:
             return None
         return self._candidate(doc, mp4_file)
 
-    def _first_mp4(
+    def _best_mp4(
         self,
-        files: list[dict[str, Any]],
+        files: object,
     ) -> dict[str, Any] | None:
-        """Return the first named MP4 within the bounded metadata file list."""
+        """Return the highest-resolution MP4 with declared dimensions."""
+        if not isinstance(files, list):
+            return None
+        fallback: dict[str, Any] | None = None
+        best: dict[str, Any] | None = None
+        best_pixels = 0
         for file_info in files[:_MAX_FILES_PER_ITEM]:
-            name = str(file_info.get('name', ''))
-            if name.casefold().endswith('.mp4'):
-                return file_info
-        return None
+            mp4_file, pixels = _mp4_pixels(file_info)
+            if mp4_file is None:
+                continue
+            fallback = fallback or mp4_file
+            if pixels > best_pixels:
+                best = mp4_file
+                best_pixels = pixels
+        return best or fallback
 
     def _candidate(
         self,
