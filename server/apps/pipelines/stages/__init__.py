@@ -13,6 +13,7 @@ from server.apps.pipelines.stages import (
     clip_render,  # noqa: F401
     clip_transcribe,  # noqa: F401
     final_gate,  # noqa: F401
+    footage_prep,  # noqa: F401
     footage_queries,  # noqa: F401
     footage_search,  # noqa: F401
     image_gen,  # noqa: F401
