@@ -131,6 +131,9 @@ ignore_imports =
   # Pipeline selectors read Asset/LibraryAsset for presigned URLs and transcripts
   server.apps.pipelines.run_asset_selectors -> server.apps.assets.models
   server.apps.pipelines.storyboard_selectors -> server.apps.assets.models
+  # Documentary review adapter presigns footage assets, same pattern as
+  # storyboard_selectors above.
+  server.apps.pipelines.review.documentary -> server.apps.assets.models
   server.apps.pipelines.stages.clip_transcribe -> server.apps.assets.models
   server.apps.pipelines.clip_selectors -> server.apps.assets.models
   # Pipeline run-cast service and views use Channel character studio + value objects
