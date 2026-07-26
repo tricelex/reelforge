@@ -34,3 +34,8 @@ Plans (in order):
   test_build_scene_asset_map_queries_footage_prep_children (27/27 pass).
   Minor deferred: `blueprint_snapshot or {}` guard is redundant (harmless,
   matches existing precedent in selectors.py).
+
+### LANDMINE for all agents
+`pyproject.toml` sets ruff `fix = true`. Running `ruff check .` AUTO-EDITS
+unrelated files across the repo. Always scope it (`ruff check <path>`) or pass
+`--no-fix`. Task F3's agent hit this and had to revert 10 files.
