@@ -1,0 +1,87 @@
+{
+  "_doc_derived": true,
+  "_source": "https://pixabay.com/api/docs/",
+  "_captured": "2026-07-26 — from docs, NOT a live response",
+  "total": 3,
+  "totalHits": 3,
+  "hits": [
+    {
+      "id": 31377,
+      "pageURL": "https://pixabay.com/videos/id-31377/",
+      "type": "film",
+      "tags": "ocean, wave, sea",
+      "duration": 12,
+      "videos": {
+        "large": {
+          "url": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_large.mp4",
+          "width": 1920,
+          "height": 1080,
+          "size": 22345678,
+          "thumbnail": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_large.jpg"
+        },
+        "medium": {
+          "url": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_medium.mp4",
+          "width": 1280,
+          "height": 720,
+          "size": 12345678,
+          "thumbnail": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_medium.jpg"
+        },
+        "small": {
+          "url": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_small.mp4",
+          "width": 960,
+          "height": 540,
+          "size": 6234567,
+          "thumbnail": "https://cdn.pixabay.com/video/2020/04/18/31377-411640780_small.jpg"
+        }
+      },
+      "user_id": 12345,
+      "user": "OceanMaker",
+      "userImageURL": "https://cdn.pixabay.com/user/2020/04/18/avatar.jpg"
+    },
+    {
+      "id": 85734,
+      "pageURL": "https://pixabay.com/videos/id-85734/",
+      "type": "film",
+      "tags": "coast, water, aerial",
+      "duration": 20,
+      "videos": {
+        "large": {
+          "url": "https://cdn.pixabay.com/video/2021/10/08/85734-628344310_large.mp4",
+          "width": 3840,
+          "height": 2160,
+          "size": 42345678,
+          "thumbnail": "https://cdn.pixabay.com/video/2021/10/08/85734-628344310_large.jpg"
+        },
+        "medium": {
+          "url": "https://cdn.pixabay.com/video/2021/10/08/85734-628344310_medium.mp4",
+          "width": 1920,
+          "height": 1080,
+          "size": 22345678,
+          "thumbnail": "https://cdn.pixabay.com/video/2021/10/08/85734-628344310_medium.jpg"
+        }
+      },
+      "user_id": 67890,
+      "user": "CoastalView",
+      "userImageURL": "https://cdn.pixabay.com/user/2021/10/08/avatar.jpg"
+    },
+    {
+      "id": 152001,
+      "pageURL": "https://pixabay.com/videos/id-152001/",
+      "type": "film",
+      "tags": "underwater, coral, fish",
+      "duration": 9,
+      "videos": {
+        "small": {
+          "url": "https://cdn.pixabay.com/video/2023/02/01/152001-794211020_small.mp4",
+          "width": 960,
+          "height": 540,
+          "size": 5234567,
+          "thumbnail": "https://cdn.pixabay.com/video/2023/02/01/152001-794211020_small.jpg"
+        }
+      },
+      "user_id": 24680,
+      "user": "ReefCamera",
+      "userImageURL": "https://cdn.pixabay.com/user/2023/02/01/avatar.jpg"
+    }
+  ]
+}

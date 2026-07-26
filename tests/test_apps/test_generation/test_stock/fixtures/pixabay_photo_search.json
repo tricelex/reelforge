@@ -1,0 +1,57 @@
+{
+  "_doc_derived": true,
+  "_source": "https://pixabay.com/api/docs/",
+  "_captured": "2026-07-26 — from docs, NOT a live response",
+  "total": 3,
+  "totalHits": 3,
+  "hits": [
+    {
+      "id": 736885,
+      "pageURL": "https://pixabay.com/photos/ocean-sea-waves-water-736885/",
+      "type": "photo",
+      "tags": "ocean, sea, waves",
+      "previewURL": "https://cdn.pixabay.com/photo/2015/04/23/22/00/ocean-736885_150.jpg",
+      "previewWidth": 150,
+      "previewHeight": 84,
+      "largeImageURL": "https://pixabay.com/get/ocean-736885_1280.jpg",
+      "imageWidth": 4288,
+      "imageHeight": 2416,
+      "imageSize": 2862345,
+      "user_id": 909086,
+      "user": "Pexels",
+      "userImageURL": "https://cdn.pixabay.com/user/2015/04/23/avatar.jpg"
+    },
+    {
+      "id": 3605547,
+      "pageURL": "https://pixabay.com/photos/beach-sea-sunset-sun-ocean-3605547/",
+      "type": "photo",
+      "tags": "beach, sea, sunset",
+      "previewURL": "https://cdn.pixabay.com/photo/2018/08/14/13/23/ocean-3605547_150.jpg",
+      "previewWidth": 150,
+      "previewHeight": 100,
+      "largeImageURL": "https://pixabay.com/get/ocean-3605547_1280.jpg",
+      "imageWidth": 5472,
+      "imageHeight": 3648,
+      "imageSize": 4234567,
+      "user_id": 12019,
+      "user": "Free-Photos",
+      "userImageURL": "https://cdn.pixabay.com/user/2018/08/14/avatar.jpg"
+    },
+    {
+      "id": 1867285,
+      "pageURL": "https://pixabay.com/photos/sea-sunset-boat-dusk-ocean-1867285/",
+      "type": "photo",
+      "tags": "sea, sunset, boat",
+      "previewURL": "https://cdn.pixabay.com/photo/2016/11/29/05/56/ocean-1867285_150.jpg",
+      "previewWidth": 150,
+      "previewHeight": 100,
+      "largeImageURL": "https://pixabay.com/get/ocean-1867285_1280.jpg",
+      "imageWidth": 6000,
+      "imageHeight": 4000,
+      "imageSize": 5234567,
+      "user_id": 2286921,
+      "user": "Quangpraha",
+      "userImageURL": "https://cdn.pixabay.com/user/2016/11/29/avatar.jpg"
+    }
+  ]
+}
