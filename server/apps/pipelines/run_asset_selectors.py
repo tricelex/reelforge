@@ -17,7 +17,12 @@ if TYPE_CHECKING:
     from server.apps.assets.models import Asset
     from server.apps.pipelines.models import StageExecution
 
-_SCENE_LABEL_STAGES = frozenset({'image_gen', 'motion'})
+_SCENE_LABEL_STAGES = frozenset({
+    'image_gen',
+    'motion',
+    'footage_search',
+    'footage_prep',
+})
 _STATIC_LABELS = {
     'assembly': 'assembled video',
     'thumbnail': 'thumbnail',

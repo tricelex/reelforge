@@ -60,6 +60,9 @@ _KNOWN_STAGE_KEYS: Final[frozenset[str]] = frozenset({
     'clip_approval',
     'clip_approval_gate',
     'clip_distribute',
+    'footage_queries',
+    'footage_search',
+    'footage_prep',
 })
 
 
