@@ -527,6 +527,7 @@ def test_build_context_prefetches_channel_relations_for_async_stages() -> None:
         Channel,
         ChannelBranding,
         ChannelKind,
+        FootageSourcingConfig,
         NicheConfig,
     )
     from server.apps.pipelines.models import (
@@ -537,6 +538,9 @@ def test_build_context_prefetches_channel_relations_for_async_stages() -> None:
         StageStatus,
     )
     from server.apps.pipelines.services.context import build_context
+    from server.apps.pipelines.services.prompt_variables import (
+        build_prompt_variables,
+    )
 
     async def _inner() -> None:
         bp = await PipelineBlueprint.objects.acreate(
@@ -567,6 +571,14 @@ def test_build_context_prefetches_channel_relations_for_async_stages() -> None:
             transition_styles=['hard_cut'],
             sfx_pool_tags=['whoosh'],
         )
+        await FootageSourcingConfig.objects.acreate(
+            channel=ch,
+            enabled_providers=['pexels'],
+            sourcing_mode='stock_first',
+            ai_fallback_enabled=True,
+            min_clip_width=1920,
+            require_attribution=True,
+        )
         ctx_run = await PipelineRun.objects.acreate(
             channel=ch,
             blueprint=bp,
@@ -586,6 +598,14 @@ def test_build_context_prefetches_channel_relations_for_async_stages() -> None:
         }
         assert ctx.channel.assembly_style_camera_movements == ['push_in']
         assert ctx.channel.assembly_style_sfx_pool_tags == ['whoosh']
+        assert ctx.channel.footage_sourcing.enabled_providers == ['pexels']
+        assert ctx.channel.footage_sourcing.min_clip_width == 1920
+        variables = await build_prompt_variables(
+            ctx,
+            include_character=False,
+        )
+        assert variables['footage']['providers'] == ['pexels']
+        assert variables['footage']['min_width'] == 1920
 
     _run(_inner())
 
@@ -604,6 +624,9 @@ def test_build_context_minimal_channel_avoids_sync_orm() -> None:
         StageStatus,
     )
     from server.apps.pipelines.services.context import build_context
+    from server.apps.pipelines.services.prompt_variables import (
+        build_prompt_variables,
+    )
 
     async def _inner() -> None:
         bp = await PipelineBlueprint.objects.acreate(
@@ -637,6 +660,15 @@ def test_build_context_minimal_channel_avoids_sync_orm() -> None:
             _ = ctx.channel.niche_config
         except ObjectDoesNotExist:
             pass
+        # Missing footage_sourcing must not raise SynchronousOnlyOperation.
+        config = ctx.channel.footage_sourcing_or_default()
+        assert config.enabled_providers == []
+        variables = await build_prompt_variables(
+            ctx,
+            include_character=False,
+        )
+        assert variables['footage']['providers'] == []
+        assert variables['footage']['sourcing_mode'] == 'stock_first'
 
     _run(_inner())
 

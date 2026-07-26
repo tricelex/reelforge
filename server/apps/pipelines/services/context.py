@@ -33,6 +33,7 @@ _CHANNEL_RELATIONS = (
     'channel__branding',
     'channel__branding__watermark',
     'channel__assembly_style',
+    'channel__footage_sourcing',
 )
 
 
