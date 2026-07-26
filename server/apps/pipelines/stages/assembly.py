@@ -58,7 +58,6 @@ def _effective_music_gain_db(
     return _clamp_music_gain_db(channel_bed_gain_db)
 
 
-
 def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
     """Cycle through the channel's transition-style pool by chapter index."""
     return pick_cyclic(pool, chapter_idx, _DEFAULT_TRANSITION)
@@ -82,8 +81,18 @@ def _build_music_map(
     return {e['chapter_idx']: e for e in entries}
 
 
+def _resolve_segment_stage(ctx: StageContext) -> str:
+    """Return the stage key that produced this run's video segments."""
+    from server.apps.pipelines.logic.blueprint_profiles import (  # noqa: PLC0415
+        SEGMENT_STAGE,
+        resolve_role,
+    )
+
+    return resolve_role(ctx.run.blueprint_snapshot or {}, SEGMENT_STAGE)
+
+
 async def _build_scene_asset_map(ctx: StageContext) -> dict[int, str]:
-    """Return {scene_idx: asset_id} from motion stage child executions in DB."""
+    """Return {scene_idx: asset_id} from the run's segment stage children."""
     from server.apps.pipelines.models import (  # noqa: PLC0415
         StageExecution,
         StageStatus,
@@ -92,7 +101,7 @@ async def _build_scene_asset_map(ctx: StageContext) -> dict[int, str]:
     scene_map: dict[int, str] = {}
     async for child in StageExecution.objects.filter(
         run=ctx.run,
-        stage_key='motion',
+        stage_key=_resolve_segment_stage(ctx),
         parent__isnull=False,
         status=StageStatus.SUCCEEDED,
     ).order_by('shard_index'):

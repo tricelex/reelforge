@@ -842,3 +842,28 @@ def test_assembly_run_fails_when_scene_idx_missing() -> None:
 
     with pytest.raises(ValueError, match='missing scene_idx'):
         asyncio.run(_run())
+
+
+def test_build_scene_asset_map_defaults_to_motion() -> None:
+    """A blueprint with no profile still reads motion shard outputs."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.stages.assembly import _resolve_segment_stage
+
+    ctx = MagicMock()
+    ctx.run.blueprint_snapshot = {'stages': []}
+    assert _resolve_segment_stage(ctx) == 'motion'
+
+
+def test_build_scene_asset_map_uses_documentary_segment_stage() -> None:
+    """A documentary blueprint reads footage_prep shard outputs instead."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.stages.assembly import _resolve_segment_stage
+
+    ctx = MagicMock()
+    ctx.run.blueprint_snapshot = {
+        'stages': [],
+        'profile': 'documentary_footage',
+    }
+    assert _resolve_segment_stage(ctx) == 'footage_prep'
