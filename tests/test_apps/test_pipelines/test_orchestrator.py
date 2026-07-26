@@ -1180,6 +1180,179 @@ def test_advance_pipeline_parks_run_at_awaiting_review_for_armed_gate():
 
 
 @pytest.mark.django_db(transaction=True)
+def test_advance_parks_pending_gate_seeded_by_rerun_without_uq_collision():
+    """Rerun-seeded PENDING gate must promote, not insert attempt=0 again."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        RunStatus,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    channel = Channel.objects.create(
+        name='Rerun Gate Channel',
+        kind=ChannelKind.LONGFORM,
+        gates=['script_gate'],
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='gate_rerun_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {
+                    'key': 'script',
+                    'depends_on': [],
+                    'queue': 'api',
+                },
+                {
+                    'key': 'script_gate',
+                    'depends_on': ['script'],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='rerun park gate',
+    )
+    # Prior park / STALE attempt=0 occupies uq_stage_attempt.
+    StageExecution.objects.create(
+        run=run,
+        stage_key='script_gate',
+        status=StageStatus.STALE,
+        attempt=0,
+    )
+    # Rerun seeds PENDING at the next attempt (same as _seed_pending_downstream).
+    pending = StageExecution.objects.create(
+        run=run,
+        stage_key='script_gate',
+        status=StageStatus.PENDING,
+        attempt=1,
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='script',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    run.refresh_from_db()
+    assert run.status == RunStatus.AWAITING_REVIEW
+    pending.refresh_from_db()
+    assert pending.status == StageStatus.NEEDS_INPUT
+    assert (
+        StageExecution.objects.filter(
+            run=run,
+            stage_key='script_gate',
+            status=StageStatus.NEEDS_INPUT,
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_advance_skips_pending_unarmed_gate_without_uq_collision():
+    """Unarmed gate with a PENDING seed promotes to SKIPPED, not a new row."""
+    from unittest.mock import AsyncMock, patch
+
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.pipelines.models import (
+        PipelineBlueprint,
+        PipelineKind,
+        PipelineRun,
+        StageExecution,
+        StageStatus,
+    )
+    from server.apps.pipelines.services.orchestrator import (
+        advance_pipeline_impl,
+    )
+
+    channel = Channel.objects.create(
+        name='Skip Pending Gate',
+        kind=ChannelKind.LONGFORM,
+        gates=[],
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='gate_skip_pending_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {
+                    'key': 'final_gate',
+                    'depends_on': [],
+                    'gate': True,
+                    'queue': 'api',
+                },
+            ],
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='skip pending gate',
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='final_gate',
+        status=StageStatus.STALE,
+        attempt=0,
+    )
+    pending = StageExecution.objects.create(
+        run=run,
+        stage_key='final_gate',
+        status=StageStatus.PENDING,
+        attempt=1,
+    )
+
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    pending.refresh_from_db()
+    assert pending.status == StageStatus.SKIPPED
+    assert (
+        StageExecution.objects.filter(
+            run=run,
+            stage_key='final_gate',
+        ).count()
+        == 2
+    )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_advance_pipeline_skips_unarmed_gate():
     """A gate NOT in channel.gates is auto-skipped."""
     from unittest.mock import AsyncMock, patch
