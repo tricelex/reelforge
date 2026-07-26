@@ -19,6 +19,7 @@ from server.apps.channels.models import (
     CharacterGenerationSession,
     CharacterSheetItem,
     CharacterStatus,
+    FootageSourcingConfig,
     NicheConfig,
     YouTubeCredential,
 )
@@ -175,6 +176,30 @@ class AssemblyStyleConfigAdmin(ReelForgeAdmin):
         'min_cuts_per_minute',
         'max_cuts_per_minute',
         'music_bed_gain_db',
+    )
+    search_fields = ('channel__name',)
+    autocomplete_fields = ('channel',)
+
+
+@admin.register(FootageSourcingConfig)
+class FootageSourcingConfigAdmin(ReelForgeAdmin):
+    """Admin panel for FootageSourcingConfig."""
+
+    list_display = (
+        'channel',
+        'sourcing_mode',
+        'enabled_providers',
+        'rerank_mode',
+        'ai_fallback_enabled',
+        'min_clip_width',
+        'min_clip_duration_s',
+        'require_attribution',
+    )
+    list_filter = (
+        ('sourcing_mode', ChoicesCheckboxFilter),
+        ('rerank_mode', ChoicesCheckboxFilter),
+        ('ai_fallback_enabled', ChoicesCheckboxFilter),
+        ('require_attribution', ChoicesCheckboxFilter),
     )
     search_fields = ('channel__name',)
     autocomplete_fields = ('channel',)

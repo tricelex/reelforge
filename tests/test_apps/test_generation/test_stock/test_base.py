@@ -108,6 +108,26 @@ def test_license_allowlist_is_enforced_when_set() -> None:
     )
 
 
+def test_unknown_license_is_always_rejected_case_insensitively() -> None:
+    """Unknown licensing cannot satisfy the commercial-use floor."""
+    assert not passes_quality_floor(
+        _candidate(license='UnKnOwN'),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=['UnKnOwN'],
+    )
+
+
+def test_empty_license_is_always_rejected() -> None:
+    """Missing licensing cannot satisfy the commercial-use floor."""
+    assert not passes_quality_floor(
+        _candidate(license=''),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=[],
+    )
+
+
 def test_noncommercial_is_always_rejected() -> None:
     """NC content cannot be used on a monetized channel, allowlist or not."""
     assert not passes_quality_floor(

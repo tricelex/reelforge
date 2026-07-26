@@ -15,6 +15,7 @@ from unfold.contrib.filters.admin import (
 from server.apps.assets.models import (
     Asset,
     AssetRendition,
+    FootageCredit,
     LibraryAsset,
     LibraryAssetLicense,
 )
@@ -193,6 +194,62 @@ class AssetAdmin(ReelForgeAdmin):
         obj: Asset | None = None,
     ) -> bool:
         """Generated assets are immutable in admin."""
+        return False
+
+
+@admin.register(FootageCredit)
+class FootageCreditAdmin(ReelForgeAdmin):
+    """Admin panel for pipeline-created footage provenance (read-only)."""
+
+    list_display = (
+        'asset',
+        'provider',
+        'license',
+        'scene_idx',
+        'run',
+        'attribution_required',
+        'created_at',
+    )
+    list_filter = (
+        ('run', AutocompleteSelectFilter),
+        ('attribution_required', ChoicesCheckboxFilter),
+        ('created_at', RangeDateTimeFilter),
+    )
+    search_fields = (
+        'asset__checksum',
+        'run__topic',
+        'provider',
+        'license',
+        'author',
+        'title',
+        'source_url',
+    )
+    list_select_related: ClassVar = ('asset', 'run')
+    readonly_fields: ClassVar = (
+        'asset',
+        'run',
+        'scene_idx',
+        'provider',
+        'license',
+        'license_url',
+        'author',
+        'source_url',
+        'title',
+        'attribution_required',
+        'created_at',
+        'updated_at',
+    )
+
+    def has_add_permission(self, request: object) -> bool:
+        """Footage credits are created by the sourcing pipeline only."""
+        return False
+
+    def has_change_permission(
+        self,
+        request: object,
+        obj: FootageCredit | None = None,
+    ) -> bool:
+        """Footage provenance is immutable in admin."""
         return False
 
 

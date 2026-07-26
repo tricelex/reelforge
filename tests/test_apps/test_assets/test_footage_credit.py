@@ -1,9 +1,15 @@
 """Tests for FOOTAGE asset kind and the FootageCredit provenance row."""
 
 import pytest
+from django.contrib import admin
 from django.core.files.base import ContentFile
 
 from server.apps.assets.models import Asset, AssetKind, FootageCredit
+
+
+def test_footage_credit_is_registered_in_admin() -> None:
+    """Operators can inspect footage provenance in Django admin."""
+    assert admin.site.is_registered(FootageCredit)
 
 
 @pytest.mark.django_db
