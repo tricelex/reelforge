@@ -4,11 +4,14 @@ import operator
 from functools import lru_cache
 from typing import Any, override
 
+from asgiref.sync import sync_to_async
 from pydantic_ai import Agent, RunContext
 
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
 from server.apps.generation.logic.stage_model import resolve_stage_model
+from server.apps.pipelines.footage_selectors import get_run_credits
+from server.apps.pipelines.logic.value_objects import RunCreditsPayload
 from server.apps.pipelines.schemas import VideoMetadata
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
@@ -18,6 +21,26 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+
+
+def _load_credits_sync(run_id: str) -> RunCreditsPayload:
+    return get_run_credits(run_id)
+
+
+_load_credits = sync_to_async(_load_credits_sync)
+
+
+def _credits_block(run_credits: RunCreditsPayload) -> str:
+    """Render the attribution block appended to the description."""
+    if not run_credits.entries:
+        return ''
+    lines = ['', 'Footage credits:']
+    for entry in run_credits.entries:
+        author = f' by {entry.author}' if entry.author else ''
+        lines.append(
+            f'- {entry.title}{author} ({entry.license}) — {entry.source_url}',
+        )
+    return '\n'.join(lines)
 
 
 @lru_cache(maxsize=4)
@@ -31,7 +54,10 @@ def _agent(model: str) -> Agent[StageContext, VideoMetadata]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        variables = await build_prompt_variables(
+            ctx.deps,
+            include_character=False,
+        )
         sys, _ = await ctx.deps.prompts.render('metadata', variables)
         return sys or (
             'You are a YouTube SEO specialist. '
@@ -117,4 +143,15 @@ class MetadataStage(Stage):
             stage_key=self.key,
             model_slug=model_slug,
         )
-        return output.model_dump()
+        from server.apps.pipelines.logic.blueprint_profiles import (  # noqa: PLC0415
+            resolve_profile_key,
+        )
+
+        result = output.model_dump()
+        profile = resolve_profile_key(ctx.run.blueprint_snapshot or {})
+        if profile == 'documentary_footage':
+            run_credits = await _load_credits(str(ctx.run.id))
+            result['description'] = (
+                f'{result["description"]}{_credits_block(run_credits)}'
+            )
+        return result

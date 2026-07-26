@@ -126,3 +126,86 @@ def test_build_chapter_timestamps_uses_span_across_scenes() -> None:
     assert '0:00 Intro' in result
     # 90s absolute + one 0.5s inter-scene transition in ch0
     assert '1:30 Next' in result
+
+
+def test_description_gains_credits_for_documentary_runs() -> None:
+    """Required attributions are appended to the YouTube description."""
+    from server.apps.pipelines.logic.value_objects import (
+        FootageCreditPayload,
+        RunCreditsPayload,
+    )
+    from server.apps.pipelines.schemas import VideoMetadata
+
+    ctx = _make_ctx()
+    ctx.run.blueprint_snapshot = {'profile': 'documentary_footage'}
+    run_credits = RunCreditsPayload(
+        entries=[
+            FootageCreditPayload(
+                provider='wikimedia',
+                license='CC-BY-4.0',
+                license_url='https://creativecommons.org/licenses/by/4.0/',
+                author='A Photographer',
+                source_url='https://commons/x',
+                title='A Photograph',
+                attribution_required=True,
+                scene_idxs=[0],
+            ),
+        ],
+        truncated=False,
+    )
+    fake_output = VideoMetadata(
+        title='How Rome REALLY Fell (476 AD)',
+        description="The full story of Rome's collapse.\n\n0:00 The Beginning",
+        tags=['rome', 'history', 'documentary'],
+        category='Education',
+    )
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.metadata._load_credits',
+                new=AsyncMock(return_value=run_credits),
+            ),
+        ):
+            return await MetadataStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert 'A Photographer' in result['description']
+    assert 'CC-BY-4.0' in result['description']
+
+
+def test_description_is_unchanged_for_ai_visual_runs() -> None:
+    """A longform_v1 run gets no credits block."""
+    from server.apps.pipelines.schemas import VideoMetadata
+
+    ctx = _make_ctx()
+    ctx.run.blueprint_snapshot = {'stages': []}
+    fake_output = VideoMetadata(
+        title='How Rome REALLY Fell (476 AD)',
+        description="The full story of Rome's collapse.\n\n0:00 The Beginning",
+        tags=['rome', 'history', 'documentary'],
+        category='Education',
+    )
+
+    async def _inner() -> dict[str, object]:
+        loader = AsyncMock()
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=fake_output),
+            ),
+            patch(
+                'server.apps.pipelines.stages.metadata._load_credits',
+                new=loader,
+            ),
+        ):
+            result = await MetadataStage().run(ctx)
+        loader.assert_not_awaited()
+        return result
+
+    result = asyncio.run(_inner())
+    assert 'Footage credits' not in result['description']
