@@ -14,6 +14,7 @@ from server.apps.pipelines.stages import (
     clip_transcribe,  # noqa: F401
     final_gate,  # noqa: F401
     footage_queries,  # noqa: F401
+    footage_search,  # noqa: F401
     image_gen,  # noqa: F401
     metadata,  # noqa: F401
     motion,  # noqa: F401
