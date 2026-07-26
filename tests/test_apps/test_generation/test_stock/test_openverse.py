@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.apps.generation.clients.stock.openverse import OpenverseProvider
+from server.common.exceptions import RetryableProviderError
 
 _FIXTURES = Path(__file__).parent / 'fixtures'
 
@@ -132,3 +133,29 @@ async def test_video_media_type_returns_empty() -> None:
         limit=3,
     )
     assert results == []
+
+
+@pytest.mark.anyio
+async def test_server_error_raises_retryable() -> None:
+    """An unsuccessful image search preserves provider and status."""
+    response = MagicMock()
+    response.is_success = False
+    response.status_code = 503
+    response.text = 'unavailable'
+
+    with patch(
+        'httpx.AsyncClient.get',
+        new=AsyncMock(return_value=response),
+    ):
+        search = OpenverseProvider(token='token').search(
+            'x',
+            media_type='image',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+        with pytest.raises(RetryableProviderError) as exc_info:
+            await search
+
+    assert exc_info.value.provider == 'openverse'
+    assert exc_info.value.status_code == 503

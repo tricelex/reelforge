@@ -80,9 +80,7 @@ class WikimediaProvider:
         def _meta(key: str) -> str:
             entry = meta.get(key) or {}
             return (
-                str(entry.get('value', ''))
-                if isinstance(entry, dict)
-                else ''
+                str(entry.get('value', '')) if isinstance(entry, dict) else ''
             )
 
         raw_required = _meta('AttributionRequired')

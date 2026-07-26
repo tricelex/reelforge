@@ -69,8 +69,10 @@ async def ken_burns(
     preset_idx: int = 0,
 ) -> bytes:
     """Apply a Ken Burns zoom/pan to image bytes and return mp4 bytes."""
-    assert image_bytes, 'image_bytes must be non-empty'
-    assert duration_s > 0, f'duration_s must be > 0, got {duration_s}'
+    if not image_bytes:
+        raise ValueError('image_bytes must be non-empty')
+    if duration_s <= 0:
+        raise ValueError(f'duration_s must be > 0, got {duration_s}')
 
     with (
         tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_f,
@@ -120,7 +122,8 @@ async def ken_burns(
             )
 
         video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
-        assert video_bytes, 'Ken Burns produced empty video'
+        if not video_bytes:
+            raise RuntimeError('Ken Burns produced empty video')
         return video_bytes
     finally:
         await asyncio.to_thread(Path(img_path).unlink, missing_ok=True)
