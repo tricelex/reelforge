@@ -29,3 +29,8 @@ Plans (in order):
   Minor findings deferred to final review:
   * no test exercises the non-dict `roles` defensive branch in resolve_role
   * report's justification for the doctest reformat was imprecise (cosmetic)
+- Task F2: complete (commits 132411f + fix c802431, review APPROVED)
+  Important finding FIXED: documentary path had no DB-level test; added
+  test_build_scene_asset_map_queries_footage_prep_children (27/27 pass).
+  Minor deferred: `blueprint_snapshot or {}` guard is redundant (harmless,
+  matches existing precedent in selectors.py).
