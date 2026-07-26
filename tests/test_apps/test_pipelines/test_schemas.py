@@ -60,3 +60,43 @@ def test_scene_breakdown_valid_passes() -> None:
     result = SceneBreakdownOutput(scenes=[_valid_scene()])
     assert len(result.scenes) == 1
     assert result.scenes[0].is_hero is True
+
+
+def test_footage_query_defaults() -> None:
+    """Optional query fields default to empty, not None."""
+    from server.apps.pipelines.schemas import FootageQuery
+
+    query = FootageQuery(scene_idx=0, primary_query='ocean waves')
+    assert query.fallback_queries == []
+    assert query.negative_terms == []
+    assert query.media_preference == 'any'
+    assert query.orientation == 'landscape'
+    assert query.era_hint == ''
+    assert query.ai_fallback_prompt == ''
+
+
+def test_candidate_ranking_score_is_bounded() -> None:
+    """Rankings outside 0..1 are rejected by validation."""
+    import pydantic
+
+    from server.apps.pipelines.schemas import CandidateRanking
+
+    assert CandidateRanking(external_id='a', score=1.0, reason='r').score == 1.0
+    with pytest.raises(pydantic.ValidationError):
+        CandidateRanking(external_id='a', score=1.5, reason='r')
+    with pytest.raises(pydantic.ValidationError):
+        CandidateRanking(external_id='a', score=-0.1, reason='r')
+
+
+def test_footage_queries_output_holds_queries() -> None:
+    """The stage output wraps a list of per-scene queries."""
+    from server.apps.pipelines.schemas import (
+        FootageQueriesOutput,
+        FootageQuery,
+    )
+
+    output = FootageQueriesOutput(
+        queries=[FootageQuery(scene_idx=0, primary_query='q')],
+    )
+    assert len(output.queries) == 1
+    assert output.queries[0].scene_idx == 0
