@@ -26,7 +26,7 @@ def get_run_credits(run_id: str) -> RunCreditsPayload:
 
     rows = list(
         FootageCredit.objects.filter(run_id=uuid.UUID(run_id)).order_by(
-            '-attribution_required', 'provider', 'scene_idx'
+            '-attribution_required', 'provider', 'scene_idx',
         ),
     )
 

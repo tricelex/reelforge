@@ -128,3 +128,10 @@ def test_apply_vision_rankings_ignores_unknown_ids() -> None:
     ]
     ranked = apply_vision_rankings(candidates, rankings)
     assert [c.external_id for c in ranked] == ['a']
+
+
+def test_empty_concept_terms_score_zero() -> None:
+    """Empty concept terms yield zero before overlap math."""
+    from server.apps.pipelines.logic.footage_rerank import metadata_score_terms
+
+    assert metadata_score_terms(set(), {'ocean'}, set()) == 0.0
