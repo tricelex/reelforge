@@ -10,6 +10,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelDetailPayload,
     ChannelListPayload,
     ChannelSummaryPayload,
+    FootageSourcingPayload,
     NicheConfigPayload,
     ProviderDailyCapPayload,
 )
@@ -71,6 +72,21 @@ def _provider_daily_caps(channel: Channel) -> list[ProviderDailyCapPayload]:
 
 def _config_overrides(channel: Channel) -> dict[str, Any]:
     return dict(channel.config_overrides or {})
+
+
+def _footage_sourcing(channel: Channel) -> FootageSourcingPayload:
+    config = channel.footage_sourcing_or_default()
+    return FootageSourcingPayload(
+        enabled_providers=list(config.enabled_providers),
+        sourcing_mode=config.sourcing_mode,
+        ai_fallback_enabled=config.ai_fallback_enabled,
+        rerank_mode=config.rerank_mode,
+        candidates_per_scene=config.candidates_per_scene,
+        min_clip_width=config.min_clip_width,
+        min_clip_duration_s=config.min_clip_duration_s,
+        allowed_licenses=list(config.allowed_licenses),
+        require_attribution=config.require_attribution,
+    )
 
 
 def _to_summary(channel: Channel) -> ChannelSummaryPayload:
@@ -167,6 +183,7 @@ def get_channel_detail(channel_id: str) -> ChannelDetailPayload:
         provider_daily_caps=_provider_daily_caps(channel),
         config_overrides=_config_overrides(channel),
         max_publishes_per_day=channel.max_publishes_per_day,
+        footage_sourcing=_footage_sourcing(channel),
     )
 
 
