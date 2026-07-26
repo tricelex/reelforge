@@ -867,3 +867,65 @@ def test_build_scene_asset_map_uses_documentary_segment_stage() -> None:
         'profile': 'documentary_footage',
     }
     assert _resolve_segment_stage(ctx) == 'footage_prep'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_scene_asset_map_queries_footage_prep_children() -> None:
+    """Documentary blueprints read scene_idx+asset_id from footage_prep."""
+    channel = Channel.objects.create(
+        name='Asm Doc Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='asm_doc_v1',
+        kind=PipelineKind.LONGFORM,
+        graph={
+            'stages': [
+                {'key': 'assembly', 'depends_on': [], 'queue': 'render'},
+            ],
+            'profile': 'documentary_footage',
+        },
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot=bp.graph,
+        topic='test',
+    )
+    parent = StageExecution.objects.create(
+        run=run,
+        stage_key='footage_prep',
+        status=StageStatus.SUCCEEDED,
+        output={'shards': [{'shard_index': 0, 'status': 'SUCCEEDED'}]},
+    )
+    for i, scene_idx in enumerate([0, 1]):
+        StageExecution.objects.create(
+            run=run,
+            stage_key='footage_prep',
+            parent=parent,
+            shard_index=i,
+            status=StageStatus.SUCCEEDED,
+            output={'scene_idx': scene_idx, 'asset_id': f'fp-{scene_idx}'},
+        )
+    # A motion child with the same run must NOT leak into the result —
+    # proves the filter discriminates by stage_key, not just parent/run.
+    motion_parent = StageExecution.objects.create(
+        run=run,
+        stage_key='motion',
+        status=StageStatus.SUCCEEDED,
+        output={'shards': [{'shard_index': 0, 'status': 'SUCCEEDED'}]},
+    )
+    StageExecution.objects.create(
+        run=run,
+        stage_key='motion',
+        parent=motion_parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        output={'scene_idx': 0, 'asset_id': 'vid-0'},
+    )
+
+    ctx = MagicMock()
+    ctx.run = run
+
+    result = _run_async(_build_scene_asset_map(ctx))
+    assert result == {0: 'fp-0', 1: 'fp-1'}
