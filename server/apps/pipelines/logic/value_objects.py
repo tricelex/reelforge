@@ -282,6 +282,7 @@ class StoryboardPayload(msgspec.Struct, frozen=True):
 
     run: StoryboardRunSummaryPayload
     scenes: list[StoryboardScenePayload]
+    profile: str = 'ai_visual'
 
 
 class SceneBreakdownPayload(msgspec.Struct, frozen=True):
@@ -419,3 +420,35 @@ class FootageStoryboardPayload(msgspec.Struct, frozen=True):
     run: StoryboardRunSummaryPayload
     scenes: list[FootageSceneRow]
     ai_fallback_count: int
+
+
+class FootageCreditPayload(msgspec.Struct, frozen=True):
+    """One attribution entry for the published description."""
+
+    provider: str
+    license: str
+    license_url: str
+    author: str
+    source_url: str
+    title: str
+    attribution_required: bool
+    scene_idxs: list[int]
+
+
+class RunCreditsPayload(msgspec.Struct, frozen=True):
+    """Attribution block preview for a run."""
+
+    entries: list[FootageCreditPayload]
+    truncated: bool
+
+
+class SelectFootageCandidatePayload(msgspec.Struct, frozen=True):
+    """Operator's chosen footage candidate for one scene."""
+
+    external_id: str
+
+
+class ResearchFootagePayload(msgspec.Struct, frozen=True):
+    """Operator-supplied search query to re-run footage_search."""
+
+    query: str
