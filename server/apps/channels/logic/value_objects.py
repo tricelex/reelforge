@@ -31,6 +31,34 @@ class ChannelSummaryPayload(msgspec.Struct, frozen=True):
     youtube_status: str
 
 
+class FootageSourcingPayload(msgspec.Struct, frozen=True):
+    """Per-channel stock/archival footage sourcing rules."""
+
+    enabled_providers: list[str]
+    sourcing_mode: str
+    ai_fallback_enabled: bool
+    rerank_mode: str
+    candidates_per_scene: int
+    min_clip_width: int
+    min_clip_duration_s: float
+    allowed_licenses: list[str]
+    require_attribution: bool
+
+
+class FootageSourcingPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a channel's footage sourcing config."""
+
+    enabled_providers: list[str] | None = None
+    sourcing_mode: str | None = None
+    ai_fallback_enabled: bool | None = None
+    rerank_mode: str | None = None
+    candidates_per_scene: int | None = None
+    min_clip_width: int | None = None
+    min_clip_duration_s: float | None = None
+    allowed_licenses: list[str] | None = None
+    require_attribution: bool | None = None
+
+
 class ChannelDetailPayload(msgspec.Struct, frozen=True):
     """Full channel configuration."""
 
@@ -50,6 +78,7 @@ class ChannelDetailPayload(msgspec.Struct, frozen=True):
     provider_daily_caps: list[ProviderDailyCapPayload]
     config_overrides: dict[str, Any]
     max_publishes_per_day: int
+    footage_sourcing: FootageSourcingPayload
 
 
 class NicheCreatePayload(msgspec.Struct, frozen=True):
@@ -99,6 +128,7 @@ class ChannelPatchPayload(msgspec.Struct, frozen=True):
     default_blueprint_name: str | None = None
     provider_daily_caps: list[ProviderDailyCapPayload] | None = None
     config_overrides: dict[str, Any] | None = None
+    footage_sourcing: FootageSourcingPatchPayload | None = None
 
 
 class ChannelListPayload(msgspec.Struct, frozen=True):

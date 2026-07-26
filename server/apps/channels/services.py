@@ -21,6 +21,7 @@ from server.apps.channels.logic.value_objects import (
     ChannelCreatePayload,
     ChannelDetailPayload,
     ChannelPatchPayload,
+    FootageSourcingPatchPayload,
     GraduationStatusPayload,
     NicheConfigPatchPayload,
     NicheConfigPayload,
@@ -36,7 +37,10 @@ from server.apps.channels.models import (
     AssemblyStyleConfig,
     Channel,
     ChannelBranding,
+    FootageSourcingConfig,
     NicheConfig,
+    RerankMode,
+    SourcingMode,
     YouTubeCredential,
 )
 from server.apps.channels.selectors import (
@@ -123,6 +127,53 @@ def _validate_config_overrides(overrides: Any) -> dict[str, Any]:
         msg = 'config_overrides must be a JSON object'
         raise ValidationError(msg)
     return dict(overrides)
+
+
+_FOOTAGE_SOURCING_FIELDS = (
+    'enabled_providers',
+    'sourcing_mode',
+    'ai_fallback_enabled',
+    'rerank_mode',
+    'candidates_per_scene',
+    'min_clip_width',
+    'min_clip_duration_s',
+    'allowed_licenses',
+    'require_attribution',
+)
+
+
+def _footage_sourcing_defaults(
+    payload: FootageSourcingPatchPayload,
+) -> dict[str, Any]:
+    if (
+        payload.sourcing_mode is not None
+        and payload.sourcing_mode not in SourcingMode.values
+    ):
+        msg = f'Unknown sourcing_mode: {payload.sourcing_mode}'
+        raise ValidationError(msg)
+    if (
+        payload.rerank_mode is not None
+        and payload.rerank_mode not in RerankMode.values
+    ):
+        msg = f'Unknown rerank_mode: {payload.rerank_mode}'
+        raise ValidationError(msg)
+    defaults: dict[str, Any] = {}
+    for name in _FOOTAGE_SOURCING_FIELDS:
+        value = getattr(payload, name)
+        if value is not None:
+            defaults[name] = value
+    return defaults
+
+
+def _apply_footage_sourcing_patch(
+    channel: Channel,
+    payload: FootageSourcingPatchPayload,
+) -> None:
+    defaults = _footage_sourcing_defaults(payload)
+    FootageSourcingConfig.objects.update_or_create(
+        channel=channel,
+        defaults=defaults,
+    )
 
 
 def _apply_channel_config_patch(
@@ -240,6 +291,8 @@ class ChannelService:
         )
         if update_fields:
             channel.save(update_fields=update_fields)
+        if payload.footage_sourcing is not None:
+            _apply_footage_sourcing_patch(channel, payload.footage_sourcing)
         return get_channel_detail(str(channel.id))
 
     def patch_branding(
