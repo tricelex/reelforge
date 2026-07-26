@@ -2,6 +2,24 @@
 
 Licence: Pixabay content licence, attribution not required.
 Rate limit: 100 requests/minute on the free tier.
+
+``FootageCandidate`` field paths:
+
+* Video: ``external_id <- hits[].id``;
+  ``download_url/width/height/thumb_url <- hits[].videos.*`` from the smallest
+  adequate rendition (largest available as fallback);
+  ``thumb_url`` uses the chosen rendition's ``thumbnail``;
+  ``source_page_url <- hits[].pageURL``;
+  ``duration_s <- hits[].duration``; ``author <- hits[].user``;
+  ``title/tags <- hits[].tags``.
+* Photo: ``external_id <- hits[].id``;
+  ``download_url <- hits[].largeImageURL``;
+  ``thumb_url <- hits[].previewURL``;
+  ``source_page_url <- hits[].pageURL``;
+  ``width/height <- hits[].imageWidth/imageHeight``;
+  ``author <- hits[].user``; ``title/tags <- hits[].tags``.
+* Both: ``provider``, ``media_type``, ``license``, ``license_url``,
+  ``attribution_required`` are adapter constants.
 """
 
 from typing import Any, final
@@ -93,7 +111,7 @@ class PixabayProvider:
             external_id=str(hit.get('id', '')),
             media_type='video',
             download_url=str(chosen.get('url', '')),
-            thumb_url=str(hit.get('userImageURL') or ''),
+            thumb_url=str(chosen.get('thumbnail') or ''),
             source_page_url=str(hit.get('pageURL', '')),
             width=int(chosen.get('width') or 0),
             height=int(chosen.get('height') or 0),

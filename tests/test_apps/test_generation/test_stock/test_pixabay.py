@@ -46,13 +46,26 @@ async def test_video_search_maps_candidates() -> None:
     assert len(results) == 3
     assert results[0].width == 1280
     assert results[0].download_url.endswith('_medium.mp4')
+    assert (
+        results[0].thumb_url
+        == 'https://cdn.pixabay.com/video/2020/04/18/31377-411640780_medium.jpg'
+    )
     assert results[1].width == 1920
+    assert (
+        results[1].thumb_url
+        == 'https://cdn.pixabay.com/video/2021/10/08/85734-628344310_medium.jpg'
+    )
     assert results[2].width == 960
+    assert (
+        results[2].thumb_url
+        == 'https://cdn.pixabay.com/video/2023/02/01/152001-794211020_small.jpg'
+    )
     for candidate in results:
         assert candidate.provider == 'pixabay'
         assert candidate.media_type == 'video'
         assert candidate.duration_s is not None
         assert candidate.attribution_required is False
+        assert 'avatar' not in candidate.thumb_url
 
 
 @pytest.mark.anyio
