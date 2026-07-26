@@ -10,7 +10,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('assets', '0006_backfill_license_type'),
         ('pipelines', '0010_runcast_importance_draft_prompt'),

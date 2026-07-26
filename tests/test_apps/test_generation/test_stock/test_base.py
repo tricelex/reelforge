@@ -68,6 +68,16 @@ def test_quality_floor_rejects_short_video() -> None:
     )
 
 
+def test_quality_floor_rejects_video_without_duration() -> None:
+    """Video with unknown duration cannot satisfy the minimum duration."""
+    assert not passes_quality_floor(
+        _candidate(duration_s=None),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=[],
+    )
+
+
 def test_quality_floor_ignores_duration_for_images() -> None:
     """Stills have no duration and must not be rejected for it."""
     assert passes_quality_floor(

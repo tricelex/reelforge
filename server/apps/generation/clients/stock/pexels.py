@@ -82,9 +82,7 @@ class PexelsProvider:
                 self._video_candidate(item, min_width)
                 for item in data.get('videos', [])
             ]
-        return [
-            self._photo_candidate(item) for item in data.get('photos', [])
-        ]
+        return [self._photo_candidate(item) for item in data.get('photos', [])]
 
     def _video_candidate(
         self,

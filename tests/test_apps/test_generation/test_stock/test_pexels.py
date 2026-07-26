@@ -1,5 +1,6 @@
-"""WARNING: fixtures are doc-derived, not captured from a live API. Re-verify
-this adapter against a real response once PEXELS_API_KEY is configured.
+"""WARNING: fixtures are doc-derived, not captured from a live API.
+
+Re-verify this adapter against a real response once PEXELS_API_KEY is configured.
 
 Tests for the Pexels footage adapter. Field mapping is documented in
 `pexels.py`.

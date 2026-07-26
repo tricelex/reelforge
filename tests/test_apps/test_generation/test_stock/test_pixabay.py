@@ -123,3 +123,15 @@ async def test_missing_api_key_returns_no_candidates() -> None:
         limit=3,
     )
     assert results == []
+
+
+def test_video_without_renditions_maps_empty_media_fields() -> None:
+    """A malformed hit without playable renditions remains safely empty."""
+    candidate = PixabayProvider(api_key='k')._video_candidate(
+        {'id': 1, 'videos': {}},
+        min_width=1280,
+    )
+    assert candidate.download_url == ''
+    assert candidate.thumb_url == ''
+    assert candidate.width == 0
+    assert candidate.height == 0

@@ -71,15 +71,19 @@ def _serialize(candidates: list[FootageCandidate]) -> bytes:
     return json.dumps(payload).encode()
 
 
+def _validate_rows(rows: object) -> list[dict[str, Any]]:
+    """Validate and narrow a decoded cache payload."""
+    if not isinstance(rows, list):
+        raise TypeError('cached payload is not a list')
+    if not all(isinstance(row, dict) for row in rows):
+        raise TypeError('cached row is not a dict')
+    return rows
+
+
 def _deserialize(raw: bytes) -> list[FootageCandidate] | None:
     """Decode cached bytes, returning None when the entry is unusable."""
     try:
-        rows = json.loads(raw)
-        if not isinstance(rows, list):
-            raise TypeError('cached payload is not a list')
-        for row in rows:
-            if not isinstance(row, dict):
-                raise TypeError('cached row is not a dict')
+        rows = _validate_rows(json.loads(raw))
         return [
             FootageCandidate(**{**row, 'tags': tuple(row.get('tags', []))})
             for row in rows

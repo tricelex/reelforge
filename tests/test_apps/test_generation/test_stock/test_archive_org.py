@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.apps.generation.clients.stock.archive_org import ArchiveOrgProvider
+from server.apps.generation.clients.stock.archive_org import (
+    ArchiveOrgProvider,
+    _integer,
+    _license_label,
+    _optional_float,
+)
 from server.apps.generation.clients.stock.base import FootageCandidate
 from server.common.exceptions import RetryableProviderError
 
@@ -172,3 +177,31 @@ async def test_image_media_type_returns_empty() -> None:
         limit=3,
     )
     assert results == []
+
+
+@pytest.mark.parametrize(
+    ('url', 'label'),
+    [
+        ('https://creativecommons.org/publicdomain/zero/1.0/', 'cc0-1.0'),
+        ('https://creativecommons.org/licenses/by-sa/4.0/', 'by-sa-4.0'),
+        (
+            'https://example.test/custom-license',
+            'https://example.test/custom-license',
+        ),
+    ],
+)
+def test_license_label_maps_supported_urls(url: str, label: str) -> None:
+    """Licence URLs map to stable labels or preserve unknown schemes."""
+    assert _license_label(url) == label
+
+
+@pytest.mark.parametrize('value', [object(), 'not-an-integer'])
+def test_integer_returns_zero_for_unusable_values(value: object) -> None:
+    """Malformed integer metadata maps to a safe zero."""
+    assert _integer(value) == 0
+
+
+@pytest.mark.parametrize('value', ['', object(), 'not-a-duration'])
+def test_optional_float_returns_none_for_unusable_values(value: object) -> None:
+    """Absent or malformed duration metadata remains unknown."""
+    assert _optional_float(value) is None

@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,15 +49,32 @@ def test_ken_burns_produces_a_video_of_requested_duration(
 
 def test_ken_burns_rejects_empty_image() -> None:
     """Empty input is a programming error, caught immediately."""
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError, match='image_bytes must be non-empty'):
         asyncio.run(ken_burns(b'', duration_s=2.0))
 
 
 def test_ken_burns_rejects_nonpositive_duration(tmp_path: Path) -> None:
     """Zero or negative duration is rejected before invoking ffmpeg."""
     image_bytes = _tiny_jpeg(tmp_path)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError, match='duration_s must be > 0'):
         asyncio.run(ken_burns(image_bytes, duration_s=0.0))
+
+
+def test_ken_burns_rejects_empty_ffmpeg_output() -> None:
+    """A successful process that writes no video is rejected."""
+    process = MagicMock()
+    process.returncode = 0
+    process.communicate = AsyncMock(return_value=(b'', b''))
+
+    with (
+        patch(
+            'asyncio.create_subprocess_exec',
+            new=AsyncMock(return_value=process),
+        ),
+        patch('pathlib.Path.read_bytes', return_value=b''),
+    ):
+        with pytest.raises(RuntimeError, match='produced empty video'):
+            asyncio.run(ken_burns(b'image', duration_s=1.0))
 
 
 def test_ken_burns_preset_index_wraps(tmp_path: Path) -> None:
