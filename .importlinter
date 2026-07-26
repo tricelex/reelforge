@@ -60,6 +60,10 @@ ignore_imports =
   server.apps.pipelines.stages.footage_search -> server.apps.generation.clients.stock.registry
   server.apps.pipelines.stages.footage_search -> server.apps.assets.models
   server.apps.pipelines.stages.footage_search -> server.apps.rendering.ffmpeg
+  # Footage prep stage normalizes sourced media (video trim/loop or Ken
+  # Burns) into scene segments, same asset/ffmpeg dependencies as above.
+  server.apps.pipelines.stages.footage_prep -> server.apps.assets.models
+  server.apps.pipelines.stages.footage_prep -> server.apps.rendering.ffmpeg
   # Pipeline stages save assets and reference AssetKind from the assets app
   server.apps.pipelines.stages.image_gen -> server.apps.assets.models
   server.apps.pipelines.stages.tts -> server.apps.assets.models

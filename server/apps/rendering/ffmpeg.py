@@ -130,6 +130,83 @@ async def ken_burns(
         await asyncio.to_thread(Path(vid_path).unlink, missing_ok=True)
 
 
+async def normalize_clip(
+    video_bytes: bytes,
+    duration_s: float,
+    *,
+    width: int = 1920,
+    height: int = 1080,
+    fps: int = 30,
+) -> tuple[bytes, str]:
+    """Fit a sourced clip to a scene: trim or loop, scale, strip audio.
+
+    Trimming always takes the window from the start of the clip so a shard
+    rerun produces an identical segment. Returns (mp4_bytes, method) where
+    method is 'clip_trim' or 'clip_loop'.
+    """
+    if not video_bytes:
+        raise ValueError('video_bytes must be non-empty')
+    if duration_s <= 0:
+        raise ValueError(f'duration_s must be > 0, got {duration_s}')
+
+    with (
+        tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as src_f,
+        tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as out_f,
+    ):
+        src_path = src_f.name
+        out_path = out_f.name
+    try:
+        await asyncio.to_thread(Path(src_path).write_bytes, video_bytes)
+        probe = await async_ffprobe(src_path)
+        source_duration = float(
+            probe.get('format', {}).get('duration', 0.0) or 0.0,
+        )
+        needs_loop = source_duration < duration_s
+        method = 'clip_loop' if needs_loop else 'clip_trim'
+
+        vf = (
+            f'scale={width}:{height}:force_original_aspect_ratio=increase,'
+            f'crop={width}:{height},fps={fps}'
+        )
+        cmd = ['ffmpeg', '-y']
+        if needs_loop:
+            cmd += ['-stream_loop', '-1']
+        cmd += [
+            '-i',
+            src_path,
+            '-t',
+            str(duration_s),
+            '-vf',
+            vf,
+            '-c:v',
+            'libx264',
+            '-crf',
+            '18',
+            '-pix_fmt',
+            'yuv420p',
+            '-an',
+            out_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f'FFmpeg normalize_clip failed: {stderr.decode()[:300]}',
+            )
+
+        out_bytes = await asyncio.to_thread(Path(out_path).read_bytes)
+        if not out_bytes:
+            raise RuntimeError('normalize_clip produced empty video')
+        return out_bytes, method
+    finally:
+        await asyncio.to_thread(Path(src_path).unlink, missing_ok=True)
+        await asyncio.to_thread(Path(out_path).unlink, missing_ok=True)
+
+
 async def async_ffprobe(path: str) -> dict[str, Any]:
     """Run ffprobe asynchronously and return parsed JSON.
 
