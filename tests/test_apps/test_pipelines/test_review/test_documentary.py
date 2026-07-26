@@ -294,3 +294,88 @@ def test_apply_scene_edit_without_breakdown_still_returns_footage_queries(
     )
 
     assert stale_from == 'footage_queries'
+
+
+@pytest.mark.django_db
+def test_apply_scene_edit_skips_non_dict_scene_entries(
+    run: PipelineRun,
+) -> None:
+    """Non-dict entries in scene_breakdown output are skipped, not edited."""
+    row = StageExecution.objects.create(
+        run=run,
+        stage_key='scene_breakdown',
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'scenes': [
+                'not-a-scene-dict',
+                {'idx': 0, 'narration_text': 'Original narration'},
+            ],
+        },
+    )
+
+    stale_from = documentary.apply_scene_edit(
+        str(run.id),
+        0,
+        {'narration_text': 'Edited narration'},
+    )
+
+    assert stale_from == 'footage_queries'
+    row.refresh_from_db()
+    assert row.output['scenes'][0] == 'not-a-scene-dict'
+    assert row.output['scenes'][1]['narration_text'] == 'Edited narration'
+
+
+@pytest.mark.django_db
+def test_footage_state_skips_children_missing_scene_idx(
+    run: PipelineRun,
+    scene_breakdown_stage: StageExecution,
+    footage_search_parent: StageExecution,
+) -> None:
+    """A footage_search child with no scene_idx is skipped, not mapped."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='footage_search',
+        parent=footage_search_parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={'asset_id': None},
+    )
+    presign = MagicMock()
+
+    board = documentary.get_storyboard(str(run.id), presign)
+
+    row = next(row for row in board.scenes if row.idx == 0)
+    assert row.status == StageStatus.PENDING
+    assert row.asset_url is None
+
+
+@pytest.mark.django_db
+def test_presign_asset_returns_none_when_asset_missing(
+    run: PipelineRun,
+    scene_breakdown_stage: StageExecution,
+    footage_search_parent: StageExecution,
+) -> None:
+    """A scene referencing a deleted/missing asset has no asset_url."""
+    StageExecution.objects.create(
+        run=run,
+        stage_key='footage_search',
+        parent=footage_search_parent,
+        shard_index=0,
+        status=StageStatus.SUCCEEDED,
+        attempt=0,
+        output={
+            'scene_idx': 0,
+            'asset_id': '00000000-0000-0000-0000-000000000099',
+            'media_type': 'video',
+            'source': 'pexels',
+        },
+    )
+    presign = MagicMock()
+
+    board = documentary.get_storyboard(str(run.id), presign)
+
+    row = next(row for row in board.scenes if row.idx == 0)
+    assert row.asset_url is None
+    presign.presign_get.assert_not_called()
