@@ -1,8 +1,8 @@
-"""Tests for the Pexels footage adapter.
-
-WARNING: fixtures are doc-derived, not captured from a live API. Re-verify
+"""WARNING: fixtures are doc-derived, not captured from a live API. Re-verify
 this adapter against a real response once PEXELS_API_KEY is configured.
-Field mapping is documented in `pexels.py`.
+
+Tests for the Pexels footage adapter. Field mapping is documented in
+`pexels.py`.
 """
 
 import json
@@ -44,13 +44,32 @@ async def test_video_search_maps_candidates() -> None:
             min_width=1280,
             limit=3,
         )
-    assert results
+    assert len(results) == 3
+
+    first, second, third = results
+    assert first.external_id == '1093662'
+    assert first.width == 1280
+    assert first.height == 720
+    assert first.download_url == (
+        'https://player.vimeo.com/external/269971860.720p.mp4'
+    )
+
+    assert second.external_id == '1448735'
+    assert second.width == 1920
+    assert second.download_url == (
+        'https://player.vimeo.com/external/291648067.hd.mp4'
+    )
+
+    assert third.external_id == '2499611'
+    assert third.width == 1080
+    assert third.download_url == (
+        'https://player.vimeo.com/external/342571552.hd.mp4'
+    )
+
     for candidate in results:
         assert candidate.provider == 'pexels'
         assert candidate.media_type == 'video'
-        assert candidate.download_url.startswith('http')
         assert candidate.thumb_url.startswith('http')
-        assert candidate.width > 0
         assert candidate.duration_s is not None
         assert candidate.attribution_required is False
         assert candidate.license == 'pexels'
