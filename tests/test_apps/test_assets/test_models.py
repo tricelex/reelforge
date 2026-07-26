@@ -20,6 +20,7 @@ def test_asset_kind_values() -> None:
         'THUMBNAIL',
         'TRANSCRIPT',
         'DOC',
+        'FOOTAGE',
     }
 
 

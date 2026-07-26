@@ -25,6 +25,7 @@ class AssetKind(models.TextChoices):
     THUMBNAIL = 'THUMBNAIL', 'Thumbnail'
     TRANSCRIPT = 'TRANSCRIPT', 'Transcript'
     DOC = 'DOC', 'Document'
+    FOOTAGE = 'FOOTAGE', 'Footage'
 
 
 class LibraryAssetKind(models.TextChoices):
@@ -161,3 +162,39 @@ class AssetRendition(UUIDModel, TimeStampedModel):
     def __str__(self) -> str:
         """Return source name and profile."""
         return f'{self.source.name} [{self.profile}]'
+
+
+class FootageCredit(UUIDModel, TimeStampedModel):
+    """Licence provenance for one sourced footage asset."""
+
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name='credits',
+    )
+    run = models.ForeignKey(
+        'pipelines.PipelineRun',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='footage_credits',
+        db_index=True,
+    )
+    scene_idx = models.PositiveIntegerField()
+    provider = models.CharField(max_length=32, db_index=True)
+    license = models.CharField(max_length=64)
+    license_url = models.URLField(blank=True, default='')
+    author = models.CharField(max_length=200, blank=True, default='')
+    source_url = models.URLField()
+    title = models.CharField(max_length=300, blank=True, default='')
+    attribution_required = models.BooleanField(default=False)
+
+    class Meta:
+        """Meta options for FootageCredit."""
+
+        ordering: ClassVar = ['scene_idx']
+
+    @override
+    def __str__(self) -> str:
+        """Return provider, licence, and scene for admin display."""
+        return f'{self.provider} {self.license} (scene {self.scene_idx})'
