@@ -61,6 +61,9 @@ ignore_imports =
   # Assembly + QC stages call rendering service layer
   server.apps.pipelines.stages.assembly -> server.apps.rendering.ffmpeg
   server.apps.pipelines.stages.qc -> server.apps.rendering.ffmpeg
+  # Motion stage delegates Ken Burns still-image animation to the shared
+  # ffmpeg helper (same rendering service layer as assembly/qc above)
+  server.apps.pipelines.stages.motion -> server.apps.rendering.ffmpeg
   # Assembly and QC fetch Asset rows from the assets app
   server.apps.pipelines.stages.assembly -> server.apps.assets.models
   server.apps.pipelines.stages.qc -> server.apps.assets.models

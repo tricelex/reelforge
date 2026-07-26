@@ -55,6 +55,78 @@ def _extract_ffmpeg_error(stderr: str, limit: int = 500) -> str:
     return text[-limit:]
 
 
+_KEN_BURNS_PRESETS = [
+    "zoompan=z='zoom+0.008':d=150:s=1920x1080",
+    "zoompan=z='1.12-0.008*on':d=150:s=1920x1080",
+    "zoompan=x='iw/2-(iw/zoom/2)+on*8':z=1.08:d=150:s=1920x1080",
+    "zoompan=x='iw-(iw/zoom/2)-on*8':z=1.08:d=150:s=1920x1080",
+]
+
+
+async def ken_burns(
+    image_bytes: bytes,
+    duration_s: float,
+    preset_idx: int = 0,
+) -> bytes:
+    """Apply a Ken Burns zoom/pan to image bytes and return mp4 bytes."""
+    assert image_bytes, 'image_bytes must be non-empty'
+    assert duration_s > 0, f'duration_s must be > 0, got {duration_s}'
+
+    with (
+        tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_f,
+        tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as vid_f,
+    ):
+        img_path = img_f.name
+        vid_path = vid_f.name
+    try:
+        await asyncio.to_thread(Path(img_path).write_bytes, image_bytes)
+
+        frames = int(duration_s * 30)
+        vf = _KEN_BURNS_PRESETS[preset_idx % len(_KEN_BURNS_PRESETS)].replace(
+            'd=150',
+            f'd={frames}',
+        )
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-loop',
+            '1',
+            '-i',
+            img_path,
+            '-vf',
+            vf,
+            '-t',
+            str(duration_s),
+            '-r',
+            '30',
+            '-c:v',
+            'libx264',
+            '-crf',
+            '16',
+            '-pix_fmt',
+            'yuv420p',
+            '-an',
+            vid_path,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f'FFmpeg Ken Burns failed: {stderr.decode()[:300]}',
+            )
+
+        video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
+        assert video_bytes, 'Ken Burns produced empty video'
+        return video_bytes
+    finally:
+        await asyncio.to_thread(Path(img_path).unlink, missing_ok=True)
+        await asyncio.to_thread(Path(vid_path).unlink, missing_ok=True)
+
+
 async def async_ffprobe(path: str) -> dict[str, Any]:
     """Run ffprobe asynchronously and return parsed JSON.
 
