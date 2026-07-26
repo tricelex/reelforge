@@ -67,7 +67,10 @@
       "WebFetch(domain:api.openverse.org)",
       "Bash(git add *)",
       "Read(//Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/**)",
-      "Bash(/Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief docs/superpowers/plans/2026-07-26-documentary-blueprint-foundations.md 1)"
+      "Bash(/Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief docs/superpowers/plans/2026-07-26-documentary-blueprint-foundations.md 1)",
+      "Bash(/Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package cdb94e8ae3c349b7e29f7eedab90387517a86419 *)",
+      "Bash(awk '{ if \\(length\\($0\\) > 79\\) print NR\": \"length\\($0\\)\" chars: \"$0 }' server/apps/pipelines/logic/blueprint_profiles.py)",
+      "Bash(awk -F'\\\\t' '{print}')"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -53,6 +53,19 @@ and `FootageSourcingConfig` from it.
   `docker compose exec web mypy server 2>&1 | grep '<your-file>'` — that must
   be empty — and confirm the trailing total has not risen above 78.
 
+## lint-imports baseline — IMPORTANT
+
+`lint-imports` **already fails on this branch**: 3 of 6 contracts broken,
+~50 violating imports (measured 2026-07-26), all pre-existing and unrelated
+to this work (clips->assets, pipelines.logic->models, common->apps, and more).
+
+- Never expect `lint-imports` to pass outright.
+- The bar is: **your new stage->client imports are declared in `.importlinter`
+  and no NEW violation names a file you touched.** Check with
+  `docker compose exec web lint-imports 2>&1 | grep '<your-module>'`.
+- Do NOT add exemptions for pre-existing violations you did not introduce.
+  That is a separate cleanup and an architectural decision for the repo owner.
+
 ## Verification Commands
 
 ```bash
