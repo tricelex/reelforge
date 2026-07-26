@@ -1,0 +1,59 @@
+{
+  "_doc_derived": true,
+  "_source": "https://www.pexels.com/api/documentation/",
+  "_captured": "2026-07-26 — from docs, NOT a live response",
+  "total_results": 10000,
+  "page": 1,
+  "per_page": 3,
+  "photos": [
+    {
+      "id": 3573351,
+      "width": 3066,
+      "height": 3968,
+      "url": "https://www.pexels.com/photo/trees-during-day-3573351/",
+      "photographer": "Lukas Rodriguez",
+      "photographer_url": "https://www.pexels.com/@lukas-rodriguez-1845331",
+      "photographer_id": 1845331,
+      "avg_color": "#374824",
+      "src": {
+        "original": "https://images.pexels.com/photos/3573351/pexels-photo-3573351.png",
+        "medium": "https://images.pexels.com/photos/3573351/pexels-photo-3573351.png?auto=compress&cs=tinysrgb&h=350"
+      },
+      "liked": false,
+      "alt": "Brown Rocks During Golden Hour"
+    },
+    {
+      "id": 2880507,
+      "width": 4000,
+      "height": 6000,
+      "url": "https://www.pexels.com/photo/woman-standing-on-field-2880507/",
+      "photographer": "Deden Dicky Ramdhani",
+      "photographer_url": "https://www.pexels.com/@drdeden88",
+      "photographer_id": 1378810,
+      "avg_color": "#7F7468",
+      "src": {
+        "original": "https://images.pexels.com/photos/2880507/pexels-photo-2880507.jpeg",
+        "medium": "https://images.pexels.com/photos/2880507/pexels-photo-2880507.jpeg?auto=compress&cs=tinysrgb&h=350"
+      },
+      "liked": false,
+      "alt": "Woman Standing on a Field"
+    },
+    {
+      "id": 2014422,
+      "width": 3024,
+      "height": 3024,
+      "url": "https://www.pexels.com/photo/brown-rocks-during-golden-hour-2014422/",
+      "photographer": "James Wheeler",
+      "photographer_url": "https://www.pexels.com/@souvenirpixels",
+      "photographer_id": 558609,
+      "avg_color": "#8A8178",
+      "src": {
+        "original": "https://images.pexels.com/photos/2014422/pexels-photo-2014422.jpeg",
+        "medium": "https://images.pexels.com/photos/2014422/pexels-photo-2014422.jpeg?auto=compress&cs=tinysrgb&h=350"
+      },
+      "liked": false,
+      "alt": "Brown Rocks During Golden Hour"
+    }
+  ],
+  "next_page": "https://api.pexels.com/v1/search/?page=2&per_page=3&query=nature"
+}

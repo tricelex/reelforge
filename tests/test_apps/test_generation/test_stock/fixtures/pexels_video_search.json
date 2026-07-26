@@ -1,0 +1,104 @@
+{
+  "_doc_derived": true,
+  "_source": "https://www.pexels.com/api/documentation/",
+  "_captured": "2026-07-26 — from docs, NOT a live response",
+  "page": 1,
+  "per_page": 3,
+  "total_results": 4089,
+  "url": "https://www.pexels.com/search/videos/Nature/",
+  "videos": [
+    {
+      "id": 1093662,
+      "width": 1920,
+      "height": 1080,
+      "url": "https://www.pexels.com/video/water-crashing-over-the-rocks-1093662/",
+      "image": "https://images.pexels.com/videos/1093662/free-video-1093662.jpg",
+      "duration": 8,
+      "user": {
+        "id": 417939,
+        "name": "Peter Fowler",
+        "url": "https://www.pexels.com/@peter-fowler-417939"
+      },
+      "video_files": [
+        {
+          "id": 37102,
+          "quality": "sd",
+          "file_type": "video/mp4",
+          "width": 640,
+          "height": 360,
+          "link": "https://player.vimeo.com/external/269971860.sd.mp4"
+        },
+        {
+          "id": 37103,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1920,
+          "height": 1080,
+          "link": "https://player.vimeo.com/external/269971860.hd.mp4"
+        },
+        {
+          "id": 37101,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1280,
+          "height": 720,
+          "link": "https://player.vimeo.com/external/269971860.720p.mp4"
+        }
+      ]
+    },
+    {
+      "id": 1448735,
+      "width": 4096,
+      "height": 2160,
+      "url": "https://www.pexels.com/video/video-of-forest-1448735/",
+      "image": "https://images.pexels.com/videos/1448735/free-video-1448735.jpg",
+      "duration": 32,
+      "user": {
+        "id": 574687,
+        "name": "Ruvim Miksanskiy",
+        "url": "https://www.pexels.com/@digitech"
+      },
+      "video_files": [
+        {
+          "id": 58649,
+          "quality": "sd",
+          "file_type": "video/mp4",
+          "width": 640,
+          "height": 338,
+          "link": "https://player.vimeo.com/external/291648067.sd.mp4"
+        },
+        {
+          "id": 58650,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1920,
+          "height": 1012,
+          "link": "https://player.vimeo.com/external/291648067.hd.mp4"
+        }
+      ]
+    },
+    {
+      "id": 2499611,
+      "width": 1080,
+      "height": 1920,
+      "url": "https://www.pexels.com/video/2499611/",
+      "image": "https://images.pexels.com/videos/2499611/free-video-2499611.jpg",
+      "duration": 22,
+      "user": {
+        "id": 680589,
+        "name": "Joey Farina",
+        "url": "https://www.pexels.com/@joey"
+      },
+      "video_files": [
+        {
+          "id": 125004,
+          "quality": "hd",
+          "file_type": "video/mp4",
+          "width": 1080,
+          "height": 1920,
+          "link": "https://player.vimeo.com/external/342571552.hd.mp4"
+        }
+      ]
+    }
+  ]
+}
