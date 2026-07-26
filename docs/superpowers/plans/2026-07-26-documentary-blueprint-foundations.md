@@ -56,19 +56,45 @@ docker compose exec web python manage.py lintmigrations
 
 ---
 
-## ⚠️ Provider API shapes must be verified, not assumed
+## Provider fixtures — status per provider
 
-Tasks 6–9 implement adapters for four third-party APIs. **This plan does not
-include invented fixture JSON for them.** Each adapter task begins with a step
-that captures a real response and saves it as a fixture, because writing
-plausible-but-wrong JSON would produce adapters that pass their tests and fail
-in production.
+**Already captured from live APIs** (committed under
+`tests/test_apps/test_generation/test_stock/fixtures/`, 2026-07-26 — these
+three need no API key):
 
-**Known risk to confirm in Task 9:** Openverse serves **images and audio, not
-video**. The design doc lists "Openverse / archive.org" as the deepest archival
-*video* source. If Openverse is confirmed image-only, archival video must come
-from archive.org's own API, which is a separate adapter. Task 9 resolves this
-before any code is written.
+- `openverse_image_search.json`
+- `wikimedia_search.json`
+- `archive_org_search.json`
+
+**Doc-derived, NOT live-verified** — `PEXELS_API_KEY` and `PIXABAY_API_KEY` are
+not configured, and the operator chose to proceed rather than wait for keys:
+
+- `pexels_video_search.json`, `pexels_photo_search.json`
+- `pixabay_video_search.json`, `pixabay_photo_search.json`
+
+Build these two adapters from the published API docs
+(<https://www.pexels.com/api/documentation/>, <https://pixabay.com/api/docs/>).
+**Put `"_doc_derived": true` at the top of each of those four fixtures and a
+warning in the test module docstring**, so the gap is visible. Re-verify both
+adapters against live responses once keys exist — they are the two most likely
+to need mapping corrections.
+
+**Resolved: Openverse serves no video.** Probed 2026-07-26 — `/v1/images/` and
+`/v1/audio/` return 200; `/v1/video/` and `/v1/videos/` both 404. The design
+doc's claim that Openverse supplies archival video is wrong. Therefore:
+`OpenverseProvider` is **image-only**, and **`ArchiveOrgProvider` is required**
+(not conditional) for archival video. Task 9 builds both.
+
+## Licence safety — NC and ND must be excluded by default
+
+The captured Openverse fixture returns `by-nc-nd` content. **NonCommercial**
+forbids use on a monetized channel and **NoDerivatives** forbids editing the
+work into a video — both are exactly what this pipeline does.
+
+`allowed_licenses` defaulting to empty means "no restriction", so the floor
+needs a denylist that applies regardless: any licence code containing `nc` or
+`nd` is rejected in `passes_quality_floor`. This is implemented in Task 6 and
+is not configurable off.
 
 ---
 
@@ -1166,6 +1192,36 @@ def test_license_allowlist_is_enforced_when_set() -> None:
         min_duration_s=3.0,
         allowed_licenses=['pexels', 'public-domain'],
     )
+
+
+def test_noncommercial_is_always_rejected() -> None:
+    """NC content cannot be used on a monetized channel, allowlist or not."""
+    assert not passes_quality_floor(
+        _candidate(license='by-nc-4.0'),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=['by-nc-4.0'],
+    )
+
+
+def test_noderivatives_is_always_rejected() -> None:
+    """ND content cannot be edited into a video, allowlist or not."""
+    assert not passes_quality_floor(
+        _candidate(license='by-nc-nd-2.0'),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=['by-nc-nd-2.0'],
+    )
+
+
+def test_share_alike_is_permitted() -> None:
+    """SA is compatible with this use; only NC and ND are excluded."""
+    assert passes_quality_floor(
+        _candidate(license='by-sa-4.0'),
+        min_width=1280,
+        min_duration_s=3.0,
+        allowed_licenses=[],
+    )
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1235,6 +1291,23 @@ class FootageProvider(Protocol):
         ...
 
 
+def is_commercially_usable(license_code: str) -> bool:
+    """Return False for NonCommercial or NoDerivatives licences.
+
+    These channels are monetized and every clip is edited into a longer
+    work, so ``nc`` (no commercial use) and ``nd`` (no derivative works)
+    material can never be used. This floor is not configurable — an empty
+    ``allowed_licenses`` must not be read as permission to use NC/ND.
+
+    >>> is_commercially_usable('by-sa-4.0')
+    True
+    >>> is_commercially_usable('by-nc-nd-2.0')
+    False
+    """
+    parts = set(license_code.casefold().replace('_', '-').split('-'))
+    return not ({'nc', 'nd'} & parts)
+
+
 def passes_quality_floor(
     candidate: FootageCandidate,
     *,
@@ -1244,9 +1317,12 @@ def passes_quality_floor(
 ) -> bool:
     """Return True when a candidate clears the channel's quality floor.
 
-    An empty ``allowed_licenses`` means no licence restriction. Duration is
-    only checked for video — stills legitimately have ``duration_s=None``.
+    An empty ``allowed_licenses`` means no *additional* restriction beyond
+    the always-on NC/ND exclusion. Duration is only checked for video —
+    stills legitimately have ``duration_s=None``.
     """
+    if not is_commercially_usable(candidate.license):
+        return False
     if candidate.width < min_width:
         return False
     if candidate.media_type == 'video':
@@ -1277,8 +1353,9 @@ Run:
 docker compose exec web pytest tests/test_apps/test_generation/test_stock/test_base.py -v --no-cov
 docker compose exec web mypy server
 docker compose exec web ruff check server/apps/generation/clients/stock/
+docker compose exec web pytest --doctest-modules server/apps/generation/clients/stock/base.py --no-cov
 ```
-Expected: PASS, 7 passed
+Expected: PASS, 10 passed
 
 - [ ] **Step 6: Commit**
 
@@ -1304,26 +1381,33 @@ git commit -m "feat(generation): add footage provider contract and settings"
 - Produces: `PexelsProvider` class with `name = 'pexels'` satisfying
   `FootageProvider`.
 
-- [ ] **Step 1: Capture the real API response shapes**
+- [ ] **Step 1: Build the fixtures from the published docs**
 
-**Do not skip this and do not invent the JSON.** Read the current docs at
-<https://www.pexels.com/api/documentation/> and capture one live response each:
+`PEXELS_API_KEY` is not configured, so these fixtures are **doc-derived, not
+live-captured** — a deliberate operator decision, with the known risk that the
+mapping is verified against the documentation rather than a real response.
 
-```bash
-curl -s -H "Authorization: $PEXELS_API_KEY" \
-  'https://api.pexels.com/videos/search?query=ocean+waves&per_page=3' \
-  > tests/test_apps/test_generation/test_stock/fixtures/pexels_video_search.json
+Read <https://www.pexels.com/api/documentation/> and hand-write two fixtures
+matching the documented response shape for
+`GET /videos/search` and `GET /v1/search`, three results each.
 
-curl -s -H "Authorization: $PEXELS_API_KEY" \
-  'https://api.pexels.com/v1/search?query=ocean+waves&per_page=3' \
-  > tests/test_apps/test_generation/test_stock/fixtures/pexels_photo_search.json
+Each fixture **must** start with:
+
+```json
+{"_doc_derived": true, "_source": "https://www.pexels.com/api/documentation/",
+ "_captured": "2026-07-26 — from docs, NOT a live response", ...}
 ```
 
-Record in the test module docstring: the endpoint, the date captured, and the
-exact field path used for each `FootageCandidate` attribute. If a field this
-plan names does not exist in the live response, **the plan is wrong and the
-real shape wins** — adapt the mapping and note the deviation in the commit
-message.
+and the test module docstring must open with:
+
+```
+WARNING: fixtures are doc-derived, not captured from a live API. Re-verify
+this adapter against a real response once PEXELS_API_KEY is configured.
+```
+
+Record the exact field path used for each `FootageCandidate` attribute in the
+adapter's module docstring, so a later live check is a diff rather than a
+re-read.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1611,27 +1695,27 @@ is independently rejectable.
 - Produces: `PixabayProvider` (`name = 'pixabay'`), `WikimediaProvider`
   (`name = 'wikimedia'`), both satisfying `FootageProvider`.
 
-- [ ] **Step 1: Capture both APIs' real responses**
+- [ ] **Step 1: Fixtures — one doc-derived, one already captured**
 
-Pixabay — docs at <https://pixabay.com/api/docs/>:
+**Pixabay:** `PIXABAY_API_KEY` is not configured. Hand-write
+`pixabay_video_search.json` and `pixabay_photo_search.json` from
+<https://pixabay.com/api/docs/>, with the same `_doc_derived` marker and test
+docstring warning described in Task 7 Step 1.
 
-```bash
-curl -s "https://pixabay.com/api/videos/?key=$PIXABAY_API_KEY&q=ocean&per_page=3" \
-  > tests/test_apps/test_generation/test_stock/fixtures/pixabay_video_search.json
-curl -s "https://pixabay.com/api/?key=$PIXABAY_API_KEY&q=ocean&per_page=3" \
-  > tests/test_apps/test_generation/test_stock/fixtures/pixabay_photo_search.json
-```
+**Wikimedia:** `wikimedia_search.json` is **already committed** — captured live
+on 2026-07-26, no key needed. Read it before writing the mapping. Verified
+facts from that capture, which correct earlier drafts of this plan:
 
-Wikimedia Commons — MediaWiki API, no key required:
-
-```bash
-curl -s 'https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=filetype:bitmap%20battleship&gsrlimit=3&prop=imageinfo&iiprop=url|size|extmetadata&format=json' \
-  > tests/test_apps/test_generation/test_stock/fixtures/wikimedia_search.json
-```
-
-Note in each test module docstring which `extmetadata` keys carry licence and
-author (commonly `LicenseShortName`, `Artist`, `LicenseUrl`) — **confirm against
-the captured fixture**, as `extmetadata` varies per file.
+- `imageinfo[0]` keys are `url`, `width`, `height`, `size`, `descriptionurl`,
+  `descriptionshorturl`. **There is no `thumburl`** unless `iiurlwidth` is
+  requested — fall back to `url`.
+- `extmetadata` carries **`AttributionRequired`** (string `'true'`/`'false'`).
+  Read it rather than hardcoding `True`; default to `True` when the key is
+  absent, since over-attributing is harmless and under-attributing is not.
+- `extmetadata` has **no `LicenseUrl`** key. Use `License` (a code such as
+  `pd`, `cc-by-sa-4.0`) for the licence, `LicenseShortName` for display, and
+  leave `license_url` empty.
+- `Artist` contains HTML and needs the `_strip_html` helper.
 
 - [ ] **Step 2: Write the failing Pixabay test**
 
@@ -1901,8 +1985,8 @@ def _mock_response(payload: dict[str, object]) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_search_maps_candidates_with_attribution() -> None:
-    """Commons results carry licence and author, and require attribution."""
+async def test_search_maps_candidates_with_licence_metadata() -> None:
+    """Commons results carry licence, author, and a source page."""
     payload = json.loads((_FIXTURES / 'wikimedia_search.json').read_text())
     with patch('httpx.AsyncClient.get', new=AsyncMock(
         return_value=_mock_response(payload),
@@ -1914,9 +1998,58 @@ async def test_search_maps_candidates_with_attribution() -> None:
     assert results
     for candidate in results:
         assert candidate.provider == 'wikimedia'
-        assert candidate.attribution_required is True
         assert candidate.source_page_url.startswith('http')
         assert candidate.license
+
+
+@pytest.mark.asyncio
+async def test_attribution_required_is_read_from_extmetadata() -> None:
+    """AttributionRequired='false' is honoured, not overridden to True."""
+    payload = {'query': {'pages': {'1': {
+        'pageid': 1, 'title': 'File:X.jpg',
+        'imageinfo': [{
+            'url': 'https://upload.test/x.jpg',
+            'descriptionurl': 'https://commons.test/x',
+            'width': 2000, 'height': 1400,
+            'extmetadata': {
+                'AttributionRequired': {'value': 'false'},
+                'License': {'value': 'pd'},
+                'Artist': {'value': '<a href="/x">Someone</a>'},
+            },
+        }],
+    }}}}
+    with patch('httpx.AsyncClient.get', new=AsyncMock(
+        return_value=_mock_response(payload),
+    )):
+        results = await WikimediaProvider().search(
+            'x', media_type='image', orientation='landscape',
+            min_width=1280, limit=3,
+        )
+    assert results[0].attribution_required is False
+    assert results[0].license == 'pd'
+    assert results[0].author == 'Someone'
+
+
+@pytest.mark.asyncio
+async def test_absent_attribution_flag_defaults_to_required() -> None:
+    """A missing AttributionRequired key errs toward attributing."""
+    payload = {'query': {'pages': {'1': {
+        'pageid': 1, 'title': 'File:Y.jpg',
+        'imageinfo': [{
+            'url': 'https://upload.test/y.jpg',
+            'descriptionurl': 'https://commons.test/y',
+            'width': 2000, 'height': 1400,
+            'extmetadata': {'License': {'value': 'cc-by-sa-4.0'}},
+        }],
+    }}}}
+    with patch('httpx.AsyncClient.get', new=AsyncMock(
+        return_value=_mock_response(payload),
+    )):
+        results = await WikimediaProvider().search(
+            'y', media_type='image', orientation='landscape',
+            min_width=1280, limit=3,
+        )
+    assert results[0].attribution_required is True
 
 
 @pytest.mark.asyncio
@@ -2037,6 +2170,13 @@ class WikimediaProvider:
             entry = meta.get(key) or {}
             return str(entry.get('value', '')) if isinstance(entry, dict) else ''
 
+        # extmetadata.AttributionRequired is a string 'true'/'false' and is
+        # sometimes absent. Absent defaults to True: over-attributing is
+        # harmless, under-attributing is a licence violation.
+        raw_required = _meta('AttributionRequired')
+        attribution_required = (
+            raw_required.strip().casefold() != 'false' if raw_required else True
+        )
         return FootageCandidate(
             provider=self.name,
             external_id=str(page.get('pageid', '')),
@@ -2051,10 +2191,10 @@ class WikimediaProvider:
                 if media_type == 'video'
                 else None
             ),
-            license=_meta('LicenseShortName') or 'unknown',
-            license_url=_meta('LicenseUrl'),
+            license=_meta('License') or 'unknown',
+            license_url='',
             author=_strip_html(_meta('Artist')),
-            attribution_required=True,
+            attribution_required=attribution_required,
             title=str(page.get('title', '')),
             tags=(),
         )
@@ -2090,33 +2230,41 @@ git commit -m "feat(generation): add Pixabay and Wikimedia footage adapters"
 - Produces: `OpenverseProvider` (`name = 'openverse'`), and — only if Step 1
   confirms it is needed — `ArchiveOrgProvider` (`name = 'archive_org'`).
 
-- [ ] **Step 1: Determine whether Openverse serves video**
+- [ ] **Step 1: Read the committed fixtures — the question is already settled**
 
-Read <https://api.openverse.org/v1/> and confirm which media types have search
-endpoints. As of writing, Openverse indexes **images and audio only**; the
-design doc's claim that it provides archival *video* is believed incorrect.
+Openverse was probed on 2026-07-26: `/v1/images/` and `/v1/audio/` return 200;
+`/v1/video/` and `/v1/videos/` both return **404**. Openverse serves no video.
+Both fixtures are **already committed** — no key is needed for either API:
 
-Verify:
+- `openverse_image_search.json`
+- `archive_org_search.json`
 
-```bash
-curl -s 'https://api.openverse.org/v1/images/?q=battleship&page_size=3' \
-  > tests/test_apps/test_generation/test_stock/fixtures/openverse_image_search.json
-curl -s -o /dev/null -w '%{http_code}\n' \
-  'https://api.openverse.org/v1/video/?q=battleship'
-```
+So this task builds **both** providers, unconditionally:
 
-**Record the finding at the top of `openverse.py` as a module docstring note.**
+1. `OpenverseProvider` — images only; returns `[]` for `media_type='video'`.
+2. `ArchiveOrgProvider` — archival video via `advancedsearch.php` +
+   `metadata/{identifier}`.
 
-- If Openverse has **no** video endpoint (expected): `OpenverseProvider`
-  supports `media_type='image'` only and returns `[]` for `'video'`. Then also
-  build `ArchiveOrgProvider` in this task using the archive.org
-  `advancedsearch.php` + `metadata` endpoints for archival video, following the
-  identical capture-then-map workflow used in Tasks 7–8.
-- If Openverse **does** serve video: implement both media types in
-  `OpenverseProvider` and skip `ArchiveOrgProvider` entirely.
+Verified facts from the captured fixtures:
 
-**Report the outcome before writing code** — it changes what ships and the
-design doc needs a correction either way.
+- **Openverse** results carry `url` (full image), `thumbnail`,
+  `foreign_landing_url`, `creator`, `license` (bare code like `by-nc-nd`),
+  `license_version`, `license_url`, `width`, `height`, `title`, `tags`,
+  `attribution`, `provider`, `source`.
+- **Openverse returns NC and ND content** — the sample's first result is
+  `by-nc-nd`. `passes_quality_floor` from Task 6 rejects those, but the
+  adapter must still map the licence faithfully so the filter can see it.
+  Do **not** normalise `by-nc-nd` to `by`.
+- **archive.org** `advancedsearch.php` returns `response.docs[]` where each doc
+  has only the fields named in `fl[]`, and **requested fields are omitted when
+  the item lacks them** — the captured sample requested `licenseurl` and the
+  docs came back with only `identifier` and `title`. Treat every field except
+  `identifier` as optional, and default `license` to `'unknown'` with
+  `attribution_required=True` when `licenseurl` is absent.
+- Getting a playable archive.org file URL needs a second call to
+  `https://archive.org/metadata/{identifier}`; build the download URL as
+  `https://archive.org/download/{identifier}/{file_name}` from the first
+  `.mp4` in that response's `files[]`.
 
 - [ ] **Step 2: Write the failing Openverse test**
 
@@ -2342,16 +2490,21 @@ class OpenverseProvider:
         )
 ```
 
-- [ ] **Step 5: If Step 1 confirmed Openverse has no video, add archive.org**
+- [ ] **Step 5: Add the archive.org provider**
 
-Repeat the Steps 1–4 workflow for archive.org: capture
-`https://archive.org/advancedsearch.php?q=<query>+AND+mediatype:movies&fl[]=identifier&fl[]=title&fl[]=licenseurl&rows=3&output=json`
-plus one `https://archive.org/metadata/<identifier>` response into fixtures,
-write `test_archive_org.py` covering candidate mapping, an empty result set,
-and a 5xx retryable error, then implement `ArchiveOrgProvider` with
-`name = 'archive_org'` mapping to the same `FootageCandidate` contract.
-Archive.org items are public-domain or CC; set `attribution_required` from the
-item's `licenseurl` using the same CC0/PDM rule as Openverse.
+Write `test_archive_org.py` against the committed `archive_org_search.json`,
+covering: candidate mapping from a search doc plus its `metadata` response, a
+doc missing `licenseurl` (defaults to `license='unknown'` and
+`attribution_required=True`), an empty `response.docs`, an item whose
+`metadata.files[]` has no `.mp4` (skipped, not crashed), and a 5xx retryable
+error.
+
+Then implement `ArchiveOrgProvider` with `name = 'archive_org'`, returning `[]`
+for `media_type='image'` (it is the archival **video** source; Wikimedia and
+Openverse cover stills). Two calls per result: `advancedsearch.php` for
+identifiers, then `metadata/{identifier}` for the file list. Set
+`attribution_required` from `licenseurl` with the same CC0/PDM rule as
+Openverse, defaulting to `True` when absent.
 
 - [ ] **Step 6: Run the full stock suite**
 
@@ -2810,6 +2963,7 @@ from server.apps.generation.clients.stock.base import (
     passes_quality_floor,
 )
 from server.apps.generation.clients.stock.cache import cached_search
+from server.apps.generation.clients.stock.archive_org import ArchiveOrgProvider
 from server.apps.generation.clients.stock.openverse import OpenverseProvider
 from server.apps.generation.clients.stock.pexels import PexelsProvider
 from server.apps.generation.clients.stock.pixabay import PixabayProvider
@@ -2834,6 +2988,7 @@ def build_providers(enabled: Sequence[str]) -> list[FootageProvider]:
         'openverse': lambda: OpenverseProvider(
             token=getattr(settings, 'OPENVERSE_API_TOKEN', ''),
         ),
+        'archive_org': ArchiveOrgProvider,
     }
     providers: list[FootageProvider] = []
     for name in enabled:

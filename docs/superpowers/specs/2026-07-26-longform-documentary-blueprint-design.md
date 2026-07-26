@@ -168,9 +168,23 @@ New package `server/apps/generation/clients/stock/`, matching how `fal`,
 ```text
 stock/
   base.py       FootageProvider Protocol + FootageCandidate struct
-  pexels.py  pixabay.py  wikimedia.py  openverse.py
+  pexels.py  pixabay.py  wikimedia.py  openverse.py  archive_org.py
   registry.py   name → provider; enabled set comes from channel config
 ```
+
+**Correction (2026-07-26, verified by probing the live API):** an earlier draft
+of this document treated "Openverse / archive.org" as one archival *video*
+source. Openverse serves **images and audio only** — `/v1/video/` and
+`/v1/videos/` both return 404. Archival video comes from **archive.org**, a
+separate adapter (`archive_org.py`). Openverse remains useful for CC stills.
+
+**Licence safety — NC and ND are excluded unconditionally.** Openverse returns
+`by-nc-nd` material. NonCommercial forbids use on a monetized channel and
+NoDerivatives forbids editing the work into a longer video — both describe
+exactly what this pipeline does. `passes_quality_floor` rejects any licence
+code containing `nc` or `nd` regardless of the channel's `allowed_licenses`:
+an empty allowlist means "no *additional* restriction", never "permission to
+use NC/ND".
 
 One Protocol method:
 
