@@ -1,8 +1,12 @@
 """Motion stage — fan-out: Kling I2V for heroes, Ken Burns otherwise."""
 
 import asyncio
-import tempfile
-from pathlib import Path
+
+# Path is unused directly in this module now that Ken Burns logic lives in
+# server.apps.rendering.ffmpeg, but tests/test_apps/test_pipelines/
+# test_stages/test_motion.py patches `motion.Path.read_bytes` (a pre-existing
+# test we must not edit), so the name must stay resolvable here.
+from pathlib import Path  # noqa: F401
 from typing import Any, override
 
 import httpx
@@ -15,13 +19,7 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
-
-_KEN_BURNS_PRESETS = [
-    "zoompan=z='zoom+0.008':d=150:s=1920x1080",
-    "zoompan=z='1.12-0.008*on':d=150:s=1920x1080",
-    "zoompan=x='iw/2-(iw/zoom/2)+on*8':z=1.08:d=150:s=1920x1080",
-    "zoompan=x='iw-(iw/zoom/2)-on*8':z=1.08:d=150:s=1920x1080",
-]
+from server.apps.rendering import ffmpeg
 
 _DEFAULT_CAMERA_MOVEMENT = 'push_in'
 _MOVEMENT_PROMPT_PHRASES = {
@@ -48,63 +46,14 @@ async def _run_ken_burns(
     duration_s: float,
     preset_idx: int = 0,
 ) -> bytes:
-    """Apply Ken Burns zoom/pan to image bytes via FFmpeg subprocess."""
-    assert image_bytes, 'image_bytes must be non-empty'
-    assert duration_s > 0, f'duration_s must be > 0, got {duration_s}'
+    """Apply Ken Burns zoom/pan to image bytes via the shared ffmpeg helper.
 
-    with (
-        tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_f,
-        tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as vid_f,
-    ):
-        img_path = img_f.name
-        vid_path = vid_f.name
-    try:
-        await asyncio.to_thread(Path(img_path).write_bytes, image_bytes)
-
-        frames = int(duration_s * 30)
-        vf = _KEN_BURNS_PRESETS[preset_idx % len(_KEN_BURNS_PRESETS)].replace(
-            'd=150',
-            f'd={frames}',
-        )
-        cmd = [
-            'ffmpeg',
-            '-y',
-            '-loop',
-            '1',
-            '-i',
-            img_path,
-            '-vf',
-            vf,
-            '-t',
-            str(duration_s),
-            '-r',
-            '30',
-            '-c:v',
-            'libx264',
-            '-crf',
-            '16',
-            '-pix_fmt',
-            'yuv420p',
-            '-an',
-            vid_path,
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f'FFmpeg Ken Burns failed: {stderr.decode()[:300]}',
-            )
-
-        video_bytes = await asyncio.to_thread(Path(vid_path).read_bytes)
-        assert video_bytes, 'Ken Burns produced empty video'
-        return video_bytes
-    finally:
-        await asyncio.to_thread(Path(img_path).unlink, missing_ok=True)
-        await asyncio.to_thread(Path(vid_path).unlink, missing_ok=True)
+    Thin delegate kept under this name/signature so existing unit tests
+    (and their patch targets) keep working unchanged; the implementation
+    itself now lives in ``server.apps.rendering.ffmpeg.ken_burns`` so the
+    forthcoming footage_prep stage can reuse it without duplication.
+    """
+    return await ffmpeg.ken_burns(image_bytes, duration_s, preset_idx)
 
 
 @register_stage
