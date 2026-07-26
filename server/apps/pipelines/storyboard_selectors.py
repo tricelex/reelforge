@@ -207,6 +207,7 @@ def get_storyboard(
             budget_usd=str(budget) if budget is not None else None,
         ),
         scenes=scenes,
+        profile='ai_visual',
     )
 
 

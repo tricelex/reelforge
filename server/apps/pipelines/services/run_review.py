@@ -1,19 +1,21 @@
 """Business logic for longform review (scene edits, publish)."""
 
+import asyncio
 import uuid
-from typing import Any, final
+from typing import Any, cast, final
 
 import attrs
 from django.core.exceptions import ValidationError
-from django.db import transaction
 
 from server.apps.pipelines.logic.constants import GATE_PARKED_STATUSES
 from server.apps.pipelines.logic.value_objects import (
+    FootageStoryboardPayload,
     PreviewPayload,
     PublishMetadataPatchPayload,
     PublishMetadataPayload,
     PublishPayload,
     PublishResultPayload,
+    RunActionResultPayload,
     SceneBreakdownPayload,
     ScenePatchPayload,
     StoryboardPayload,
@@ -24,6 +26,8 @@ from server.apps.pipelines.models import (
     StageExecution,
     StageStatus,
 )
+from server.apps.pipelines.review import dispatch
+from server.apps.pipelines.services.orchestrator import rerun_stage_impl
 from server.apps.pipelines.storyboard_selectors import (
     _gate_stage_keys,
     _latest_parent_execution,
@@ -128,6 +132,23 @@ def _update_prompt_row(
         prompt['prompt'] = payload.visual_concept
 
 
+def _latest_footage_search_shard(
+    run_id: str,
+    scene_idx: int,
+) -> StageExecution | None:
+    """Return the latest footage_search child execution for one scene."""
+    rows = StageExecution.objects.filter(
+        run_id=uuid.UUID(run_id),
+        stage_key='footage_search',
+        parent__isnull=False,
+    ).order_by('shard_index', '-attempt')
+    for row in rows:
+        idx = row.output.get('scene_idx')
+        if idx is not None and int(idx) == scene_idx:
+            return row
+    return None
+
+
 def _sync_visual_prompts(
     run_id: str,
     scene_idx: int,
@@ -158,9 +179,15 @@ class RunReviewService:
 
     _presign: PresignUrlHelper
 
-    def get_storyboard(self, run_id: str) -> StoryboardPayload:
-        """Return storyboard payload."""
-        return get_storyboard(run_id, self._presign)
+    def get_storyboard(
+        self,
+        run_id: str,
+    ) -> StoryboardPayload | FootageStoryboardPayload:
+        """Return storyboard payload for this run's blueprint profile."""
+        return cast(
+            'StoryboardPayload | FootageStoryboardPayload',
+            dispatch.get_storyboard(run_id, self._presign),
+        )
 
     def get_scene_breakdown(self, run_id: str) -> SceneBreakdownPayload:
         """Return scene breakdown payload."""
@@ -228,33 +255,101 @@ class RunReviewService:
         payload: ScenePatchPayload,
     ) -> StoryboardScenePayload:
         """Update one scene and stale downstream stages."""
-        breakdown = _latest_parent_execution(run_id, 'scene_breakdown')
-        if breakdown is None or breakdown.status != StageStatus.SUCCEEDED:
-            msg = 'scene_breakdown output is not available'
-            raise ValidationError(msg)
+        payload_dict: dict[str, Any] = {
+            'narration_text': payload.narration_text,
+            'visual_concept': payload.visual_concept,
+            'visual_prompt': payload.visual_prompt,
+            'is_hero': payload.is_hero,
+            'foreground_cast': payload.foreground_cast,
+        }
+        # ai_visual.apply_scene_edit already stales downstream stages and
+        # marks had_manual_edits itself. The result is always ai_visual
+        # shaped (this method's return type), so the lookup below goes
+        # straight to that selector rather than back through dispatch.
+        dispatch.apply_scene_edit(run_id, scene_idx, payload_dict)
 
-        output = dict(breakdown.output)
-        scenes_raw = output.get('scenes', [])
-        if not isinstance(scenes_raw, list):
-            msg = 'invalid scene_breakdown output'
-            raise ValidationError(msg)
-
-        scene = _find_scene(scenes_raw, scene_idx)
-        _apply_scene_fields(scene, payload)
-
-        with transaction.atomic():
-            breakdown.output = {**output, 'scenes': scenes_raw}
-            breakdown.save(update_fields=['output'])
-            stale_from = _sync_visual_prompts(run_id, scene_idx, payload)
-            _stale_downstream_sync(run_id, stale_from)
-
-        _mark_manual_edit_sync(run_id)
         board = get_storyboard(run_id, self._presign)
         for row in board.scenes:
             if row.idx == scene_idx:
                 return row
         msg = f'scene {scene_idx} not found after patch'
         raise ValidationError(msg)
+
+    def select_footage_candidate(
+        self,
+        run_id: str,
+        scene_idx: int,
+        external_id: str,
+    ) -> RunActionResultPayload:
+        """Swap a scene's footage for a ranked alternate candidate.
+
+        Requeues only the ``footage_prep`` shard for this scene, leaving
+        sibling scenes untouched.
+        """
+        shard = _latest_footage_search_shard(run_id, scene_idx)
+        candidates = (
+            shard.output.get('candidates', []) if shard is not None else []
+        )
+        candidate = next(
+            (
+                c
+                for c in candidates
+                if isinstance(c, dict)
+                and str(c.get('external_id')) == external_id
+            ),
+            None,
+        )
+        if shard is None or candidate is None:
+            msg = f'Unknown footage candidate: {external_id}'
+            raise ValidationError(msg)
+
+        shard.output = {
+            **dict(shard.output),
+            'source': str(candidate.get('provider', '')),
+            'license': str(candidate.get('license', '')),
+            'attribution': str(candidate.get('author', '')),
+            'source_url': str(candidate.get('source_url', '')),
+            'selected_external_id': external_id,
+        }
+        shard.save(update_fields=['output'])
+
+        asyncio.run(
+            rerun_stage_impl(
+                run_id,
+                'footage_prep',
+                shard_indices=[scene_idx],
+            ),
+        )
+        return RunActionResultPayload(status='queued')
+
+    def research_footage(
+        self,
+        run_id: str,
+        scene_idx: int,
+        query: str,
+    ) -> RunActionResultPayload:
+        """Re-run footage_search for one scene with an operator query."""
+        trimmed = query.strip()
+        if not trimmed:
+            msg = 'query must not be empty'
+            raise ValidationError(msg)
+
+        shard = _latest_footage_search_shard(run_id, scene_idx)
+        if shard is not None:
+            shard.input_snapshot = {
+                **dict(shard.input_snapshot),
+                'primary_query': trimmed,
+            }
+            shard.save(update_fields=['input_snapshot'])
+
+        asyncio.run(
+            rerun_stage_impl(
+                run_id,
+                'footage_search',
+                shard_indices=[scene_idx],
+            ),
+        )
+        return RunActionResultPayload(status='queued')
 
     def publish(
         self,

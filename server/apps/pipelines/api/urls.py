@@ -134,6 +134,21 @@ review_urlpatterns = [
         name='run-scene-detail',
     ),
     path(
+        'runs/<uuid:run_id>/scenes/<int:scene_idx>/select-candidate/',
+        review_views.RunSceneSelectCandidateController.as_view(),
+        name='run-scene-select-candidate',
+    ),
+    path(
+        'runs/<uuid:run_id>/scenes/<int:scene_idx>/research-footage/',
+        review_views.RunSceneResearchFootageController.as_view(),
+        name='run-scene-research-footage',
+    ),
+    path(
+        'runs/<uuid:run_id>/credits/',
+        review_views.RunCreditsController.as_view(),
+        name='run-credits',
+    ),
+    path(
         'runs/<uuid:run_id>/preview/',
         review_views.RunPreviewController.as_view(),
         name='run-preview',
