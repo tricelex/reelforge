@@ -238,3 +238,36 @@ class VideoMetadata(BaseModel):
     description: str
     tags: list[str] = Field(default_factory=list)
     category: str = 'Education'
+
+
+class FootageQuery(BaseModel):
+    """Provider search terms for one scene."""
+
+    scene_idx: int
+    primary_query: str
+    fallback_queries: list[str] = Field(default_factory=list)
+    media_preference: str = 'any'
+    orientation: str = 'landscape'
+    era_hint: str = ''
+    negative_terms: list[str] = Field(default_factory=list)
+    ai_fallback_prompt: str = ''
+
+
+class FootageQueriesOutput(BaseModel):
+    """Full output of the footage_queries stage."""
+
+    queries: list[FootageQuery]
+
+
+class CandidateRanking(BaseModel):
+    """A vision model's score for one footage candidate."""
+
+    external_id: str
+    score: float = Field(ge=0.0, le=1.0)
+    reason: str = ''
+
+
+class CandidateRankingOutput(BaseModel):
+    """Full output of a candidate re-ranking call."""
+
+    rankings: list[CandidateRanking]
