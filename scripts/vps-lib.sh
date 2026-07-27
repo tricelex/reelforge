@@ -22,3 +22,22 @@ vps_ssh() {
 vps_ssh_tty() {
   ssh -t -o ConnectTimeout=10 "${VPS_USER}@${VPS_HOST}" "$@"
 }
+
+# Read the IMAGE_TAG persisted on the VPS (written by deploy workflow).
+# Falls back to the tag on the running web container.
+vps_deployed_image_tag() {
+  vps_ssh "cd ${VPS_APP_DIR} && \
+    if [ -f .env ] && grep -q '^IMAGE_TAG=' .env; then \
+      grep -m1 '^IMAGE_TAG=' .env | cut -d= -f2-; \
+    else \
+      docker compose ps web --format '{{.Image}}' | sed 's/.*://'; \
+    fi"
+}
+
+# Run docker compose on the VPS with IMAGE_TAG set from the deployed release.
+vps_compose() {
+  local tag
+  tag="$(vps_deployed_image_tag)"
+  # shellcheck disable=SC2029
+  vps_ssh "cd ${VPS_APP_DIR} && IMAGE_TAG='${tag}' docker compose $(printf '%q ' "$@")"
+}
