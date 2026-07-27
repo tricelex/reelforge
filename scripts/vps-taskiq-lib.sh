@@ -86,10 +86,31 @@ async def main() -> None:
                     if_empty=False,
                 )
                 print(
-                    f'deleted {name}: message_count={result.message_count}'
+                    f'deleted queue {name}: message_count={result.message_count}'
                 )
             except ChannelNotFoundEntity:
                 print(f'queue missing: {name}')
+        for name in ('api.dead_letter', 'render.dead_letter', 'api.delay', 'render.delay'):
+            try:
+                result = await underlay.queue_delete(
+                    queue=name,
+                    if_unused=False,
+                    if_empty=False,
+                )
+                print(
+                    f'deleted queue {name}: message_count={result.message_count}'
+                )
+            except ChannelNotFoundEntity:
+                print(f'queue missing: {name}')
+        for name in ('taskiq', 'taskiq-api', 'taskiq-render'):
+            try:
+                await underlay.exchange_delete(
+                    exchange=name,
+                    if_unused=False,
+                )
+                print(f'deleted exchange {name}')
+            except ChannelNotFoundEntity:
+                print(f'exchange missing: {name}')
 
 
 asyncio.run(main())
