@@ -445,3 +445,43 @@ def test_execute_stage_skips_cancelled_run(run: PipelineRun) -> None:
         assert refreshed.status == StageStatus.QUEUED
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_stage_skips_redelivered_running_execution(
+    run: PipelineRun,
+) -> None:
+    """A redelivered broker message for an in-flight row must not rerun it.
+
+    Regression test: a long-running stage (e.g. assembly) can outlive the
+    broker's message-ack timeout, causing the same execution_id to be
+    delivered twice. Without this guard, the second delivery re-entered
+    execute_stage_impl and raced DB writes against the first, corrupting
+    the row (e.g. status flipping back to RUNNING after it had FAILED).
+    """
+    from server.apps.pipelines.services.executor import execute_stage_impl
+
+    async def _inner() -> None:
+        exec_ = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.RUNNING,
+            input_hash='',
+        )
+        with (
+            patch(
+                'server.apps.pipelines.services.executor.kick_advance',
+                new=AsyncMock(),
+            ) as kick,
+            patch(
+                'server.apps.pipelines.services.executor.execute_stage_kiq',
+                new=AsyncMock(),
+            ) as mock_execute_stage_kiq,
+        ):
+            await execute_stage_impl(str(exec_.id))
+        kick.assert_not_called()
+        mock_execute_stage_kiq.assert_not_called()
+        refreshed = await StageExecution.objects.aget(id=exec_.id)
+        assert refreshed.status == StageStatus.RUNNING
+
+    _run(_inner())
