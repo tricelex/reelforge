@@ -22,6 +22,11 @@ _TRANSITION_DURATION_S = 0.5
 _MUSIC_GAIN_DEFAULT_DB = -22.0
 _MUSIC_GAIN_MIN_DB = -24.0
 _MUSIC_GAIN_MAX_DB = -6.0
+# worker-render is capped at 4 vCPUs in production (docker-compose.vps.yml)
+# and each mux_scene call is its own multi-threaded ffmpeg encode — keep
+# concurrent scenes low enough that they don't starve each other, not so
+# low that scene-heavy chapters stay fully sequential.
+_SCENE_MUX_CONCURRENCY = 3
 
 
 def _clamp_music_gain_db(gain_db: float) -> float:
@@ -254,6 +259,89 @@ def _chapter_relative_window(
     return rel_start, rel_end
 
 
+async def _mux_one_scene(
+    tmp: Path,
+    ch_idx: int,
+    scene: dict[str, Any],
+    scene_asset_map: dict[int, str],
+    audio_path: str,
+    origin: float,
+    semaphore: asyncio.Semaphore,
+) -> tuple[int, str | None]:
+    """Fetch, fit, and mux a single scene; return (scene_idx, mezz_path).
+
+    ``mezz_path`` is ``None`` when the scene has no mapped motion asset —
+    the caller collects those into a combined ``missing`` error rather than
+    failing on the first one, matching the previous sequential behavior.
+
+    Raises:
+        ValueError: If the scene lacks ``scene_idx``.
+    """
+    from server.apps.rendering import ffmpeg  # noqa: PLC0415
+
+    if 'scene_idx' not in scene:
+        raise ValueError(
+            f'assembly chapter {ch_idx}: alignment scene missing '
+            'scene_idx (re-run alignment after scene_breakdown)',
+        )
+    scene_idx = int(scene['scene_idx'])
+    vid_asset_id = scene_asset_map.get(scene_idx)
+    if not vid_asset_id:
+        return scene_idx, None
+
+    async with semaphore:
+        vid_bytes = await _fetch_asset_bytes(vid_asset_id)
+        vid_file = tmp / f'vid_{scene_idx:04d}.mp4'
+        await asyncio.to_thread(vid_file.write_bytes, vid_bytes)
+        mezz_file = tmp / f'mezz_{scene_idx:04d}.mp4'
+        rel_start, rel_end = _chapter_relative_window(
+            float(scene['start_s']),
+            float(scene['end_s']),
+            origin,
+        )
+        await ffmpeg.mux_scene(
+            video_path=str(vid_file),
+            audio_path=audio_path,
+            start_s=rel_start,
+            end_s=rel_end,
+            out_path=str(mezz_file),
+        )
+    return scene_idx, str(mezz_file)
+
+
+def _collect_scene_mux_results(
+    results: list[Any],
+    ch_idx: int,
+) -> list[str]:
+    """Split gathered (scene_idx, mezz_path) results; raise on failures.
+
+    Raises:
+        BaseException: The first exception raised by any scene's mux task.
+        ValueError: If any scene is missing its motion asset, or the
+            chapter ends up with zero mezzanine segments to concat.
+    """
+    scene_mezz_files: list[str] = []
+    missing: list[int] = []
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+        scene_idx, mezz_path = result
+        if mezz_path is None:
+            missing.append(scene_idx)
+        else:
+            scene_mezz_files.append(mezz_path)
+    if missing:
+        raise ValueError(
+            f'assembly chapter {ch_idx}: missing motion assets for '
+            f'scene_idx={missing}',
+        )
+    if not scene_mezz_files:
+        raise ValueError(
+            f'assembly chapter {ch_idx}: no mezzanine segments to concat',
+        )
+    return scene_mezz_files
+
+
 async def _build_chapter_files(
     tmp: Path,
     scene_groups: dict[int, list[dict[str, Any]]],
@@ -266,7 +354,9 @@ async def _build_chapter_files(
 
     Alignment ``start_s`` / ``end_s`` are absolute on the narration timeline.
     Each chapter TTS file is timed from zero, so windows are shifted by the
-    chapter origin before ``mux_scene``.
+    chapter origin before ``mux_scene``. Scenes within a chapter are muxed
+    concurrently (bounded by ``_SCENE_MUX_CONCURRENCY``) since each is an
+    independent ffmpeg subprocess with no shared state.
 
     Raises:
         ValueError: If a scene lacks ``scene_idx``, its motion asset is
@@ -282,51 +372,34 @@ async def _build_chapter_files(
 
     chapter_files: list[str] = []
     for ch_idx, ch_scenes in scene_groups.items():
-        scene_mezz_files: list[str] = []
         audio_path = chapter_audio_files.get(ch_idx, '')
         if not audio_path:
             raise ValueError(
                 f'assembly chapter {ch_idx}: missing TTS audio asset',
             )
         origin = origins.get(ch_idx, 0.0)
-        missing: list[int] = []
-        for scene in sorted(ch_scenes, key=operator.itemgetter('segment_idx')):
-            if 'scene_idx' not in scene:
-                raise ValueError(
-                    f'assembly chapter {ch_idx}: alignment scene missing '
-                    'scene_idx (re-run alignment after scene_breakdown)',
+        ordered_scenes = sorted(
+            ch_scenes,
+            key=operator.itemgetter('segment_idx'),
+        )
+        semaphore = asyncio.Semaphore(_SCENE_MUX_CONCURRENCY)
+        results = await asyncio.gather(
+            *(
+                _mux_one_scene(
+                    tmp,
+                    ch_idx,
+                    scene,
+                    scene_asset_map,
+                    audio_path,
+                    origin,
+                    semaphore,
                 )
-            scene_idx = int(scene['scene_idx'])
-            vid_asset_id = scene_asset_map.get(scene_idx)
-            if not vid_asset_id:
-                missing.append(scene_idx)
-                continue
-            vid_bytes = await _fetch_asset_bytes(vid_asset_id)
-            vid_file = tmp / f'vid_{scene_idx:04d}.mp4'
-            await asyncio.to_thread(vid_file.write_bytes, vid_bytes)
-            mezz_file = tmp / f'mezz_{scene_idx:04d}.mp4'
-            rel_start, rel_end = _chapter_relative_window(
-                float(scene['start_s']),
-                float(scene['end_s']),
-                origin,
-            )
-            await ffmpeg.mux_scene(
-                video_path=str(vid_file),
-                audio_path=audio_path,
-                start_s=rel_start,
-                end_s=rel_end,
-                out_path=str(mezz_file),
-            )
-            scene_mezz_files.append(str(mezz_file))
-        if missing:
-            raise ValueError(
-                f'assembly chapter {ch_idx}: missing motion assets for '
-                f'scene_idx={missing}',
-            )
-        if not scene_mezz_files:
-            raise ValueError(
-                f'assembly chapter {ch_idx}: no mezzanine segments to concat',
-            )
+                for scene in ordered_scenes
+            ),
+            return_exceptions=True,
+        )
+
+        scene_mezz_files = _collect_scene_mux_results(results, ch_idx)
         transition = _pick_transition_style(transition_pool, ch_idx)
         chapter_file = tmp / f'ch_{ch_idx:03d}_concat.mp4'
         await ffmpeg.concat_chapter_with_transition(

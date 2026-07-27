@@ -368,12 +368,23 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
         StageStatus,
     )
 
-    if (
-        execution.status == StageStatus.CANCELLED
-        or execution.run.status == RunStatus.CANCELLED
-    ):
+    if execution.run.status == RunStatus.CANCELLED:
         logger.info(
             'stage_skipped_cancelled',
+            **_execution_log_fields(execution),
+        )
+        return
+
+    if execution.status != StageStatus.QUEUED:
+        # A QUEUED->RUNNING execution is only ever enqueued once, right
+        # after being created with status=QUEUED. Any other status here
+        # means this is a redelivered/duplicate broker message (e.g. a
+        # long-running render outliving the broker's ack timeout) arriving
+        # for a row another worker already started or finished — running it
+        # again would race writes on the same row and corrupt its state.
+        logger.warning(
+            'stage_execution_duplicate_delivery',
+            current_status=execution.status,
             **_execution_log_fields(execution),
         )
         return
