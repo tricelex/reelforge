@@ -65,11 +65,11 @@ from server.apps.clips.selectors import (
     get_candidate_source_dimensions,
     get_run_source_asset_id,
 )
-from server.apps.pipelines.tasks import advance_pipeline
+from server.apps.pipelines.enqueue import kiq_advance_pipeline
 from server.common.exceptions import ConflictError
 from server.common.pagination import paginate_queryset
 from server.common.storage import PresignUrlHelper
-from server.common.taskiq_sender import kiq_task
+from server.common.taskiq_sender import kiq_render_task
 
 if TYPE_CHECKING:
     from server.apps.clips.models import (
@@ -463,7 +463,7 @@ def _enqueue_clip_preview(
         return _preview_queued_payload(candidate_id, version)
 
     try:
-        kiq_task(render_clip_preview_task, candidate_id)
+        kiq_render_task(render_clip_preview_task, candidate_id)
     except Exception as exc:
         error = f'Could not queue preview render: {exc}'
         cache.set(
@@ -1022,7 +1022,7 @@ class ClipsService:
             'approved_candidate_ids': approved_candidate_ids,
         }
         _approve_gate_sync(run_id, 'clip_approval_gate', output)
-        kiq_task(advance_pipeline, run_id)
+        kiq_advance_pipeline(run_id)
         return GateApprovalResultPayload(
             status='approved',
             approved_count=count,
@@ -1114,7 +1114,7 @@ class ClipsService:
             ],
         )
         invalidate_preview_cache(candidate_id)
-        kiq_task(reset_smart_crop_task, candidate_id)
+        kiq_render_task(reset_smart_crop_task, candidate_id)
         source_w, source_h = get_candidate_source_dimensions(candidate_id)
         return _to_layout_payload(
             config,
@@ -1663,7 +1663,7 @@ class ClipsService:
             return self.get_render(candidate_id)
 
         set_export_queued(candidate_id)
-        kiq_task(render_clip_export_task, candidate_id)
+        kiq_render_task(render_clip_export_task, candidate_id)
         return self.get_render(candidate_id)
 
     def trigger_preview(

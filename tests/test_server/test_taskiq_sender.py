@@ -16,10 +16,14 @@ def test_enqueue_starts_broker_once() -> None:
     task = AsyncMock()
     task.kiq = AsyncMock(return_value=None)
     with (
-        patch.object(taskiq_sender.broker, 'is_worker_process', False),
-        patch.object(taskiq_sender.broker, 'startup', AsyncMock()) as startup,
+        patch.object(taskiq_sender.api_broker, 'is_worker_process', False),
+        patch.object(
+            taskiq_sender.api_broker,
+            'startup',
+            AsyncMock(),
+        ) as startup,
     ):
-        taskiq_sender._broker_ready = False
+        taskiq_sender._api_sender._broker_ready = False
         taskiq_sender._run_async(taskiq_sender._enqueue(task, ('a',), {}))
         taskiq_sender._run_async(taskiq_sender._enqueue(task, ('b',), {}))
     startup.assert_awaited_once()
@@ -31,7 +35,7 @@ def test_kiq_task_async_uses_worker_loop_when_in_worker() -> None:
     task.kiq = AsyncMock(return_value=None)
 
     async def _inner() -> None:
-        with patch.object(taskiq_sender.broker, 'is_worker_process', True):
+        with patch.object(taskiq_sender.api_broker, 'is_worker_process', True):
             await taskiq_sender.kiq_task_async(task, 'run-id')
 
     asyncio.run(_inner())
@@ -44,10 +48,14 @@ def test_kiq_task_async_starts_broker_once() -> None:
 
     async def _inner() -> None:
         with (
-            patch.object(taskiq_sender.broker, 'is_worker_process', False),
-            patch.object(taskiq_sender.broker, 'startup', AsyncMock()) as startup,
+            patch.object(taskiq_sender.api_broker, 'is_worker_process', False),
+            patch.object(
+                taskiq_sender.api_broker,
+                'startup',
+                AsyncMock(),
+            ) as startup,
         ):
-            taskiq_sender._broker_ready = False
+            taskiq_sender._api_sender._broker_ready = False
             await taskiq_sender.kiq_task_async(task, 'a')
             await taskiq_sender.kiq_task_async(task, 'b')
         startup.assert_awaited_once()
@@ -62,6 +70,30 @@ def test_kiq_task_async_accepts_pipeline_tasks() -> None:
 
     async def _inner() -> None:
         await taskiq_sender.kiq_task_async(execute_stage, 'exec-id')
+
+    asyncio.run(_inner())
+
+
+def test_kiq_render_task_async_starts_render_broker() -> None:
+    task = AsyncMock()
+    task.kiq = AsyncMock(return_value=None)
+
+    async def _inner() -> None:
+        with (
+            patch.object(
+                taskiq_sender.render_broker,
+                'is_worker_process',
+                False,
+            ),
+            patch.object(
+                taskiq_sender.render_broker,
+                'startup',
+                AsyncMock(),
+            ) as startup,
+        ):
+            taskiq_sender._render_sender._broker_ready = False
+            await taskiq_sender.kiq_render_task_async(task, 'id')
+        startup.assert_awaited_once()
 
     asyncio.run(_inner())
 
@@ -88,10 +120,10 @@ def test_run_async_timeout_raises_and_marks_broker_stale() -> None:
         await asyncio.sleep(3600)
 
     with patch.object(taskiq_sender, 'ENQUEUE_TIMEOUT_SEC', 0.05):
-        taskiq_sender._broker_ready = True
+        taskiq_sender._api_sender._broker_ready = True
         with pytest.raises(taskiq_sender.TaskEnqueueError):
             taskiq_sender._run_async(_hang())
-    assert taskiq_sender._broker_ready is False
+    assert taskiq_sender._api_sender._broker_ready is False
 
 
 def test_run_async_failure_marks_broker_stale() -> None:
@@ -100,10 +132,10 @@ def test_run_async_failure_marks_broker_stale() -> None:
     async def _boom() -> None:
         raise RuntimeError('channel closed')
 
-    taskiq_sender._broker_ready = True
+    taskiq_sender._api_sender._broker_ready = True
     with pytest.raises(RuntimeError, match='channel closed'):
         taskiq_sender._run_async(_boom())
-    assert taskiq_sender._broker_ready is False
+    assert taskiq_sender._api_sender._broker_ready is False
 
 
 def test_enqueue_times_out_inside_loop() -> None:
@@ -118,13 +150,13 @@ def test_enqueue_times_out_inside_loop() -> None:
     async def _inner() -> None:
         with (
             patch.object(
-                taskiq_sender.broker,
+                taskiq_sender.api_broker,
                 'is_worker_process',
                 False,  # noqa: FBT003
             ),
             patch.object(taskiq_sender, 'ENQUEUE_TIMEOUT_SEC', 0.05),
         ):
-            taskiq_sender._broker_ready = True
+            taskiq_sender._api_sender._broker_ready = True
             with pytest.raises(TimeoutError):
                 await taskiq_sender._enqueue(task, (), {})
 
@@ -138,23 +170,23 @@ def test_kiq_task_async_failure_marks_broker_stale() -> None:
 
     async def _inner() -> None:
         with patch.object(
-            taskiq_sender.broker,
+            taskiq_sender.api_broker,
             'is_worker_process',
             False,  # noqa: FBT003
         ):
-            taskiq_sender._broker_ready = True
+            taskiq_sender._api_sender._broker_ready = True
             with pytest.raises(RuntimeError, match='publish failed'):
                 await taskiq_sender.kiq_task_async(task, 'x')
 
     asyncio.run(_inner())
-    assert taskiq_sender._broker_ready is False
+    assert taskiq_sender._api_sender._broker_ready is False
 
 
 def test_ensure_loop_reuses_background_thread() -> None:
-    taskiq_sender._loop = None
-    taskiq_sender._loop_thread = None
+    taskiq_sender._api_sender._loop = None
+    taskiq_sender._api_sender._loop_thread = None
     first = taskiq_sender._ensure_loop()
     second = taskiq_sender._ensure_loop()
     assert first is second
-    assert taskiq_sender._loop_thread is not None
-    assert taskiq_sender._loop_thread.is_alive()
+    assert taskiq_sender._api_sender._loop_thread is not None
+    assert taskiq_sender._api_sender._loop_thread.is_alive()

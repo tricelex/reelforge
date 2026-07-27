@@ -22,10 +22,11 @@ if TYPE_CHECKING:
 
 async def advance_pipeline_kiq(run_id: str) -> None:
     """Enqueue advance_pipeline task."""
-    from server.apps.pipelines.tasks import advance_pipeline  # noqa: PLC0415
-    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
+    from server.apps.pipelines.enqueue import (  # noqa: PLC0415
+        kiq_advance_pipeline_async,
+    )
 
-    await kiq_task_async(advance_pipeline, run_id)
+    await kiq_advance_pipeline_async(run_id)
 
 
 async def kick_advance(execution: 'StageExecution') -> None:
@@ -38,10 +39,11 @@ async def kick_advance(execution: 'StageExecution') -> None:
 
 async def execute_stage_kiq(execution_id: str) -> None:
     """Enqueue execute_stage (separate function for mockability in tests)."""
-    from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
-    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
+    from server.apps.pipelines.enqueue import (  # noqa: PLC0415
+        kiq_execute_stage_async,
+    )
 
-    await kiq_task_async(execute_stage, execution_id)
+    await kiq_execute_stage_async(execution_id)
 
 
 def _execution_log_fields(execution: 'StageExecution') -> dict[str, Any]:
@@ -353,6 +355,21 @@ async def execute_stage_impl(execution_id: str) -> None:  # noqa: C901
     execution = await StageExecution.objects.select_related('run').aget(
         id=uuid.UUID(execution_id),
     )
+    from server.apps.pipelines.models import (  # noqa: PLC0415
+        RunStatus,
+        StageStatus,
+    )
+
+    if (
+        execution.status == StageStatus.CANCELLED
+        or execution.run.status == RunStatus.CANCELLED
+    ):
+        logger.info(
+            'stage_skipped_cancelled',
+            **_execution_log_fields(execution),
+        )
+        return
+
     stage_cls = STAGE_REGISTRY.get(execution.stage_key)
     if stage_cls is None:
         await _fail(

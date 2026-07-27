@@ -290,10 +290,9 @@ class RunGateApproveController(
         from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
             _approve_gate_sync,
         )
-        from server.apps.pipelines.tasks import (  # noqa: PLC0415
-            advance_pipeline,
+        from server.apps.pipelines.enqueue import (  # noqa: PLC0415
+            kiq_advance_pipeline,
         )
-        from server.common.taskiq_sender import kiq_task  # noqa: PLC0415
 
         run_id = str(self.kwargs['run_id'])
         gate_key = str(self.kwargs['gate_key'])
@@ -309,7 +308,7 @@ class RunGateApproveController(
                 )
                 approved_count = len(approved_ids)
         _approve_gate_sync(run_id, gate_key, output)
-        kiq_task(advance_pipeline, run_id)
+        kiq_advance_pipeline(run_id)
         return GateApproveResultPayload(
             status='ok',
             approved_count=approved_count,

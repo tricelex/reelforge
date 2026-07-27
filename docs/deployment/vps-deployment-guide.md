@@ -198,7 +198,8 @@ nano /opt/***REMOVED***/.env
 | `OPENVERSE_CLIENT_ID` / `OPENVERSE_CLIENT_SECRET` | Openverse OAuth app (register + email-verify at https://api.openverse.org/); access tokens are refreshed automatically |
 | `OPENVERSE_API_TOKEN` | Optional Bearer override for debugging; leave empty in production |
 | `SENTRY_DSN`, `LOGFIRE_TOKEN` | Optional, same as today |
-| `TASKIQ_WORKERS`, `TASKIQ_MAX_ASYNC_TASKS` | Optional — only set if you want to override the conservative defaults (1 worker process / 2 concurrent tasks) baked into `docker-compose.vps.yml` |
+| `TASKIQ_API_WORKERS`, `TASKIQ_API_MAX_ASYNC_TASKS` | Optional — api worker defaults (1 process / 4 concurrent tasks) |
+| `TASKIQ_RENDER_WORKERS`, `TASKIQ_RENDER_MAX_ASYNC_TASKS` | Optional — render worker defaults (1 process / 2 concurrent tasks) |
 
 Restrict permissions: `chmod 600 /opt/***REMOVED***/.env`.
 
@@ -244,12 +245,12 @@ re-run the job from the Actions tab, or check `docker compose logs caddy` on the
 ```bash
 ssh deploy@<VPS_IP>
 cd /opt/***REMOVED***
-docker compose ps                     # all four services should be Up
+docker compose ps                     # web, scheduler, worker-api, worker-render should be Up
 curl -I https://***REMOVED***.29signals.net/health/?format=json   # 200
 
-# End-to-end web -> RabbitMQ -> worker -> Redis round-trip:
+# End-to-end web -> RabbitMQ -> worker-api -> Redis round-trip:
 docker compose exec -T web python manage.py trigger_test_task
-docker compose logs worker --tail=50 | grep add_task_executed
+docker compose logs worker-api --tail=50 | grep add_task_executed
 # expect: add_task_executed result=8
 
 # Dependency latency baseline (run ON the app VPS, not a laptop):
@@ -261,15 +262,15 @@ docker compose exec -T web python manage.py benchmark_dependencies
 ```
 
 Confirm `/opt/***REMOVED***/.env` includes `CONN_MAX_AGE=600` (repository default). Restart
-web/worker/scheduler after changing it:
+web/worker-api/worker-render/scheduler after changing it:
 
 ```bash
-docker compose up -d web worker scheduler
+docker compose up -d web worker-api worker-render scheduler
 ```
 
 ### Source-video cache (cross-VPS performance)
 
-`web` and `worker` share a `source-cache` volume at `/var/cache/***REMOVED***/assets`
+`web`, `worker-api`, and `worker-render` share a `source-cache` volume at `/var/cache/***REMOVED***/assets`
 (`ASSET_CACHE_DIR`). Preview/export/frame/smart-crop reuse checksum-keyed files so
 the same immutable source is not re-downloaded from R2 on every job.
 
@@ -277,7 +278,7 @@ After deploy, confirm the volume exists and cleanup is scheduled:
 
 ```bash
 docker compose exec -T web printenv ASSET_CACHE_DIR
-docker compose exec -T worker ls -la /var/cache/***REMOVED***/assets | head
+docker compose exec -T worker-render ls -la /var/cache/***REMOVED***/assets | head
 # Hourly Taskiq cron: hourly_cleanup — check scheduler logs if disk grows unbounded
 ```
 

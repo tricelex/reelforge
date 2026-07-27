@@ -4,7 +4,31 @@
 # Run alongside dev: docker compose -f docker-compose.yml -f docker-compose.worker.yml up
 
 services:
-  worker:
+  worker-api:
+    image: "***REMOVED***:web"
+    build:
+      context: .
+      dockerfile: ./docker/django/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    environment:
+      LOGFIRE_SERVICE_NAME: ***REMOVED***-worker-api
+      ASSET_CACHE_DIR: /tmp/***REMOVED***/assets
+    env_file: ./config/.env
+    volumes:
+      - .:/code
+      - source-cache:/tmp/***REMOVED***/assets
+    command: >-
+      python -m taskiq worker server.common.broker:api_broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks_api
+      server.apps.pipelines.tasks_api
+      server.apps.analytics.tasks
+
+  worker-render:
     image: "***REMOVED***:worker"
     # mediapipe publishes manylinux x86_64 wheels only — force amd64 on
     # Apple Silicon dev machines and match typical VPS targets.
@@ -16,20 +40,17 @@ services:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     environment:
-      LOGFIRE_SERVICE_NAME: ***REMOVED***-worker
+      LOGFIRE_SERVICE_NAME: ***REMOVED***-worker-render
       ASSET_CACHE_DIR: /tmp/***REMOVED***/assets
     env_file: ./config/.env
     volumes:
       - .:/code
       - source-cache:/tmp/***REMOVED***/assets
     command: >-
-      python -m taskiq worker server.common.broker:broker
+      python -m taskiq worker server.common.broker:render_broker
       server.common.django_setup
-      server.apps.main.tasks
-      server.apps.assets.tasks
-      server.apps.clips.tasks
-      server.apps.pipelines.tasks
-      server.apps.analytics.tasks
+      server.apps.pipelines.tasks_render
+      server.apps.clips.tasks_render
 
 volumes:
   source-cache:

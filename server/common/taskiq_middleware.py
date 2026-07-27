@@ -70,6 +70,7 @@ class ObservabilityMiddleware(TaskiqMiddleware):
                 'task {task_name}',
                 task_name=message.task_name,
                 task_id=message.task_id,
+                logical_queue=message.labels.get('queue'),
             ),
         )
         _span_stack.set(stack)
