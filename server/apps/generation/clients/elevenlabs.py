@@ -10,6 +10,9 @@ from typing import Any
 
 import httpx
 
+from server.apps.generation.clients.elevenlabs_concurrency import (
+    elevenlabs_slot,
+)
 from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 _BASE = 'https://api.elevenlabs.io/v1'
@@ -26,23 +29,24 @@ async def synthesize(
     similarity_boost: float = 0.75,
 ) -> bytes:
     """Synthesize text to audio. Returns raw MP3 bytes."""
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            f'{_BASE}/text-to-speech/{voice_id}',
-            headers={
-                'xi-api-key': api_key,
-                'Content-Type': 'application/json',
-                'Accept': 'audio/mpeg',
-            },
-            json={
-                'text': text,
-                'model_id': model_id,
-                'voice_settings': {
-                    'stability': stability,
-                    'similarity_boost': similarity_boost,
+    async with elevenlabs_slot():
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f'{_BASE}/text-to-speech/{voice_id}',
+                headers={
+                    'xi-api-key': api_key,
+                    'Content-Type': 'application/json',
+                    'Accept': 'audio/mpeg',
                 },
-            },
-        )
+                json={
+                    'text': text,
+                    'model_id': model_id,
+                    'voice_settings': {
+                        'stability': stability,
+                        'similarity_boost': similarity_boost,
+                    },
+                },
+            )
 
     if resp.status_code in _RETRYABLE:
         raise RetryableProviderError(
@@ -81,18 +85,21 @@ async def transcribe(
     Returns {text, words: [{text, start, end, speaker_id, ...}],
     language_code, audio_duration_secs}.
     """
-    with audio_path.open('rb') as audio_file:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            resp = await client.post(
-                f'{_BASE}/speech-to-text',
-                headers={'xi-api-key': api_key},
-                data={
-                    'model_id': model_id,
-                    'diarize': 'true',
-                    'timestamps_granularity': 'word',
-                },
-                files={'file': (audio_path.name, audio_file, 'audio/mpeg')},
-            )
+    async with elevenlabs_slot():
+        with audio_path.open('rb') as audio_file:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                resp = await client.post(
+                    f'{_BASE}/speech-to-text',
+                    headers={'xi-api-key': api_key},
+                    data={
+                        'model_id': model_id,
+                        'diarize': 'true',
+                        'timestamps_granularity': 'word',
+                    },
+                    files={
+                        'file': (audio_path.name, audio_file, 'audio/mpeg'),
+                    },
+                )
 
     _raise_for_status(resp)
     result: dict[str, Any] = resp.json()
@@ -131,16 +138,17 @@ async def force_align(
     Returns {words: [{text, start, end, loss}, ...], characters: [...],
     loss}.
     """
-    with audio_path.open('rb') as audio_file:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            resp = await client.post(
-                f'{_BASE}/forced-alignment',
-                headers={'xi-api-key': api_key},
-                data={'text': text},
-                files={
-                    'file': (audio_path.name, audio_file, 'audio/mpeg'),
-                },
-            )
+    async with elevenlabs_slot():
+        with audio_path.open('rb') as audio_file:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                resp = await client.post(
+                    f'{_BASE}/forced-alignment',
+                    headers={'xi-api-key': api_key},
+                    data={'text': text},
+                    files={
+                        'file': (audio_path.name, audio_file, 'audio/mpeg'),
+                    },
+                )
 
     _raise_for_status(resp)
     result: dict[str, Any] = resp.json()

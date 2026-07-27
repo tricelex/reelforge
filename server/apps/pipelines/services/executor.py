@@ -174,6 +174,14 @@ async def _schedule_retry(
     )
 
     await _fail(execution, error)
+
+    if (
+        isinstance(error, RetryableProviderError)
+        and error.status_code == 429
+    ):
+        backoff_s = min(5 * (2 ** execution.attempt), 60)
+        await asyncio.sleep(backoff_s)
+
     next_exec = await StageExecution.objects.acreate(
         run_id=execution.run_id,
         stage_key=execution.stage_key,
