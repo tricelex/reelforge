@@ -217,18 +217,11 @@ class VisualPromptsOutput(BaseModel):
     prompts: list[VisualPrompt]
 
 
-class MusicEntry(BaseModel):
-    """Music track assignment for one chapter."""
-
-    chapter_idx: int
-    library_asset_id: str
-    gain_db: float = -18.0
-
-
 class MusicPlanOutput(BaseModel):
-    """Full output of the music_plan stage."""
+    """Full output of the music_plan stage — one bed for the whole video."""
 
-    entries: list[MusicEntry]
+    library_asset_id: str | None = None
+    gain_db: float = -22.0
 
 
 class VideoMetadata(BaseModel):

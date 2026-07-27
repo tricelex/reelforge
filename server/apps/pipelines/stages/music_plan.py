@@ -1,4 +1,4 @@
-"""Music plan stage — LLM selects library tracks per chapter."""
+"""Music plan stage — LLM selects one library bed for the whole video."""
 
 from functools import lru_cache
 from typing import Any, override
@@ -18,6 +18,21 @@ from server.apps.pipelines.stages.base import (
     register_stage,
 )
 from server.common.exceptions import FatalProviderError
+
+
+def _background_music_enabled(channel: object) -> bool:
+    """Return whether the channel wants a music bed (default True)."""
+    from server.apps.channels.models import (  # noqa: PLC0415
+        AssemblyStyleConfig,
+    )
+
+    try:
+        style = channel.assembly_style  # type: ignore[attr-defined]
+    except AssemblyStyleConfig.DoesNotExist:
+        return True
+    except AttributeError:
+        return True
+    return bool(style.enable_background_music)
 
 
 async def _music_plan_variables(
@@ -54,9 +69,9 @@ def _agent(model: str) -> Agent[StageContext, MusicPlanOutput]:
         sys, _ = await ctx.deps.prompts.render('music_plan', variables)
         return sys or (
             'You are a music supervisor for documentary videos. '
-            'Select one music track per chapter from the provided library. '
-            "Match mood to the chapter's retention device and thesis. "
-            'Set gain_db relative to -18 LUFS bed target (typically -3 to -6).'
+            'Select one background music track for the entire video '
+            'from the provided library. Match overall mood to the niche '
+            'mood map and outline. Set gain_db near -22 for bed music.'
         )
 
     return a
@@ -102,7 +117,7 @@ async def _fetch_music_library(channel_id: str) -> list[dict[str, Any]]:
 
 @register_stage
 class MusicPlanStage(Stage):
-    """Stage 10: select music tracks per chapter from library."""
+    """Stage 10: select one music bed from the library for the whole video."""
 
     key = 'music_plan'
     queue = 'api'
@@ -111,7 +126,10 @@ class MusicPlanStage(Stage):
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
-        """Ask the LLM to pick library music for each chapter."""
+        """Ask the LLM to pick one library music track, or skip if disabled."""
+        if not _background_music_enabled(ctx.channel):
+            return MusicPlanOutput(library_asset_id=None).model_dump()
+
         library, variables = await _music_plan_variables(ctx)
         if not library:
             raise FatalProviderError(
@@ -126,11 +144,11 @@ class MusicPlanStage(Stage):
 
         _, usr = await ctx.prompts.render('music_plan', variables)
         user_prompt = usr or (
-            f'Select music for each chapter:\n'
+            f'Select one background music track for the whole video:\n'
             f'Chapters: {chapters}\n'
             f'Music library (id, name, tags): {library}\n'
             f'Mood map: {mood_map}\n'
-            f'Output one entry per chapter with library_asset_id and gain_db.'
+            f'Output library_asset_id and gain_db (suggest -22).'
         )
         model_slug = await resolve_stage_model(ctx, self.key)
         output: MusicPlanOutput = await llm_client.run_agent(

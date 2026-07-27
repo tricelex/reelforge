@@ -34,6 +34,7 @@ def _make_ctx() -> MagicMock:
     ctx.channel.id = 'channel-uuid'
     ctx.channel.niche_config = MagicMock()
     ctx.channel.niche_config.music_mood_map = {'intro': ['tense', 'hopeful']}
+    ctx.channel.assembly_style.enable_background_music = True
     ctx.upstream = {
         'outline': {
             'chapters': [
@@ -65,22 +66,14 @@ def test_music_plan_fan_out_none() -> None:
     assert MusicPlanStage().fan_out(MagicMock()) is None
 
 
-def test_music_plan_run_returns_entries() -> None:
-    """run() returns dict with 'entries' list from LLM output."""
-    from server.apps.pipelines.schemas import (
-        MusicEntry,
-        MusicPlanOutput,
-    )
+def test_music_plan_run_returns_single_track() -> None:
+    """run() returns dict with library_asset_id from LLM output."""
+    from server.apps.pipelines.schemas import MusicPlanOutput
 
     ctx = _make_ctx()
     fake_output = MusicPlanOutput(
-        entries=[
-            MusicEntry(
-                chapter_idx=0,
-                library_asset_id='lib-uuid',
-                gain_db=-3.0,
-            ),
-        ],
+        library_asset_id='lib-uuid',
+        gain_db=-22.0,
     )
 
     async def _inner() -> dict[str, object]:
@@ -106,8 +99,53 @@ def test_music_plan_run_returns_entries() -> None:
             return await MusicPlanStage().run(ctx)
 
     result = asyncio.run(_inner())
-    assert 'entries' in result
-    assert result['entries'][0]['chapter_idx'] == 0  # type: ignore[index]
+    assert result['library_asset_id'] == 'lib-uuid'
+    assert result['gain_db'] == -22.0
+
+
+def test_music_plan_disabled_skips_llm() -> None:
+    """run() returns null track without calling the LLM when music is off."""
+    ctx = _make_ctx()
+    ctx.channel.assembly_style.enable_background_music = False
+    run_agent = AsyncMock()
+    fetch_library = AsyncMock(return_value=[])
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=run_agent,
+            ),
+            patch(
+                'server.apps.pipelines.stages.music_plan._fetch_music_library',
+                new=fetch_library,
+            ),
+        ):
+            return await MusicPlanStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert result['library_asset_id'] is None
+    run_agent.assert_not_called()
+    fetch_library.assert_not_called()
+
+
+def test_background_music_enabled_defaults_when_style_missing() -> None:
+    """Missing assembly_style treats background music as enabled."""
+    from server.apps.channels.models import AssemblyStyleConfig
+    from server.apps.pipelines.stages.music_plan import (
+        _background_music_enabled,
+    )
+
+    channel = MagicMock(spec=[])
+    assert _background_music_enabled(channel) is True
+
+    channel_missing = MagicMock()
+    type(channel_missing).assembly_style = property(
+        lambda _self: (_ for _ in ()).throw(
+            AssemblyStyleConfig.DoesNotExist(),
+        ),
+    )
+    assert _background_music_enabled(channel_missing) is True
 
 
 @pytest.mark.django_db(transaction=True)
