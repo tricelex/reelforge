@@ -21,6 +21,7 @@ from server.apps.pipelines.stages.assembly import (
     _build_music_map,
     _build_music_paths,
     _build_scene_asset_map,
+    _candidate_music_asset_ids,
     _fetch_asset_bytes,
     _fetch_library_bytes,
     _group_scenes_by_chapter,
@@ -134,30 +135,43 @@ def test_build_music_map() -> None:
     assert result[1]['gain_db'] == -6.0
 
 
-def test_build_music_paths_downloads_each_chapter_track(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """A resolvable library_asset_id downloads and is included in the output."""
-    scene_groups = {0: [], 1: []}
-    music_map = {
-        0: {'library_asset_id': 'uuid-a', 'gain_db': -3.0},
-        1: {'library_asset_id': 'uuid-b', 'gain_db': -6.0},
-    }
+def test_candidate_music_asset_ids_prefers_single_bed() -> None:
+    assert _candidate_music_asset_ids(
+        {'library_asset_id': 'uuid-a', 'entries': []},
+    ) == ['uuid-a']
+
+
+def test_candidate_music_asset_ids_dedupes_legacy_entries() -> None:
+    assert _candidate_music_asset_ids(
+        {
+            'entries': [
+                {'chapter_idx': 0, 'library_asset_id': 'uuid-a'},
+                {'chapter_idx': 1, 'library_asset_id': 'uuid-b'},
+                {'chapter_idx': 2, 'library_asset_id': 'uuid-a'},
+            ],
+        },
+    ) == ['uuid-a', 'uuid-b']
+
+
+def test_build_music_paths_downloads_single_bed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A resolvable library_asset_id downloads once as the only bed."""
+    music_plan = {'library_asset_id': 'uuid-a', 'gain_db': -3.0}
 
     async def _inner() -> tuple[list[str], list[float]]:
         with patch(
             'server.apps.pipelines.stages.assembly._fetch_library_bytes',
             new=AsyncMock(return_value=b'music bytes'),
         ):
-            return await _build_music_paths(tmp_path, scene_groups, music_map)
+            return await _build_music_paths(tmp_path, music_plan)
 
     paths, gains = asyncio.run(_inner())
-    assert len(paths) == 2
-    assert gains == [-18.0, -18.0]
+    assert len(paths) == 1
+    assert gains == [-22.0]
 
 
 def test_build_music_paths_uses_channel_bed_gain(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """Channel music_bed_gain_db overrides legacy music_plan gain_db=0."""
-    scene_groups = {0: []}
-    music_map = {0: {'library_asset_id': 'uuid-a', 'gain_db': 0.0}}
+    music_plan = {'library_asset_id': 'uuid-a', 'gain_db': 0.0}
 
     async def _inner() -> tuple[list[str], list[float]]:
         with patch(
@@ -166,8 +180,7 @@ def test_build_music_paths_uses_channel_bed_gain(tmp_path) -> None:  # type: ign
         ):
             return await _build_music_paths(
                 tmp_path,
-                scene_groups,
-                music_map,
+                music_plan,
                 channel_bed_gain_db=-20.0,
             )
 
@@ -175,28 +188,57 @@ def test_build_music_paths_uses_channel_bed_gain(tmp_path) -> None:  # type: ign
     assert gains == [-20.0]
 
 
-def test_build_music_paths_skips_chapter_with_missing_asset(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """A library_asset_id with no matching row is skipped, not a crash."""
+def test_build_music_paths_legacy_multi_entry_uses_first_resolvable(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    """Legacy multi-entry plans yield one bed, not layered tracks."""
     from django.core.exceptions import ObjectDoesNotExist
 
-    scene_groups = {0: [], 1: []}
-    music_map = {
-        0: {'library_asset_id': 'hallucinated-id', 'gain_db': -3.0},
-        1: {'library_asset_id': 'uuid-b', 'gain_db': -6.0},
+    music_plan = {
+        'entries': [
+            {'chapter_idx': 0, 'library_asset_id': 'hallucinated-id'},
+            {'chapter_idx': 1, 'library_asset_id': 'uuid-b'},
+            {'chapter_idx': 2, 'library_asset_id': 'uuid-c'},
+        ],
+    }
+    fetch = AsyncMock(
+        side_effect=[ObjectDoesNotExist(), b'music bytes', b'other'],
+    )
+
+    async def _inner() -> tuple[list[str], list[float]]:
+        with patch(
+            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
+            new=fetch,
+        ):
+            return await _build_music_paths(tmp_path, music_plan)
+
+    paths, gains = asyncio.run(_inner())
+    assert len(paths) == 1
+    assert gains == [-22.0]
+    assert fetch.await_count == 2
+
+
+def test_build_music_paths_skips_all_missing_assets(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """All-missing library IDs yield an empty music list."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    music_plan = {
+        'entries': [
+            {'chapter_idx': 0, 'library_asset_id': 'missing-a'},
+            {'chapter_idx': 1, 'library_asset_id': 'missing-b'},
+        ],
     }
 
     async def _inner() -> tuple[list[str], list[float]]:
         with patch(
             'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-            new=AsyncMock(
-                side_effect=[ObjectDoesNotExist(), b'music bytes'],
-            ),
+            new=AsyncMock(side_effect=ObjectDoesNotExist()),
         ):
-            return await _build_music_paths(tmp_path, scene_groups, music_map)
+            return await _build_music_paths(tmp_path, music_plan)
 
     paths, gains = asyncio.run(_inner())
-    assert len(paths) == 1
-    assert gains == [-18.0]
+    assert paths == []
+    assert gains == []
 
 
 def _make_ctx() -> MagicMock:
@@ -220,13 +262,8 @@ def _make_ctx() -> MagicMock:
             'ass_asset_id': 'sub-uuid',
         },
         'music_plan': {
-            'entries': [
-                {
-                    'chapter_idx': 0,
-                    'library_asset_id': 'music-uuid',
-                    'gain_db': -3.0,
-                },
-            ],
+            'library_asset_id': 'music-uuid',
+            'gain_db': -22.0,
         },
     }
     ctx.config = {}
@@ -733,7 +770,9 @@ def test_assembly_run_without_ass_and_no_music_for_chapter() -> None:
     """No ass_asset_id (branch 123->125), no music entry (branch 187->185)."""
     ctx = _make_ctx()
     ctx.upstream['alignment']['ass_asset_id'] = None  # no captions
-    ctx.upstream['music_plan']['entries'] = []  # no music entries
+    ctx.upstream['music_plan'] = {
+        'library_asset_id': None,
+    }  # no music
     fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
 
     async def _run() -> dict:  # type: ignore[type-arg]

@@ -198,8 +198,21 @@ def _build_alignment(_run_id: str, execution: StageExecution) -> _BuildResult:
 
 
 def _build_music_plan(_run_id: str, execution: StageExecution) -> _BuildResult:
-    entries = execution.output.get('entries', [])
-    return f'{len(entries)} tracks', None, {'entries': entries}
+    out = execution.output
+    asset_id = out.get('library_asset_id')
+    if asset_id:
+        return (
+            '1 track',
+            None,
+            {
+                'library_asset_id': asset_id,
+                'gain_db': out.get('gain_db'),
+            },
+        )
+    entries = out.get('entries', [])
+    if entries:
+        return f'{len(entries)} tracks', None, {'entries': entries}
+    return 'no music', None, {'library_asset_id': None}
 
 
 def _build_qc(_run_id: str, execution: StageExecution) -> _BuildResult:

@@ -304,12 +304,16 @@ def test_music_plan_json(
     run: PipelineRun,
     auth_headers: dict[str, str],
 ) -> None:
-    """Music plan stage returns entry data."""
-    _stage(run, 'music_plan', {'entries': [{'chapter_idx': 0}]})
+    """Music plan stage returns single-bed track data."""
+    _stage(
+        run,
+        'music_plan',
+        {'library_asset_id': 'lib-1', 'gain_db': -22.0},
+    )
     body = _get(dmr_client, run.id, 'music_plan', auth_headers).json()
     assert body['kind'] == 'json'
-    assert body['summary'] == '1 tracks'
-    assert body['data']['entries'] == [{'chapter_idx': 0}]
+    assert body['summary'] == '1 track'
+    assert body['data']['library_asset_id'] == 'lib-1'
 
 
 @pytest.mark.django_db

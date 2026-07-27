@@ -96,7 +96,8 @@ def test_get_assembly_style_creates_defaults() -> None:
         'static_hold',
     ]
     assert payload.transition_styles == ['hard_cut', 'cross_dissolve']
-    assert payload.music_bed_gain_db == -18.0
+    assert payload.music_bed_gain_db == -22.0
+    assert payload.enable_background_music is True
 
 
 @pytest.mark.django_db
@@ -116,10 +117,12 @@ def test_patch_assembly_style_updates_pool() -> None:
         AssemblyStyleConfigPatchPayload(
             camera_movements=['push_in'],
             music_bed_gain_db=-20.0,
+            enable_background_music=False,
         ),
     )
     assert result.camera_movements == ['push_in']
     assert result.music_bed_gain_db == -20.0
+    assert result.enable_background_music is False
 
 
 @pytest.mark.django_db

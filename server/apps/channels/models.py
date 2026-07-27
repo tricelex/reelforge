@@ -323,8 +323,12 @@ class AssemblyStyleConfig(UUIDModel):
     min_cuts_per_minute = models.PositiveSmallIntegerField(default=4)
     max_cuts_per_minute = models.PositiveSmallIntegerField(default=8)
     music_bed_gain_db = models.FloatField(
-        default=-18.0,
+        default=-22.0,
         help_text='Background music gain in dB relative to dialogue.',
+    )
+    enable_background_music = models.BooleanField(
+        default=True,
+        help_text='When false, assembly mixes voiceover only (no music bed).',
     )
 
     @override

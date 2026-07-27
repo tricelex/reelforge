@@ -493,15 +493,15 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
         'name': 'Music Plan',
         'scope': 'GLOBAL',
         'description': (
-            'Selects background music tracks from the channel library for each chapter. '
-            'Aligns mood choices with the StoryFormat music_mood_map.'
+            'Selects one background music track from the channel library '
+            'for the whole video. Aligns mood with the StoryFormat music_mood_map.'
         ),
         'system_prompt': (
             'You are a music supervisor for YouTube documentary content. '
-            'You select background music tracks that enhance emotional impact at each '
-            'chapter. You understand pacing, mood transitions, and how music affects '
-            'viewer retention. Choose from the provided library asset IDs only. '
-            'Return structured JSON.'
+            'You select one background music bed that enhances emotional impact '
+            'for the entire video. You understand pacing, mood, and how music '
+            'affects viewer retention. Choose from the provided library asset '
+            'IDs only. Return structured JSON.'
         ),
         'user_prompt': (
             'Create a music plan for the following video:\n\n'
@@ -513,10 +513,9 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             '{% endif %}'
             'Available Library Asset IDs by tag:\n'
             '{{ library_tracks | default([]) | tojson }}\n\n'
-            'For each chapter provide:\n'
-            '- chapter_idx\n'
+            'Select ONE track for the whole video. Provide:\n'
             '- library_asset_id (must be from the available list above)\n'
-            '- gain_db (volume adjustment: -20 to 0, suggest -18 for bed music)\n'
+            '- gain_db (volume adjustment: -24 to -6, suggest -22 for bed music)\n'
             '- mood (selected mood tag matching music_mood_map)\n'
             '- rationale (one sentence explaining why this track fits)'
         ),

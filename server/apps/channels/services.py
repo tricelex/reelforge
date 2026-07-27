@@ -32,9 +32,9 @@ from server.apps.channels.logic.value_objects import (
     YouTubeStatusPayload,
 )
 from server.apps.channels.models import (
-    DEFAULT_ENABLED_PROVIDERS,
     _DEFAULT_CAMERA_MOVEMENTS,
     _DEFAULT_TRANSITION_STYLES,
+    DEFAULT_ENABLED_PROVIDERS,
     AssemblyStyleConfig,
     Channel,
     ChannelBranding,
@@ -363,6 +363,7 @@ class ChannelService:
             min_cuts_per_minute=style.min_cuts_per_minute,
             max_cuts_per_minute=style.max_cuts_per_minute,
             music_bed_gain_db=float(style.music_bed_gain_db),
+            enable_background_music=bool(style.enable_background_music),
         )
 
     def patch_assembly_style(
@@ -383,6 +384,7 @@ class ChannelService:
                 'min_cuts_per_minute',
                 'max_cuts_per_minute',
                 'music_bed_gain_db',
+                'enable_background_music',
             ),
         )
         if update_fields:
