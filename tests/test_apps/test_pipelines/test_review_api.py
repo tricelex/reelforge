@@ -735,6 +735,60 @@ def test_publish_metadata_handle_error_not_found() -> None:
 
 
 @pytest.mark.django_db
+def test_scene_breakdown_handle_error_not_found() -> None:
+    """Scene breakdown controller maps missing run to 404."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.api.review_views import (
+        RunSceneBreakdownController,
+    )
+
+    controller = RunSceneBreakdownController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(),
+        controller,
+        PipelineRun.DoesNotExist(),
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_storyboard_handle_error_not_found() -> None:
+    """Storyboard controller maps missing run to 404."""
+    from unittest.mock import MagicMock
+
+    from server.apps.pipelines.api.review_views import (
+        RunStoryboardController,
+    )
+
+    controller = RunStoryboardController()
+    controller.request = MagicMock()
+    response = controller.handle_error(
+        MagicMock(),
+        controller,
+        PipelineRun.DoesNotExist(),
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_scene_breakdown_missing_run_returns_404(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+) -> None:
+    """GET scene-breakdown for an unknown run id returns 404."""
+    response = dmr_client.get(
+        reverse(
+            'api:pipelines_api:run-scene-breakdown',
+            kwargs={'run_id': uuid.uuid4()},
+        ),
+        headers=auth_headers,
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_publish_metadata_patch_category_and_thumbnail(
     dmr_client: DMRClient,
     run: PipelineRun,

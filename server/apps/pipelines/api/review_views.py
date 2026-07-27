@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from dmr import Body, Controller, modify
 from dmr.endpoint import Endpoint
 from dmr.errors import ErrorType
+from dmr.metadata import ResponseSpec
 from dmr.plugins.msgspec import MsgspecSerializer
 
 from server.apps.core.auth import require_operator
@@ -46,11 +47,37 @@ class RunStoryboardController(
 
     auth = (jwt_sync_auth,)
 
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
     def get(self) -> Any:
         """Return storyboard payload, dispatched by blueprint profile."""
         return self.resolve(RunReviewService).get_storyboard(
             str(self.kwargs['run_id']),
         )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, PipelineRun.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Run not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final
@@ -63,11 +90,37 @@ class RunSceneBreakdownController(
 
     auth = (jwt_sync_auth,)
 
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
     def get(self) -> SceneBreakdownPayload:
         """Return scenes from breakdown stage."""
         return self.resolve(RunReviewService).get_scene_breakdown(
             str(self.kwargs['run_id']),
         )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, PipelineRun.DoesNotExist):  # pragma: no branch
+            return self.to_error(
+                self.format_error(
+                    'Run not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return super().handle_error(endpoint, controller, exc)
 
 
 @final
