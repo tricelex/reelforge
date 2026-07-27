@@ -95,6 +95,11 @@ jobs:
             set -e
             cd /opt/***REMOVED***
             export IMAGE_TAG='${{ github.sha }}'
+            if grep -q '^IMAGE_TAG=' .env 2>/dev/null; then
+              sed -i \"s/^IMAGE_TAG=.*/IMAGE_TAG=\${IMAGE_TAG}/\" .env
+            else
+              echo \"IMAGE_TAG=\${IMAGE_TAG}\" >> .env
+            fi
             docker compose pull
             docker compose run --rm web python manage.py migrate --noinput
             docker compose run --rm web python manage.py collectstatic --noinput --clear

@@ -13,15 +13,33 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./vps-lib.sh
 
 SERVICE=''
-if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
-  SERVICE="$1"
-  shift
+FOLLOW=1
+EXTRA_ARGS=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-follow)
+      FOLLOW=0
+      shift
+      ;;
+    *)
+      if [ -z "$SERVICE" ] && [[ "$1" != -* ]]; then
+        SERVICE="$1"
+        shift
+      else
+        EXTRA_ARGS+=("$1")
+        shift
+      fi
+      ;;
+  esac
+done
+
+if [ "${#EXTRA_ARGS[@]}" -eq 0 ]; then
+  EXTRA_ARGS=(--tail=200)
+fi
+if [ "$FOLLOW" -eq 1 ]; then
+  EXTRA_ARGS+=(-f)
 fi
 
-EXTRA_ARGS="$*"
-if [ -z "$EXTRA_ARGS" ]; then
-  EXTRA_ARGS='--tail=200 -f'
-fi
-
-echo "==> docker compose logs ${EXTRA_ARGS} ${SERVICE} (Ctrl-C to stop)"
-vps_ssh_tty "cd ${VPS_APP_DIR} && docker compose logs ${EXTRA_ARGS} ${SERVICE}"
+echo "==> docker compose logs ${EXTRA_ARGS[*]} ${SERVICE} (Ctrl-C to stop)"
+vps_ssh_tty "cd ${VPS_APP_DIR} && docker compose logs ${EXTRA_ARGS[*]} ${SERVICE}"

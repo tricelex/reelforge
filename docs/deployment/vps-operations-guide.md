@@ -23,6 +23,9 @@ so no passwords or extra keys are needed.
 | `./scripts/vps-logs.sh [service] [args]` | Tail logs — all services or one, follows by default |
 | `./scripts/vps-exec.sh <service> <cmd...>` | Run a command inside a running container (shell, management command, etc.) |
 | `./scripts/vps-restart.sh [service]` | Restart one service (or all) without pulling new images |
+| `./scripts/vps-taskiq-status.sh` | Async incident report: queue depth, active pipeline DB state, recent worker logs |
+| `./scripts/vps-taskiq-restart.sh` | Restart only `scheduler`, `worker-api`, and `worker-render` |
+| `./scripts/vps-taskiq-reset.sh` | Full async reset: stop workers, delete `api`/`render` queues, cancel active runs/stages, restart |
 
 None of these touch `.env`, migrations, or images — they're for looking and poking, not deploying.
 For an actual code change, push to `main` and let `.github/workflows/deploy.yml` handle it.
@@ -55,18 +58,44 @@ All four services should show `Up` (or `Up (healthy)` for `web`). Health endpoin
 ### "Clips/videos aren't processing — worker seems stuck"
 
 ```bash
-./scripts/vps-logs.sh worker-api --tail=200
-./scripts/vps-logs.sh worker-render --tail=200
+./scripts/vps-taskiq-status.sh
 ```
+
+This prints queue depth for `api` and `render`, active `PipelineRun` / `StageExecution` counts,
+and recent logs from `worker-api`, `worker-render`, and `scheduler`. Exit code `1` means queues
+are non-empty or active DB work still exists.
 
 Look for repeated tracebacks (crash-looping) vs. silence (nothing being consumed — check RabbitMQ
 `api` and `render` queue depth in Coolify's RabbitMQ management UI). If it's crash-looping on a
 specific task, the render container is likely OOMing on that job — see the memory section below
-before assuming it's a code bug. If it's just wedged, a restart is a fine first move:
+before assuming it's a code bug. If it's just wedged, restart the async path first:
 
 ```bash
-./scripts/vps-restart.sh worker-api
-./scripts/vps-restart.sh worker-render
+./scripts/vps-taskiq-restart.sh
+```
+
+If queues are backed up or runs are stuck in `PENDING`/`RUNNING`/`QUEUED`, do a full reset:
+
+```bash
+./scripts/vps-taskiq-reset.sh
+```
+
+Type `reset` when prompted (or pass `--yes` for non-interactive use). This stops
+`scheduler`/`worker-api`/`worker-render`, deletes the RabbitMQ `api` and `render` queues,
+cancels active pipeline state in Django, and restarts the async services. It does **not** touch
+`web`, `caddy`, images, volumes, or `.env`.
+
+**Image tag:** deploy writes `IMAGE_TAG=<git-sha>` into `/opt/***REMOVED***/.env`. The taskiq helper
+scripts always recreate async services with that pinned tag. If `worker-api` shows
+`AttributeError: ... has no attribute 'api_broker'`, async services likely drifted to `:latest`
+while `web` stayed on an older SHA — run `./scripts/vps-taskiq-restart.sh` after confirming
+`IMAGE_TAG` in `.env` matches the `web` image, or push to `main` to redeploy everything.
+
+For deeper log inspection:
+
+```bash
+./scripts/vps-logs.sh worker-api --tail=200
+./scripts/vps-logs.sh worker-render --tail=200
 ```
 
 ### Transcription + diarization (ElevenLabs Scribe hosted API)
