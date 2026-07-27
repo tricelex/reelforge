@@ -7,6 +7,8 @@ without branching.
 import asyncio
 from typing import Any, override
 
+import structlog
+
 from server.apps.assets.models import AssetKind
 from server.apps.pipelines.stages.base import (
     Stage,
@@ -14,6 +16,8 @@ from server.apps.pipelines.stages.base import (
     register_stage,
 )
 from server.apps.rendering import ffmpeg
+
+logger = structlog.get_logger(__name__)
 
 
 async def _load_asset_bytes(asset_id: str) -> bytes:
@@ -62,9 +66,17 @@ class FootagePrepStage(Stage):
         snap = ctx.execution.input_snapshot
         scene_idx = int(snap['scene_idx'])
         est_seconds = float(snap.get('est_seconds', 8.0))
+        media_type = snap.get('media_type', 'image')
+        logger.info(
+            'footage_prep_started',
+            run_id=str(ctx.run.id),
+            scene_idx=scene_idx,
+            media_type=media_type,
+            est_seconds=est_seconds,
+        )
         content = await _load_asset_bytes(str(snap['asset_id']))
 
-        if snap.get('media_type') == 'video':
+        if media_type == 'video':
             video_bytes, method = await ffmpeg.normalize_clip(
                 content,
                 duration_s=est_seconds,
@@ -85,6 +97,14 @@ class FootagePrepStage(Stage):
             content=video_bytes,
             filename=f'scene_{scene_idx:04d}_{method}.mp4',
             mime='video/mp4',
+        )
+        logger.info(
+            'footage_prep_completed',
+            run_id=str(ctx.run.id),
+            scene_idx=scene_idx,
+            method=method,
+            duration_s=est_seconds,
+            asset_id=str(asset.id),
         )
         return {
             'scene_idx': scene_idx,

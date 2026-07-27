@@ -299,6 +299,43 @@ def test_visual_prompts_json(
 
 
 @pytest.mark.django_db
+def test_footage_queries_json(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """Footage queries stage returns per-scene query data."""
+    _stage(
+        run,
+        'footage_queries',
+        {
+            'queries': [
+                {
+                    'scene_idx': 0,
+                    'primary_query': 'lighthouse at dusk',
+                    'fallback_queries': ['coastal lighthouse'],
+                    'media_preference': 'video',
+                    'orientation': 'landscape',
+                    'era_hint': '',
+                    'negative_terms': ['people'],
+                    'ai_fallback_prompt': 'a lonely lighthouse at dusk',
+                },
+            ],
+        },
+    )
+    body = _get(dmr_client, run.id, 'footage_queries', auth_headers).json()
+    assert body['kind'] == 'json'
+    assert body['summary'] == '1 queries'
+    entry = body['data']['queries'][0]
+    assert entry['scene_index'] == 0
+    assert entry['primary_query'] == 'lighthouse at dusk'
+    assert entry['fallback_queries'] == ['coastal lighthouse']
+    assert entry['media_preference'] == 'video'
+    assert entry['negative_terms'] == ['people']
+    assert entry['ai_fallback_prompt'] == 'a lonely lighthouse at dusk'
+
+
+@pytest.mark.django_db
 def test_music_plan_json(
     dmr_client: DMRClient,
     run: PipelineRun,

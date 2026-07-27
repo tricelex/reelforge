@@ -172,6 +172,29 @@ def _build_visual_prompts(
     return f'{len(prompts)} prompts', None, data
 
 
+def _build_footage_queries(
+    _run_id: str,
+    execution: StageExecution,
+) -> _BuildResult:
+    queries = execution.output.get('queries', [])
+    data: dict[str, Any] = {
+        'queries': [
+            {
+                'scene_index': query.get('scene_idx'),
+                'primary_query': query.get('primary_query', ''),
+                'fallback_queries': query.get('fallback_queries', []),
+                'media_preference': query.get('media_preference', 'any'),
+                'orientation': query.get('orientation', 'landscape'),
+                'era_hint': query.get('era_hint', ''),
+                'negative_terms': query.get('negative_terms', []),
+                'ai_fallback_prompt': query.get('ai_fallback_prompt', ''),
+            }
+            for query in queries
+        ],
+    }
+    return f'{len(queries)} queries', None, data
+
+
 def _build_narrative_qc(
     _run_id: str,
     execution: StageExecution,
@@ -340,6 +363,7 @@ _BUILDERS: Final[dict[str, _Builder]] = {
     'scene_breakdown': _build_scene_breakdown,
     'narrative_qc': _build_narrative_qc,
     'visual_prompts': _build_visual_prompts,
+    'footage_queries': _build_footage_queries,
     'alignment': _build_alignment,
     'music_plan': _build_music_plan,
     'qc': _build_qc,
