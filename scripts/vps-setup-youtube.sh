@@ -76,10 +76,10 @@ fi
 echo "==> Syncing docker-compose.yml (cookie volume mount)"
 scp ../docker-compose.vps.yml "${VPS_USER}@${VPS_HOST}:${VPS_APP_DIR}/docker-compose.yml"
 
-echo "==> Restarting worker"
-vps_ssh "cd '${VPS_APP_DIR}' && docker compose pull worker && docker compose up -d worker"
+echo "==> Restarting worker-render"
+vps_ssh "cd '${VPS_APP_DIR}' && docker compose pull worker-render && docker compose up -d worker-render"
 
-echo "==> Verifying cookie file inside worker"
-vps_ssh "cd '${VPS_APP_DIR}' && docker compose exec -T worker test -f '${CONTAINER_COOKIE_PATH}'"
+echo "==> Verifying cookie file inside worker-render"
+vps_ssh "cd '${VPS_APP_DIR}' && docker compose exec -T worker-render test -f '${CONTAINER_COOKIE_PATH}'"
 
 echo "==> Done. Retry the failed clip source probe task."

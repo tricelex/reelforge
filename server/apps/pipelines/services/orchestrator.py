@@ -28,10 +28,11 @@ async def publish_sse(run_id: str, data: dict[str, Any]) -> None:
 
 async def execute_stage_kiq(execution_id: str) -> None:
     """Enqueue execute_stage (separate function for mockability in tests)."""
-    from server.apps.pipelines.tasks import execute_stage  # noqa: PLC0415
-    from server.common.taskiq_sender import kiq_task_async  # noqa: PLC0415
+    from server.apps.pipelines.enqueue import (  # noqa: PLC0415
+        kiq_execute_stage_async,
+    )
 
-    await kiq_task_async(execute_stage, execution_id)
+    await kiq_execute_stage_async(execution_id)
 
 
 def _get_stage_states(run: 'PipelineRun') -> dict[str, str | None]:

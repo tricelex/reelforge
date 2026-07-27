@@ -55,16 +55,18 @@ All four services should show `Up` (or `Up (healthy)` for `web`). Health endpoin
 ### "Clips/videos aren't processing — worker seems stuck"
 
 ```bash
-./scripts/vps-logs.sh worker --tail=200
+./scripts/vps-logs.sh worker-api --tail=200
+./scripts/vps-logs.sh worker-render --tail=200
 ```
 
 Look for repeated tracebacks (crash-looping) vs. silence (nothing being consumed — check RabbitMQ
-queue depth in Coolify's RabbitMQ management UI). If it's crash-looping on a specific task, the
-container is likely OOMing on that job — see the memory section below before assuming it's a code
-bug. If it's just wedged, a restart is a fine first move:
+`api` and `render` queue depth in Coolify's RabbitMQ management UI). If it's crash-looping on a
+specific task, the render container is likely OOMing on that job — see the memory section below
+before assuming it's a code bug. If it's just wedged, a restart is a fine first move:
 
 ```bash
-./scripts/vps-restart.sh worker
+./scripts/vps-restart.sh worker-api
+./scripts/vps-restart.sh worker-render
 ```
 
 ### Transcription + diarization (ElevenLabs Scribe hosted API)
@@ -114,10 +116,10 @@ On the VPS itself, confirm whether the kernel actually OOM-killed something:
 dmesg -T | grep -i 'out of memory' | tail -20
 ```
 
-`worker` has a 7GB `mem_limit` in `docker-compose.vps.yml` — if it's consistently maxing that out,
+`worker-render` has a 7GB `mem_limit` in `docker-compose.vps.yml` — if it's consistently maxing that out,
 either the workload genuinely needs more headroom (bump `mem_limit`, VPS has 12GB total) or dial
-concurrency down further via `TASKIQ_MAX_ASYNC_TASKS=1` in `/opt/reelforge/.env` (defaults to `2`),
-then `docker compose up -d worker`.
+render concurrency down via `TASKIQ_RENDER_MAX_ASYNC_TASKS=1` in `/opt/reelforge/.env` (defaults to `2`),
+then `docker compose up -d worker-render`.
 
 ### "I need a Django shell / need to run a management command"
 
@@ -131,7 +133,8 @@ then `docker compose up -d worker`.
 
 ```bash
 ./scripts/vps-exec.sh web bash
-./scripts/vps-exec.sh worker bash
+./scripts/vps-exec.sh worker-api bash
+./scripts/vps-exec.sh worker-render bash
 ```
 
 ### "Disk is filling up"

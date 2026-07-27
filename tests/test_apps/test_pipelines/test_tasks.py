@@ -150,15 +150,15 @@ def test_swap_underperforming_thumbnails_swaps_below_median_ctr() -> None:
     async def _inner() -> None:
         with (
             patch(
-                'server.apps.pipelines.tasks.yt_client.refresh_token_if_needed',
+                'server.apps.pipelines.tasks_api.yt_client.refresh_token_if_needed',
                 new=AsyncMock(return_value='fresh_tok'),
             ),
             patch(
-                'server.apps.pipelines.tasks.yt_client.set_thumbnail',
+                'server.apps.pipelines.tasks_api.yt_client.set_thumbnail',
                 new=AsyncMock(),
             ) as mock_set_thumb,
             patch(
-                'server.apps.pipelines.tasks._download_thumbnail_bytes',
+                'server.apps.pipelines.tasks_api._download_thumbnail_bytes',
                 new=AsyncMock(return_value=b'thumb bytes'),
             ),
         ):
@@ -274,19 +274,19 @@ def test_swap_underperforming_thumbnails_caches_median_per_channel() -> None:
     async def _inner() -> None:
         with (
             patch(
-                'server.apps.pipelines.tasks.yt_client.refresh_token_if_needed',
+                'server.apps.pipelines.tasks_api.yt_client.refresh_token_if_needed',
                 new=AsyncMock(return_value='fresh_tok'),
             ),
             patch(
-                'server.apps.pipelines.tasks.yt_client.set_thumbnail',
+                'server.apps.pipelines.tasks_api.yt_client.set_thumbnail',
                 new=AsyncMock(),
             ),
             patch(
-                'server.apps.pipelines.tasks._download_thumbnail_bytes',
+                'server.apps.pipelines.tasks_api._download_thumbnail_bytes',
                 new=AsyncMock(return_value=b'thumb bytes'),
             ),
             patch(
-                'server.apps.pipelines.tasks._channel_median_ctr',
+                'server.apps.pipelines.tasks_api._channel_median_ctr',
                 return_value=0.06,
             ) as mock_median,
         ):

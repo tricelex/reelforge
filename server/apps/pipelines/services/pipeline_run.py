@@ -20,9 +20,11 @@ from server.apps.pipelines.logic.value_objects import (
     SseTokenPayload,
 )
 from server.apps.pipelines.selectors import get_run_detail
-from server.apps.pipelines.tasks import advance_pipeline, execute_stage
+from server.apps.pipelines.enqueue import (
+    kiq_advance_pipeline,
+    kiq_execute_stage,
+)
 from server.common.events import EventBus
-from server.common.taskiq_sender import kiq_task
 
 if TYPE_CHECKING:
     from server.apps.channels.models import Channel
@@ -97,7 +99,7 @@ class PipelineRunService:
         self._events.emit(
             PipelineRunCreated(run_id=run_id, channel_id=payload.channel_id),
         )
-        transaction.on_commit(lambda: kiq_task(advance_pipeline, run_id))
+        transaction.on_commit(lambda: kiq_advance_pipeline(run_id))
         return get_run_detail(run_id)
 
     def cancel(self, run_id: str) -> RunDetailPayload:
@@ -129,7 +131,7 @@ class PipelineRunService:
         )
 
         _resume_run_sync(run_id)
-        kiq_task(advance_pipeline, run_id)
+        kiq_advance_pipeline(run_id)
         return get_run_detail(run_id)
 
     def rerun_stage(
@@ -148,7 +150,7 @@ class PipelineRunService:
         to_enqueue = _rerun_stage_sync(run_id, stage_key, shard_indices)
 
         for exec_id in to_enqueue:
-            kiq_task(execute_stage, exec_id)
+            kiq_execute_stage(exec_id)
         asyncio.run(
             publish_sse(
                 run_id,

@@ -37,9 +37,8 @@ from server.apps.pipelines.storyboard_selectors import (
 from server.apps.pipelines.storyboard_selectors import (
     get_scene_breakdown as _get_scene_breakdown,
 )
-from server.apps.pipelines.tasks import advance_pipeline
+from server.apps.pipelines.enqueue import kiq_advance_pipeline
 from server.common.storage import PresignUrlHelper
-from server.common.taskiq_sender import kiq_task
 
 _TERMINAL = {
     StageStatus.SUCCEEDED,
@@ -384,7 +383,7 @@ class RunReviewService:
             output['schedule_at'] = payload.schedule_at
 
         _approve_gate_sync(run_id, gate_key, output)
-        kiq_task(advance_pipeline, run_id)
+        kiq_advance_pipeline(run_id)
 
         run.refresh_from_db()
         job_id: str | None = None

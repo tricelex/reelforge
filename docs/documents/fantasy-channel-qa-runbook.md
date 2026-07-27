@@ -49,7 +49,7 @@ Start the worker stack:
 
 ```bash
 docker compose up -d
-docker compose -f docker-compose.yml -f docker-compose.worker.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.worker.yml up -d worker-api worker-render
 ```
 
 ---

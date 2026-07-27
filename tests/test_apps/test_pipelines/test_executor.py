@@ -418,3 +418,30 @@ def test_execute_stage_never_retries_fatal_provider_error(
         mock_execute_stage_kiq.assert_not_called()
 
     _run(_inner())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_stage_skips_cancelled_run(run: PipelineRun) -> None:
+    """Cancelled runs must not execute in-flight stage work."""
+    from server.apps.pipelines.models import RunStatus
+    from server.apps.pipelines.services.executor import execute_stage_impl
+
+    async def _inner() -> None:
+        run.status = RunStatus.CANCELLED
+        await run.asave(update_fields=['status'])
+        exec_ = await StageExecution.objects.acreate(
+            run=run,
+            stage_key='dummy_a',
+            status=StageStatus.QUEUED,
+            input_hash='',
+        )
+        with patch(
+            'server.apps.pipelines.services.executor.kick_advance',
+            new=AsyncMock(),
+        ) as kick:
+            await execute_stage_impl(str(exec_.id))
+        kick.assert_not_called()
+        refreshed = await StageExecution.objects.aget(id=exec_.id)
+        assert refreshed.status == StageStatus.QUEUED
+
+    _run(_inner())

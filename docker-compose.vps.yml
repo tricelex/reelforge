@@ -61,13 +61,37 @@ services:
     mem_limit: 256m
     cpus: 0.25
 
-  worker:
+  worker-api:
+    image: "ghcr.io/tricelex/reelforge-web:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_ENV: production
+      LOGFIRE_SERVICE_NAME: reelforge-worker-api
+      ASSET_CACHE_DIR: /var/cache/reelforge/assets
+    volumes:
+      - source-cache:/var/cache/reelforge/assets
+    command: >-
+      python -m taskiq worker server.common.broker:api_broker
+      server.common.django_setup
+      server.apps.main.tasks
+      server.apps.assets.tasks
+      server.apps.clips.tasks_api
+      server.apps.pipelines.tasks_api
+      server.apps.analytics.tasks
+      --workers ${TASKIQ_API_WORKERS:-1}
+      --max-async-tasks ${TASKIQ_API_MAX_ASYNC_TASKS:-4}
+      --max-prefetch 1
+    mem_limit: 1g
+    cpus: 1.0
+
+  worker-render:
     image: "ghcr.io/tricelex/reelforge-worker:${IMAGE_TAG:-latest}"
     restart: unless-stopped
     env_file: .env
     environment:
       DJANGO_ENV: production
-      LOGFIRE_SERVICE_NAME: reelforge-worker
+      LOGFIRE_SERVICE_NAME: reelforge-worker-render
       YTDLP_POT_PROVIDER_BASE_URL: http://bgutil-provider:4416
       ASSET_CACHE_DIR: /var/cache/reelforge/assets
     depends_on:
@@ -79,22 +103,14 @@ services:
       # cover that. Created by scripts/vps-setup-youtube.sh on the host.
       - ./secrets/youtube-cookies.txt:/run/secrets/youtube-cookies.txt:ro
       - source-cache:/var/cache/reelforge/assets
-    # Bounded concurrency: whisperx/ffmpeg tasks are memory-heavy, and
-    # taskiq's own defaults (--workers 2 --max-async-tasks 100) would allow
-    # up to 200 concurrent task slots — the likely cause of the Railway OOM
-    # crashes. mem_limit below caps the blast radius: if it OOMs anyway,
-    # only this container dies and `restart: unless-stopped` brings it back,
-    # instead of taking down the whole box.
+    # Bounded concurrency: ffmpeg tasks are memory-heavy.
     command: >-
-      python -m taskiq worker server.common.broker:broker
+      python -m taskiq worker server.common.broker:render_broker
       server.common.django_setup
-      server.apps.main.tasks
-      server.apps.assets.tasks
-      server.apps.clips.tasks
-      server.apps.pipelines.tasks
-      server.apps.analytics.tasks
-      --workers ${TASKIQ_WORKERS:-1}
-      --max-async-tasks ${TASKIQ_MAX_ASYNC_TASKS:-2}
+      server.apps.pipelines.tasks_render
+      server.apps.clips.tasks_render
+      --workers ${TASKIQ_RENDER_WORKERS:-1}
+      --max-async-tasks ${TASKIQ_RENDER_MAX_ASYNC_TASKS:-2}
       --max-prefetch 1
     shm_size: '1gb'
     mem_limit: 7g
