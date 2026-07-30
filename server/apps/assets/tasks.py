@@ -133,6 +133,13 @@ def _validate_kind(
             error_code='INTRO_OUTRO_NO_AUDIO',
         )
 
+    if kind == LibraryAssetKind.VIDEO and not video_streams:
+        raise FatalProviderError(
+            'Video asset must contain a video stream',
+            provider='validator',
+            error_code='VIDEO_NO_VIDEO_STREAM',
+        )
+
 
 def _save_rendition(
     asset: 'LibraryAsset',

@@ -35,6 +35,7 @@ def test_library_asset_kind_values() -> None:
         'SFX',
         'FONT',
         'BACKGROUND',
+        'VIDEO',
         'CHARACTER_REF',
         'CAPTION_STYLE',
         'LUT',

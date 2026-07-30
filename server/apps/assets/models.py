@@ -40,6 +40,7 @@ class LibraryAssetKind(models.TextChoices):
     SFX = 'SFX', 'SFX'
     FONT = 'FONT', 'Font'
     BACKGROUND = 'BACKGROUND', 'Background'
+    VIDEO = 'VIDEO', 'Video'
     CHARACTER_REF = 'CHARACTER_REF', 'Character Ref'
     CAPTION_STYLE = 'CAPTION_STYLE', 'Caption Style'
     LUT = 'LUT', 'LUT'
