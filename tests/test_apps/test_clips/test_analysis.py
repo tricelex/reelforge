@@ -154,6 +154,55 @@ def test_build_prompt_includes_words_json() -> None:
     assert 'Hello' in prompt
 
 
+def test_user_message_renders_template_and_appends_window_meta() -> None:
+    run = MagicMock()
+    run.prompt_snapshot = {}
+    svc = ClipAnalysisService(run=run, clips_requested=3)
+    enriched = [
+        {'word': 'Hello', 'start': 0.0, 'end': 0.5, 'speaker_id': 'A'},
+    ]
+    message = svc._user_message_for_window(
+        'Hello window',
+        enriched,
+        [1.5],
+        60.0,
+        window_start=0.0,
+        window_end=30.0,
+        user_prompt_template=(
+            'Clips: {{ config.clips_requested }}\n'
+            'Transcript:\n{{ transcript_text }}\n'
+        ),
+        prompt_variables={
+            'config': {'clips_requested': 3},
+            'transcript_text': 'FULL',
+        },
+    )
+    assert 'Clips: 3' in message
+    assert 'Transcript:\nHello window' in message
+    assert 'FULL' not in message
+    assert 'WINDOW_START_SEC: 0.000' in message
+    assert 'WORDS_JSON' in message
+    assert 'SCENE_CUTS' in message
+
+
+def test_user_message_falls_back_to_build_prompt_without_template() -> None:
+    run = MagicMock()
+    run.prompt_snapshot = {}
+    svc = ClipAnalysisService(run=run, clips_requested=2)
+    message = svc._user_message_for_window(
+        'plain window',
+        [],
+        [],
+        None,
+        window_start=0.0,
+        window_end=10.0,
+        user_prompt_template=None,
+        prompt_variables={},
+    )
+    assert 'Source video transcript window:\nplain window' in message
+    assert 'Number of clips to identify: 2' in message
+
+
 def test_extract_excerpt() -> None:
     run = MagicMock()
     run.prompt_snapshot = {}

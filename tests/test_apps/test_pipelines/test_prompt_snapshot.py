@@ -143,6 +143,28 @@ async def test_renderer_still_reads_flat_keys() -> None:
     assert sys == 'flat'
 
 
+@pytest.mark.anyio
+@pytest.mark.django_db
+async def test_renderer_get_raw_templates_skips_jinja() -> None:
+    """Raw templates are returned without variable substitution."""
+    template = await PromptTemplate.objects.acreate(
+        name='T',
+        key='clip_analyze',
+        scope=PromptScope.GLOBAL,
+    )
+    await PromptVersion.objects.acreate(
+        template=template,
+        version=1,
+        system_prompt='sys {{ topic }}',
+        user_prompt='usr {{ transcript_text }}',
+        is_active=True,
+    )
+    renderer = PromptRenderer({})
+    sys, usr = await renderer.get_raw_templates('clip_analyze')
+    assert sys == 'sys {{ topic }}'
+    assert usr == 'usr {{ transcript_text }}'
+
+
 @pytest.mark.django_db
 def test_clip_metadata_keys_do_not_leak_into_prompt_lookup() -> None:
     """Clipping metadata in the snapshot is not mistaken for a version id."""

@@ -73,7 +73,11 @@
       "Bash(awk -F'\\\\t' '{print}')",
       "Bash(/Users/chuckz/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package 84c80630801ee24c7553052e5105812047070c76 132411f32c2c1ab73afd6598b0433f309931f812)",
       "Bash(tee /private/tmp/claude-501/-Users-chuckz-Code-29SignalsDev-reelforge/d59af701-ec6c-40de-b6df-9d1bc4b4c28d/scratchpad/test_output.txt)",
-      "Bash(tee /private/tmp/claude-501/-Users-chuckz-Code-29SignalsDev-reelforge/d59af701-ec6c-40de-b6df-9d1bc4b4c28d/scratchpad/test_output2.txt)"
+      "Bash(tee /private/tmp/claude-501/-Users-chuckz-Code-29SignalsDev-reelforge/d59af701-ec6c-40de-b6df-9d1bc4b4c28d/scratchpad/test_output2.txt)",
+      "Bash(./vps-logs.sh worker-render *)",
+      "Bash(shellcheck vps-render-status.sh)",
+      "Bash(shellcheck vps-status.sh)",
+      "Bash(./scripts/vps-render-status.sh --log-lines 50)"
     ],
     "additionalDirectories": [
       "/tmp"

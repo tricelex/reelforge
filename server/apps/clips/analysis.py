@@ -8,6 +8,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 import pydantic
+from jinja2.sandbox import SandboxedEnvironment
 from pydantic_ai import Agent
 
 from server.apps.clips.candidate_ranking import (
@@ -25,6 +26,8 @@ from server.apps.generation.logic.model_resolver import (
     resolve_model,
     to_pydantic_ai_model,
 )
+
+_jinja_env = SandboxedEnvironment(autoescape=False)
 
 if TYPE_CHECKING:
     from server.apps.clips.models import ClipCandidate
@@ -193,10 +196,13 @@ class ClipAnalysisService:
         video_duration: float | None = None,
         *,
         system_prompt: str | None = None,
+        user_prompt_template: str | None = None,
+        prompt_variables: dict[str, Any] | None = None,
     ) -> list[ClipCandidate]:
         """Run windowed LLM analysis and persist ClipCandidate records."""
         words = enriched_transcript or []
         cuts = scene_cuts or []
+        base_vars = dict(prompt_variables or {})
         windows = iter_transcript_windows(
             words,
             video_duration=video_duration,
@@ -211,13 +217,15 @@ class ClipAnalysisService:
             window_text = self._window_text(transcript_text, window_words)
             if not window_text.strip() and not window_words:
                 continue
-            prompt = self._build_prompt(
+            prompt = self._user_message_for_window(
                 window_text,
                 window_words,
                 cuts,
                 video_duration,
                 window_start=win_start,
                 window_end=win_end,
+                user_prompt_template=user_prompt_template,
+                prompt_variables=base_vars,
             )
             agent = self._agent_for_prompt(system_prompt)
             result = agent.run_sync(prompt)
@@ -342,6 +350,69 @@ class ClipAnalysisService:
                 str(w.get('word', '')).strip() for w in window_words
             )
         return full_text
+
+    def _user_message_for_window(
+        self,
+        transcript_text: str,
+        enriched_transcript: list[dict[str, Any]],
+        scene_cuts: list[float],
+        video_duration: float | None,
+        *,
+        window_start: float,
+        window_end: float,
+        user_prompt_template: str | None,
+        prompt_variables: dict[str, Any],
+    ) -> str:
+        """Build the LLM user message for one transcript window."""
+        window_meta = self._window_metadata_prompt(
+            enriched_transcript,
+            scene_cuts,
+            video_duration,
+            window_start=window_start,
+            window_end=window_end,
+        )
+        if not user_prompt_template:
+            return self._build_prompt(
+                transcript_text,
+                enriched_transcript,
+                scene_cuts,
+                video_duration,
+                window_start=window_start,
+                window_end=window_end,
+            )
+        variables = dict(prompt_variables)
+        variables['transcript_text'] = transcript_text
+        rendered = _jinja_env.from_string(user_prompt_template).render(
+            **variables,
+        )
+        if window_meta:
+            return f'{rendered}\n\n{window_meta}'
+        return rendered
+
+    def _window_metadata_prompt(
+        self,
+        enriched_transcript: list[dict[str, Any]],
+        scene_cuts: list[float],
+        video_duration: float | None,
+        *,
+        window_start: float,
+        window_end: float,
+    ) -> str:
+        """Timing / WORDS_JSON appendix for a window (no full transcript)."""
+        lines = [
+            f'WINDOW_START_SEC: {window_start:.3f}',
+            f'WINDOW_END_SEC: {window_end:.3f}',
+            'Only propose clips fully inside this window.',
+            'Trend score means platform/format fit, not live trends.',
+        ]
+        lines.extend(self._timing_prompt_lines(
+            enriched_transcript,
+            scene_cuts,
+            video_duration,
+            window_start=window_start,
+            window_end=window_end,
+        ))
+        return '\n'.join(lines)
 
     def _build_prompt(
         self,
