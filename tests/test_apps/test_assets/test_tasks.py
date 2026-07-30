@@ -134,8 +134,8 @@ def test_ingest_font_asset_extracts_family_name() -> None:
         'format': {'duration': '0', 'format_name': 'ttf'},
     }
     mock_name_table = MagicMock()
-    mock_name_table.getDebugName.side_effect = (
-        lambda name_id: 'My Custom Font' if name_id == 4 else None
+    mock_name_table.getDebugName.side_effect = lambda name_id: (
+        'My Custom Font' if name_id == 4 else None
     )
     mock_font = MagicMock()
     mock_font.__getitem__.return_value = mock_name_table
@@ -262,6 +262,33 @@ def test_ingest_outro_no_audio_raises_fatal() -> None:
     with (
         patch('server.apps.assets.tasks._ffprobe', return_value=probe),
         pytest.raises(FatalProviderError, match='audio stream'),
+    ):
+        ingest_library_asset.original_func(str(asset.id))
+
+
+@pytest.mark.django_db
+def test_ingest_video_kind_stores_meta() -> None:
+    asset = _make_asset(LibraryAssetKind.VIDEO, 'Source Footage')
+    with (
+        patch('server.apps.assets.tasks._ffprobe', return_value=_VIDEO_PROBE),
+        patch('server.apps.assets.tasks._transcode'),
+    ):
+        ingest_library_asset.original_func(str(asset.id))
+
+    asset.refresh_from_db()
+    assert asset.meta['format'] == 'mp4'
+    assert asset.meta['duration'] == 30.0
+    assert any(
+        stream.get('codec_type') == 'video' for stream in asset.meta['streams']
+    )
+
+
+@pytest.mark.django_db
+def test_ingest_video_kind_no_video_stream_raises_fatal() -> None:
+    asset = _make_asset(LibraryAssetKind.VIDEO, 'Not A Video')
+    with (
+        patch('server.apps.assets.tasks._ffprobe', return_value=_AUDIO_PROBE),
+        pytest.raises(FatalProviderError, match='video stream'),
     ):
         ingest_library_asset.original_func(str(asset.id))
 
