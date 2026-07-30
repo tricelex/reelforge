@@ -5,6 +5,7 @@ import json
 from typing import Any, override
 
 import structlog
+from jinja2.sandbox import SandboxedEnvironment
 
 from server.apps.generation.logic.constants import DEFAULT_LLM_PROVIDER
 from server.apps.pipelines.stages.base import (
@@ -14,6 +15,8 @@ from server.apps.pipelines.stages.base import (
 )
 
 logger = structlog.get_logger(__name__)
+
+_jinja_env = SandboxedEnvironment(autoescape=False)
 
 
 @register_stage
@@ -45,22 +48,27 @@ class ClipAnalyzeStage(Stage):
         manifest_bytes = await asyncio.to_thread(manifest_asset.file.read)
         manifest: dict[str, Any] = json.loads(manifest_bytes)
 
-        system_prompt, _user_prompt = await ctx.prompts.render(
-            'clip_analyze',
-            {
-                'transcript_text': manifest.get('transcript_text', ''),
-                'config': {'clips_requested': clips_requested},
-                'upstream': {
-                    'clip_transcribe': {
-                        'duration_sec': manifest.get('source_duration_sec'),
-                    },
-                },
-                'clip_options': {
-                    'genre': options.genre,
-                    'clip_length': options.length_bucket,
-                    'moments_prompt': options.moments_prompt,
+        prompt_variables: dict[str, Any] = {
+            'transcript_text': manifest.get('transcript_text', ''),
+            'config': {'clips_requested': clips_requested},
+            'upstream': {
+                'clip_transcribe': {
+                    'duration_sec': manifest.get('source_duration_sec'),
                 },
             },
+            'clip_options': {
+                'genre': options.genre,
+                'clip_length': options.length_bucket,
+                'moments_prompt': options.moments_prompt,
+            },
+        }
+        system_raw, user_template = await ctx.prompts.get_raw_templates(
+            'clip_analyze',
+        )
+        system_prompt = (
+            _jinja_env.from_string(system_raw).render(**prompt_variables)
+            if system_raw
+            else ''
         )
 
         logger.info('clip_analyze_start', run_id=str(ctx.run.id))
@@ -76,6 +84,8 @@ class ClipAnalyzeStage(Stage):
             scene_cuts=manifest.get('scene_cuts', []),
             video_duration=manifest.get('source_duration_sec'),
             system_prompt=system_prompt or None,
+            user_prompt_template=user_template or None,
+            prompt_variables=prompt_variables,
         )
 
         await ctx.costs.record(

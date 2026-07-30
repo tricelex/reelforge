@@ -8,6 +8,14 @@ from typing import Any, override
 
 from django.core.management.base import BaseCommand
 
+from server.apps.prompts.logic.clip_analyze_prompts import (
+    CLIP_ANALYZE_SYSTEM_PROMPT,
+    CLIP_ANALYZE_TEMPLATE_DESCRIPTION,
+    CLIP_ANALYZE_TEMPLATE_KEY,
+    CLIP_ANALYZE_TEMPLATE_NAME,
+    CLIP_ANALYZE_USER_PROMPT,
+)
+
 # ---------------------------------------------------------------------------
 # Story Format constants
 # ---------------------------------------------------------------------------
@@ -586,36 +594,12 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
         ),
     },
     {
-        'key': 'clip_analyze',
-        'name': 'Clip Analysis',
+        'key': CLIP_ANALYZE_TEMPLATE_KEY,
+        'name': CLIP_ANALYZE_TEMPLATE_NAME,
         'scope': 'GLOBAL',
-        'description': (
-            'Identifies viral clip candidates from a long-form transcript. '
-            'Used by the clip_analyze stage in CLIPPING pipelines.'
-        ),
-        'system_prompt': (
-            'You are a social media clip curator for a YouTube channel. '
-            'You identify high-impact moments in long-form transcripts that will '
-            'perform well as short-form clips on YouTube Shorts, TikTok, and Instagram Reels. '
-            'Prioritise: surprising revelations, emotional peaks, quotable insights, '
-            'and moments that are self-contained stories. '
-            'Each clip should be 30–90 seconds. '
-            'Return structured JSON.'
-        ),
-        'user_prompt': (
-            'Analyse the following transcript and identify the best clip candidates:\n\n'
-            'Source Video Duration: {{ upstream.clip_transcribe.duration_sec }}s\n\n'
-            'Transcript:\n{{ transcript_text }}\n\n'
-            'Clips Requested: {{ config.clips_requested | default(5) }}\n\n'
-            'For each clip candidate provide:\n'
-            '- start_sec (float — clip start time)\n'
-            '- end_sec (float — clip end time, 30–90 seconds after start)\n'
-            '- title (punchy, shareable clip title)\n'
-            '- hook_text (opening text overlay that stops the scroll, max 8 words)\n'
-            '- caption_template (social media caption template with placeholder [CHANNEL])\n'
-            '- relevance_score (0.0–1.0 — predicted virality/engagement score)\n'
-            '- reason (one sentence: why this moment will perform well as a clip)'
-        ),
+        'description': CLIP_ANALYZE_TEMPLATE_DESCRIPTION,
+        'system_prompt': CLIP_ANALYZE_SYSTEM_PROMPT,
+        'user_prompt': CLIP_ANALYZE_USER_PROMPT,
     },
 ]
 

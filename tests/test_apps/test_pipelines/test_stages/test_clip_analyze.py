@@ -34,6 +34,7 @@ def test_clip_analyze_run() -> None:
     ctx.config = {'clips_requested': 3}
     ctx.costs.record = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_raw_templates = AsyncMock(return_value=('', ''))
     ctx.prompts.get_model = AsyncMock(return_value=None)
 
     manifest = {
@@ -99,6 +100,7 @@ def test_clip_analyze_default_clips_requested() -> None:
     ctx.config = {}
     ctx.costs.record = AsyncMock()
     ctx.prompts.render = AsyncMock(return_value=('', ''))
+    ctx.prompts.get_raw_templates = AsyncMock(return_value=('', ''))
     ctx.prompts.get_model = AsyncMock(return_value=None)
 
     manifest: dict = {

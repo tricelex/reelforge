@@ -69,6 +69,21 @@ class PromptRenderer:
             'temperature': float(pv.temperature),
         }
 
+    async def get_raw_templates(
+        self,
+        stage_key: str,
+    ) -> tuple[str, str]:
+        """Return unrendered (system_prompt, user_prompt) for this stage.
+
+        Looks up via prompt_snapshot -> PromptVersion.id, or falls back to
+        the active version for this template key. Returns ('', '') when no
+        version is available.
+        """
+        pv = await self._get_prompt_version(stage_key)
+        if pv is None:
+            return '', ''
+        return str(pv.system_prompt), str(pv.user_prompt)
+
     async def render(
         self,
         stage_key: str,
@@ -79,9 +94,9 @@ class PromptRenderer:
         Looks up via prompt_snapshot -> PromptVersion.id, or falls back to
         the active version for this template key.
         """
-        pv = await self._get_prompt_version(stage_key)
-        if pv is None:
+        sys_raw, usr_raw = await self.get_raw_templates(stage_key)
+        if not sys_raw and not usr_raw:
             return '', ''
-        sys = _jinja_env.from_string(pv.system_prompt).render(**variables)
-        usr = _jinja_env.from_string(pv.user_prompt).render(**variables)
+        sys = _jinja_env.from_string(sys_raw).render(**variables)
+        usr = _jinja_env.from_string(usr_raw).render(**variables)
         return sys, usr
