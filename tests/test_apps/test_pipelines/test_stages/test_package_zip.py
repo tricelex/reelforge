@@ -22,7 +22,6 @@ from server.apps.pipelines.stages.package_zip import (
     _gather_longform_docs,
     _gather_longform_files,
     _gather_music,
-    _gather_previews,
     _gather_stills,
     _gather_thumbnails,
     _gather_timeline,
@@ -662,43 +661,6 @@ class TestGatherClippingCaptions:
         assert asyncio.run(_inner()) == {}
 
 
-class TestGatherPreviews:
-    """Tests for _gather_previews."""
-
-    def test_gathers_shards_with_asset_ids(self) -> None:
-        """Preview shards with an asset_id are fetched by shard index."""
-        ctx = MagicMock()
-        ctx.upstream = {
-            'clip_preview_render': {
-                'shards': [
-                    {'asset_id': 'preview-1', 'shard_index': 0},
-                    {'shard_index': 1},
-                ],
-            },
-        }
-
-        async def _inner() -> dict:
-            with patch(
-                f'{_MODULE}._fetch_asset_bytes',
-                new=AsyncMock(return_value=b'PREVIEW'),
-            ):
-                return await _gather_previews(ctx)
-
-        assert asyncio.run(_inner()) == {
-            'previews/clip_00_preview.mp4': b'PREVIEW',
-        }
-
-    def test_no_shards_returns_empty(self) -> None:
-        """No clip_preview_render upstream returns no preview files."""
-        ctx = MagicMock()
-        ctx.upstream = {}
-
-        async def _inner() -> dict:
-            return await _gather_previews(ctx)
-
-        assert asyncio.run(_inner()) == {}
-
-
 class TestGatherClippingFiles:
     """Tests for _gather_clipping_files (full integration)."""
 
@@ -720,10 +682,6 @@ class TestGatherClippingFiles:
                     f'{_MODULE}._gather_clipping_captions',
                     new=AsyncMock(return_value={}),
                 ),
-                patch(
-                    f'{_MODULE}._gather_previews',
-                    new=AsyncMock(return_value={'previews/a': b'3'}),
-                ),
             ):
                 return await _gather_clipping_files(ctx)
 
@@ -731,7 +689,6 @@ class TestGatherClippingFiles:
         assert files == {
             'docs/a': b'1',
             'candidates/a': b'2',
-            'previews/a': b'3',
         }
 
 

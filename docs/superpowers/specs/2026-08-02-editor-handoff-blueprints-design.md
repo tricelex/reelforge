@@ -13,8 +13,8 @@ and YouTube publish.
 
 - Shared terminal stages + four additive blueprint graphs
 - Longform: full assets through motion / footage_prep, then package
-- Clipping: candidates + markers + captions + rough preview renders; no source
-  video in zip; no CapCut `clip_render` / `clip_distribute`
+- Clipping: candidates + markers + captions; no source video in zip; no CapCut
+  `clip_render` / `clip_distribute`; no `clip_preview_render` in handoff graphs
 - Auto-package on success; rebuild via rerun from `editor_brief`
 - Blueprints: `longform_editor_v1`, `longform_doc_editor_v1`,
   `clipping_editor_v1`, `clipping_editor_manual_v1`
@@ -25,8 +25,7 @@ and YouTube publish.
 ## Terminal stages
 
 `editor_brief` (LLM editorial front matter + deterministic appendix)
-→ `timeline_export` → `caption_bundle`
-→ (`clip_preview_render` for clipping) → `package_zip`
+→ `timeline_export` → `caption_bundle` → `package_zip`
 
 `editor_brief` uses a pydantic-ai agent (`EditorBriefOutput`) for tone,
 pacing, must-hit beats, caption/music guidance, and Resolve do/don'ts, then
