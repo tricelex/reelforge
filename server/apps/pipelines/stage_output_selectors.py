@@ -63,6 +63,11 @@ _KNOWN_STAGE_KEYS: Final[frozenset[str]] = frozenset({
     'footage_queries',
     'footage_search',
     'footage_prep',
+    'editor_brief',
+    'timeline_export',
+    'caption_bundle',
+    'clip_preview_render',
+    'package_zip',
 })
 
 
@@ -288,6 +293,62 @@ def _build_gate(_run_id: str, execution: StageExecution) -> _BuildResult:
     return None, None, dict(execution.output)
 
 
+def _read_asset_text(asset_id: str | None) -> str | None:
+    """Return UTF-8 text from a pipeline Asset, or None if unavailable."""
+    if not asset_id:
+        return None
+    from server.apps.assets.models import Asset  # noqa: PLC0415
+
+    try:
+        asset = Asset.objects.get(id=asset_id)
+    except Asset.DoesNotExist:
+        return None
+    if not asset.file:
+        return None
+    try:
+        with asset.file.open('rb') as handle:
+            return handle.read().decode()
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+
+
+def _build_editor_brief(
+    _run_id: str,
+    execution: StageExecution,
+) -> _BuildResult:
+    """Render the LLM editorial brief for the stage output modal."""
+    out = execution.output
+    editorial = out.get('editorial')
+    editorial_dict = editorial if isinstance(editorial, dict) else {}
+    summary = str(
+        editorial_dict.get('summary')
+        or f'Editor brief ({out.get("kind", "unknown")})',
+    )
+    text = _read_asset_text(
+        str(out['brief_asset_id']) if out.get('brief_asset_id') else None,
+    )
+    data: dict[str, Any] = {
+        'kind': out.get('kind'),
+        'brief_asset_id': out.get('brief_asset_id'),
+        'editorial': editorial_dict or None,
+    }
+    return summary[:240], text, data
+
+
+def _build_handoff_docs(
+    _run_id: str,
+    execution: StageExecution,
+) -> _BuildResult:
+    """Generic JSON+assets view for timeline/caption/package handoff stages."""
+    out = dict(execution.output)
+    summary = execution.stage_key.replace('_', ' ')
+    if 'package_asset_id' in out:
+        summary = 'Editor package ready'
+    elif 'entry_count' in out:
+        summary = f'Package ({out.get("entry_count")} entries)'
+    return summary, None, out
+
+
 def _build_clip_ingest(
     _run_id: str,
     execution: StageExecution,
@@ -381,6 +442,11 @@ _BUILDERS: Final[dict[str, _Builder]] = {
     'review_gate': _build_gate,
     'clip_approval': _build_gate,
     'clip_approval_gate': _build_gate,
+    'editor_brief': _build_editor_brief,
+    'timeline_export': _build_handoff_docs,
+    'caption_bundle': _build_handoff_docs,
+    'clip_preview_render': _build_handoff_docs,
+    'package_zip': _build_handoff_docs,
 }
 
 
