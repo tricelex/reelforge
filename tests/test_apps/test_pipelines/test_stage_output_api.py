@@ -735,3 +735,66 @@ def test_asset_labels_cover_all_stages(
     assert 'clip: Best Clip' in values
     assert 'clip' in values
     assert None in values
+
+
+@pytest.mark.django_db
+def test_editor_brief_output_returns_text(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """editor_brief stage output returns editorial summary and brief text."""
+    execution = _stage(
+        run,
+        'editor_brief',
+        {
+            'kind': 'clipping',
+            'brief_asset_id': None,
+            'editorial': {
+                'summary': 'Prioritize proof-led hooks.',
+                'tone_and_pacing': 'Punchy',
+            },
+        },
+    )
+    brief = Asset.objects.create(
+        kind=AssetKind.DOC,
+        file=ContentFile(
+            b'# Edit Brief\n\nHello editor.', name='EDIT_BRIEF.md'
+        ),
+        mime='text/markdown',
+        checksum='briefcov',
+        run=run,
+        stage_execution=execution,
+    )
+    execution.output['brief_asset_id'] = str(brief.id)
+    execution.save(update_fields=['output'])
+
+    response = _get(dmr_client, run.id, 'editor_brief', auth_headers)
+    assert response.status_code == HTTPStatus.OK
+    body = response.json()
+    assert body['status'] == StageStatus.SUCCEEDED
+    assert body['summary'] == 'Prioritize proof-led hooks.'
+    assert 'Hello editor.' in (body.get('text') or '')
+    assert body['data']['kind'] == 'clipping'
+
+
+@pytest.mark.django_db
+def test_package_zip_stage_is_known(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """package_zip is a known stage key and returns ready summary."""
+    _stage(
+        run,
+        'package_zip',
+        {
+            'package_asset_id': str(uuid.uuid4()),
+            'entry_count': 12,
+            'root_name': 'run_abc_clip_editor_package',
+        },
+    )
+    response = _get(dmr_client, run.id, 'package_zip', auth_headers)
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['status'] == StageStatus.SUCCEEDED
+    assert response.json()['summary'] == 'Editor package ready'
