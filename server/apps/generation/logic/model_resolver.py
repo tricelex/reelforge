@@ -22,6 +22,7 @@ STAGE_MODEL_DEFAULTS: dict[str, str] = {
     'visual_prompts': 'claude-sonnet-4-6',
     'music_plan': 'gpt-5.6-terra',
     'metadata': 'gpt-5.6-terra',
+    'editor_brief': 'gpt-5.6-terra',
     'ideation': 'gpt-5.6-terra',
     'clip_analyze': 'claude-sonnet-4-6',
 }

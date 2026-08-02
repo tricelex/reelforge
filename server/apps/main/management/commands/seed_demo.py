@@ -15,6 +15,13 @@ from server.apps.prompts.logic.clip_analyze_prompts import (
     CLIP_ANALYZE_TEMPLATE_NAME,
     CLIP_ANALYZE_USER_PROMPT,
 )
+from server.apps.prompts.logic.editor_brief_prompts import (
+    EDITOR_BRIEF_SYSTEM_PROMPT,
+    EDITOR_BRIEF_TEMPLATE_DESCRIPTION,
+    EDITOR_BRIEF_TEMPLATE_KEY,
+    EDITOR_BRIEF_TEMPLATE_NAME,
+    EDITOR_BRIEF_USER_PROMPT,
+)
 
 # ---------------------------------------------------------------------------
 # Story Format constants
@@ -557,6 +564,14 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             '- tags (list of 15–20 specific, relevant tags)\n'
             '- category (YouTube category name, e.g. "Education", "Entertainment")'
         ),
+    },
+    {
+        'key': EDITOR_BRIEF_TEMPLATE_KEY,
+        'name': EDITOR_BRIEF_TEMPLATE_NAME,
+        'scope': 'GLOBAL',
+        'description': EDITOR_BRIEF_TEMPLATE_DESCRIPTION,
+        'system_prompt': EDITOR_BRIEF_SYSTEM_PROMPT,
+        'user_prompt': EDITOR_BRIEF_USER_PROMPT,
     },
     {
         'key': 'thumbnail',

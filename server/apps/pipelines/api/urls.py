@@ -5,6 +5,7 @@ from dmr.routing import path
 from server.apps.pipelines.api import (
     cast_views,
     events_views,
+    package_views,
     review_views,
     views,
 )
@@ -165,6 +166,19 @@ review_urlpatterns = [
     ),
 ]
 
+package_urlpatterns = [
+    path(
+        'runs/<uuid:run_id>/package/',
+        package_views.RunPackageController.as_view(),
+        name='run-package',
+    ),
+    path(
+        'runs/<uuid:run_id>/rebuild-package/',
+        package_views.RunRebuildPackageController.as_view(),
+        name='run-rebuild-package',
+    ),
+]
+
 blueprint_urlpatterns = [
     path(
         'blueprints/',
@@ -177,5 +191,6 @@ urlpatterns = [
     *run_urlpatterns,
     *cast_urlpatterns,
     *review_urlpatterns,
+    *package_urlpatterns,
     *blueprint_urlpatterns,
 ]

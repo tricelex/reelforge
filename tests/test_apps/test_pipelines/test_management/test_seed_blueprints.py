@@ -56,6 +56,53 @@ def test_seed_blueprints_still_creates_longform_v1() -> None:
     assert PipelineBlueprint.objects.filter(name='longform_v1').exists()
 
 
+def test_seed_blueprints_creates_all_four_editor_blueprints() -> None:
+    from server.apps.pipelines.models import PipelineBlueprint
+
+    call_command('seed_blueprints')
+    names = {
+        'longform_editor_v1',
+        'longform_doc_editor_v1',
+        'clipping_editor_v1',
+        'clipping_editor_manual_v1',
+    }
+    for name in names:
+        bp = PipelineBlueprint.objects.get(name=name)
+        assert bp.is_active
+        assert bp.graph.get('handoff') == 'editor_package'
+
+
+def test_longform_editor_v1_has_package_zip_no_assembly_or_publish() -> None:
+    from server.apps.pipelines.models import PipelineBlueprint
+
+    call_command('seed_blueprints')
+    bp = PipelineBlueprint.objects.get(name='longform_editor_v1')
+    keys = {s['key'] for s in bp.graph['stages']}
+    assert 'package_zip' in keys
+    assert 'editor_brief' in keys
+    assert 'timeline_export' in keys
+    assert 'caption_bundle' in keys
+    assert 'assembly' not in keys
+    assert 'qc' not in keys
+    assert 'final_gate' not in keys
+    assert 'publish' not in keys
+
+
+def test_clipping_editor_v1_has_clip_preview_render_no_clip_distribute() -> (
+    None
+):
+    from server.apps.pipelines.models import PipelineBlueprint
+
+    call_command('seed_blueprints')
+    bp = PipelineBlueprint.objects.get(name='clipping_editor_v1')
+    keys = {s['key'] for s in bp.graph['stages']}
+    assert 'clip_preview_render' in keys
+    assert 'package_zip' in keys
+    assert 'editor_brief' in keys
+    assert 'clip_distribute' not in keys
+    assert 'clip_render' not in keys
+
+
 def test_longform_v1_graph_includes_narrative_qc_between_breakdown_and_visuals() -> (
     None
 ):
