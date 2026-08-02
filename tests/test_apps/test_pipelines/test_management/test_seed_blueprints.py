@@ -88,17 +88,18 @@ def test_longform_editor_v1_has_package_zip_no_assembly_or_publish() -> None:
     assert 'publish' not in keys
 
 
-def test_clipping_editor_v1_has_clip_preview_render_no_clip_distribute() -> (
-    None
-):
+def test_clipping_editor_v1_skips_preview_and_distribute() -> None:
     from server.apps.pipelines.models import PipelineBlueprint
 
     call_command('seed_blueprints')
     bp = PipelineBlueprint.objects.get(name='clipping_editor_v1')
     keys = {s['key'] for s in bp.graph['stages']}
-    assert 'clip_preview_render' in keys
+    by_key = {s['key']: s for s in bp.graph['stages']}
     assert 'package_zip' in keys
     assert 'editor_brief' in keys
+    assert 'caption_bundle' in keys
+    assert by_key['package_zip']['depends_on'] == ['caption_bundle']
+    assert 'clip_preview_render' not in keys
     assert 'clip_distribute' not in keys
     assert 'clip_render' not in keys
 

@@ -343,14 +343,8 @@ _CLIPPING_EDITOR_HANDOFF: list[dict[str, object]] = [
         'queue': 'api',
     },
     {
-        'key': 'clip_preview_render',
-        'depends_on': ['caption_bundle'],
-        'queue': 'render',
-        'fan_out': 'candidates',
-    },
-    {
         'key': 'package_zip',
-        'depends_on': ['clip_preview_render'],
+        'depends_on': ['caption_bundle'],
         'queue': 'render',
     },
 ]

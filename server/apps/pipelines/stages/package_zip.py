@@ -326,30 +326,12 @@ async def _gather_clipping_captions(ctx: StageContext) -> dict[str, bytes]:
     return files
 
 
-async def _gather_previews(ctx: StageContext) -> dict[str, bytes]:
-    """Gather previews/clip_NN_preview.mp4 from clip_preview_render shards."""
-    shards = ctx.upstream.get('clip_preview_render', {}).get('shards', [])
-    assert len(shards) <= _MAX_ITEMS, (  # noqa: S101
-        'preview shard count exceeded bound'
-    )
-    files: dict[str, bytes] = {}
-    for shard in shards:
-        asset_id = shard.get('asset_id')
-        if not asset_id:
-            continue
-        idx = int(shard.get('shard_index', 0))
-        content = await _fetch_asset_bytes(asset_id)
-        files[f'previews/clip_{idx:02d}_preview.mp4'] = content
-    return files
-
-
 async def _gather_clipping_files(ctx: StageContext) -> dict[str, bytes]:
     """Assemble the full clipping editor package file tree."""
     files: dict[str, bytes] = {}
     files.update(await _gather_clipping_docs(ctx))
     files.update(await _gather_candidates(ctx))
     files.update(await _gather_clipping_captions(ctx))
-    files.update(await _gather_previews(ctx))
     return files
 
 

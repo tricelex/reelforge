@@ -41,9 +41,9 @@ originating pipeline asset id.
 
 README_CLIPPING = """# Editor Package — Clipping
 
-This package contains cut candidates, markers, and rough preview
-renders for editing short clips. It intentionally omits the source
-video — bring your own local copy and use it as the master clock.
+This package contains cut candidates, markers, and captions for editing
+short clips. It intentionally omits the source video — bring your own
+local copy and use it as the master clock.
 
 ## Import steps
 
@@ -56,8 +56,6 @@ video — bring your own local copy and use it as the master clock.
 4. Import `captions/full_transcript.srt` as a subtitle track on the
    master; `captions/per_candidate/*.srt` are pre-sliced per clip for
    dropping onto individual clip timelines.
-5. Use `previews/clip_NN_preview.mp4` as rough-cut reference only —
-   they are re-encoded trims, not final-quality exports.
 
 See `MANIFEST.json` for every packaged file's checksum and the
 originating pipeline asset id.

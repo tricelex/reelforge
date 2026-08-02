@@ -8,7 +8,7 @@ Download/Rebuild UX.
 
 **Architecture:** Reuse existing spines; swap assembly/publish (or
 clip_render/distribute) for handoff stages that build docs, markers, captions,
-previews, and a zip (`AssetKind.PACKAGE`).
+and a zip (`AssetKind.PACKAGE`). Clipping packages omit preview renders.
 
 **Tech Stack:** Django 6 / punq / DMR / msgspec / ffmpeg / React (orval).
 
@@ -31,8 +31,7 @@ previews, and a zip (`AssetKind.PACKAGE`).
 ### Task 2: Handoff stages
 
 - [ ] `editor_brief`, `timeline_export`, `caption_bundle`
-- [ ] `clip_preview_render` (ffmpeg rough cut fan-out)
-- [ ] `package_zip` (layout + MANIFEST + zip asset)
+- [ ] `package_zip` (layout + MANIFEST + zip asset; no clipping previews)
 - [ ] Unit tests per stage
 
 ### Task 3: Package API
