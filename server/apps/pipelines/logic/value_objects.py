@@ -452,3 +452,22 @@ class ResearchFootagePayload(msgspec.Struct, frozen=True):
     """Operator-supplied search query to re-run footage_search."""
 
     query: str
+
+
+class PackagePayload(msgspec.Struct, frozen=True):
+    """Editor-handoff package build status and download details."""
+
+    status: str
+    download_url: str | None = None
+    package_asset_id: str | None = None
+    built_at: str | None = None
+    size_bytes: int | None = None
+    entry_count: int | None = None
+    root_name: str | None = None
+
+
+class RebuildPackageResultPayload(msgspec.Struct, frozen=True):
+    """Result of requeuing the editor-handoff tail stages."""
+
+    status: str
+    stage_key: str

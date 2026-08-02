@@ -26,6 +26,7 @@ class AssetKind(models.TextChoices):
     TRANSCRIPT = 'TRANSCRIPT', 'Transcript'
     DOC = 'DOC', 'Document'
     FOOTAGE = 'FOOTAGE', 'Footage'
+    PACKAGE = 'PACKAGE', 'Package'
 
 
 class LibraryAssetKind(models.TextChoices):

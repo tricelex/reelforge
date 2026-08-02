@@ -249,17 +249,157 @@ _LONGFORM_DOC_V1_GRAPH: dict[str, object] = {
 }
 
 
+def _strip_terminal(
+    graph: dict[str, object],
+    drop_keys: frozenset[str],
+) -> list[dict[str, object]]:
+    """Return stage nodes excluding terminal keys (assembly/publish/etc.)."""
+    stages: list[dict[str, object]] = graph['stages']  # type: ignore[assignment]
+    return [node for node in stages if node['key'] not in drop_keys]
+
+
+_AUTO_LONGFORM_TERMINAL = frozenset({
+    'assembly',
+    'qc',
+    'final_gate',
+    'publish',
+})
+_AUTO_CLIP_TERMINAL = frozenset({'clip_render', 'clip_distribute'})
+
+_LONGFORM_EDITOR_HANDOFF: list[dict[str, object]] = [
+    {
+        'key': 'editor_brief',
+        'depends_on': [
+            'motion',
+            'tts',
+            'alignment',
+            'music_plan',
+            'metadata',
+            'thumbnail',
+        ],
+        'queue': 'api',
+    },
+    {
+        'key': 'timeline_export',
+        'depends_on': ['editor_brief'],
+        'queue': 'api',
+    },
+    {
+        'key': 'caption_bundle',
+        'depends_on': ['timeline_export'],
+        'queue': 'api',
+    },
+    {
+        'key': 'package_zip',
+        'depends_on': ['caption_bundle'],
+        'queue': 'render',
+    },
+]
+
+_LONGFORM_DOC_EDITOR_HANDOFF: list[dict[str, object]] = [
+    {
+        'key': 'editor_brief',
+        'depends_on': [
+            'footage_prep',
+            'tts',
+            'alignment',
+            'music_plan',
+            'metadata',
+            'thumbnail',
+        ],
+        'queue': 'api',
+    },
+    {
+        'key': 'timeline_export',
+        'depends_on': ['editor_brief'],
+        'queue': 'api',
+    },
+    {
+        'key': 'caption_bundle',
+        'depends_on': ['timeline_export'],
+        'queue': 'api',
+    },
+    {
+        'key': 'package_zip',
+        'depends_on': ['caption_bundle'],
+        'queue': 'render',
+    },
+]
+
+_CLIPPING_EDITOR_HANDOFF: list[dict[str, object]] = [
+    {
+        'key': 'editor_brief',
+        'depends_on': ['clip_approval_gate'],
+        'queue': 'api',
+    },
+    {
+        'key': 'timeline_export',
+        'depends_on': ['editor_brief'],
+        'queue': 'api',
+    },
+    {
+        'key': 'caption_bundle',
+        'depends_on': ['timeline_export'],
+        'queue': 'api',
+    },
+    {
+        'key': 'clip_preview_render',
+        'depends_on': ['caption_bundle'],
+        'queue': 'render',
+        'fan_out': 'candidates',
+    },
+    {
+        'key': 'package_zip',
+        'depends_on': ['clip_preview_render'],
+        'queue': 'render',
+    },
+]
+
+_LONGFORM_EDITOR_V1_GRAPH: dict[str, object] = {
+    'handoff': 'editor_package',
+    'stages': (
+        _strip_terminal(_LONGFORM_V1_GRAPH, _AUTO_LONGFORM_TERMINAL)
+        + _LONGFORM_EDITOR_HANDOFF
+    ),
+}
+
+_LONGFORM_DOC_EDITOR_V1_GRAPH: dict[str, object] = {
+    'handoff': 'editor_package',
+    'profile': 'documentary_footage',
+    'stages': (
+        _strip_terminal(_LONGFORM_DOC_V1_GRAPH, _AUTO_LONGFORM_TERMINAL)
+        + _LONGFORM_DOC_EDITOR_HANDOFF
+    ),
+}
+
+_CLIPPING_EDITOR_V1_GRAPH: dict[str, object] = {
+    'handoff': 'editor_package',
+    'stages': (
+        _strip_terminal(_CLIPPING_V1_GRAPH, _AUTO_CLIP_TERMINAL)
+        + _CLIPPING_EDITOR_HANDOFF
+    ),
+}
+
+_CLIPPING_EDITOR_MANUAL_V1_GRAPH: dict[str, object] = {
+    'handoff': 'editor_package',
+    'stages': (
+        _strip_terminal(_CLIPPING_V1_MANUAL_GRAPH, _AUTO_CLIP_TERMINAL)
+        + _CLIPPING_EDITOR_HANDOFF
+    ),
+}
+
+
 class Command(BaseCommand):
     """Seed pipeline blueprints (idempotent upsert)."""
 
     help = (
-        'Seed pipeline blueprints (longform, longform documentary + '
-        'clipping, idempotent)'
+        'Seed pipeline blueprints (longform, documentary, clipping, '
+        'editor handoff, idempotent)'
     )
 
     @override
     def handle(self, *args: object, **options: object) -> None:
-        """Create or update the longform, documentary, and clipping blueprints."""
+        """Create or update longform, documentary, clipping, editor blueprints."""
         from server.apps.pipelines.models import (  # noqa: PLC0415
             PipelineBlueprint,
             PipelineKind,
@@ -277,6 +417,26 @@ class Command(BaseCommand):
                 'clipping_v1_manual',
                 PipelineKind.CLIPPING,
                 _CLIPPING_V1_MANUAL_GRAPH,
+            ),
+            (
+                'longform_editor_v1',
+                PipelineKind.LONGFORM,
+                _LONGFORM_EDITOR_V1_GRAPH,
+            ),
+            (
+                'longform_doc_editor_v1',
+                PipelineKind.LONGFORM,
+                _LONGFORM_DOC_EDITOR_V1_GRAPH,
+            ),
+            (
+                'clipping_editor_v1',
+                PipelineKind.CLIPPING,
+                _CLIPPING_EDITOR_V1_GRAPH,
+            ),
+            (
+                'clipping_editor_manual_v1',
+                PipelineKind.CLIPPING,
+                _CLIPPING_EDITOR_MANUAL_V1_GRAPH,
             ),
         ]
         for name, kind, graph in specs:

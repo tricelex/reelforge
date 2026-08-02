@@ -224,6 +224,27 @@ class MusicPlanOutput(BaseModel):
     gain_db: float = -22.0
 
 
+class EditorBriefBeatNote(BaseModel):
+    """Per-scene or per-candidate editorial note for the Resolve editor."""
+
+    label: str
+    note: str
+
+
+class EditorBriefOutput(BaseModel):
+    """LLM editorial guidance for the editor-handoff package brief."""
+
+    summary: str
+    tone_and_pacing: str
+    must_hit_beats: list[str] = Field(default_factory=list)
+    optional_emphasis: list[str] = Field(default_factory=list)
+    caption_guidance: str = ''
+    music_and_silence: str = ''
+    resolve_dos: list[str] = Field(default_factory=list)
+    resolve_donts: list[str] = Field(default_factory=list)
+    beat_notes: list[EditorBriefBeatNote] = Field(default_factory=list)
+
+
 class VideoMetadata(BaseModel):
     """YouTube metadata output from the metadata stage."""
 
