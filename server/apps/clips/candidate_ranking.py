@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from server.apps.clips.logic.constants import (
+    CLIP_BEAT_PLAYBACK_ORDER,
     CLIP_LENGTH_BOUNDS,
+    MAX_COLD_OPEN_HOOK_SEC,
+    ClipArrangement,
+    ClipBeatRole,
     ClipLengthBucket,
     compute_virality_score,
 )
@@ -20,6 +24,29 @@ _OVERLAP_RATIO = 0.45
 #: Default analysis window size for long transcripts.
 WINDOW_SIZE_SEC = 20 * 60
 WINDOW_OVERLAP_SEC = 2 * 60
+#: Max note/label length stored on a beat.
+_BEAT_TEXT_MAX = 500
+
+
+@dataclass(frozen=True, slots=True)
+class RankedBeat:
+    """One Hook/Story/Payoff beat after snap + validation."""
+
+    role: str
+    start_sec: float
+    end_sec: float
+    label: str
+    note: str
+
+    def as_dict(self) -> dict[str, object]:
+        """Serialize for ClipCandidate.beats JSONField."""
+        return {
+            'role': self.role,
+            'start_sec': self.start_sec,
+            'end_sec': self.end_sec,
+            'label': self.label,
+            'note': self.note,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +71,8 @@ class RankedClip:
     value_reason: str
     trend_reason: str
     confidence: float
+    beats: tuple[RankedBeat, ...]
+    arrangement: str
 
 
 def duration_bounds(
@@ -184,6 +213,151 @@ def _overlap_ratio(
     return overlap / shorter
 
 
+def _playback_duration(beats: tuple[RankedBeat, ...]) -> float:
+    total = 0.0
+    max_beats = len(CLIP_BEAT_PLAYBACK_ORDER)
+    for idx, beat in enumerate(beats):
+        assert idx < max_beats  # noqa: S101
+        total += beat.end_sec - beat.start_sec
+    return total
+
+
+def _synthesize_beats(start: float, end: float) -> tuple[RankedBeat, ...]:
+    """Split an envelope into three contiguous Hook/Story/Payoff thirds."""
+    assert end > start, 'envelope must be non-empty'  # noqa: S101
+    span = end - start
+    third = span / 3.0
+    boundaries = (
+        start,
+        start + third,
+        start + 2.0 * third,
+        end,
+    )
+    beats: list[RankedBeat] = []
+    for idx, role in enumerate(CLIP_BEAT_PLAYBACK_ORDER):
+        assert idx < len(CLIP_BEAT_PLAYBACK_ORDER)  # noqa: S101
+        beats.append(
+            RankedBeat(
+                role=role,
+                start_sec=round(boundaries[idx], 3),
+                end_sec=round(boundaries[idx + 1], 3),
+                label='',
+                note='',
+            ),
+        )
+    return tuple(beats)
+
+
+def _beat_attr(raw: object, key: str, default: object = '') -> object:
+    if isinstance(raw, dict):
+        return raw.get(key, default)
+    return getattr(raw, key, default)
+
+
+def _parse_raw_beats(clip: object) -> list[object] | None:
+    raw = getattr(clip, 'beats', None)
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return None
+    return raw
+
+
+def _normalize_beats(  # noqa: C901
+    clip: object,
+    *,
+    envelope_start: float,
+    envelope_end: float,
+    word_starts: list[float],
+    word_ends: list[float],
+    scene_cuts: list[float],
+    window_start: float,
+    window_end: float,
+    source_end: float,
+) -> tuple[tuple[RankedBeat, ...], str] | None:
+    """Snap and validate beats; synthesize contiguous thirds if missing."""
+    arrangement_raw = str(
+        getattr(clip, 'arrangement', ClipArrangement.CONTIGUOUS)
+        or ClipArrangement.CONTIGUOUS,
+    ).lower()
+    if arrangement_raw not in ClipArrangement.values:
+        arrangement_raw = ClipArrangement.CONTIGUOUS
+
+    raw_beats = _parse_raw_beats(clip)
+    if not raw_beats:
+        return (
+            _synthesize_beats(envelope_start, envelope_end),
+            ClipArrangement.CONTIGUOUS,
+        )
+
+    if len(raw_beats) != len(CLIP_BEAT_PLAYBACK_ORDER):
+        return None
+
+    by_role: dict[str, RankedBeat] = {}
+    max_raw = len(raw_beats)
+    for idx in range(max_raw):
+        assert idx < max_raw  # noqa: S101
+        item = raw_beats[idx]
+        role = str(_beat_attr(item, 'role', '')).lower().strip()
+        if role not in ClipBeatRole.values:
+            return None
+        if role in by_role:
+            return None
+        start = float(_beat_attr(item, 'start_sec', 0) or 0)
+        end = float(_beat_attr(item, 'end_sec', 0) or 0)
+        start = _snap_boundary(
+            start,
+            word_times=word_starts,
+            scene_cuts=scene_cuts,
+            prefer='start',
+        )
+        end = _snap_boundary(
+            end,
+            word_times=word_ends,
+            scene_cuts=scene_cuts,
+            prefer='end',
+        )
+        start = max(window_start, start)
+        end = min(window_end, source_end, end)
+        if end <= start:
+            return None
+        label = str(_beat_attr(item, 'label', '') or '')[:_BEAT_TEXT_MAX]
+        note = str(_beat_attr(item, 'note', '') or '')[:_BEAT_TEXT_MAX]
+        by_role[role] = RankedBeat(
+            role=role,
+            start_sec=round(start, 3),
+            end_sec=round(end, 3),
+            label=label,
+            note=note,
+        )
+
+    if set(by_role) != set(CLIP_BEAT_PLAYBACK_ORDER):
+        return None
+
+    ordered = tuple(by_role[role] for role in CLIP_BEAT_PLAYBACK_ORDER)
+    hook, story, payoff = ordered
+    if story.start_sec >= payoff.start_sec:
+        return None
+    if arrangement_raw == ClipArrangement.CONTIGUOUS:
+        if not (
+            hook.start_sec <= story.start_sec <= payoff.start_sec
+        ):
+            return None
+        if hook.end_sec > story.end_sec + 1.0:
+            return None
+    else:
+        hook_dur = hook.end_sec - hook.start_sec
+        if hook_dur > MAX_COLD_OPEN_HOOK_SEC:
+            return None
+        # Cold open: hook teases a moment that story/payoff resolve.
+        if hook.start_sec < story.start_sec and hook.end_sec <= story.start_sec:
+            # Chronological cold-open is still contiguous-ish; keep cold_open
+            # only when hook is out of chronological open position.
+            arrangement_raw = ClipArrangement.CONTIGUOUS
+
+    return ordered, arrangement_raw
+
+
 def normalize_raw_clips(  # noqa: C901
     raw_clips: list[Any],
     *,
@@ -242,15 +416,41 @@ def normalize_raw_clips(  # noqa: C901
         end = min(window_end, source_end, end)
         if end <= start:
             continue
-        duration = end - start
+
+        normalized = _normalize_beats(
+            clip,
+            envelope_start=start,
+            envelope_end=end,
+            word_starts=word_starts,
+            word_ends=word_ends,
+            scene_cuts=scene_cuts,
+            window_start=window_start,
+            window_end=window_end,
+            source_end=source_end,
+        )
+        if normalized is None:
+            continue
+        beats, arrangement = normalized
+        start = min(b.start_sec for b in beats)
+        end = max(b.end_sec for b in beats)
+        duration = _playback_duration(beats)
         if duration < min_dur or duration > max_dur:
-            # Prefer clipping to the nearest in-bucket edge when close.
-            if duration < min_dur and end + (min_dur - duration) <= window_end:
+            # Prefer clipping contiguous envelopes to bucket edges.
+            if (
+                arrangement == ClipArrangement.CONTIGUOUS
+                and duration < min_dur
+                and end + (min_dur - duration) <= window_end
+            ):
                 end = start + min_dur
-                duration = end - start
-            elif duration > max_dur:
+                beats = _synthesize_beats(start, end)
+                duration = _playback_duration(beats)
+            elif (
+                arrangement == ClipArrangement.CONTIGUOUS
+                and duration > max_dur
+            ):
                 end = start + max_dur
-                duration = end - start
+                beats = _synthesize_beats(start, end)
+                duration = _playback_duration(beats)
             if duration < min_dur or duration > max_dur:
                 continue
 
@@ -295,6 +495,8 @@ def normalize_raw_clips(  # noqa: C901
                 value_reason=str(getattr(clip, 'value_reason', '')),
                 trend_reason=str(getattr(clip, 'trend_reason', '')),
                 confidence=confidence,
+                beats=beats,
+                arrangement=arrangement,
             ),
         )
 

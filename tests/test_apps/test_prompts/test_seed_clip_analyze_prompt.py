@@ -25,6 +25,8 @@ def test_seeds_active_viral_clip_analyze_version() -> None:
     assert version.system_prompt == CLIP_ANALYZE_SYSTEM_PROMPT
     assert version.user_prompt == CLIP_ANALYZE_USER_PROMPT
     assert 'hook_score' in version.user_prompt
+    assert 'beats' in version.user_prompt
+    assert 'Story' in version.system_prompt or 'story' in version.system_prompt
     assert 'relevance_score' not in version.user_prompt
 
 

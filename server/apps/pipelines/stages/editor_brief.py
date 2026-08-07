@@ -100,22 +100,69 @@ def _build_longform_appendix(ctx: StageContext) -> str:
     return '\n'.join(lines)
 
 
+def _beat_cut_lines(beats: object) -> list[str]:
+    """Render numbered Hook/Story/Payoff cut lines for the appendix."""
+    if not isinstance(beats, list) or not beats:
+        return []
+    role_labels = {
+        'hook': 'HOOK',
+        'story': 'STORY',
+        'payoff': 'PAYOFF',
+    }
+    lines: list[str] = []
+    max_beats = 3
+    for idx, beat in enumerate(beats[:max_beats]):
+        assert idx < max_beats  # noqa: S101
+        if not isinstance(beat, dict):
+            continue
+        role = str(beat.get('role', '')).lower()
+        label = role_labels.get(role, role.upper() or f'BEAT{idx + 1}')
+        b_start = _fmt_mmss(float(beat.get('start_sec', 0) or 0))
+        b_end = _fmt_mmss(float(beat.get('end_sec', 0) or 0))
+        note = str(beat.get('note', '') or '').strip()
+        beat_line = f'  - {idx + 1}. {label} [{b_start}-{b_end}]'
+        if note:
+            beat_line += f' - {note}'
+        lines.append(beat_line)
+    return lines
+
+
 def _candidate_line(candidate: 'ClipCandidate') -> str:
-    """Render one candidate's markdown bullet with times, hook, and scores."""
+    """Render one candidate's markdown cut sheet with Hook/Story/Payoff."""
     start = _fmt_mmss(candidate.start_sec)
     end = _fmt_mmss(candidate.end_sec)
     title = candidate.title or 'Untitled clip'
     hook = candidate.hook_text
+    arrangement = getattr(candidate, 'arrangement', '') or 'contiguous'
     scores = (
         f'relevance={candidate.relevance_score:.2f} '
         f'virality={candidate.virality_score:.2f} '
         f'hook={candidate.hook_score:.2f}'
     )
-    line = f'- **{title}** [{start}-{end}] ({candidate.status})'
+    parts = [
+        (
+            f'- **{title}** envelope [{start}-{end}] '
+            f'({candidate.status}, {arrangement})'
+        ),
+    ]
     if hook:
-        line += f'\n  - Hook: "{hook}"'
-    line += f'\n  - Scores: {scores}'
-    return line
+        parts.append(f'  - Hook overlay: "{hook}"')
+    parts.append('  - Playback: Hook → Story → Payoff')
+    beat_lines = _beat_cut_lines(getattr(candidate, 'beats', None))
+    parts.extend(beat_lines)
+    if beat_lines:
+        if arrangement == 'cold_open':
+            parts.append(
+                '  - Join: hard cut Hook teaser → Story → Payoff; '
+                'land on payoff breath; never mid-word',
+            )
+        else:
+            parts.append(
+                '  - Join: trim contiguous Hook→Story→Payoff; '
+                'hard cuts on breaths; never mid-word',
+            )
+    parts.append(f'  - Scores: {scores}')
+    return '\n'.join(parts)
 
 
 async def _load_approved_candidates(
@@ -262,9 +309,18 @@ def _clipping_context_payload(
                 'start_sec': c.start_sec,
                 'end_sec': c.end_sec,
                 'hook_text': c.hook_text,
+                'arrangement': getattr(c, 'arrangement', '') or 'contiguous',
+                'beats': getattr(c, 'beats', None) or [],
                 'virality_score': c.virality_score,
                 'hook_score': c.hook_score,
+                'flow_score': getattr(c, 'flow_score', 0.0),
+                'value_score': getattr(c, 'value_score', 0.0),
                 'reason': getattr(c, 'reason', '') or '',
+                'hook_reason': getattr(c, 'hook_reason', '') or '',
+                'value_reason': getattr(c, 'value_reason', '') or '',
+                'transcript_excerpt': (
+                    (getattr(c, 'transcript_excerpt', '') or '')[:400]
+                ),
             }
             for c in candidates[:40]
         ],

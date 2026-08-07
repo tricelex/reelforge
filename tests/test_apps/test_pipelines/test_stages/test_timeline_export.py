@@ -289,6 +289,30 @@ def _fake_candidate() -> MagicMock:
     candidate.relevance_score = 0.5
     candidate.virality_score = 0.6
     candidate.hook_score = 0.7
+    candidate.arrangement = 'contiguous'
+    candidate.beats = [
+        {
+            'role': 'hook',
+            'start_sec': 1.0,
+            'end_sec': 2.0,
+            'label': '',
+            'note': '',
+        },
+        {
+            'role': 'story',
+            'start_sec': 2.0,
+            'end_sec': 4.0,
+            'label': '',
+            'note': '',
+        },
+        {
+            'role': 'payoff',
+            'start_sec': 4.0,
+            'end_sec': 5.0,
+            'label': '',
+            'note': '',
+        },
+    ]
     return candidate
 
 
@@ -301,6 +325,8 @@ class TestCandidateDict:
         assert result['id'] == 'cand-1'
         assert result['title'] == 'Great Clip'
         assert result['duration_sec'] == 4.0
+        assert result['arrangement'] == 'contiguous'
+        assert len(result['beats']) == 3
 
 
 class TestBuildClippingFiles:
@@ -341,7 +367,9 @@ class TestBuildClippingFiles:
         files = asyncio.run(_inner())
         assert b'Great Clip' in files['candidates.csv']
         assert b'cand-1' in files['candidates.json']
-        assert b'Great Clip' in files['markers.edl']
+        assert b'HOOK' in files['markers.edl']
+        assert b'STORY' in files['markers.edl']
+        assert b'PAYOFF' in files['markers.edl']
 
 
 class TestTimelineExportStageRun:

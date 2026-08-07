@@ -28,6 +28,7 @@ from server.apps.clips.logic.value_objects import (
     ApproveAllResultPayload,
     CaptionPresetListPayload,
     CaptionPresetPayload,
+    ClipBeatPayload,
     ClipCandidateListPayload,
     ClipCandidatePatchPayload,
     ClipCandidatePayload,
@@ -475,6 +476,28 @@ def _enqueue_clip_preview(
     return _preview_queued_payload(candidate_id, version)
 
 
+def _beats_payload(raw_beats: object) -> list[ClipBeatPayload]:
+    """Map ClipCandidate.beats JSON into API beat payloads."""
+    if not isinstance(raw_beats, list):
+        return []
+    result: list[ClipBeatPayload] = []
+    max_beats = 3
+    for idx, item in enumerate(raw_beats[:max_beats]):
+        assert idx < max_beats  # noqa: S101
+        if not isinstance(item, dict):
+            continue
+        result.append(
+            ClipBeatPayload(
+                role=str(item.get('role', '')),
+                start_sec=float(item.get('start_sec', 0) or 0),
+                end_sec=float(item.get('end_sec', 0) or 0),
+                label=str(item.get('label', '') or ''),
+                note=str(item.get('note', '') or ''),
+            ),
+        )
+    return result
+
+
 def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
     from server.apps.clips.logic.constants import (  # noqa: PLC0415
         score_to_letter_grade,
@@ -519,6 +542,8 @@ def _to_candidate_payload(candidate: 'ClipCandidate') -> ClipCandidatePayload:
         flow_grade=score_to_letter_grade(candidate.flow_score),
         value_grade=score_to_letter_grade(candidate.value_score),
         trend_grade=score_to_letter_grade(candidate.trend_score),
+        arrangement=getattr(candidate, 'arrangement', '') or 'contiguous',
+        beats=_beats_payload(getattr(candidate, 'beats', None)),
     )
 
 
@@ -834,6 +859,8 @@ class ClipsService:
                 trend_reason=source.trend_reason,
                 reason=source.reason,
                 transcript_excerpt=source.transcript_excerpt,
+                beats=list(source.beats or []),
+                arrangement=source.arrangement,
                 status=CandidateStatus.PROPOSED,
                 is_manual=True,
             )

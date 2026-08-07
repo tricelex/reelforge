@@ -28,6 +28,16 @@ from server.apps.clips.logic.types import (
 )
 
 
+class ClipBeatPayload(msgspec.Struct, frozen=True):
+    """One Hook/Story/Payoff beat on a clip candidate."""
+
+    role: str
+    start_sec: float
+    end_sec: float
+    label: str = ''
+    note: str = ''
+
+
 class ClipCandidatePayload(msgspec.Struct, frozen=True):
     """Read-only representation of a ClipCandidate."""
 
@@ -64,6 +74,8 @@ class ClipCandidatePayload(msgspec.Struct, frozen=True):
     flow_grade: str = ''
     value_grade: str = ''
     trend_grade: str = ''
+    arrangement: str = 'contiguous'
+    beats: list[ClipBeatPayload] = []
 
 
 class ClipRunOptionsPayload(msgspec.Struct, frozen=True):
