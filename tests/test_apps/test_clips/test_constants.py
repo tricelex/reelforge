@@ -51,6 +51,19 @@ def test_candidate_status_values() -> None:
     assert set(CandidateStatus.values) == expected
 
 
+def test_clip_arrangement_and_beat_roles() -> None:
+    from server.apps.clips.logic.constants import (
+        CLIP_BEAT_PLAYBACK_ORDER,
+        ClipArrangement,
+        ClipBeatRole,
+    )
+
+    assert ClipArrangement.CONTIGUOUS == 'contiguous'
+    assert ClipArrangement.COLD_OPEN == 'cold_open'
+    assert ClipBeatRole.HOOK == 'hook'
+    assert CLIP_BEAT_PLAYBACK_ORDER == ('hook', 'story', 'payoff')
+
+
 def test_caption_style_values() -> None:
     assert 'WORD_BY_WORD' in CaptionStyle.values
     assert 'EMOJI_ACCENT' in CaptionStyle.values

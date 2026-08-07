@@ -39,6 +39,16 @@ _SCENE_CUTS_CAP = 50
 _MOMENTS_PROMPT_MAX = 2000
 
 
+class ClipBeat(pydantic.BaseModel):
+    """One Hook/Story/Payoff beat inside a viral clip candidate."""
+
+    role: str
+    start_sec: float
+    end_sec: float
+    label: str = ''
+    note: str = ''
+
+
 class ClipSegment(pydantic.BaseModel):
     """One clip candidate returned by the LLM."""
 
@@ -59,6 +69,8 @@ class ClipSegment(pydantic.BaseModel):
     value_reason: str = ''
     trend_reason: str = ''
     reason: str
+    arrangement: str = 'contiguous'
+    beats: list[ClipBeat] = pydantic.Field(default_factory=list)
 
 
 class ClipsOutput(pydantic.BaseModel):
@@ -69,11 +81,11 @@ class ClipsOutput(pydantic.BaseModel):
 
 _CLIP_ANALYSIS_SYSTEM_PROMPT = (
     'You are an expert short-form video editor and virality analyst. '
-    'Identify the most engaging, self-contained moments for Shorts, '
-    'TikTok, and Reels. Score each clip 0-100 for Hook (opening impact), '
-    'Flow (coherence/pacing), Value (viewer benefit), and Trend '
-    '(platform/format fit — not live social trends). Prefer complete '
-    'ideas with a strong opening line. Return valid structured output.'
+    'Identify viral moments for Shorts, TikTok, and Reels. Every candidate '
+    'must be structured as Hook then Story then Payoff in playback order. '
+    'Prefer contiguous source beats; allow one cold-open rearrange when the '
+    'strongest hook sits after setup. Score Hook/Flow/Value/Trend 0-100. '
+    'Return valid structured output including beats[] and arrangement.'
 )
 
 
@@ -295,6 +307,8 @@ class ClipAnalysisService:
                     trend_reason=clip.trend_reason,
                     reason=clip.reason,
                     transcript_excerpt=excerpt,
+                    beats=[b.as_dict() for b in clip.beats],
+                    arrangement=clip.arrangement,
                 )
             except Exception:
                 logger.warning(

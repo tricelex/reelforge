@@ -135,3 +135,118 @@ def test_normalize_raw_clips_dedupes_and_ranks() -> None:
     assert ranked[0].title == 'High'
     assert isinstance(ranked[0], RankedClip)
     assert ranked[0].virality_score > ranked[1].virality_score
+    assert ranked[0].arrangement == 'contiguous'
+    assert len(ranked[0].beats) == 3
+    assert [b.role for b in ranked[0].beats] == [
+        'hook',
+        'story',
+        'payoff',
+    ]
+
+
+def test_normalize_raw_clips_keeps_cold_open_beats() -> None:
+    words = [
+        {'word': 'a', 'start': 0.0, 'end': 0.2},
+        {'word': 'b', 'start': 40.0, 'end': 40.2},
+        {'word': 'c', 'start': 80.0, 'end': 80.2},
+        {'word': 'd', 'start': 120.0, 'end': 120.2},
+    ]
+    raw = [
+        _Raw(
+            start_sec=40,
+            end_sec=75,
+            title='Cold',
+            hook_text='h',
+            caption_template='',
+            headline='h',
+            reason='r',
+            hook_score=95,
+            flow_score=90,
+            value_score=92,
+            trend_score=88,
+            intent_match_score=80,
+            confidence=90,
+            hook_reason='',
+            flow_reason='',
+            value_reason='',
+            trend_reason='',
+            arrangement='cold_open',
+            beats=[
+                {
+                    'role': 'hook',
+                    'start_sec': 70.0,
+                    'end_sec': 75.0,
+                    'label': 'punch',
+                    'note': 'teaser',
+                },
+                {
+                    'role': 'story',
+                    'start_sec': 40.0,
+                    'end_sec': 55.0,
+                    'label': '',
+                    'note': 'setup',
+                },
+                {
+                    'role': 'payoff',
+                    'start_sec': 55.0,
+                    'end_sec': 70.0,
+                    'label': '',
+                    'note': 'resolve',
+                },
+            ],
+        ),
+    ]
+    ranked = normalize_raw_clips(
+        raw,
+        enriched_words=words,
+        scene_cuts=[],
+        video_duration=200.0,
+        length_bucket=ClipLengthBucket.FROM_30_TO_59,
+        clips_requested=1,
+    )
+    assert len(ranked) == 1
+    assert ranked[0].arrangement == 'cold_open'
+    assert ranked[0].beats[0].role == 'hook'
+    assert ranked[0].beats[0].start_sec >= 69.0
+    # Playback duration is sum of beats (~5+15+15), not envelope.
+    playback = sum(b.end_sec - b.start_sec for b in ranked[0].beats)
+    assert 30.0 <= playback <= 59.999
+
+
+def test_normalize_raw_clips_rejects_invalid_beat_roles() -> None:
+    words = [
+        {'word': 'a', 'start': 0.0, 'end': 0.2},
+        {'word': 'b', 'start': 40.0, 'end': 40.2},
+    ]
+    raw = [
+        _Raw(
+            start_sec=10,
+            end_sec=50,
+            title='Bad',
+            hook_text='h',
+            caption_template='',
+            headline='h',
+            reason='r',
+            hook_score=90,
+            flow_score=90,
+            value_score=90,
+            trend_score=90,
+            intent_match_score=50,
+            confidence=90,
+            arrangement='contiguous',
+            beats=[
+                {'role': 'hook', 'start_sec': 10, 'end_sec': 20},
+                {'role': 'hook', 'start_sec': 20, 'end_sec': 30},
+                {'role': 'payoff', 'start_sec': 30, 'end_sec': 50},
+            ],
+        ),
+    ]
+    ranked = normalize_raw_clips(
+        raw,
+        enriched_words=words,
+        scene_cuts=[],
+        video_duration=100.0,
+        length_bucket=ClipLengthBucket.FROM_30_TO_59,
+        clips_requested=5,
+    )
+    assert ranked == []

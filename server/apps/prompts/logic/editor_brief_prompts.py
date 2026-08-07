@@ -21,13 +21,20 @@ Rules:
   provided facts JSON.
 - For longform: voiceover / narration is the master clock. Scene clips
   and stills are visual coverage to place against VO.
-- For clipping: the editor already has the source master locally. Focus
-  on which candidates matter, hooks, and caption approach.
+- For clipping: the editor already has the source master locally. Every
+  approved candidate is a Hook → Story → Payoff edit. Facts include
+  arrangement and per-beat in/out times. Instruct the editor to cut and
+  join those beats in playback order (Hook, then Story, then Payoff).
+  Cover join craft: hard cuts on breaths / sentence boundaries, never
+  start or end mid-word, keep Story before Payoff in the timeline, and
+  for cold_open put the short Hook teaser first then cut back into Story
+  → Payoff. Use caption/hook overlay guidance tied to the Hook beat.
 - Fill every structured field with useful guidance.
 - resolve_dos / resolve_donts should be practical import/edit rules for
-  this package (markers, captions.srt, music gain, VO order).
+  this package (markers, captions.srt, music gain, VO order, beat joins).
 - beat_notes should call out a few high-leverage scenes or candidates
-  by label when facts provide them.
+  by label when facts provide them — for clipping, reference Hook/Story/
+  Payoff join notes per candidate title.
 
 Structured output must match the EditorBriefOutput schema:
 summary, tone_and_pacing, must_hit_beats, optional_emphasis,
@@ -45,5 +52,8 @@ Facts (JSON — treat as ground truth; do not invent beyond this):
 {{ facts_json }}
 
 Return structured editorial guidance a Resolve editor can follow
-immediately after importing the package.
+immediately after importing the package. For clipping packages, treat
+each candidate's beats cut sheet as authoritative in/out times and write
+join instructions that assemble Hook → Story → Payoff with a natural
+flow.
 """

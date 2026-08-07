@@ -45,6 +45,32 @@ class CandidateStatus(models.TextChoices):
     DISTRIBUTED = 'DISTRIBUTED', 'Distributed'
 
 
+class ClipBeatRole(models.TextChoices):
+    """Playback role of one beat inside a viral clip candidate."""
+
+    HOOK = 'hook', 'Hook'
+    STORY = 'story', 'Story'
+    PAYOFF = 'payoff', 'Payoff'
+
+
+class ClipArrangement(models.TextChoices):
+    """How Hook/Story/Payoff map onto source time."""
+
+    CONTIGUOUS = 'contiguous', 'Contiguous'
+    COLD_OPEN = 'cold_open', 'Cold Open'
+
+
+#: Ordered playback roles required on every analyzed candidate.
+CLIP_BEAT_PLAYBACK_ORDER: tuple[str, ...] = (
+    ClipBeatRole.HOOK,
+    ClipBeatRole.STORY,
+    ClipBeatRole.PAYOFF,
+)
+
+#: Max allowed source duration for a cold-open hook teaser.
+MAX_COLD_OPEN_HOOK_SEC = 20.0
+
+
 class CaptionStyle(models.TextChoices):
     """Visual style used for rendering captions."""
 

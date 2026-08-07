@@ -6,15 +6,20 @@ import pytest
 
 from server.apps.clips.analysis import (
     ClipAnalysisService,
+    ClipBeat,
     ClipSegment,
     ClipsOutput,
 )
 
 
 def _segment(**overrides: object) -> ClipSegment:
+    start = float(overrides.get('start_sec', 10.0))  # type: ignore[arg-type]
+    end = float(overrides.get('end_sec', 70.0))  # type: ignore[arg-type]
+    span = end - start
+    third = span / 3.0
     data: dict[str, object] = {
-        'start_sec': 10.0,
-        'end_sec': 70.0,
+        'start_sec': start,
+        'end_sec': end,
         'title': 'Test',
         'hook_text': 'Hook',
         'caption_template': '',
@@ -23,6 +28,24 @@ def _segment(**overrides: object) -> ClipSegment:
         'value_score': 88.0,
         'trend_score': 80.0,
         'reason': 'good',
+        'arrangement': 'contiguous',
+        'beats': [
+            ClipBeat(
+                role='hook',
+                start_sec=start,
+                end_sec=start + third,
+            ),
+            ClipBeat(
+                role='story',
+                start_sec=start + third,
+                end_sec=start + 2.0 * third,
+            ),
+            ClipBeat(
+                role='payoff',
+                start_sec=start + 2.0 * third,
+                end_sec=end,
+            ),
+        ],
     }
     data.update(overrides)
     return ClipSegment(**data)  # type: ignore[arg-type]
@@ -33,6 +56,8 @@ def test_clip_segment_schema() -> None:
     assert seg.start_sec == 10.0
     assert seg.end_sec == 70.0
     assert seg.hook_score == 90.0
+    assert len(seg.beats) == 3
+    assert seg.arrangement == 'contiguous'
 
 
 def test_clips_output_schema() -> None:
@@ -302,6 +327,9 @@ def test_analyze_creates_candidates() -> None:
     assert candidates[0].title == 'Great clip'
     assert candidates[0].virality_score > 0
     assert candidates[0].hook_score == 95.0
+    assert candidates[0].arrangement == 'contiguous'
+    assert len(candidates[0].beats) == 3
+    assert candidates[0].beats[0]['role'] == 'hook'
 
 
 @pytest.mark.django_db

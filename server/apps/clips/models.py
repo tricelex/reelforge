@@ -17,6 +17,7 @@ from server.apps.clips.logic.constants import (
     CaptionFont,
     CaptionPosition,
     CaptionStyle,
+    ClipArrangement,
     ClipSourceStatus,
     ClipSourceType,
     ColorFilterPreset,
@@ -66,6 +67,13 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
     trend_reason = models.TextField(blank=True)
     reason = models.TextField(blank=True)
     transcript_excerpt = models.TextField(blank=True)
+    #: Playback-ordered Hook/Story/Payoff beats (source in/out + notes).
+    beats = models.JSONField(default=list, blank=True)
+    arrangement = models.CharField(
+        max_length=20,
+        choices=ClipArrangement.choices,
+        default=ClipArrangement.CONTIGUOUS,
+    )
     status = models.CharField(
         max_length=20,
         choices=CandidateStatus.choices,
@@ -82,6 +90,12 @@ class ClipCandidate(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 name='clips_clipcandidate_status_valid',
                 condition=models.Q(status__in=CandidateStatus.values),
+            ),
+            models.CheckConstraint(
+                name='clips_clipcandidate_arrangement_valid',
+                condition=models.Q(
+                    arrangement__in=ClipArrangement.values,
+                ),
             ),
         ]
 

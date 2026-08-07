@@ -27,6 +27,8 @@ def test_seeds_active_editor_brief_version() -> None:
     assert version.user_prompt == EDITOR_BRIEF_USER_PROMPT
     assert '{{ facts_json }}' in version.user_prompt
     assert '{{ kind }}' in version.user_prompt
+    assert 'Hook' in version.system_prompt
+    assert 'Payoff' in version.system_prompt
     assert version.model == STAGE_MODEL_DEFAULTS['editor_brief']
 
 

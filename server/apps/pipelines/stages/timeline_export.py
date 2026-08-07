@@ -226,6 +226,8 @@ def _candidate_dict(candidate: 'ClipCandidate') -> dict[str, Any]:
         'relevance_score': candidate.relevance_score,
         'virality_score': candidate.virality_score,
         'hook_score': candidate.hook_score,
+        'arrangement': getattr(candidate, 'arrangement', '') or 'contiguous',
+        'beats': getattr(candidate, 'beats', None) or [],
     }
 
 
@@ -243,6 +245,7 @@ async def _build_clipping_files(ctx: StageContext) -> dict[str, bytes]:
             'end_sec',
             'duration_sec',
             'hook_text',
+            'arrangement',
             'relevance_score',
             'virality_score',
             'status',
@@ -255,6 +258,7 @@ async def _build_clipping_files(ctx: StageContext) -> dict[str, bytes]:
                 f'{d["end_sec"]:.3f}',
                 f'{d["duration_sec"]:.3f}',
                 d['hook_text'],
+                d['arrangement'],
                 f'{d["relevance_score"]:.3f}',
                 f'{d["virality_score"]:.3f}',
                 d['status'],
@@ -262,14 +266,29 @@ async def _build_clipping_files(ctx: StageContext) -> dict[str, bytes]:
             for d in dicts
         ],
     )
-    events = [
-        {
-            'name': d['title'],
-            'start_sec': d['start_sec'],
-            'end_sec': d['end_sec'],
-        }
-        for d in dicts
-    ]
+    events: list[dict[str, Any]] = []
+    max_candidates = len(dicts)
+    for c_idx, d in enumerate(dicts):
+        assert c_idx < max_candidates  # noqa: S101
+        beats = d.get('beats') or []
+        if isinstance(beats, list) and beats:
+            max_beats = 3
+            for b_idx, beat in enumerate(beats[:max_beats]):
+                assert b_idx < max_beats  # noqa: S101
+                if not isinstance(beat, dict):
+                    continue
+                role = str(beat.get('role', 'beat')).upper()
+                events.append({
+                    'name': f'{d["title"]} — {role}',
+                    'start_sec': float(beat.get('start_sec', 0) or 0),
+                    'end_sec': float(beat.get('end_sec', 0) or 0),
+                })
+        else:
+            events.append({
+                'name': d['title'],
+                'start_sec': d['start_sec'],
+                'end_sec': d['end_sec'],
+            })
     edl = build_edl_markers(events, title=ctx.run.topic, fps=_DEFAULT_FPS)
     return {
         'candidates.json': candidates_json,

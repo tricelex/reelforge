@@ -209,14 +209,39 @@ class TestCandidateLine:
         candidate.title = 'Great Clip'
         candidate.hook_text = 'Watch this!'
         candidate.status = 'APPROVED'
+        candidate.arrangement = 'contiguous'
+        candidate.beats = [
+            {
+                'role': 'hook',
+                'start_sec': 10.0,
+                'end_sec': 15.0,
+                'note': 'cold line',
+            },
+            {
+                'role': 'story',
+                'start_sec': 15.0,
+                'end_sec': 30.0,
+                'note': 'context',
+            },
+            {
+                'role': 'payoff',
+                'start_sec': 30.0,
+                'end_sec': 40.0,
+                'note': 'resolve',
+            },
+        ]
         candidate.relevance_score = 0.9
         candidate.virality_score = 0.8
         candidate.hook_score = 0.7
         line = _candidate_line(candidate)
         assert '**Great Clip**' in line
-        assert '[0:10-0:40]' in line
-        assert '(APPROVED)' in line
-        assert 'Hook: "Watch this!"' in line
+        assert 'envelope [0:10-0:40]' in line
+        assert '(APPROVED, contiguous)' in line
+        assert 'Hook overlay: "Watch this!"' in line
+        assert 'Playback: Hook → Story → Payoff' in line
+        assert '1. HOOK [0:10-0:15] - cold line' in line
+        assert '2. STORY [0:15-0:30] - context' in line
+        assert '3. PAYOFF [0:30-0:40] - resolve' in line
         assert 'relevance=0.90 virality=0.80 hook=0.70' in line
 
     def test_candidate_without_hook_omits_hook_line(self) -> None:
@@ -227,12 +252,15 @@ class TestCandidateLine:
         candidate.title = None
         candidate.hook_text = ''
         candidate.status = 'PROPOSED'
+        candidate.arrangement = 'contiguous'
+        candidate.beats = []
         candidate.relevance_score = 0.0
         candidate.virality_score = 0.0
         candidate.hook_score = 0.0
         line = _candidate_line(candidate)
         assert 'Untitled clip' in line
-        assert 'Hook:' not in line
+        assert 'Hook overlay:' not in line
+        assert 'Playback: Hook → Story → Payoff' in line
 
 
 class TestLoadApprovedCandidates:
