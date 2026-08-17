@@ -24,7 +24,10 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         client = Client()
-        response = client.get(reverse('openapi_yaml'))
+        response = client.get(
+            reverse('openapi_yaml'),
+            HTTP_HOST='localhost',
+        )
         text = response.content.decode('utf-8')
         output = str(options.get('output', ''))
         if output:

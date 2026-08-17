@@ -31,6 +31,7 @@ def _inject_clips(container: Container) -> None:
 
 def _inject_pipelines(container: Container) -> None:
     from server.apps.pipelines.services import PipelineRunService
+    from server.apps.pipelines.services.blueprint import BlueprintService
     from server.apps.pipelines.services.editor_package import (
         EditorPackageService,
     )
@@ -38,6 +39,7 @@ def _inject_pipelines(container: Container) -> None:
     from server.apps.pipelines.services.run_review import RunReviewService
 
     container.register(PipelineRunService, scope=Scope.singleton)
+    container.register(BlueprintService, scope=Scope.singleton)
     container.register(RunCastService, scope=Scope.singleton)
     container.register(RunReviewService, scope=Scope.singleton)
     container.register(EditorPackageService, scope=Scope.singleton)

@@ -191,6 +191,35 @@ class BlueprintSummaryPayload(msgspec.Struct, frozen=True):
     is_active: bool
 
 
+class BlueprintDetailPayload(msgspec.Struct, frozen=True):
+    """Full blueprint including the stage graph."""
+
+    id: str
+    name: str
+    kind: str
+    version: int
+    is_active: bool
+    graph: dict[str, Any]
+
+
+class BlueprintCreatePayload(msgspec.Struct, frozen=True):
+    """Input for creating a pipeline blueprint."""
+
+    name: str
+    kind: str
+    graph: dict[str, Any]
+    is_active: bool = True
+
+
+class BlueprintPatchPayload(msgspec.Struct, frozen=True):
+    """Partial update for a pipeline blueprint."""
+
+    name: str | None = None
+    kind: str | None = None
+    graph: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
 class BlueprintListPayload(msgspec.Struct, frozen=True):
     """List of pipeline blueprints."""
 
