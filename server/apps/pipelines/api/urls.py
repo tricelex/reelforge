@@ -185,6 +185,11 @@ blueprint_urlpatterns = [
         views.BlueprintCollectionController.as_view(),
         name='blueprint-collection',
     ),
+    path(
+        'blueprints/<uuid:blueprint_id>/',
+        views.BlueprintDetailController.as_view(),
+        name='blueprint-detail',
+    ),
 ]
 
 urlpatterns = [

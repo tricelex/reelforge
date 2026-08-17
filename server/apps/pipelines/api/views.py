@@ -19,7 +19,10 @@ from server.apps.pipelines.gate_selectors import (
     list_gates_waiting,
 )
 from server.apps.pipelines.logic.value_objects import (
+    BlueprintCreatePayload,
+    BlueprintDetailPayload,
     BlueprintListPayload,
+    BlueprintPatchPayload,
     GateApprovePayload,
     GateApproveResultPayload,
     GateCatalogPayload,
@@ -35,13 +38,15 @@ from server.apps.pipelines.logic.value_objects import (
     StageOutputPayload,
     TranscriptPayload,
 )
-from server.apps.pipelines.models import PipelineRun
+from server.apps.pipelines.models import PipelineBlueprint, PipelineRun
 from server.apps.pipelines.run_asset_selectors import (
+    get_blueprint_detail,
     list_blueprints,
     list_run_assets,
 )
 from server.apps.pipelines.selectors import get_run_detail, list_runs
 from server.apps.pipelines.services import PipelineRunService
+from server.apps.pipelines.services.blueprint import BlueprintService
 from server.apps.pipelines.stage_output_selectors import (
     StageNotFound,
     get_stage_output,
@@ -287,11 +292,11 @@ class RunGateApproveController(
         parsed_body: Body[GateApprovePayload],
     ) -> GateApproveResultPayload:
         """Record gate output and re-advance the pipeline."""
-        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
-            _approve_gate_sync,
-        )
         from server.apps.pipelines.enqueue import (  # noqa: PLC0415
             kiq_advance_pipeline,
+        )
+        from server.apps.pipelines.services.orchestrator import (  # noqa: PLC0415
+            _approve_gate_sync,
         )
 
         run_id = str(self.kwargs['run_id'])
@@ -472,7 +477,7 @@ class BlueprintCollectionController(
     HasContainer,
     Controller[MsgspecSerializer],
 ):
-    """List active pipeline blueprints."""
+    """List and create pipeline blueprints."""
 
     auth = (jwt_sync_auth,)
 
@@ -484,3 +489,108 @@ class BlueprintCollectionController(
     ) -> BlueprintListPayload:
         """Return blueprint summaries."""
         return list_blueprints(cursor=cursor, limit=limit)
+
+    @modify(status_code=HTTPStatus.CREATED)
+    def post(
+        self,
+        parsed_body: Body[BlueprintCreatePayload],
+    ) -> BlueprintDetailPayload:
+        """Create a pipeline blueprint."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(BlueprintService).create(parsed_body)
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, ValidationError):
+            return _validation_http_error(self, exc)
+        return super().handle_error(
+            endpoint,
+            controller,
+            exc,
+        )  # pragma: no cover
+
+
+def _validation_http_error(
+    controller: Controller[MsgspecSerializer],
+    exc: ValidationError,
+) -> HttpResponse:
+    """Map Django ValidationError to a 400 DMR error response."""
+    messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+    return controller.to_error(
+        controller.format_error(
+            '; '.join(str(m) for m in messages),
+            error_type=ErrorType.value_error,
+        ),
+        status_code=HTTPStatus.BAD_REQUEST,
+    )
+
+
+@final
+class BlueprintDetailController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Get or patch one pipeline blueprint."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def get(self) -> BlueprintDetailPayload:
+        """Return blueprint detail including the graph."""
+        return get_blueprint_detail(str(self.kwargs['blueprint_id']))
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def patch(
+        self,
+        parsed_body: Body[BlueprintPatchPayload],
+    ) -> BlueprintDetailPayload:
+        """Update a pipeline blueprint."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(BlueprintService).patch(
+            str(self.kwargs['blueprint_id']),
+            parsed_body,
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        if isinstance(exc, PipelineBlueprint.DoesNotExist):
+            return self.to_error(
+                self.format_error(
+                    'Blueprint not found',
+                    error_type=ErrorType.not_found,
+                ),
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        if isinstance(exc, ValidationError):
+            return _validation_http_error(self, exc)
+        return super().handle_error(
+            endpoint,
+            controller,
+            exc,
+        )  # pragma: no cover

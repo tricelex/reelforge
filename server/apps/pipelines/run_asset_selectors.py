@@ -4,6 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from server.apps.pipelines.logic.value_objects import (
+    BlueprintDetailPayload,
     BlueprintListPayload,
     BlueprintSummaryPayload,
     RunAssetListPayload,
@@ -38,7 +39,8 @@ def _clip_label(output: dict[str, object]) -> str:
     if not candidate_id:
         return 'clip'
     title = (
-        ClipCandidate.objects.filter(id=str(candidate_id))
+        ClipCandidate.objects
+        .filter(id=str(candidate_id))
         .values_list('title', flat=True)
         .first()
     )
@@ -116,6 +118,24 @@ def list_blueprints(
         next_cursor=next_cursor,
         total=total,
     )
+
+
+def _blueprint_to_detail(row: PipelineBlueprint) -> BlueprintDetailPayload:
+    graph = row.graph if isinstance(row.graph, dict) else {}
+    return BlueprintDetailPayload(
+        id=str(row.id),
+        name=row.name,
+        kind=row.kind,
+        version=row.version,
+        is_active=row.is_active,
+        graph=dict(graph),
+    )
+
+
+def get_blueprint_detail(blueprint_id: str) -> BlueprintDetailPayload:
+    """Return one blueprint including its graph."""
+    row = PipelineBlueprint.objects.get(id=uuid.UUID(blueprint_id))
+    return _blueprint_to_detail(row)
 
 
 def list_run_assets(
