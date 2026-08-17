@@ -41,7 +41,7 @@ def _agent(model: str) -> Agent[StageContext, ScriptOutput]:
 
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
-        variables = await build_prompt_variables(ctx.deps, include_character=False)
+        variables = await build_prompt_variables(ctx.deps)
         sys, _ = await ctx.deps.prompts.render('script', variables)
         return sys or (
             'You are a professional documentary script writer. '
@@ -77,7 +77,7 @@ async def _generate_script(
     variables = await build_prompt_variables(
         ctx,
         extra={'wpm': wpm},
-        include_character=False,
+        include_character=True,
     )
     _, usr = await ctx.prompts.render('script', variables)
     user_prompt = usr or (

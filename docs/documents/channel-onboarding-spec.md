@@ -35,14 +35,33 @@ Paste all of the following after this document:
 Return **only** one JSON object. No markdown fences unless the caller asks
 for them. Validate it against the schema below before emitting.
 
-Reuse an existing `story_format.key` when it already matches the genre
-(`factual_documentary`, `true_crime_case`, `educational_explainer`,
-`motivational_story`, `fantasy_lore`, `documentary_stock`,
-`documentary_archival`). Set `story_format.create_if_missing` to `false`
-and omit `prompt_templates` unless you need a different script voice.
+Reuse an existing `story_format.key` when the **beats and POV** already
+match the genre (`factual_documentary`, `true_crime_case`,
+`educational_explainer`, `motivational_story`, `fantasy_lore`,
+`documentary_stock`, `documentary_archival`).
 
-Create a new format + override templates only when beats, POV, or script
-rules cannot be expressed by lore + an existing format.
+**Import does not patch an existing format.** If `create_if_missing` is
+`false` (or the key already exists), the importer only attaches that
+format to the channel. It ignores `story_format.prompt_overrides`,
+beats, pacing, and music_mood_map. Any `prompt_templates` you emit
+become **orphans** — they exist in Prompts & Formats but no run will
+use them.
+
+If this channel needs its own metadata/thumbnail/script voice:
+
+1. Invent a **new** format key (e.g. `ancient_survival`), never a shared
+   seed key.
+2. Set `create_if_missing` to `true`.
+3. Put `prompt_overrides` on **that new format** (`stage_key` → template
+   key).
+4. Emit those templates in `prompt_templates`.
+
+Do **not** reuse `factual_documentary` and also emit niche templates.
+Lore + audience already inject into the global prompts via Jinja; that
+is enough unless you truly need different instructions for a stage.
+
+Create a new format + override templates when beats, POV, or a stage
+prompt cannot be expressed by lore + an existing format.
 
 ### ChannelSpec
 
@@ -222,7 +241,14 @@ Blueprints UI only when the DAG itself must change.
 | `prompt_overrides` | object | `{ "<stage_key>": "<template_key>" }` |
 
 When `create_if_missing` is false, still fill `key` (and optionally `name`)
-so the importer can attach the niche. Other format fields may be empty.
+so the importer can attach the niche. Leave `prompt_overrides` as `{}`,
+leave `prompt_templates` as `[]`, and leave beats/pacing empty. Those
+fields are **not applied** on reuse.
+
+The only place an operator sees the stage→template link is
+**Prompts & Formats → click the format → Prompt overrides**. It is not
+on the channel Niche tab. Overrides are format-wide: every channel
+using that format shares them.
 
 **Existing keys to reuse:**
 
@@ -273,19 +299,60 @@ intentionally version a niche-specific script).
 
 Prefer `script_<niche>` plus `prompt_overrides.script`.
 
-**Jinja variables available at run time:**
+**Jinja variables available at run time** (this is the complete
+namespace — do not invent dotted paths):
+
+Always present:
 
 - `topic` — run topic string
-- `lore` — niche lore document
-- `niche.audience`, `niche.angle`, `niche.banned_topics`
-- `format.name`, `format.key`, `format.beats`, `format.narration_pov`, `format.music_mood_map`
-- `channel.name`, `channel.kind`, `channel.branding.thumbnail_palette`
-- `character.name`, `character.appearance_prompt` (may be null)
-- `footage.providers`, `footage.sourcing_mode`, `footage.ai_fallback_enabled`
-- `upstream.<stage_key>` — prior stage JSON (e.g. `upstream.research`, `upstream.outline.chapters`)
-- `config` — merged blueprint + channel overrides
+- `lore` — niche lore document (empty string if none)
+- `wpm` — channel words-per-minute (int, same as `channel.wpm`)
+- `total_target_seconds` — from this stage's blueprint `config` when set
+  (outline default is often 1320). `null` if that key is absent.
+- `upstream` — dict of prior stage JSON (`upstream.research`,
+  `upstream.outline.chapters`, `upstream.script`, …)
+- `config` — this stage node's config (merged with channel overrides)
+- `footage.providers`, `footage.sourcing_mode`,
+  `footage.ai_fallback_enabled`, `footage.min_width`,
+  `footage.attribution_required`
 
-Use `{% if lore %}` / `{% if format %}` / `{% if character %}` guards.
+`niche` (always a dict):
+
+- `niche.audience`, `niche.angle`, `niche.banned_topics`
+
+`channel` (always a dict):
+
+- `channel.name`, `channel.kind`
+- `channel.wpm`
+- `channel.publish_mode`, `channel.character_design_mode`
+- `channel.branding.thumbnail_palette` (branding may be `null`)
+
+`format` is `null` when the channel has no story format. Otherwise:
+
+- `format.name`, `format.key`, `format.fiction`, `format.narration_pov`
+- `format.beats` — list of
+  `{name, description, pacing_seconds, music_mood, …}`
+- `format.pacing` — `{beat_name: seconds}` (same numbers as
+  `beat.pacing_seconds`)
+- `format.music_mood_map` — `{beat_name: mood tag}`
+
+Preferred duration loop:
+
+```
+{% for beat in format.beats %}
+- {{ beat.name }} ({{ beat.pacing_seconds }}s): {{ beat.description }}
+{% endfor %}
+Target WPM: {{ channel.wpm }}
+```
+
+`character` is `null` until the run has a cast row **or** the channel
+has an APPROVED library character. When set:
+
+- `character.name`, `character.appearance_prompt`, `character.persona`
+
+Guards: `{% if lore %}` / `{% if format %}` / `{% if character %}`.
+Undefined names render as empty (not an error). Never reference
+`channel.voice_id` or other fields not listed here.
 
 **Model defaults:**
 
@@ -404,6 +471,8 @@ constraint, and a decision.
 3. Every `pacing` key exists in `beats[].name` (when creating a format).
 4. `prompt_overrides` values are either global keys or keys in `prompt_templates`.
 5. New template keys are **not** `script` / `outline` / `research` unless replacing globally on purpose.
+5b. If `prompt_templates` is non-empty: `create_if_missing` is `true`, `story_format.key` is **not** a shared seed key, and every new template key appears as a value in `prompt_overrides`.
+5c. If `create_if_missing` is `false`: `prompt_templates` is `[]` and `prompt_overrides` is `{}`.
 6. `lore_document` is ≥400 words and contains a never-do list.
 7. `default_blueprint_name` is one of the names in the blueprint picker table.
 8. `voice_id` empty ⇒ `post_import_notes` mentions ElevenLabs.
