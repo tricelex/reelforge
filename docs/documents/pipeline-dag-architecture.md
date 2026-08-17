@@ -871,23 +871,32 @@ Common template variables available in prompts:
 
 ```
 {{ topic }}                          — run.topic
+{{ wpm }} / {{ channel.wpm }}        — channel words-per-minute
+{{ total_target_seconds }}           — stage config total_target_seconds
 {{ channel.name }}                   — channel name
 {{ channel.kind }}                   — LONGFORM / SHORTS / CLIPPING
+{{ channel.publish_mode }}
+{{ channel.character_design_mode }}
 {{ niche.audience }}                 — NicheConfig.audience
 {{ niche.angle }}                    — NicheConfig.angle
 {{ niche.banned_topics }}            — list of banned topic strings
 {{ lore }}                           — NicheConfig.lore_document
 {{ format.name }}                    — StoryFormat.name
-{{ format.beats }}                   — StoryFormat.beats list
+{{ format.key }}
+{{ format.fiction }}
+{{ format.beats }}                   — list of {name, description, pacing_seconds, music_mood}
+{{ format.pacing }}                  — {beat_name: seconds}
 {{ format.narration_pov }}           — StoryFormat.narration_pov
 {{ format.music_mood_map }}          — StoryFormat.music_mood_map dict
 {{ upstream.research.brief }}        — output of the research stage
 {{ upstream.outline.chapters }}      — output of the outline stage
 {{ upstream.script.chapters }}       — output of the script stage
 {{ upstream.scene_breakdown.scenes }} — output of the scene_breakdown stage
-{{ character.name }}                 — primary character name from RunCast
-{{ character.appearance_prompt }}    — Flux character appearance string
+{{ character.name }}                 — RunCast protagonist or approved library character
+{{ character.appearance_prompt }}
+{{ character.persona }}
 {{ config }}                         — stage node's config dict from blueprint
+{{ footage.providers }}
 ```
 
 ### 13.4 Prompt Snapshot
