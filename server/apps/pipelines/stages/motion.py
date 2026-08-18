@@ -111,7 +111,8 @@ class MotionStage(Stage):
 
         image_asset = await _load_image_asset(asset_id)
 
-        if is_hero:
+        i2v_enabled = ctx.config.get('i2v_enabled', True)
+        if is_hero and i2v_enabled:
             image_url = image_asset.file.url if image_asset.file else ''
             if not image_url:
                 raise ValueError(

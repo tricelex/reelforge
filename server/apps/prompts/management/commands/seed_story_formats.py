@@ -41,7 +41,9 @@ _BREAKDOWN_SYSTEM = (
     'concrete, generic, findable shot. Set era_hint for period material and '
     'avoid anachronism — do not pair 1940s narration with a visual concept '
     'that implies modern equipment. This format has no cast: return an '
-    'empty cast list. Each scene narration_text must be 10-35 words.'
+    'empty cast list. Each scene narration_text must be 10-35 words and a '
+    'contiguous verbatim slice covering the chapter. Keep setting stable '
+    'across adjacent scenes in one location.'
 )
 
 _BREAKDOWN_USER = (

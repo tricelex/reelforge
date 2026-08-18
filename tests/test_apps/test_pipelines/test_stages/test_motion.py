@@ -172,6 +172,45 @@ def test_motion_non_hero_scene_runs_ken_burns() -> None:
     assert 'asset_id' in result
 
 
+def test_motion_i2v_disabled_uses_ken_burns_for_hero() -> None:
+    """i2v_enabled false skips Kling even on is_hero scenes."""
+    ctx = _make_ctx()
+    ctx.config['i2v_enabled'] = False
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'parent'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'asset_id': 'img-0',
+        'is_hero': True,
+        'est_seconds': 4.0,
+        'visual_concept': 'aerial shot',
+    }
+    image_asset = _mock_image_asset()
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.pipelines.stages.motion._load_image_asset',
+                new=AsyncMock(return_value=image_asset),
+            ),
+            patch(
+                'server.apps.pipelines.stages.motion._run_ken_burns',
+                new=AsyncMock(return_value=b'fake-ken-burns-video'),
+            ) as mock_kb,
+            patch(
+                'server.apps.generation.clients.fal.generate_video_kling',
+                new=AsyncMock(),
+            ) as mock_kling,
+        ):
+            result = await MotionStage().run(ctx)
+            mock_kling.assert_not_called()
+            mock_kb.assert_awaited_once()
+            return result
+
+    result = asyncio.run(_inner())
+    assert result['method'] == 'ken_burns'
+
+
 def test_motion_run_raises_when_asset_id_missing() -> None:
     """run() raises a clear error when asset_id is absent."""
     ctx = _make_ctx()

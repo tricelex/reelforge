@@ -443,31 +443,39 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
         'name': 'Scene Breakdown',
         'scope': 'GLOBAL',
         'description': (
-            'Splits the narration script into individual visual scenes of 6–12 seconds each.'
+            'Splits the narration script into visual scenes. Density comes '
+            'from stage config (AI longform: 8–16 words / 3–5s; otherwise '
+            '10–35 words / 6–12s).'
         ),
         'system_prompt': (
             'You are a visual producer for a YouTube documentary channel. '
             'You translate narration scripts into precise scene-by-scene visual briefs. '
             'Each scene describes exactly what appears on screen while the narrator speaks. '
-            'HARD CONSTRAINTS: narration_text must be 10–35 words. '
+            'HARD CONSTRAINTS: narration_text must be {{ config.min_words | default(10) }}–'
+            '{{ config.max_words | default(35) }} words and a contiguous verbatim slice '
+            'of the chapter text covering the whole chapter in order. '
             'foreground_cast must contain at most 2 names. '
-            'Each scene should last 6–12 seconds. '
-            'Return structured JSON.'
+            'Keep setting stable across adjacent scenes in the same location. '
+            'Empty cast is correct when there are no visual protagonists. '
+            'Return structured JSON matching idx, chapter_idx, beat, narration_text, '
+            'visual_concept, shot_type, setting, est_seconds, is_hero, '
+            'foreground_cast, word_count.'
         ),
         'user_prompt': (
-            'Break the following script into visual scenes:\n\n'
+            'Break the following chapter into visual scenes:\n\n'
             'Topic: {{ topic }}\n\n'
+            '{% if coverage_note %}Coverage fix: {{ coverage_note }}\n\n{% endif %}'
+            '{% if chapter %}'
+            'Chapter:\n{{ chapter | tojson(indent=2) }}\n\n'
+            '{% else %}'
             'Full Script:\n{{ upstream.script.chapters | tojson(indent=2) }}\n\n'
+            '{% endif %}'
             '{% if character %}Main Character: {{ character.name }}\n{% endif %}'
-            '\nFor each scene provide:\n'
-            '- scene_index (0-based, sequential across all chapters)\n'
-            '- chapter_index\n'
-            '- narration_text (exactly 10–35 words of spoken narration)\n'
-            '- visual_description (what the viewer sees — specific and filmic)\n'
-            '- foreground_cast (list of character names on screen, max 2)\n'
-            '- setting (location or environment)\n'
-            '- mood (single word: tense / dramatic / contemplative / joyful etc.)\n'
-            '- duration_hint_s (estimated seconds, 6–12)'
+            '\nWord count per scene: {{ config.min_words | default(10) }}–'
+            '{{ config.max_words | default(35) }}.\n'
+            'est_seconds: {{ config.min_seconds | default(6) }}–'
+            '{{ config.max_seconds | default(12) }}.\n'
+            'Cover 95–110% of the chapter word count with verbatim slices.'
         ),
     },
     {
@@ -482,24 +490,32 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
             'You write highly specific, technically detailed prompts that produce '
             'photorealistic or stylised images for documentary video content. '
             'Use lighting descriptors, composition terms, colour grading language, '
-            'and camera/lens specifications. Each prompt should be 80–200 words. '
+            'and camera/lens specifications. Vary shot type between adjacent scenes. '
+            'Never change character appearance, wardrobe, era, or setting identity. '
+            'Each prompt should be 80–200 words. '
             'Flag any scenes with sensitive content in safety_flagged. '
-            'Return structured JSON.'
+            'Return structured JSON with scene_idx, prompt, negative_prompt, '
+            'safety_flagged.'
         ),
         'user_prompt': (
             'Generate Flux-compatible image prompts for each scene:\n\n'
             'Topic: {{ topic }}\n\n'
-            'Scenes:\n{{ upstream.scene_breakdown.scenes | tojson(indent=2) }}\n\n'
+            '{% if lore %}Style lock:\n{{ lore }}\n\n{% endif %}'
+            'Scenes:\n'
+            '{% if chapter_scenes %}'
+            '{{ chapter_scenes | tojson(indent=2) }}\n\n'
+            '{% else %}'
+            '{{ upstream.scene_breakdown.scenes | tojson(indent=2) }}\n\n'
+            '{% endif %}'
             '{% if character %}'
             'Main Character Appearance:\n'
             'Name: {{ character.name }}\n'
             'Description: {{ character.appearance_prompt }}\n'
             '{% endif %}'
             '\nFor each scene produce:\n'
-            '- scene_index (matching input)\n'
+            '- scene_idx (matching input idx)\n'
             '- prompt (detailed Flux image prompt, 80–200 words)\n'
             '- negative_prompt (elements to exclude)\n'
-            '- style_tags (list of 3–5 style keywords)\n'
             '- safety_flagged (true if content may violate image generation policies)'
         ),
     },
@@ -640,8 +656,14 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'image_gen',
+            'key': 'visual_anchors',
             'depends_on': ['visual_prompts'],
+            'queue': 'api',
+            'config': {'model': 'fal-ai/flux/dev'},
+        },
+        {
+            'key': 'image_gen',
+            'depends_on': ['visual_anchors'],
             'queue': 'api',
             'fan_out': 'scenes',
             'config': {
@@ -719,8 +741,14 @@ _SHORTS_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'image_gen',
+            'key': 'visual_anchors',
             'depends_on': ['visual_prompts'],
+            'queue': 'api',
+            'config': {'model': 'fal-ai/flux/dev'},
+        },
+        {
+            'key': 'image_gen',
+            'depends_on': ['visual_anchors'],
             'queue': 'api',
             'fan_out': 'scenes',
             'config': {

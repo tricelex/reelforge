@@ -43,7 +43,18 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         {'key': 'research', 'depends_on': [], 'queue': 'api'},
         {'key': 'outline', 'depends_on': ['research'], 'queue': 'api'},
         {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
-        {'key': 'scene_breakdown', 'depends_on': ['script'], 'queue': 'api'},
+        {
+            'key': 'scene_breakdown',
+            'depends_on': ['script'],
+            'queue': 'api',
+            'config': {
+                'min_words': 8,
+                'max_words': 16,
+                'min_seconds': 3,
+                'max_seconds': 5,
+                'max_hero_scenes': 6,
+            },
+        },
         {
             'key': 'script_gate',
             'depends_on': ['scene_breakdown'],
@@ -72,8 +83,14 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'image_gen',
+            'key': 'visual_anchors',
             'depends_on': ['visual_prompts'],
+            'queue': 'api',
+            'config': {'model': 'fal-ai/flux/dev'},
+        },
+        {
+            'key': 'image_gen',
+            'depends_on': ['visual_anchors'],
             'queue': 'api',
             'fan_out': 'scenes',
             'config': {
@@ -101,6 +118,8 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'fan_out': 'scenes',
             'config': {
                 'hero_ratio': 0.15,
+                'max_hero_scenes': 6,
+                'i2v_enabled': True,
                 'i2v_model': (
                     'fal-ai/kling-video/v2.1/standard/image-to-video'
                 ),

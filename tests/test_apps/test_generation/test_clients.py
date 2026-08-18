@@ -439,6 +439,23 @@ def test_fal_generate_image_sync_success_returns_dict() -> None:
     assert result['content_policy_violation'] is False
 
 
+def test_fal_generate_image_sync_retryable_on_error() -> None:
+    """generate_image_sync classifies FalClientError the same as async."""
+    from fal_client import FalClientError
+
+    from server.apps.generation.clients.fal import generate_image_sync
+    from server.common.exceptions import RetryableProviderError
+
+    exc = FalClientError('network timeout')
+    exc.status = None
+    with patch('fal_client.run', side_effect=exc):
+        try:
+            generate_image_sync('a lion')
+            raise AssertionError('expected RetryableProviderError')
+        except RetryableProviderError:
+            pass
+
+
 def test_fal_generate_image_with_image_url_arg() -> None:
     """generate_image includes image_url in arguments when provided."""
     from server.apps.generation.clients.fal import (
@@ -468,6 +485,112 @@ def test_fal_generate_image_with_image_url_arg() -> None:
 
     asyncio.run(_inner())
     assert captured[0].get('image_url') == 'https://src.img/ref.jpg'
+
+
+def test_fal_kontext_uses_aspect_ratio_not_image_size() -> None:
+    """Kontext endpoints reject flux/dev image_size; send 16:9 instead."""
+    from server.apps.generation.clients.fal import generate_image
+    from server.apps.pipelines.logic.visual_consistency import KONTEXT
+
+    captured: list[tuple[str, dict[str, object]]] = []
+
+    async def _fake_run_async(
+        model: str,
+        *,
+        arguments: dict[str, object],
+    ) -> object:
+        captured.append((model, arguments))
+        return {
+            'images': [{'url': 'https://fal.ai/out.jpg'}],
+            'seed': 1,
+            'has_nsfw_concepts': [False],
+        }
+
+    async def _inner() -> None:
+        with patch('fal_client.run_async', side_effect=_fake_run_async):
+            await generate_image(
+                'keep the forum, change camera',
+                model=KONTEXT,
+                image_url='https://cdn/forum.jpg',
+                seed=3,
+            )
+
+    asyncio.run(_inner())
+    model, arguments = captured[0]
+    assert model == KONTEXT
+    assert arguments.get('aspect_ratio') == '16:9'
+    assert 'image_size' not in arguments
+    assert arguments.get('image_url') == 'https://cdn/forum.jpg'
+    assert arguments.get('seed') == 3
+
+
+def test_fal_generate_image_sync_kontext_multi_sends_image_urls() -> None:
+    """generate_image_sync forwards Kontext multi-ref URLs."""
+    from server.apps.generation.clients.fal import generate_image_sync
+    from server.apps.pipelines.logic.visual_consistency import KONTEXT_MULTI
+
+    captured: list[dict[str, object]] = []
+
+    def _fake_run(model: str, *, arguments: dict[str, object]) -> object:
+        captured.append(arguments)
+        return {
+            'images': [{'url': 'https://fal.ai/out.jpg'}],
+            'seed': 4,
+            'has_nsfw_concepts': [False],
+        }
+
+    with patch('fal_client.run', side_effect=_fake_run):
+        result = generate_image_sync(
+            'place the character',
+            model=KONTEXT_MULTI,
+            image_urls=['https://cdn/hero.jpg', 'https://cdn/forum.jpg'],
+            seed=4,
+        )
+    assert result['url'] == 'https://fal.ai/out.jpg'
+    assert captured[0].get('image_urls') == [
+        'https://cdn/hero.jpg',
+        'https://cdn/forum.jpg',
+    ]
+    assert captured[0].get('seed') == 4
+    assert 'image_url' not in captured[0]
+
+
+def test_fal_kontext_multi_sends_image_urls() -> None:
+    """Multi-ref Kontext uses image_urls and omits image_url."""
+    from server.apps.generation.clients.fal import generate_image
+    from server.apps.pipelines.logic.visual_consistency import KONTEXT_MULTI
+
+    captured: list[dict[str, object]] = []
+
+    async def _fake_run_async(
+        model: str,
+        *,
+        arguments: dict[str, object],
+    ) -> object:
+        captured.append(arguments)
+        return {
+            'images': [{'url': 'https://fal.ai/out.jpg'}],
+            'seed': 1,
+            'has_nsfw_concepts': [False],
+        }
+
+    async def _inner() -> None:
+        with patch('fal_client.run_async', side_effect=_fake_run_async):
+            await generate_image(
+                'place the character in the forum',
+                model=KONTEXT_MULTI,
+                image_urls=[
+                    'https://cdn/hero.jpg',
+                    'https://cdn/forum.jpg',
+                ],
+            )
+
+    asyncio.run(_inner())
+    assert captured[0].get('image_urls') == [
+        'https://cdn/hero.jpg',
+        'https://cdn/forum.jpg',
+    ]
+    assert 'image_url' not in captured[0]
 
 
 def test_fal_generate_image_retryable_on_other_fal_error() -> None:
@@ -991,7 +1114,12 @@ def test_run_agent_passes_default_max_tokens_model_settings() -> None:
     mock_ctx.prompts.get_generation_settings = MagicMock(return_value=None)
 
     async def _inner() -> object:
-        return await run_agent(mock_agent, 'prompt', mock_ctx, stage_key='script')
+        return await run_agent(
+            mock_agent,
+            'prompt',
+            mock_ctx,
+            stage_key='script',
+        )
 
     asyncio.run(_inner())
     settings = mock_agent.run.await_args.kwargs['model_settings']

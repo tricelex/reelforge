@@ -148,8 +148,7 @@ def _persist_cast_sync(
             is_ephemeral=library_match_id is None,
             importance=_IMPORTANCE_MAP[member['importance']],
             draft_prompt=(
-                member['appearance_brief']
-                or character.appearance_prompt
+                member['appearance_brief'] or character.appearance_prompt
             ),
             design_status=design_status,
         )
@@ -178,18 +177,22 @@ class CastProposalStage(Stage):
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Create RunCast rows and report whether design is required."""
         breakdown = ctx.upstream.get('scene_breakdown') or {}
-        raw_cast = breakdown.get('cast') or []
-        if not isinstance(raw_cast, list):
-            raw_cast = []
-        members = _normalize_cast(
-            [m for m in raw_cast if isinstance(m, dict)],
-        )
-        if not members:
+        if 'cast' not in breakdown:
             scenes = breakdown.get('scenes') or []
-            if isinstance(scenes, list):
-                members = _cast_from_foreground(
+            members = (
+                _cast_from_foreground(
                     [s for s in scenes if isinstance(s, dict)],
                 )
+                if isinstance(scenes, list)
+                else []
+            )
+        else:
+            raw_cast = breakdown.get('cast') or []
+            if not isinstance(raw_cast, list):
+                raw_cast = []
+            members = _normalize_cast(
+                [m for m in raw_cast if isinstance(m, dict)],
+            )
 
         cast_out = await sync_to_async(_persist_cast_sync)(
             ctx.run,

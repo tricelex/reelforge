@@ -152,6 +152,7 @@ class Scene(BaseModel):
     is_hero: bool
     foreground_cast: list[str] = Field(default_factory=list)
     word_count: int = Field(ge=1)
+    setting: str = ''
 
     @model_validator(mode='after')
     def sync_word_count(self) -> Scene:
@@ -181,9 +182,9 @@ class SceneBreakdownOutput(BaseModel):
     def enforce_invariants(self) -> SceneBreakdownOutput:
         """Validate per-scene word count range and cast limits."""
         for s in self.scenes:
-            if not (10 <= s.word_count <= 35):
+            if not (5 <= s.word_count <= 40):
                 raise ValueError(
-                    f'scene {s.idx} word_count {s.word_count} outside [10,35]',
+                    f'scene {s.idx} word_count {s.word_count} outside [5,40]',
                 )
             if len(s.foreground_cast) > 2:
                 raise ValueError(
