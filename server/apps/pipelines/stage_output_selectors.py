@@ -34,6 +34,7 @@ _KNOWN_STAGE_KEYS: Final[frozenset[str]] = frozenset({
     'scene_breakdown',
     'narrative_qc',
     'visual_prompts',
+    'visual_anchors',
     'image_gen',
     'motion',
     'tts',

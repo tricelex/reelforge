@@ -43,6 +43,7 @@ ignore_imports =
   server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.visual_prompts -> server.apps.generation.clients.llm
+  server.apps.pipelines.stages.visual_anchors -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.image_gen -> server.apps.generation.clients.fal
   server.apps.pipelines.stages.tts -> server.apps.generation.clients.elevenlabs
   server.apps.pipelines.stages.motion -> server.apps.generation.clients.fal
@@ -66,6 +67,7 @@ ignore_imports =
   server.apps.pipelines.stages.footage_prep -> server.apps.rendering.ffmpeg
   # Pipeline stages save assets and reference AssetKind from the assets app
   server.apps.pipelines.stages.image_gen -> server.apps.assets.models
+  server.apps.pipelines.stages.visual_anchors -> server.apps.assets.models
   server.apps.pipelines.stages.tts -> server.apps.assets.models
   server.apps.pipelines.stages.motion -> server.apps.assets.models
   server.apps.pipelines.stages.alignment -> server.apps.assets.models

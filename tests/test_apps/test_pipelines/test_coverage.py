@@ -1478,6 +1478,7 @@ def test_all_production_stages_registered() -> None:
         'script',
         'scene_breakdown',
         'visual_prompts',
+        'visual_anchors',
         'image_gen',
         'tts',
         'motion',

@@ -86,6 +86,10 @@ def test_longform_editor_v1_has_package_zip_no_assembly_or_publish() -> None:
     assert 'qc' not in keys
     assert 'final_gate' not in keys
     assert 'publish' not in keys
+    assert 'visual_anchors' in keys
+    by_key = {s['key']: s for s in bp.graph['stages']}
+    assert by_key['image_gen']['depends_on'] == ['visual_anchors']
+    assert by_key['scene_breakdown']['config']['min_words'] == 8
 
 
 def test_clipping_editor_v1_skips_preview_and_distribute() -> None:
@@ -123,6 +127,11 @@ def test_longform_v1_graph_includes_narrative_qc_between_breakdown_and_visuals()
     ]
     assert by_key['character_gate'].get('gate') is True
     assert by_key['visual_prompts']['depends_on'] == ['character_gate']
+    assert by_key['visual_anchors']['depends_on'] == ['visual_prompts']
+    assert by_key['image_gen']['depends_on'] == ['visual_anchors']
+    assert by_key['scene_breakdown']['config']['min_words'] == 8
+    assert by_key['motion']['config']['max_hero_scenes'] == 6
+    assert by_key['motion']['config']['i2v_enabled'] is True
     assert by_key['storyboard_gate']['depends_on'] == ['image_gen']
     assert by_key['storyboard_gate'].get('gate') is True
     assert by_key['tts']['depends_on'] == ['storyboard_gate']

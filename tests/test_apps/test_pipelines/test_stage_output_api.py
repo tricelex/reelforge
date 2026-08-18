@@ -299,6 +299,22 @@ def test_visual_prompts_json(
 
 
 @pytest.mark.django_db
+def test_visual_anchors_output_is_known_stage(
+    dmr_client: DMRClient,
+    run: PipelineRun,
+    auth_headers: dict[str, str],
+) -> None:
+    """visual_anchors is a known stage key so the output endpoint is 200."""
+    _stage(
+        run,
+        'visual_anchors',
+        {'anchors': [{'setting': 'forum', 'url': 'https://cdn/x.jpg'}]},
+    )
+    response = _get(dmr_client, run.id, 'visual_anchors', auth_headers)
+    assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
 def test_footage_queries_json(
     dmr_client: DMRClient,
     run: PipelineRun,
@@ -759,7 +775,7 @@ def test_editor_brief_output_returns_text(
     brief = Asset.objects.create(
         kind=AssetKind.DOC,
         file=ContentFile(
-            b'# Edit Brief\n\nHello editor.', name='EDIT_BRIEF.md'
+            b'# Edit Brief\n\nHello editor.', name='EDIT_BRIEF.md',
         ),
         mime='text/markdown',
         checksum='briefcov',

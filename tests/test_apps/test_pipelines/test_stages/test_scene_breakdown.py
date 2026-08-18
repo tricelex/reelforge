@@ -3,26 +3,64 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from server.apps.pipelines.schemas import (
+    CastMember,
+    Scene,
+    SceneBreakdownOutput,
+)
 from server.apps.pipelines.stages.scene_breakdown import SceneBreakdownStage
+from server.common.exceptions import FatalProviderError
+
+_TWELVE = 'Rome was great once long ago in the ancient world of days.'
 
 
-def _make_ctx() -> MagicMock:
+def _scene(
+    *,
+    idx: int = 0,
+    chapter_idx: int = 0,
+    narration: str = _TWELVE,
+    is_hero: bool = True,
+    est_seconds: float = 8.0,
+    setting: str = 'Roman forum',
+) -> Scene:
+    words = len(narration.split())
+    return Scene(
+        idx=idx,
+        chapter_idx=chapter_idx,
+        beat='intro',
+        narration_text=narration,
+        visual_concept='Wide aerial Rome',
+        shot_type='aerial',
+        est_seconds=est_seconds,
+        is_hero=is_hero,
+        word_count=words,
+        setting=setting,
+    )
+
+
+def _make_ctx(*, chapters: list[dict[str, object]] | None = None) -> MagicMock:
     ctx = MagicMock()
     ctx.run.topic = 'The fall of Rome'
     ctx.run.prompt_snapshot = {}
     ctx.channel.wpm = 158
+    if chapters is None:
+        chapters = [
+            {
+                'idx': 0,
+                'title': 'Intro',
+                'text': _TWELVE,
+                'word_count': 12,
+                'closing_line': 'Rome fell.',
+            },
+        ]
     ctx.upstream = {
         'script': {
-            'chapters': [
-                {
-                    'idx': 0,
-                    'title': 'Intro',
-                    'text': 'This is about Rome. ' * 5,
-                    'word_count': 20,
-                    'closing_line': 'Rome fell.',
-                },
-            ],
-            'total_word_count': 20,
+            'chapters': chapters,
+            'total_word_count': sum(
+                int(ch.get('word_count', 0)) for ch in chapters
+            ),
         },
     }
     ctx.config = {'hero_ratio': 0.15}
@@ -59,28 +97,8 @@ def test_scene_breakdown_has_output_validator() -> None:
 
 def test_scene_breakdown_run_returns_scenes() -> None:
     """run() returns dict with 'scenes' list."""
-    from server.apps.pipelines.schemas import (
-        Scene,
-        SceneBreakdownOutput,
-    )
-
     ctx = _make_ctx()
-    scenes = [
-        Scene(
-            idx=0,
-            chapter_idx=0,
-            beat='intro',
-            narration_text=(
-                'Rome was great once long ago in the ancient world of days.'
-            ),
-            visual_concept='Wide aerial Rome',
-            shot_type='aerial',
-            est_seconds=8.0,
-            is_hero=True,
-            word_count=12,
-        ),
-    ]
-    fake_output = SceneBreakdownOutput(scenes=scenes)
+    fake_output = SceneBreakdownOutput(scenes=[_scene()])
 
     async def _inner() -> dict[str, object]:
         with patch(
@@ -93,3 +111,217 @@ def test_scene_breakdown_run_returns_scenes() -> None:
     assert 'scenes' in result
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
     assert result['scenes'][0]['is_hero'] is True  # type: ignore[index]
+    assert result['scenes'][0]['setting'] == 'Roman forum'  # type: ignore[index]
+
+
+def test_scene_breakdown_calls_agent_once_per_chapter() -> None:
+    """Each script chapter is a separate LLM call, then idxs are stitched."""
+    ctx = _make_ctx(
+        chapters=[
+            {'idx': 0, 'title': 'A', 'text': _TWELVE, 'word_count': 12},
+            {'idx': 1, 'title': 'B', 'text': _TWELVE, 'word_count': 12},
+        ],
+    )
+    outputs = [
+        SceneBreakdownOutput(scenes=[_scene(chapter_idx=0)]),
+        SceneBreakdownOutput(scenes=[_scene(chapter_idx=1, is_hero=False)]),
+    ]
+    mock_agent = AsyncMock(side_effect=outputs)
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert mock_agent.await_count == 2
+    scenes = result['scenes']
+    assert [s['idx'] for s in scenes] == [0, 1]  # type: ignore[index]
+    assert [s['chapter_idx'] for s in scenes] == [0, 1]  # type: ignore[index]
+
+
+def test_scene_breakdown_retries_until_coverage() -> None:
+    """Under-covered chapter output is retried before succeeding."""
+    ctx = _make_ctx()
+    short = _scene(narration='Rome was great once long ago in time.')
+    mock_agent = AsyncMock(
+        side_effect=[
+            SceneBreakdownOutput(scenes=[short]),
+            SceneBreakdownOutput(scenes=[_scene()]),
+        ],
+    )
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert mock_agent.await_count == 2
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]
+
+
+def test_scene_breakdown_raises_when_coverage_never_met() -> None:
+    """Exhausted coverage retries become a fatal stage error."""
+    ctx = _make_ctx()
+    short = _scene(narration='Rome was great once long ago in time.')
+    mock_agent = AsyncMock(
+        return_value=SceneBreakdownOutput(scenes=[short]),
+    )
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            await SceneBreakdownStage().run(ctx)
+
+    with pytest.raises(FatalProviderError) as exc_info:
+        asyncio.run(_inner())
+    assert exc_info.value.error_code == 'scene_coverage'
+    assert mock_agent.await_count == 3
+
+
+def test_scene_breakdown_clamps_hero_flags() -> None:
+    """max_hero_scenes keeps only the first N hero stills."""
+    doubled = f'{_TWELVE} {_TWELVE}'
+    ctx = _make_ctx(
+        chapters=[
+            {'idx': 0, 'title': 'Intro', 'text': doubled, 'word_count': 24},
+        ],
+    )
+    ctx.config = {'hero_ratio': 0.15, 'max_hero_scenes': 1}
+    fake_output = SceneBreakdownOutput(
+        scenes=[
+            _scene(idx=0, is_hero=True),
+            _scene(idx=1, is_hero=True),
+        ],
+    )
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=AsyncMock(return_value=fake_output),
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    flags = [s['is_hero'] for s in result['scenes']]  # type: ignore[index]
+    assert flags == [True, False]
+
+
+def test_scene_breakdown_empty_chapter_with_no_scenes_is_fatal() -> None:
+    """A covered empty chapter that yields no scenes still fails."""
+    ctx = _make_ctx(
+        chapters=[{'idx': 0, 'title': 'A', 'text': '', 'word_count': 0}],
+    )
+    fake_output = SceneBreakdownOutput(scenes=[])
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=AsyncMock(return_value=fake_output),
+        ):
+            await SceneBreakdownStage().run(ctx)
+
+    with pytest.raises(FatalProviderError) as exc_info:
+        asyncio.run(_inner())
+    assert exc_info.value.error_code == 'missing_scenes'
+
+
+def test_scene_breakdown_missing_chapters_is_fatal() -> None:
+    """No script chapters cannot be broken into scenes."""
+    ctx = _make_ctx()
+    ctx.upstream = {'script': {'chapters': [], 'total_word_count': 0}}
+
+    async def _inner() -> None:
+        await SceneBreakdownStage().run(ctx)
+
+    with pytest.raises(FatalProviderError) as exc_info:
+        asyncio.run(_inner())
+    assert exc_info.value.error_code == 'missing_chapters'
+
+
+def test_scene_breakdown_unions_cast_across_chapters() -> None:
+    """Cast members are merged by name; blanks and duplicates drop."""
+    ctx = _make_ctx(
+        chapters=[
+            {'idx': 0, 'title': 'A', 'text': _TWELVE, 'word_count': 12},
+            {'idx': 1, 'title': 'B', 'text': _TWELVE, 'word_count': 12},
+        ],
+    )
+    outputs = [
+        SceneBreakdownOutput(
+            scenes=[_scene(chapter_idx=0)],
+            cast=[
+                CastMember(name='Marcus', role='senator', importance='main'),
+                CastMember(name='', role='ghost'),
+            ],
+        ),
+        SceneBreakdownOutput(
+            scenes=[_scene(chapter_idx=1, is_hero=False)],
+            cast=[
+                CastMember(name='marcus', role='duplicate'),
+                CastMember(name='Livia', role='witness'),
+            ],
+        ),
+    ]
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=AsyncMock(side_effect=outputs),
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    names = [row['name'] for row in result['cast']]  # type: ignore[index]
+    assert names == ['Marcus', 'Livia']
+
+
+def test_scene_breakdown_uses_rendered_user_prompt() -> None:
+    """A DB template user prompt is preferred over the fallback string."""
+    ctx = _make_ctx()
+    ctx.prompts.render = AsyncMock(return_value=('sys', 'break this chapter'))
+    fake_output = SceneBreakdownOutput(scenes=[_scene()])
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=AsyncMock(return_value=fake_output),
+        ) as mock_agent:
+            result = await SceneBreakdownStage().run(ctx)
+            assert mock_agent.await_args.args[1] == 'break this chapter'
+            return result
+
+    result = asyncio.run(_inner())
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]
+
+
+def test_scene_breakdown_custom_coverage_limits_accept_short_split() -> None:
+    """coverage_ratio_min/max from config override the 95-110% band."""
+    ctx = _make_ctx()
+    ctx.config = {
+        'hero_ratio': 0.15,
+        'coverage_ratio_min': 0.5,
+        'coverage_ratio_max': 2.0,
+    }
+    short = _scene(narration='Rome was great once long ago in time.')
+    mock_agent = AsyncMock(
+        return_value=SceneBreakdownOutput(scenes=[short]),
+    )
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert mock_agent.await_count == 1
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]

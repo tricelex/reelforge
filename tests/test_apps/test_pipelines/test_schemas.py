@@ -26,18 +26,37 @@ def _valid_scene(**overrides: object) -> Scene:
     return Scene(**defaults)  # type: ignore[arg-type]
 
 
-def test_scene_breakdown_rejects_word_count_below_10() -> None:
-    """SceneBreakdownOutput.enforce_invariants rejects word_count < 10."""
-    scene = _valid_scene(narration_text=_narration(5), word_count=5)
+def test_scene_breakdown_rejects_word_count_below_5() -> None:
+    """Schema envelope rejects word_count < 5; stages tighten further."""
+    scene = _valid_scene(narration_text=_narration(4), word_count=4)
     with pytest.raises(ValidationError, match='word_count'):
         SceneBreakdownOutput(scenes=[scene])
 
 
-def test_scene_breakdown_rejects_word_count_above_35() -> None:
-    """SceneBreakdownOutput.enforce_invariants rejects word_count > 35."""
-    scene = _valid_scene(narration_text=_narration(36), word_count=36)
+def test_scene_breakdown_accepts_dense_word_count() -> None:
+    """AI longform 8-16 word scenes sit inside the 5-40 schema envelope."""
+    scene = _valid_scene(narration_text=_narration(8), word_count=8)
+    result = SceneBreakdownOutput(scenes=[scene])
+    assert result.scenes[0].word_count == 8
+
+
+def test_scene_breakdown_rejects_word_count_above_40() -> None:
+    """SceneBreakdownOutput.enforce_invariants rejects word_count > 40."""
+    scene = _valid_scene(narration_text=_narration(41), word_count=41)
     with pytest.raises(ValidationError, match='word_count'):
         SceneBreakdownOutput(scenes=[scene])
+
+
+def test_scene_setting_defaults_empty() -> None:
+    """Setting is optional so older fixtures keep working."""
+    scene = _valid_scene()
+    assert scene.setting == ''
+
+
+def test_scene_setting_is_stored() -> None:
+    """Setting locks location identity for later visual prompts."""
+    scene = _valid_scene(setting='Roman forum at dusk')
+    assert scene.setting == 'Roman forum at dusk'
 
 
 def test_scene_syncs_word_count_from_narration() -> None:

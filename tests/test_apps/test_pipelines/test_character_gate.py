@@ -394,3 +394,50 @@ def test_cast_proposal_creates_runcast_for_mains() -> None:
     assert row.importance == CastImportance.MAIN
     assert row.design_status == CastDesignStatus.PROPOSED
     assert 'scarred' in row.draft_prompt
+
+
+def test_cast_proposal_explicit_empty_cast_ignores_foreground() -> None:
+    """An empty cast list must not harvest scene foreground names."""
+    from server.apps.pipelines.stages.base import StageContext
+    from server.apps.pipelines.stages.cast_proposal import CastProposalStage
+
+    channel = Channel.objects.create(
+        name='Zero Cast Niche',
+        kind=ChannelKind.LONGFORM,
+    )
+    bp = PipelineBlueprint.objects.create(
+        name='cast_prop_zero',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={'stages': []},
+        topic='geography explainer',
+    )
+    exec_ = StageExecution.objects.create(
+        run=run,
+        stage_key='cast_proposal',
+        status=StageStatus.RUNNING,
+        input_hash='',
+    )
+    ctx = MagicMock(spec=StageContext)
+    ctx.run = run
+    ctx.channel = channel
+    ctx.execution = exec_
+    ctx.upstream = {
+        'scene_breakdown': {
+            'cast': [],
+            'scenes': [
+                {
+                    'idx': 0,
+                    'foreground_cast': ['Caesar'],
+                },
+            ],
+        },
+    }
+    result = asyncio.run(CastProposalStage().run(ctx))
+    assert result['requires_character_design'] is False
+    assert result['cast'] == []
+    assert RunCast.objects.filter(run=run).count() == 0

@@ -73,3 +73,14 @@ def test_archival_format_prefers_stills() -> None:
     archival = StoryFormat.objects.get(key='documentary_archival')
     assert archival.prompt_overrides['script'] == 'script_documentary'
     assert archival.pacing
+
+
+@pytest.mark.django_db
+def test_documentary_breakdown_prompt_requires_verbatim_slices() -> None:
+    """Documentary scenes stay on-script; they do not invent narration."""
+    call_command('seed_story_formats')
+    template = PromptTemplate.objects.get(key='scene_breakdown_documentary')
+    active = PromptVersion.objects.get(template=template, is_active=True)
+    assert 'contiguous verbatim slice' in active.system_prompt
+    assert 'Keep setting stable' in active.system_prompt
+    assert 'empty cast' in active.system_prompt.lower()

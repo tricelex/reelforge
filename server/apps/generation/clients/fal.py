@@ -53,15 +53,18 @@ async def generate_image(
     height: int = 1080,
     seed: int | None = None,
     image_url: str | None = None,
+    image_urls: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run a Flux image generation job (async)."""
     arguments = _image_arguments(
         prompt,
+        model=model,
         negative_prompt=negative_prompt,
         width=width,
         height=height,
         seed=seed,
         image_url=image_url,
+        image_urls=image_urls,
     )
     try:
         result = await fal_client.run_async(model, arguments=arguments)
@@ -79,6 +82,7 @@ def generate_image_sync(
     height: int = 1080,
     seed: int | None = None,
     image_url: str | None = None,
+    image_urls: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run a Flux image generation job (sync).
 
@@ -88,11 +92,13 @@ def generate_image_sync(
     """
     arguments = _image_arguments(
         prompt,
+        model=model,
         negative_prompt=negative_prompt,
         width=width,
         height=height,
         seed=seed,
         image_url=image_url,
+        image_urls=image_urls,
     )
     try:
         result = fal_client.run(model, arguments=arguments)
@@ -102,7 +108,30 @@ def generate_image_sync(
     return _parse_image_result(result)
 
 
-def _image_arguments(
+def _kontext_arguments(
+    prompt: str,
+    *,
+    seed: int | None,
+    image_url: str | None,
+    image_urls: list[str] | None,
+) -> dict[str, Any]:
+    """Build Flux Kontext (single or multi-ref) request args."""
+    arguments: dict[str, Any] = {
+        'prompt': prompt,
+        'num_images': 1,
+        'output_format': 'jpeg',
+        'aspect_ratio': '16:9',
+    }
+    if seed is not None:
+        arguments['seed'] = seed
+    if image_urls:
+        arguments['image_urls'] = image_urls
+    elif image_url is not None:
+        arguments['image_url'] = image_url
+    return arguments
+
+
+def _flux_dev_arguments(
     prompt: str,
     *,
     negative_prompt: str,
@@ -111,6 +140,7 @@ def _image_arguments(
     seed: int | None,
     image_url: str | None,
 ) -> dict[str, Any]:
+    """Build fal-ai/flux/dev text-to-image request args."""
     arguments: dict[str, Any] = {
         'prompt': prompt,
         'negative_prompt': negative_prompt,
@@ -122,6 +152,34 @@ def _image_arguments(
     if image_url is not None:
         arguments['image_url'] = image_url
     return arguments
+
+
+def _image_arguments(
+    prompt: str,
+    *,
+    model: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    seed: int | None,
+    image_url: str | None,
+    image_urls: list[str] | None,
+) -> dict[str, Any]:
+    if 'kontext' in model:
+        return _kontext_arguments(
+            prompt,
+            seed=seed,
+            image_url=image_url,
+            image_urls=image_urls,
+        )
+    return _flux_dev_arguments(
+        prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        seed=seed,
+        image_url=image_url,
+    )
 
 
 def _parse_image_result(result: dict[str, Any]) -> dict[str, Any]:

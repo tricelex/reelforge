@@ -72,6 +72,7 @@ def test_documentary_graph_has_no_character_stages() -> None:
     keys = {n['key'] for n in bp.graph['stages']}
     assert 'cast_proposal' not in keys
     assert 'character_gate' not in keys
+    assert 'visual_anchors' not in keys
     assert {'footage_queries', 'footage_search', 'footage_prep'} <= keys
 
 

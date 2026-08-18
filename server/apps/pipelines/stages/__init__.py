@@ -37,5 +37,6 @@ from server.apps.pipelines.stages import (
     thumbnail,  # noqa: F401
     timeline_export,  # noqa: F401
     tts,  # noqa: F401
+    visual_anchors,  # noqa: F401
     visual_prompts,  # noqa: F401
 )
