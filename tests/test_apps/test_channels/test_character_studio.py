@@ -17,6 +17,7 @@ from server.apps.channels.character_studio import (
 )
 from server.apps.channels.logic.value_objects import (
     CharacterApprovePayload,
+    CharacterCreatePayload,
     CharacterPatchPayload,
     CharacterRoundCreatePayload,
     CharacterSheetExpandPayload,
@@ -88,6 +89,26 @@ def test_ref_image_url(
     )
     url = _ref_image_url(str(asset.id))
     assert url is not None
+
+
+@pytest.mark.django_db
+def test_create_honors_approved_status(
+    service: CharacterStudioService,
+    channel: Channel,
+) -> None:
+    """Create persists optional APPROVED status for ChannelSpec import."""
+    result = service.create(
+        CharacterCreatePayload(
+            name='Imported Host',
+            channel_id=str(channel.id),
+            appearance_prompt='flat-color host',
+            persona='dry narrator',
+            status=CharacterStatus.APPROVED,
+        ),
+    )
+    assert result.status == CharacterStatus.APPROVED
+    stored = Character.objects.get(id=result.id)
+    assert stored.status == CharacterStatus.APPROVED
 
 
 @pytest.mark.django_db

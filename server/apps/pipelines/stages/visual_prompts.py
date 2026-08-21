@@ -13,6 +13,8 @@ from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.logic.visual_consistency import (
     apply_visual_lock,
     build_visual_lock_prefix,
+    merge_style_negatives,
+    niche_style_fields,
 )
 from server.apps.pipelines.schemas import VisualPrompt, VisualPromptsOutput
 from server.apps.pipelines.services.prompt_variables import (
@@ -66,28 +68,28 @@ def _scenes_by_chapter(
     return [(idx, groups[idx]) for idx in order]
 
 
-def _niche_lock_bits(channel: object) -> tuple[str, str]:
-    """Lore and angle from NicheConfig; style_guide does not exist."""
+def _niche_lock_bits(
+    channel: object,
+) -> tuple[str, str, list[str]]:
+    """Style lock, angle, and style_negatives from NicheConfig."""
     from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
 
     try:
         niche = getattr(channel, 'niche_config', None)
     except ObjectDoesNotExist:
-        return '', ''
-    if niche is None:
-        return '', ''
-    lore = str(getattr(niche, 'lore_document', '') or '')
-    angle = str(getattr(niche, 'angle', '') or '')
-    return lore, angle
+        return '', '', []
+    style, angle, _medium, negatives = niche_style_fields(niche)
+    return style, angle, negatives
 
 
 def _lock_prompt(
     *,
     prompt: VisualPrompt,
     scene: dict[str, Any] | None,
-    lore: str,
+    visual_bible: str,
     angle: str,
     appearance_by_name: dict[str, str],
+    style_negatives: list[str],
 ) -> VisualPrompt:
     """Prepend the code-side visual bible to one LLM prompt."""
     setting = str((scene or {}).get('setting') or '')
@@ -97,7 +99,7 @@ def _lock_prompt(
         if appearance:
             break
     prefix = build_visual_lock_prefix(
-        lore=lore,
+        visual_bible=visual_bible,
         angle=angle,
         setting=setting,
         appearance=appearance,
@@ -105,7 +107,10 @@ def _lock_prompt(
     locked, negative = apply_visual_lock(
         prompt.prompt,
         prefix=prefix,
-        negative=prompt.negative_prompt,
+        negative=merge_style_negatives(
+            prompt.negative_prompt,
+            style_negatives,
+        ),
     )
     return prompt.model_copy(
         update={'prompt': locked, 'negative_prompt': negative},
@@ -116,8 +121,9 @@ def _attach_refs_and_locks(
     prompts: list[VisualPrompt],
     scenes: list[dict[str, Any]],
     *,
-    lore: str,
+    visual_bible: str,
     angle: str,
+    style_negatives: list[str],
     cast_locks: dict[str, dict[str, str | None]],
 ) -> list[VisualPrompt]:
     """Apply visual bible + approved character_ref_id to each prompt."""
@@ -133,9 +139,10 @@ def _attach_refs_and_locks(
         updated = _lock_prompt(
             prompt=prompt,
             scene=scene,
-            lore=lore,
+            visual_bible=visual_bible,
             angle=angle,
             appearance_by_name=appearance_by_name,
+            style_negatives=style_negatives,
         )
         locked.append(
             _attach_character_ref(updated, scene, cast_locks),
@@ -177,7 +184,7 @@ class VisualPromptsStage(Stage):
                 provider='visual_prompts',
                 error_code='missing_scenes',
             )
-        lore, angle = _niche_lock_bits(ctx.channel)
+        lore, angle, negatives = _niche_lock_bits(ctx.channel)
         model_slug = await resolve_stage_model(ctx, self.key)
         collected: list[VisualPrompt] = []
         for _chapter_idx, chapter_scenes in _scenes_by_chapter(scenes):
@@ -185,7 +192,7 @@ class VisualPromptsStage(Stage):
                 await _prompts_for_chapter(
                     ctx,
                     chapter_scenes,
-                    lore=lore,
+                    visual_bible=lore,
                     model_slug=model_slug,
                 ),
             )
@@ -204,8 +211,9 @@ class VisualPromptsStage(Stage):
         locked = _attach_refs_and_locks(
             collected,
             scenes,
-            lore=lore,
+            visual_bible=lore,
             angle=angle,
+            style_negatives=negatives,
             cast_locks=cast_locks,
         )
         return VisualPromptsOutput(prompts=locked).model_dump()
@@ -215,14 +223,14 @@ async def _prompts_for_chapter(
     ctx: StageContext,
     chapter_scenes: list[dict[str, Any]],
     *,
-    lore: str,
+    visual_bible: str,
     model_slug: str,
 ) -> list[VisualPrompt]:
     """One LLM call for the scenes in a single chapter."""
     variables = await build_prompt_variables(
         ctx,
         extra={
-            'style_guide': lore,
+            'style_guide': visual_bible,
             'chapter_scenes': chapter_scenes,
         },
     )
@@ -230,7 +238,7 @@ async def _prompts_for_chapter(
     user_prompt = usr or (
         f'Write image generation prompts for each scene.\n'
         f'Scenes: {chapter_scenes}\n'
-        f'Style guide: {lore or "cinematic, photorealistic, 16:9"}.\n'
+        f'Style guide: {visual_bible or "cinematic, 16:9"}.\n'
         f'Vary camera and lens; keep setting and character identity locked.\n'
         f'Return one VisualPrompt per scene, same order as input scenes.'
     )

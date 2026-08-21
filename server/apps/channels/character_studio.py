@@ -92,7 +92,11 @@ class CharacterStudioService:
     """Create characters and run Studio iteration loops."""
 
     def create(self, payload: CharacterCreatePayload) -> CharacterDetailPayload:
-        """Create a draft character."""
+        """Create a character, defaulting to DRAFT unless status is set."""
+        status = payload.status or CharacterStatus.DRAFT
+        if status not in CharacterStatus.values:
+            msg = f'Invalid status: {status}'
+            raise ValidationError(msg)
         character = Character.objects.create(
             name=payload.name,
             channel_id=(
@@ -100,7 +104,7 @@ class CharacterStudioService:
             ),
             appearance_prompt=payload.appearance_prompt,
             persona=payload.persona,
-            status=CharacterStatus.DRAFT,
+            status=status,
         )
         return get_character_detail(str(character.id))
 

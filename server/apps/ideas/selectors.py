@@ -32,6 +32,7 @@ class IdeationContext:
     format_name: str
     existing_topics: set[str]
     performance_notes: str = ''
+    visual_medium: str = ''
 
 
 def _iso(dt: datetime) -> str:
@@ -108,6 +109,7 @@ def build_ideation_context(niche: 'NicheConfig') -> IdeationContext:
         format_name=format_name,
         existing_topics=existing_topics(niche.channel_id),
         performance_notes=_performance_notes(niche.channel_id),
+        visual_medium=niche.visual_medium,
     )
 
 

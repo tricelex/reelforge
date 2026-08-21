@@ -51,6 +51,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'server.apps.analytics',
     'server.apps.clips',
     'server.apps.ideas',
+    'server.apps.channel_research',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
@@ -350,6 +351,20 @@ UNFOLD: dict[str, Any] = {
                 ],
             },
             {
+                'title': 'Channel Research',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Research Jobs',
+                        'icon': 'travel_explore',
+                        'link': reverse_lazy(
+                            'admin:channel_research_'
+                            'channelresearchjob_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
                 'title': 'Prompts',
                 'separator': True,
                 'items': [
@@ -563,6 +578,8 @@ YTDLP_POT_PROVIDER_BASE_URL: str = config(
 OPENAI_API_KEY: str = config('OPENAI_API_KEY', default='')
 ANTHROPIC_API_KEY: str = config('ANTHROPIC_API_KEY', default='')
 EXA_API_KEY: str = config('EXA_API_KEY', default='')
+DATAFORSEO_LOGIN: str = config('DATAFORSEO_LOGIN', default='')
+DATAFORSEO_PASSWORD: str = config('DATAFORSEO_PASSWORD', default='')
 PEXELS_API_KEY: str = config('PEXELS_API_KEY', default='')
 PIXABAY_API_KEY: str = config('PIXABAY_API_KEY', default='')
 OPENVERSE_CLIENT_ID: str = config('OPENVERSE_CLIENT_ID', default='')

@@ -80,14 +80,13 @@ def _find_library_match(
     channel_id: object,
     name: str,
 ) -> Character | None:
-    """Return an approved channel character with a hero ref, if any."""
+    """Return an approved channel character matching the name, if any."""
     return (
         Character.objects
         .filter(
             channel_id=channel_id,
             name__iexact=name,
             status=CharacterStatus.APPROVED,
-            hero_ref__isnull=False,
         )
         .order_by('-updated_at')
         .first()
@@ -117,9 +116,13 @@ def _persist_cast_sync(
         match = _find_library_match(channel_id, member['name'])
         if match is not None:
             character = match
-            design_status = CastDesignStatus.APPROVED
             library_match_id = str(match.id)
             has_hero_ref = match.hero_ref_id is not None
+            design_status = (
+                CastDesignStatus.APPROVED
+                if has_hero_ref
+                else CastDesignStatus.PROPOSED
+            )
         else:
             character = Character.objects.create(
                 name=member['name'],

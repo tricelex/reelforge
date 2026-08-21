@@ -396,6 +396,66 @@ def test_cast_proposal_creates_runcast_for_mains() -> None:
     assert 'scarred' in row.draft_prompt
 
 
+def test_cast_proposal_matches_approved_without_hero_ref() -> None:
+    """APPROVED library characters match by name even without hero_ref."""
+    from server.apps.channels.models import Character, CharacterStatus
+    from server.apps.pipelines.stages.base import StageContext
+    from server.apps.pipelines.stages.cast_proposal import CastProposalStage
+
+    channel = Channel.objects.create(
+        name='Library Match Cast',
+        kind=ChannelKind.LONGFORM,
+    )
+    library = Character.objects.create(
+        channel=channel,
+        name='Marcus',
+        appearance_prompt='flat-color host',
+        status=CharacterStatus.APPROVED,
+    )
+    assert library.hero_ref_id is None
+    bp = PipelineBlueprint.objects.create(
+        name='cast_prop_library',
+        kind=PipelineKind.LONGFORM,
+        graph={'stages': []},
+    )
+    run = PipelineRun.objects.create(
+        channel=channel,
+        blueprint=bp,
+        blueprint_snapshot={'stages': []},
+        topic='library match',
+    )
+    exec_ = StageExecution.objects.create(
+        run=run,
+        stage_key='cast_proposal',
+        status=StageStatus.RUNNING,
+        input_hash='',
+    )
+    ctx = MagicMock(spec=StageContext)
+    ctx.run = run
+    ctx.channel = channel
+    ctx.execution = exec_
+    ctx.upstream = {
+        'scene_breakdown': {
+            'scenes': [],
+            'cast': [
+                {
+                    'name': 'Marcus',
+                    'role': 'host',
+                    'importance': 'main',
+                    'appearance_brief': 'flat-color host',
+                },
+            ],
+        },
+    }
+    result = asyncio.run(CastProposalStage().run(ctx))
+    row = RunCast.objects.get(run=run)
+    assert row.character_id == library.id
+    assert row.is_ephemeral is False
+    assert row.design_status == CastDesignStatus.PROPOSED
+    assert result['requires_character_design'] is True
+    assert Character.objects.filter(channel=channel).count() == 1
+
+
 def test_cast_proposal_explicit_empty_cast_ignores_foreground() -> None:
     """An empty cast list must not harvest scene foreground names."""
     from server.apps.pipelines.stages.base import StageContext

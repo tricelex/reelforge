@@ -25,6 +25,7 @@ STAGE_MODEL_DEFAULTS: dict[str, str] = {
     'editor_brief': 'gpt-5.6-terra',
     'ideation': 'gpt-5.6-terra',
     'clip_analyze': 'claude-sonnet-4-6',
+    'channel_research': 'claude-opus-4-8',
 }
 
 # Per-model approximate token costs (USD): (input, output).

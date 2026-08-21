@@ -16,6 +16,11 @@ def _choices_to_options(
 
 def collect_enums() -> EnumsPayload:
     """Collect TextChoices enums exposed to the frontend."""
+    from server.apps.channel_research.logic.constants import (  # noqa: PLC0415
+        ChannelResearchKind,
+        ChannelResearchStatus,
+        VisualMedium,
+    )
     from server.apps.channels.models import (  # noqa: PLC0415
         ChannelKind,
         CharacterDesignMode,
@@ -56,6 +61,9 @@ def collect_enums() -> EnumsPayload:
         'CharacterDesignMode': CharacterDesignMode,
         'CharacterStatus': CharacterStatus,
         'CharacterOrigin': CharacterOrigin,
+        'ChannelResearchStatus': ChannelResearchStatus,
+        'ChannelResearchKind': ChannelResearchKind,
+        'VisualMedium': VisualMedium,
         'PipelineKind': PipelineKind,
         'RunStatus': RunStatus,
         'StageStatus': StageStatus,

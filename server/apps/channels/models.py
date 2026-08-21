@@ -183,6 +183,17 @@ class Channel(UUIDModel, TimeStampedModel):
             )
 
 
+class NicheVisualMedium(models.TextChoices):
+    """Visual medium lock; values match channel-research VisualMedium."""
+
+    TWO_D_ANIMATION = '2d_animation', '2D animation'
+    THREE_D_CGI = '3d_cgi', '3D CGI'
+    MOTION_GRAPHICS = 'motion_graphics', 'Motion graphics'
+    PHOTOREAL = 'photoreal', 'Photoreal'
+    LIVE_ACTION_STOCK = 'live_action_stock', 'Live-action stock'
+    MIXED = 'mixed', 'Mixed'
+
+
 class NicheConfig(UUIDModel, TimeStampedModel):
     """Content configuration for one channel: audience, angle, format, lore."""
 
@@ -206,11 +217,39 @@ class NicheConfig(UUIDModel, TimeStampedModel):
         blank=True,
     )
     lore_document = models.TextField(blank=True)
+    visual_bible = models.TextField(blank=True, db_default='')
+    visual_medium = models.CharField(
+        max_length=32,
+        choices=NicheVisualMedium.choices,
+        blank=True,
+        default='',
+        db_default='',
+    )
+    style_tokens = ArrayField(
+        models.CharField(max_length=80),
+        default=list,
+        blank=True,
+        db_default=[],
+    )
+    style_negatives = ArrayField(
+        models.CharField(max_length=80),
+        default=list,
+        blank=True,
+        db_default=[],
+    )
 
     class Meta:
         """Meta options for NicheConfig."""
 
         verbose_name = 'Niche config'
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                name='channels_nicheconfig_visual_medium_valid',
+                condition=models.Q(
+                    visual_medium__in=[*NicheVisualMedium.values, ''],
+                ),
+            ),
+        ]
 
     @override
     def __str__(self) -> str:

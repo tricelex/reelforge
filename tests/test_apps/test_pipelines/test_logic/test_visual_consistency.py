@@ -7,7 +7,10 @@ from server.apps.pipelines.logic.visual_consistency import (
     KONTEXT_MULTI,
     apply_visual_lock,
     build_visual_lock_prefix,
+    establishing_shot_prompt,
     is_kontext_model,
+    merge_style_negatives,
+    niche_style_fields,
     resolve_image_route,
 )
 
@@ -49,6 +52,31 @@ def test_build_visual_lock_prefix_all_empty_uses_generic_lock() -> None:
     )
     assert 'Keep locked visual traits identical' in prefix
     assert 'Character lock' not in prefix
+
+
+def test_build_visual_lock_prefix_prefers_visual_bible_over_lore() -> None:
+    """Style lock uses visual_bible and ignores lore when bible is set."""
+    prefix = build_visual_lock_prefix(
+        lore='full script lore about evidence stacks',
+        visual_bible='flat-color 2D animation stills',
+        angle='',
+        setting='',
+        appearance='',
+    )
+    assert 'flat-color 2D animation stills' in prefix
+    assert 'full script lore' not in prefix
+
+
+def test_build_visual_lock_prefix_falls_back_to_lore() -> None:
+    """Empty visual_bible still locks from lore."""
+    prefix = build_visual_lock_prefix(
+        lore='desaturated documentary',
+        visual_bible='',
+        angle='',
+        setting='',
+        appearance='',
+    )
+    assert 'desaturated documentary' in prefix
 
 
 def test_apply_visual_lock_empty_prefix_keeps_prompt() -> None:
@@ -168,3 +196,43 @@ def test_resolve_image_route_blank_default_falls_back_to_flux_dev() -> None:
         default_model='',
     )
     assert route.model == FLUX_DEV
+
+
+def test_establishing_shot_prompt_is_not_photoreal_for_2d() -> None:
+    """2d_animation establishing shots stay in flat color, not photoreal."""
+    prompt = establishing_shot_prompt('harbor', '2d_animation')
+    assert 'flat-color 2D animation still' in prompt
+    assert 'photorealistic' not in prompt
+
+
+def test_establishing_shot_prompt_photoreal_keeps_documentary_still() -> None:
+    prompt = establishing_shot_prompt('forum', 'photoreal')
+    assert 'photorealistic documentary still' in prompt
+
+
+def test_merge_style_negatives_appends_unique_tokens() -> None:
+    merged = merge_style_negatives('cars', ['photorealistic', 'live action'])
+    assert 'cars' in merged
+    assert 'photorealistic' in merged
+    again = merge_style_negatives(merged, ['photorealistic', 'live action'])
+    assert again.count('photorealistic') == 1
+
+
+def test_niche_style_fields_prefers_bible_and_reads_negatives() -> None:
+    from types import SimpleNamespace
+
+    style, angle, medium, negatives = niche_style_fields(
+        SimpleNamespace(
+            visual_bible='flat color',
+            lore_document='script lore',
+            angle='explainers',
+            visual_medium='2d_animation',
+            style_negatives=['photorealistic'],
+        ),
+    )
+    assert style == 'flat color'
+    assert angle == 'explainers'
+    assert medium == '2d_animation'
+    assert negatives == ['photorealistic']
+    empty = niche_style_fields(None)
+    assert empty == ('', '', '', [])

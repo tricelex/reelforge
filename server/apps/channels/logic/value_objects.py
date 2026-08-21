@@ -89,6 +89,10 @@ class NicheCreatePayload(msgspec.Struct, frozen=True):
     angle: str = ''
     banned_topics: list[str] | None = None
     lore_document: str = ''
+    visual_bible: str = ''
+    visual_medium: str = ''
+    style_tokens: list[str] | None = None
+    style_negatives: list[str] | None = None
 
 
 class ChannelCreatePayload(msgspec.Struct, frozen=True):
@@ -240,6 +244,10 @@ class NicheConfigPayload(msgspec.Struct, frozen=True):
     angle: str
     banned_topics: list[str]
     lore_document: str
+    visual_bible: str
+    visual_medium: str
+    style_tokens: list[str]
+    style_negatives: list[str]
 
 
 class NicheConfigPatchPayload(msgspec.Struct, frozen=True):
@@ -250,6 +258,10 @@ class NicheConfigPatchPayload(msgspec.Struct, frozen=True):
     angle: str | None = None
     banned_topics: list[str] | None = None
     lore_document: str | None = None
+    visual_bible: str | None = None
+    visual_medium: str | None = None
+    style_tokens: list[str] | None = None
+    style_negatives: list[str] | None = None
 
 
 class CharacterSummaryPayload(msgspec.Struct, frozen=True):
@@ -285,6 +297,7 @@ class CharacterCreatePayload(msgspec.Struct, frozen=True):
     channel_id: str | None = None
     appearance_prompt: str = ''
     persona: str = ''
+    status: str | None = None
 
 
 class CharacterPatchPayload(msgspec.Struct, frozen=True):

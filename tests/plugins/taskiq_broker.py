@@ -43,6 +43,7 @@ def _taskiq_in_memory() -> Generator[None]:
     # Import every task module so they register with the broker.
     import server.apps.analytics.tasks  # noqa: F401
     import server.apps.assets.tasks  # noqa: F401
+    import server.apps.channel_research.tasks  # noqa: F401
     import server.apps.clips.tasks  # noqa: F401
     import server.apps.main.tasks  # noqa: F401
     import server.apps.pipelines.tasks  # noqa: F401

@@ -31,5 +31,8 @@ def test_enums_returns_registry(
     assert response.status_code == HTTPStatus.OK
     parsed = msgspec.convert(response.json(), type=EnumsPayload)
     assert 'RunStatus' in parsed.enums
+    assert 'ChannelResearchStatus' in parsed.enums
+    assert 'ChannelResearchKind' in parsed.enums
+    assert 'VisualMedium' in parsed.enums
     assert 'CandidateStatus' in parsed.enums
     assert len(parsed.enums['RunStatus']) > 0

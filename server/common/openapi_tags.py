@@ -13,6 +13,7 @@ YOUTUBE: Final = 'YouTube'
 ASSETS: Final = 'Assets'
 PROMPTS: Final = 'Prompts'
 IDEAS: Final = 'Ideas'
+CHANNEL_RESEARCH: Final = 'Channel Research'
 PIPELINE_RUNS: Final = 'Pipeline Runs'
 PIPELINE_REVIEW: Final = 'Pipeline Review'
 PIPELINE_CAST: Final = 'Pipeline Cast'
@@ -33,6 +34,7 @@ ALL_TAGS: Final = (
     ASSETS,
     PROMPTS,
     IDEAS,
+    CHANNEL_RESEARCH,
     PIPELINE_RUNS,
     PIPELINE_REVIEW,
     PIPELINE_CAST,
@@ -74,6 +76,12 @@ TAG_DEFINITIONS: Final = (
     Tag(
         name=IDEAS,
         description='Topic ideation backlog and niche idea generation.',
+    ),
+    Tag(
+        name=CHANNEL_RESEARCH,
+        description=(
+            'YouTube channel research jobs, dossiers, and ChannelSpec JSON.'
+        ),
     ),
     Tag(
         name=PIPELINE_RUNS,

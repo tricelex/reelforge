@@ -18,6 +18,9 @@ _TAGGED_OPERATIONS: Final = {
     '/api/enums/': {'get': 'Enums'},
     '/api/dashboard/': {'get': 'Analytics'},
     '/api/ideas/': {'get': 'Ideas'},
+    '/api/channel-research/': {'get': 'Channel Research'},
+    '/api/channel-research/validate-spec/': {'post': 'Channel Research'},
+    '/api/channel-research/import/': {'post': 'Channel Research'},
     '/api/runs/': {'post': 'Pipeline Runs'},
     '/api/runs/{run_id}/events/': {'get': 'Pipeline Runs'},
     '/api/runs/{run_id}/storyboard/': {'get': 'Pipeline Review'},
@@ -74,7 +77,9 @@ def _find_untagged_operations(schema: dict[str, Any]) -> list[str]:
 def test_openapi_root_tag_definitions(client: Client) -> None:
     """Root-level tag definitions include every known tag with descriptions."""
     schema = _load_openapi_schema(client)
-    root_tags = {item['name']: item.get('description', '') for item in schema['tags']}
+    root_tags = {
+        item['name']: item.get('description', '') for item in schema['tags']
+    }
     assert set(root_tags) == set(ALL_TAGS)
     assert all(description for description in root_tags.values())
 
@@ -127,6 +132,53 @@ def test_openapi_source_frame_has_time_sec_query_param(client: Client) -> None:
         if p.get('in') == 'query'
     }
     assert 'time_sec' in param_names
+
+
+@pytest.mark.django_db
+def test_openapi_channel_research_list_has_query_params(client: Client) -> None:
+    """List jobs GET documents status, cursor, and limit query params."""
+    schema = _load_openapi_schema(client)
+    operation = schema['paths']['/api/channel-research/']['get']
+    param_names = {
+        p['name']
+        for p in operation.get('parameters', [])
+        if p.get('in') == 'query'
+    }
+    assert {'status', 'cursor', 'limit'} <= param_names
+
+
+@pytest.mark.django_db
+def test_openapi_channel_spec_payload_is_nested(client: Client) -> None:
+    """ChannelSpecPayload is a named schema with the onboarding fields."""
+    schema = _load_openapi_schema(client)
+    components = schema.get('components', {}).get('schemas', {})
+    spec = components.get('ChannelSpecPayload', {})
+    props = spec.get('properties', {})
+    expected = {
+        'channel',
+        'niche',
+        'story_format',
+        'prompt_templates',
+        'branding',
+        'assembly_style',
+        'footage_sourcing',
+        'character',
+        'seed_ideas',
+        'post_import_notes',
+    }
+    assert expected <= set(props)
+    report = components.get('ResearchReportPayload', {})
+    report_props = report.get('properties', {})
+    assert 'visual_medium' in report_props
+    medium = report_props['visual_medium']
+    enum_values = set(medium.get('enum', []))
+    assert '2d_animation' in enum_values
+    assert 'photoreal' in enum_values
+    job = components.get('ChannelResearchJobPayload', {})
+    job_props = job.get('properties', {})
+    spec_ref = str(job_props.get('channel_spec', {}))
+    assert 'ChannelSpecPayload' in spec_ref or 'null' in spec_ref.lower()
+    assert '/api/channel-research/validate-spec/' in schema['paths']
 
 
 @pytest.mark.django_db

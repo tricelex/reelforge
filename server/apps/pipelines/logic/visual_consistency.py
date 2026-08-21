@@ -12,6 +12,17 @@ FLUX_DEV: Final = 'fal-ai/flux/dev'
 KONTEXT: Final = 'fal-ai/flux-pro/kontext'
 KONTEXT_MULTI: Final = 'fal-ai/flux-pro/kontext/multi'
 
+_ESTABLISHING_BY_MEDIUM: Final[dict[str, str]] = {
+    '2d_animation': 'flat-color 2D animation still, locked lighting',
+    '3d_cgi': '3D CGI still, locked lighting',
+    'motion_graphics': 'motion-graphics still, locked lighting',
+    'photoreal': 'photorealistic documentary still, locked lighting',
+    'live_action_stock': (
+        'photorealistic documentary still, locked lighting'
+    ),
+    'mixed': 'mixed-media still, locked lighting',
+}
+
 
 class ImageRoute(NamedTuple):
     """Which Flux endpoint to call and which reference URLs to send."""
@@ -23,15 +34,17 @@ class ImageRoute(NamedTuple):
 
 def build_visual_lock_prefix(
     *,
-    lore: str,
+    lore: str = '',
+    visual_bible: str = '',
     angle: str,
     setting: str,
     appearance: str,
 ) -> str:
     """Frozen tokens prepended to every Flux prompt in code."""
     parts: list[str] = []
-    if lore.strip():
-        parts.append(f'Style lock: {lore.strip()}')
+    style = visual_bible.strip() or lore.strip()
+    if style:
+        parts.append(f'Style lock: {style}')
     if angle.strip():
         parts.append(f'Channel angle: {angle.strip()}')
     if setting.strip():
@@ -48,6 +61,59 @@ def build_visual_lock_prefix(
         'and subject action.',
     )
     return '\n'.join(parts)
+
+
+def establishing_shot_prompt(setting: str, visual_medium: str) -> str:
+    """Medium-specific wide establishing still prompt."""
+    style = _ESTABLISHING_BY_MEDIUM.get(
+        visual_medium,
+        'cinematic still, locked lighting',
+    )
+    return (
+        f'Wide establishing shot of {setting}, cinematic 16:9, {style}'
+    )
+
+
+def merge_style_negatives(
+    negative: str,
+    style_negatives: list[str],
+) -> str:
+    """Append niche style negatives without duplicating tokens."""
+    extras = [item.strip() for item in style_negatives if item.strip()]
+    if not extras:
+        return negative
+    extra = ', '.join(extras)
+    if extra in negative:
+        return negative
+    if negative.strip():
+        return f'{negative}, {extra}'
+    return extra
+
+
+def _as_text(value: object) -> str:
+    return value if isinstance(value, str) else ''
+
+
+def niche_style_fields(
+    niche: object | None,
+) -> tuple[str, str, str, list[str]]:
+    """Return style lock, angle, visual_medium, style_negatives.
+
+    Style lock prefers visual_bible and falls back to lore_document.
+    """
+    if niche is None:
+        return '', '', '', []
+    bible = _as_text(getattr(niche, 'visual_bible', ''))
+    lore = _as_text(getattr(niche, 'lore_document', ''))
+    angle = _as_text(getattr(niche, 'angle', ''))
+    medium = _as_text(getattr(niche, 'visual_medium', ''))
+    raw = getattr(niche, 'style_negatives', None)
+    negatives = (
+        [str(item) for item in raw if isinstance(item, str)]
+        if isinstance(raw, list)
+        else []
+    )
+    return bible.strip() or lore.strip(), angle, medium, negatives
 
 
 def apply_visual_lock(

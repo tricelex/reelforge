@@ -22,8 +22,9 @@ if TYPE_CHECKING:
 _AGENT_BUFFER = 2
 _SYSTEM_PROMPT = (
     'You are an expert YouTube content strategist for longform educational '
-    'channels. Propose distinct video ideas that fit the niche, avoid overlap '
-    'with recent topics, and respect banned topics. For remix mode, steal '
+    "channels. Propose distinct video ideas that fit this channel's FORMAT "
+    'CONTRACT. Do not invent a new show, format, or genre. Avoid overlap '
+    'with recent topics and respect banned topics. For remix mode, steal '
     'structure and hook patterns from the source — do not paraphrase the '
     'transcript. Each idea needs a clear differentiation angle. Return JSON '
     'with an "ideas" array.'
@@ -39,15 +40,33 @@ def _agent(model: str) -> Agent[None, IdeationOutput]:
     )
 
 
+def _format_contract_lines(context: 'IdeationContext') -> list[str]:
+    """Lock ideation to the channel's existing show format."""
+    format_name = context.format_name or '(unnamed format)'
+    angle = context.angle or 'educational'
+    lines = [
+        '',
+        'FORMAT CONTRACT — every title and topic must fit this show.',
+        'Do not propose a different show, format, hook grammar, or genre.',
+        f'Story format: {format_name}',
+        f'Channel angle: {angle}',
+    ]
+    if context.lore_document:
+        lore = context.lore_document[:2000]
+        lines.append(f'Channel lore (format + voice):\n{lore}')
+    if context.visual_medium:
+        lines.append(
+            'Do not propose a different visual format than '
+            f'{context.visual_medium}.',
+        )
+    return lines
+
+
 def _context_lines(context: 'IdeationContext') -> list[str]:
     """Header lines describing the niche configuration."""
-    lines: list[str] = []
-    if context.format_name:
-        lines.append(f'Story format: {context.format_name}')
+    lines = _format_contract_lines(context)
     if context.performance_notes:
         lines.append(f'Performance history: {context.performance_notes}')
-    if context.lore_document:
-        lines.append(f'Channel lore:\n{context.lore_document[:2000]}')
     if context.banned_topics:
         banned = json.dumps(context.banned_topics)
         lines.append(f'Never propose topics touching: {banned}')
@@ -110,9 +129,13 @@ def _build_prompt(
     if source is not None:
         lines.extend(_source_lines(source))
     else:
-        lines.append(
-            'NICHE-ONLY MODE — invent fresh angles from audience and angle.',
-        )
+        lines.extend((
+            'NICHE-ONLY MODE — propose new episodes of this existing show.',
+            (
+                'Every title and topic must fit the FORMAT CONTRACT. '
+                'Do not invent a new show.'
+            ),
+        ))
         if outliers:
             lines.extend(_trending_lines(outliers))
 

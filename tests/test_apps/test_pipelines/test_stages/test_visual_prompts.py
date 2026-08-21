@@ -409,9 +409,10 @@ def test_lock_prompt_without_scene_still_applies_lore() -> None:
     locked = _lock_prompt(
         prompt=prompt,
         scene=None,
-        lore='cinematic',
+        visual_bible='cinematic',
         angle='',
         appearance_by_name={},
+        style_negatives=[],
     )
     assert 'cinematic' in locked.prompt
     unchanged = _attach_character_ref(locked, None, {})

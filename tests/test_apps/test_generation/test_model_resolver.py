@@ -45,6 +45,10 @@ def test_resolve_model_uses_stage_default() -> None:
         assert resolve_model('script', None) == STAGE_MODEL_DEFAULTS['script']
 
 
+def test_channel_research_stage_default_is_opus() -> None:
+    assert STAGE_MODEL_DEFAULTS['channel_research'] == 'claude-opus-4-8'
+
+
 def test_resolve_model_global_fallback() -> None:
     assert resolve_model('unknown_stage', None) == DEFAULT_LLM_MODEL
 
