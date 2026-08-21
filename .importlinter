@@ -39,6 +39,10 @@ ignore_imports =
   # library whose sole consumer is pipeline stages — cross-app by design)
   server.apps.pipelines.stages.research -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.research -> server.apps.generation.clients.search
+  # Channel research agent uses generation clients (same provider-library pattern)
+  server.apps.channel_research.agent -> server.apps.generation.clients.search
+  server.apps.channel_research.agent -> server.apps.generation.clients.dataforseo
+  server.apps.channel_research.agent -> server.apps.generation.clients.youtube_search
   server.apps.pipelines.stages.outline -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm
@@ -159,6 +163,7 @@ ignore_imports =
   server.apps.core.selectors -> server.apps.channels.models
   server.apps.core.selectors -> server.apps.pipelines.models
   server.apps.core.selectors -> server.apps.publishing.models
+  server.apps.core.selectors -> server.apps.channel_research.logic.constants
   # App API views import require_operator from core.auth for role enforcement
   server.apps.assets.api.views -> server.apps.core.auth
   server.apps.channels.api.views -> server.apps.core.auth
@@ -166,6 +171,7 @@ ignore_imports =
   server.apps.clips.api.campaign_views -> server.apps.core.auth
   server.apps.clips.api.source_views -> server.apps.core.auth
   server.apps.ideas.api.views -> server.apps.core.auth
+  server.apps.channel_research.api.views -> server.apps.core.auth
   server.apps.pipelines.api.cast_views -> server.apps.core.auth
   server.apps.pipelines.api.review_views -> server.apps.core.auth
   server.apps.pipelines.api.views -> server.apps.core.auth
@@ -224,6 +230,9 @@ source_modules =
 
 forbidden_modules =
   server.services
+
+ignore_imports =
+  server.apps.channel_research.api.views -> server.services.channel_spec_importer
 
 
 [importlinter:contract:server-can-import-settings-directly]

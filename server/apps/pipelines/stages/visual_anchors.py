@@ -14,6 +14,9 @@ from server.apps.pipelines.logic.visual_consistency import (
     FLUX_DEV,
     apply_visual_lock,
     build_visual_lock_prefix,
+    establishing_shot_prompt,
+    merge_style_negatives,
+    niche_style_fields,
 )
 from server.apps.pipelines.stages.base import (
     Stage,
@@ -22,20 +25,15 @@ from server.apps.pipelines.stages.base import (
 )
 
 
-def _niche_bits(channel: object) -> tuple[str, str]:
-    """Lore and angle used to lock establishing shots."""
+def _niche_bits(channel: object) -> tuple[str, str, str, list[str]]:
+    """Style lock, angle, medium, and negatives from NicheConfig."""
     from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
 
     try:
         niche = getattr(channel, 'niche_config', None)
     except ObjectDoesNotExist:
-        return '', ''
-    if niche is None:
-        return '', ''
-    return (
-        str(getattr(niche, 'lore_document', '') or ''),
-        str(getattr(niche, 'angle', '') or ''),
-    )
+        return '', '', '', []
+    return niche_style_fields(niche)
 
 
 @register_stage
@@ -52,27 +50,25 @@ class VisualAnchorsStage(Stage):
         """One wide establishing shot per unique setting, capped."""
         scenes = ctx.upstream.get('scene_breakdown', {}).get('scenes', [])
         keys = select_anchor_settings(scenes, max_anchors=MAX_SETTING_ANCHORS)
-        lore, angle = _niche_bits(ctx.channel)
+        style, angle, medium, negatives = _niche_bits(ctx.channel)
         model = str(ctx.config.get('model') or FLUX_DEV)
         anchors: list[dict[str, Any]] = []
         for offset, setting in enumerate(keys):
             prefix = build_visual_lock_prefix(
-                lore=lore,
+                visual_bible=style,
                 angle=angle,
                 setting=setting,
                 appearance='',
             )
-            prompt, _negative = apply_visual_lock(
-                (
-                    f'Wide establishing shot of {setting}, cinematic 16:9, '
-                    'photorealistic documentary still, locked lighting'
-                ),
+            prompt, negative = apply_visual_lock(
+                establishing_shot_prompt(setting, medium),
                 prefix=prefix,
-                negative='',
+                negative=merge_style_negatives('', negatives),
             )
             result = await fal_client.generate_image(
                 prompt=prompt,
                 model=model,
+                negative_prompt=negative,
                 width=1920,
                 height=1080,
             )

@@ -268,11 +268,21 @@ async def build_prompt_variables(
     except ObjectDoesNotExist:
         niche = None
     wpm = _as_int(getattr(ctx.channel, 'wpm', 158), 158)
+    bible = getattr(niche, 'visual_bible', '') if niche else ''
+    medium = getattr(niche, 'visual_medium', '') if niche else ''
+    raw_negatives = (
+        getattr(niche, 'style_negatives', None) if niche else None
+    )
     variables: dict[str, Any] = {
         'topic': ctx.run.topic,
         'channel': _channel_dict(ctx.channel),
         'niche': _niche_dict(ctx.channel),
         'lore': getattr(niche, 'lore_document', '') if niche else '',
+        'visual_bible': bible if isinstance(bible, str) else '',
+        'visual_medium': medium if isinstance(medium, str) else '',
+        'style_negatives': (
+            list(raw_negatives) if isinstance(raw_negatives, list) else []
+        ),
         'format': _default_format(ctx.channel),
         'upstream': ctx.upstream,
         'config': ctx.config,

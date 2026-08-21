@@ -78,6 +78,7 @@ services:
       server.apps.assets.tasks
       server.apps.clips.tasks_api
       server.apps.pipelines.tasks_api
+      server.apps.channel_research.tasks
       server.apps.analytics.tasks
       --workers ${TASKIQ_API_WORKERS:-1}
       --max-async-tasks ${TASKIQ_API_MAX_ASYNC_TASKS:-4}

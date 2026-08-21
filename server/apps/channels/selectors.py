@@ -265,4 +265,8 @@ def get_niche_config(channel_id: str) -> NicheConfigPayload:
         angle=niche.angle,
         banned_topics=list(niche.banned_topics),
         lore_document=niche.lore_document,
+        visual_bible=niche.visual_bible,
+        visual_medium=niche.visual_medium,
+        style_tokens=list(niche.style_tokens),
+        style_negatives=list(niche.style_negatives),
     )

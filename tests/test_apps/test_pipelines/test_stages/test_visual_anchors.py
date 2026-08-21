@@ -205,3 +205,49 @@ def test_visual_anchors_none_niche_skips_lore() -> None:
     result = asyncio.run(_inner())
     assert fal_mock.await_count == 1
     assert result['anchors'][0]['setting'] == 'harbor'  # type: ignore[index]
+
+
+def test_visual_anchors_2d_medium_avoids_photoreal() -> None:
+    """2d_animation establishing shots are flat-color stills, not photoreal."""
+    import httpx
+
+    ctx = _make_ctx()
+    ctx.channel.niche_config.visual_bible = 'flat-color 2D bible'
+    ctx.channel.niche_config.lore_document = 'script lore should not appear'
+    ctx.channel.niche_config.visual_medium = '2d_animation'
+    ctx.channel.niche_config.style_negatives = ['photorealistic']
+    ctx.upstream['scene_breakdown']['scenes'] = [
+        {'idx': 0, 'setting': 'Harbor'},
+    ]
+    fal_mock = AsyncMock(
+        return_value={
+            'url': 'https://fal.ai/est.jpg',
+            'seed': 2,
+            'content_policy_violation': False,
+        },
+    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.content = b'jpg'
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.fal.generate_image',
+                new=fal_mock,
+            ),
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+        ):
+            return await VisualAnchorsStage().run(ctx)
+
+    asyncio.run(_inner())
+    prompt = fal_mock.await_args_list[0].kwargs['prompt']
+    negative = fal_mock.await_args_list[0].kwargs['negative_prompt']
+    assert 'flat-color 2D' in prompt
+    assert 'photorealistic documentary' not in prompt
+    assert 'flat-color 2D bible' in prompt
+    assert 'script lore' not in prompt
+    assert 'photorealistic' in negative

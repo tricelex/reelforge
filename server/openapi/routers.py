@@ -10,6 +10,7 @@ from dmr.routing import Router, path
 from server.apps.analytics.api import root_urls as analytics_root_urls
 from server.apps.analytics.api import urls as analytics_api_urls
 from server.apps.assets.api import urls as assets_api_urls
+from server.apps.channel_research.api import urls as channel_research_api_urls
 from server.apps.channels.api import urls as channels_api_urls
 from server.apps.clips.api import urls as clips_api_urls
 from server.apps.core.api import enums_urls as core_enums_urls
@@ -23,6 +24,7 @@ from server.common.openapi_tags import (
     AUTH,
     BLUEPRINTS,
     CAMPAIGNS,
+    CHANNEL_RESEARCH,
     CHANNELS,
     CHARACTERS,
     CLIP_CONFIG,
@@ -62,6 +64,11 @@ def build_tagged_routers() -> tuple[Router, ...]:
         Router('api/', assets_api_urls.urlpatterns, tags=[ASSETS]),
         Router('api/', prompts_api_urls.urlpatterns, tags=[PROMPTS]),
         Router('api/', ideas_api_urls.urlpatterns, tags=[IDEAS]),
+        Router(
+            'api/',
+            channel_research_api_urls.urlpatterns,
+            tags=[CHANNEL_RESEARCH],
+        ),
         Router(
             'api/',
             pipelines_api_urls.run_urlpatterns,
@@ -123,6 +130,13 @@ def build_api_router() -> Router:
             path('', include(assets_api_urls, namespace='assets_api')),
             path('', include(prompts_api_urls, namespace='prompts_api')),
             path('', include(ideas_api_urls, namespace='ideas_api')),
+            path(
+                '',
+                include(
+                    channel_research_api_urls,
+                    namespace='channel_research_api',
+                ),
+            ),
             path('', include(pipelines_api_urls, namespace='pipelines_api')),
             path('', include(clips_api_urls, namespace='clips')),
         ],

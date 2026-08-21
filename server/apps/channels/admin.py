@@ -161,7 +161,13 @@ class NicheConfigAdmin(ReelForgeAdmin):
     ) -> type[Any]:
         """Use ArrayWidget with no preset choices for banned topics."""
         form = super().get_form(request, obj, change=change, **kwargs)
-        form.base_fields['banned_topics'].widget = ArrayWidget()
+        array_fields = (
+            'banned_topics',
+            'style_tokens',
+            'style_negatives',
+        )
+        for field_name in array_fields:
+            form.base_fields[field_name].widget = ArrayWidget()
         return form  # type: ignore[no-any-return]
 
 

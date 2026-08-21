@@ -78,6 +78,8 @@ def test_build_prompt_includes_niche_and_remix_fields() -> None:
 
     niche_prompt = _build_prompt(context, None, count=3)
     assert 'NICHE-ONLY MODE' in niche_prompt
+    assert 'invent fresh angles' not in niche_prompt
+    assert 'FORMAT CONTRACT' in niche_prompt
     assert 'epic_doc' in niche_prompt
     assert 'Lore doc' in niche_prompt
 
@@ -125,6 +127,7 @@ def test_build_prompt_omits_trending_block_when_no_outliers() -> None:
     )
     prompt = _build_prompt(context, None, count=3, outliers=None)
     assert 'TRENDING IN YOUR NICHE' not in prompt
+    assert 'invent fresh angles' not in prompt
 
 
 def test_run_ideation_agent_delegates_to_cached_agent() -> None:
@@ -199,6 +202,38 @@ def test_build_ideation_context_includes_performance_notes(
     assert (
         '55.0%' in context.performance_notes
         or '55.0' in context.performance_notes
+    )
+
+
+def test_build_prompt_does_not_invent_a_new_show() -> None:
+    context = IdeationContext(
+        audience='history buffs',
+        angle='ancient empires',
+        lore_document='FORMAT CONTRACT lives here',
+        banned_topics=[],
+        format_name='whiteboard_explainer',
+        existing_topics=set(),
+    )
+    prompt = _build_prompt(context, None, count=3)
+    assert 'invent fresh angles' not in prompt
+    assert 'FORMAT CONTRACT' in prompt
+    assert 'Do not invent a new show' in prompt
+
+
+def test_build_prompt_locks_visual_medium() -> None:
+    """Ideation keeps the niche visual medium; it does not invent a new one."""
+    context = IdeationContext(
+        audience='history buffs',
+        angle='ancient empires',
+        lore_document='FORMAT CONTRACT lives here',
+        banned_topics=[],
+        format_name='whiteboard_explainer',
+        existing_topics=set(),
+        visual_medium='2d_animation',
+    )
+    prompt = _build_prompt(context, None, count=3)
+    assert 'Do not propose a different visual format than 2d_animation' in (
+        prompt
     )
 
 

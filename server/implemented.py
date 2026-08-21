@@ -77,6 +77,12 @@ def _inject_ideas(container: Container) -> None:
     container.register(IdeationService, scope=Scope.singleton)
 
 
+def _inject_channel_research(container: Container) -> None:
+    from server.apps.channel_research.services import ChannelResearchService
+
+    container.register(ChannelResearchService, scope=Scope.singleton)
+
+
 def _inject_campaigns(container: Container) -> None:
     from server.apps.clips.brand_template_services import (
         ClipBrandTemplateService,
@@ -97,5 +103,6 @@ def populate_dependencies(container: Container) -> Container:
     _inject_assets(container)
     _inject_prompts(container)
     _inject_ideas(container)
+    _inject_channel_research(container)
     _inject_campaigns(container)
     return container

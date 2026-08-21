@@ -524,3 +524,57 @@ def test_image_gen_ignores_character_ref_when_flag_off() -> None:
     assert fal_mock.await_args.kwargs['image_url'] == (
         'https://cdn.example/forum.jpg'
     )
+
+
+def test_image_gen_merges_channel_style_negatives() -> None:
+    """Niche style_negatives are merged into the fal negative_prompt."""
+    import httpx
+
+    ctx = _make_ctx(n_scenes=1)
+    niche = MagicMock()
+    niche.visual_bible = 'flat-color 2D'
+    niche.lore_document = ''
+    niche.angle = ''
+    niche.visual_medium = '2d_animation'
+    niche.style_negatives = ['photorealistic', 'live action']
+    ctx.channel.niche_config = niche
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'p'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'prompt': 'Harbor still',
+        'negative_prompt': 'cars',
+        'safety_flagged': False,
+        'character_ref_id': None,
+        'setting_anchor_url': None,
+    }
+    fal_mock = AsyncMock(
+        return_value={
+            'url': 'https://fal.ai/out.jpg',
+            'seed': 1,
+            'content_policy_violation': False,
+        },
+    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.content = b'jpg'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.generation.clients.fal.generate_image',
+                new=fal_mock,
+            ),
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+        ):
+            await ImageGenStage().run(ctx)
+
+    asyncio.run(_inner())
+    assert fal_mock.await_args is not None
+    negative = fal_mock.await_args.kwargs['negative_prompt']
+    assert 'cars' in negative
+    assert 'photorealistic' in negative
+    assert 'live action' in negative

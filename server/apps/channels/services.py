@@ -267,6 +267,10 @@ class ChannelService:
                 angle=payload.niche.angle,
                 banned_topics=payload.niche.banned_topics or [],
                 lore_document=payload.niche.lore_document,
+                visual_bible=payload.niche.visual_bible,
+                visual_medium=payload.niche.visual_medium,
+                style_tokens=payload.niche.style_tokens or [],
+                style_negatives=payload.niche.style_negatives or [],
             )
         return get_channel_detail(str(channel.id))
 
@@ -402,7 +406,16 @@ class ChannelService:
         update_fields = _apply_patch_fields(
             niche,
             payload,
-            ('audience', 'angle', 'banned_topics', 'lore_document'),
+            (
+                'audience',
+                'angle',
+                'banned_topics',
+                'lore_document',
+                'visual_bible',
+                'visual_medium',
+                'style_tokens',
+                'style_negatives',
+            ),
         )
         if payload.format_id is not None:
             niche.format_id = (

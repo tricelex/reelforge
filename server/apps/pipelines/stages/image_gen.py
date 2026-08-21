@@ -11,6 +11,8 @@ from server.apps.pipelines.logic.scene_density import normalize_setting
 from server.apps.pipelines.logic.visual_consistency import (
     FLUX_DEV,
     is_kontext_model,
+    merge_style_negatives,
+    niche_style_fields,
     resolve_image_route,
 )
 from server.apps.pipelines.stages.base import (
@@ -80,6 +82,18 @@ def _prepare_kontext_prompt(prompt: str, negative: str) -> tuple[str, str]:
     return prepared, ''
 
 
+def _channel_style_negatives(channel: object) -> list[str]:
+    """Niche style_negatives, empty when the channel has no niche."""
+    from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
+
+    try:
+        niche = getattr(channel, 'niche_config', None)
+    except ObjectDoesNotExist:
+        return []
+    _style, _angle, _medium, negatives = niche_style_fields(niche)
+    return negatives
+
+
 @register_stage
 class ImageGenStage(Stage):
     """Stage 6: generate one image per scene (fan-out)."""
@@ -115,7 +129,10 @@ class ImageGenStage(Stage):
         snap = ctx.execution.input_snapshot
         scene_idx: int = snap['scene_idx']
         prompt: str = snap['prompt']
-        negative: str = snap.get('negative_prompt', '')
+        negative: str = merge_style_negatives(
+            snap.get('negative_prompt', ''),
+            _channel_style_negatives(ctx.channel),
+        )
         safety_flagged: bool = snap.get('safety_flagged', False)
 
         if safety_flagged:
