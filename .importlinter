@@ -48,6 +48,8 @@ ignore_imports =
   server.apps.channel_research.agent -> server.apps.nexlev.services
   server.apps.channel_research.logic.value_objects -> server.apps.nexlev.logic.value_objects
   server.apps.channel_research.selectors -> server.apps.nexlev.logic.value_objects
+  server.apps.channel_research.tasks -> server.apps.nexlev.services
+  server.apps.channel_research.tasks -> server.apps.nexlev.logic.value_objects
   server.apps.pipelines.stages.outline -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm

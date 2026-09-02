@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 from server.apps.channel_research.logic.constants import (
     ChannelResearchKind,
     ChannelResearchStatus,
+    DeepAnalysisStatus,
 )
 from server.apps.channel_research.logic.schemas import (
     ChannelSpecModel,
@@ -23,6 +24,7 @@ from server.apps.channel_research.logic.value_objects import (
     ChannelResearchListPayload,
     ChannelResearchSpecPatchPayload,
     ChannelSpecPayload,
+    ChannelSpecSeedIdeaPayload,
     ChannelSpecValidateResultPayload,
 )
 from server.apps.channel_research.models import ChannelResearchJob
@@ -39,6 +41,17 @@ _RETRYABLE_STATUSES = frozenset({
     ChannelResearchStatus.FAILED,
     ChannelResearchStatus.SUCCEEDED,
 })
+_DEEP_ANALYSIS_APPLICABLE_STATUSES = frozenset({
+    DeepAnalysisStatus.SUCCEEDED,
+})
+_MAX_MERGED_SEED_IDEAS = 12
+
+
+def _validate_source_channel_id(job: ChannelResearchJob) -> str:
+    if not job.source_channel_id:
+        msg = 'source_channel_id is required before Deep Analysis can run'
+        raise ValidationError(msg)
+    return job.source_channel_id
 
 
 def _validate_source_url(url: str) -> str:
@@ -192,4 +205,53 @@ class ChannelResearchService:
         _reset_outputs(job)
         job.save()
         _enqueue(job)
+        return job_to_payload(job)
+
+    def trigger_deep_analysis(self, job_id: str) -> ChannelResearchJobPayload:
+        """Kick off NexLev's async Deep Analysis job for this channel."""
+        job = ChannelResearchJob.objects.get(id=uuid.UUID(job_id))
+        _validate_source_channel_id(job)
+        job.deep_analysis_status = DeepAnalysisStatus.RUNNING
+        job.deep_analysis_error_message = ''
+        job.save(
+            update_fields=[
+                'deep_analysis_status',
+                'deep_analysis_error_message',
+                'updated_at',
+            ],
+        )
+        from server.apps.channel_research.tasks import (  # noqa: PLC0415
+            run_deep_analysis_task,
+        )
+
+        kiq_task(run_deep_analysis_task, str(job.id))
+        return job_to_payload(job)
+
+    def apply_suggested_topics(
+        self,
+        job_id: str,
+    ) -> ChannelResearchJobPayload:
+        """Merge NexLev's suggested_topics into channel_spec.seed_ideas."""
+        job = ChannelResearchJob.objects.get(id=uuid.UUID(job_id))
+        if job.deep_analysis_status not in _DEEP_ANALYSIS_APPLICABLE_STATUSES:
+            msg = (
+                'deep_analysis must be SUCCEEDED before applying suggested'
+                ' topics'
+            )
+            raise ValidationError(msg)
+        result = job.deep_analysis_result or {}
+        topics = result.get('suggested_topics', [])
+        existing = list(job.channel_spec.get('seed_ideas', []))
+        new_ideas = [
+            msgspec.to_builtins(
+                ChannelSpecSeedIdeaPayload(
+                    title=topic['title'][:200],
+                    topic=topic.get('description', ''),
+                ),
+            )
+            for topic in topics
+        ]
+        merged = (existing + new_ideas)[:_MAX_MERGED_SEED_IDEAS]
+        job.channel_spec = {**job.channel_spec, 'seed_ideas': merged}
+        job.save(update_fields=['channel_spec', 'updated_at'])
         return job_to_payload(job)
