@@ -15,12 +15,16 @@ from server.apps.nexlev.logic import constants
 from server.apps.nexlev.logic.staleness import is_stale
 from server.apps.nexlev.logic.value_objects import (
     NexLevChannelAbout,
+    NexLevChannelAnalysisResult,
     NexLevChannelAnalytics,
     NexLevComment,
     NexLevNicheOverview,
     NexLevOutlierVideo,
+    NexLevScriptStage,
     NexLevSearchResultItem,
     NexLevSimilarChannel,
+    NexLevSuggestedTopic,
+    NexLevTitleFormatGroup,
     NexLevTranscriptSegment,
     NexLevVideoDetails,
 )
@@ -353,3 +357,74 @@ class NexLevService:
         )
         await sync_to_async(_upsert_search_cache_entry)(cache_key, raw)
         return msgspec.convert(raw, type=list[NexLevSearchResultItem])
+
+    async def create_channel_analysis_job(self, channel_id: str) -> str:
+        """Kick off NexLev's async Deep Analysis job.
+
+        Always live — never staleness-checked, since this is an explicit
+        operator action.
+        """
+        return await nexlev_client.create_channel_analysis_job(
+            channel_id,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+        )
+
+    async def get_channel_analysis_result(
+        self,
+        nexlev_job_id: str,
+        channel_id: str,
+    ) -> NexLevChannelAnalysisResult | None:
+        """Poll one Deep Analysis job; store the result once completed."""
+        raw = await nexlev_client.get_channel_analysis_result(
+            nexlev_job_id,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+        )
+        if raw is None:
+            return None
+        insights = raw['result']['strategic_insights']
+        result = NexLevChannelAnalysisResult(
+            suggested_topics=[
+                NexLevSuggestedTopic(
+                    title=item['title'],
+                    description=item.get('description', ''),
+                )
+                for item in insights['suggested_topics']['topics']
+            ],
+            script_blueprint=[
+                NexLevScriptStage(
+                    stage=item['stage'],
+                    purpose=item.get('purpose', ''),
+                    recommended_length_seconds=item.get(
+                        'recommended_length_seconds',
+                        0,
+                    ),
+                    winning_formula=item.get('winning_formula', ''),
+                )
+                for item in insights['script_blueprint']['recommended_stages']
+            ],
+            title_format_groups=[
+                NexLevTitleFormatGroup(
+                    format_name=item['format_name'],
+                    format_description=item.get('format_description', ''),
+                    video_count=item.get('video_count', 0),
+                )
+                for item in insights['title_format_strategy']['format_groups']
+            ],
+        )
+        record = await sync_to_async(_get_or_create_channel_record)(
+            channel_id,
+        )
+        record.channel_analysis = msgspec.to_builtins(result)
+        record.channel_analysis_fetched_at = timezone.now()
+        record.quota_spent += constants.QUOTA_COST_CHANNEL_ANALYSIS_STATUS
+        await sync_to_async(_save_channel_record)(
+            record,
+            fields=[
+                'channel_analysis',
+                'channel_analysis_fetched_at',
+                'quota_spent',
+            ],
+        )
+        return result
