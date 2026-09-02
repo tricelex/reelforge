@@ -33,20 +33,9 @@ jobs:
       - name: Checkout Code Repository
         uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and cache web image
-        uses: docker/bake-action@v6
-        with:
-          push: false
-          load: true
-          files: docker-compose.yml
-          targets: web
-          set: |
-            web.cache-from=type=gha,scope=web-cached-tests
-            web.cache-to=type=gha,scope=web-cached-tests,mode=max
-
+      # docker-compose.yml's `web` service declares `env_file: ./config/.env`;
+      # bake parses the whole compose file (build args included) and fails
+      # if that path doesn't exist yet, so this must run before the build.
       - name: Write CI env file
         run: |
           mkdir -p config
@@ -62,6 +51,20 @@ jobs:
           DEBUG=False
           LOGFIRE_IGNORE_NO_CONFIG=1
           EOF
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and cache web image
+        uses: docker/bake-action@v6
+        with:
+          push: false
+          load: true
+          files: docker-compose.yml
+          targets: web
+          set: |
+            web.cache-from=type=gha,scope=web-cached-tests
+            web.cache-to=type=gha,scope=web-cached-tests,mode=max
 
       # Both of these are clean today — kept blocking so schema drift and
       # missing migrations fail the build.
