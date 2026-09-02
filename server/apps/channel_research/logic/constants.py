@@ -28,3 +28,12 @@ class VisualMedium(models.TextChoices):
     PHOTOREAL = 'photoreal', 'Photoreal'
     LIVE_ACTION_STOCK = 'live_action_stock', 'Live-action stock'
     MIXED = 'mixed', 'Mixed'
+
+
+class DeepAnalysisStatus(models.TextChoices):
+    """Lifecycle of the operator-triggered NexLev Deep Analysis action."""
+
+    NOT_STARTED = 'NOT_STARTED', 'Not started'
+    RUNNING = 'RUNNING', 'Running'
+    SUCCEEDED = 'SUCCEEDED', 'Succeeded'
+    FAILED = 'FAILED', 'Failed'

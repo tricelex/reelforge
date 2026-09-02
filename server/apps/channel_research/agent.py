@@ -6,6 +6,8 @@ from functools import lru_cache
 from typing import Any, final
 
 import attrs
+import msgspec
+from django.conf import settings
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
@@ -21,6 +23,7 @@ from server.apps.generation.logic.model_resolver import (
     resolve_model,
     to_pydantic_ai_model,
 )
+from server.apps.nexlev.services import NexLevService
 
 _MAX_TOKENS = 16384
 _REQUEST_LIMIT = 20
@@ -33,6 +36,9 @@ TOOL_CAPS: dict[str, int] = {
     'video_comments': 3,
     'video_subtitles': 2,
     'web_search': 4,
+    'channel_about': 1,
+    'channel_outliers': 1,
+    'similar_channels': 1,
 }
 
 _SYSTEM_PROMPT = """\
@@ -61,6 +67,9 @@ Inspect thumbnails, video_info, and a subtitle sample before classifying.
 Use tools with discipline:
 - resolve_channel exactly once
 - list_channel_videos up to twice (recent + popular)
+- channel_about once, for subscriber count and links
+- channel_outliers once, for the channel's best-performing videos
+- similar_channels once, for competitor/niche mapping
 - youtube_search for competitors/adjacent formats (cap 5)
 - video_info on the strongest videos (cap 8)
 - video_comments sparingly for audience language (cap 3)
@@ -267,7 +276,10 @@ def _register_tools(
         )
         return result
 
-    _register_dataforseo_tools(agent)
+    if settings.DATAFORSEO_ENABLED:
+        _register_dataforseo_tools(agent)
+    if settings.NEXLEV_ENABLED:
+        _register_nexlev_tools(agent)
     _register_web_search_tool(agent)
 
 
@@ -347,6 +359,135 @@ def _register_dataforseo_tools(
         ctx.deps.trace.record(
             'video_subtitles',
             {'video_id': video_id},
+            result,
+        )
+        return result
+
+
+def _register_nexlev_tools(
+    agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
+) -> None:
+    """Attach NexLev-backed YouTube data tools (replaces DataForSEO)."""
+    _register_nexlev_video_tools(agent)
+    _register_nexlev_channel_tools(agent)
+
+
+def _register_nexlev_video_tools(
+    agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
+) -> None:
+    """Attach NexLev's video-scoped tools (search, info, comments, subs)."""
+    service = NexLevService()
+
+    @agent.tool
+    async def youtube_search(
+        ctx: RunContext[ChannelResearchDeps],
+        keyword: str,
+    ) -> list[dict[str, Any]]:
+        """Search YouTube live via NexLev for videos and channels.
+
+        Use for competitors and adjacent formats. Cap 5 queries.
+        """
+        ctx.deps.trace.consume('youtube_search')
+        items = await service.search_youtube(keyword)
+        result = [msgspec.to_builtins(item) for item in items]
+        ctx.deps.trace.record('youtube_search', {'keyword': keyword}, result)
+        return result
+
+    @agent.tool
+    async def video_info(
+        ctx: RunContext[ChannelResearchDeps],
+        video_id: str,
+    ) -> dict[str, Any]:
+        """Fetch NexLev video metadata for one video_id. Cap 8."""
+        ctx.deps.trace.consume('video_info')
+        details = await service.get_video_details(video_id)
+        result: dict[str, Any] = msgspec.to_builtins(details)
+        ctx.deps.trace.record('video_info', {'video_id': video_id}, result)
+        return result
+
+    @agent.tool
+    async def video_comments(
+        ctx: RunContext[ChannelResearchDeps],
+        video_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch comment themes for audience language. Cap 3."""
+        ctx.deps.trace.consume('video_comments')
+        comments = await service.get_video_comments(video_id)
+        result = [msgspec.to_builtins(c) for c in comments]
+        ctx.deps.trace.record(
+            'video_comments',
+            {'video_id': video_id},
+            result,
+        )
+        return result
+
+    @agent.tool
+    async def video_subtitles(
+        ctx: RunContext[ChannelResearchDeps],
+        video_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch the transcript for pacing/format. Expensive - cap 2."""
+        ctx.deps.trace.consume('video_subtitles')
+        segments = await service.get_video_transcript(video_id)
+        result = [msgspec.to_builtins(s) for s in segments]
+        ctx.deps.trace.record(
+            'video_subtitles',
+            {'video_id': video_id},
+            result,
+        )
+        return result
+
+
+def _register_nexlev_channel_tools(
+    agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
+) -> None:
+    """Attach NexLev's channel-scoped tools (about, outliers, similar)."""
+    service = NexLevService()
+
+    @agent.tool
+    async def channel_about(
+        ctx: RunContext[ChannelResearchDeps],
+        channel_id: str,
+    ) -> dict[str, Any]:
+        """Fetch channel about-info (subs, description, links). Cap 1."""
+        ctx.deps.trace.consume('channel_about')
+        about = await service.get_channel_about(channel_id)
+        result: dict[str, Any] = msgspec.to_builtins(about)
+        ctx.deps.trace.record(
+            'channel_about',
+            {'channel_id': channel_id},
+            result,
+        )
+        return result
+
+    @agent.tool
+    async def channel_outliers(
+        ctx: RunContext[ChannelResearchDeps],
+        channel_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch the channel's highest-performing videos. Cap 1."""
+        ctx.deps.trace.consume('channel_outliers')
+        outliers = await service.get_channel_outliers(channel_id)
+        result = [msgspec.to_builtins(o) for o in outliers]
+        ctx.deps.trace.record(
+            'channel_outliers',
+            {'channel_id': channel_id},
+            result,
+        )
+        return result
+
+    @agent.tool
+    async def similar_channels(
+        ctx: RunContext[ChannelResearchDeps],
+        channel_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch channels similar to this one for competitor mapping. Cap 1."""
+        ctx.deps.trace.consume('similar_channels')
+        similar = await service.get_similar_channels(channel_id)
+        result = [msgspec.to_builtins(s) for s in similar]
+        ctx.deps.trace.record(
+            'similar_channels',
+            {'channel_id': channel_id},
             result,
         )
         return result
