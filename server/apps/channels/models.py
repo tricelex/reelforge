@@ -49,8 +49,12 @@ DEFAULT_ENABLED_PROVIDERS: Final[tuple[str, ...]] = (
 )
 
 
-def _default_enabled_providers() -> list[str]:
-    """Callable default for FootageSourcingConfig.enabled_providers."""
+def default_enabled_providers() -> list[str]:
+    """Callable default for FootageSourcingConfig.enabled_providers.
+
+    Not private: Django migrations serialize this by dotted import path,
+    so it must be a stable, importable module-level name.
+    """
     return list(DEFAULT_ENABLED_PROVIDERS)
 
 
@@ -179,7 +183,7 @@ class Channel(UUIDModel, TimeStampedModel):
             return FootageSourcingConfig(
                 channel=self,
                 id=None,
-                enabled_providers=_default_enabled_providers(),
+                enabled_providers=default_enabled_providers(),
             )
 
 
@@ -489,7 +493,7 @@ class FootageSourcingConfig(UUIDModel, TimeStampedModel):
     )
     enabled_providers = ArrayField(
         models.CharField(max_length=32),
-        default=_default_enabled_providers,
+        default=default_enabled_providers,
         blank=True,
         help_text='Ordered provider priority. Order is significant.',
     )
