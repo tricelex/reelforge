@@ -30,7 +30,8 @@ def test_channel_about_decodes_camel_case_json() -> None:
 
 
 def _patch_get(
-    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+    monkeypatch: pytest.MonkeyPatch,
+    response: httpx.Response,
 ) -> None:
     async def _fake_get(
         self: httpx.AsyncClient,
@@ -45,7 +46,8 @@ def _patch_get(
 
 
 def _patch_post(
-    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+    monkeypatch: pytest.MonkeyPatch,
+    response: httpx.Response,
 ) -> None:
     async def _fake_post(
         self: httpx.AsyncClient,
