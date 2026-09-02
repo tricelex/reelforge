@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.apps.channel_research.logic.constants import ChannelResearchStatus
+from server.apps.channel_research.logic.constants import (
+    ChannelResearchStatus,
+    DeepAnalysisStatus,
+)
 from server.apps.channel_research.logic.schemas import (
     ChannelResearchAgentOutput,
 )
@@ -16,8 +19,10 @@ from server.apps.channel_research.tasks import (
     _mark_running,
     _mark_succeeded,
     _run_channel_research,
+    _run_deep_analysis,
     run_channel_research_task,
 )
+from server.apps.nexlev.logic.value_objects import NexLevChannelAnalysisResult
 
 
 @pytest.mark.django_db
@@ -135,3 +140,88 @@ def test_run_channel_research_failure_marks_failed(
     ):
         asyncio.run(_run_channel_research(job_id))
     mock_fail.assert_called_once_with(job_id, 'provider down')
+
+
+@pytest.mark.django_db(transaction=True)
+def test_run_deep_analysis_stores_result_on_success(
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.source_channel_id = 'UC1'
+    research_job.save(update_fields=['source_channel_id'])
+    result = NexLevChannelAnalysisResult(
+        suggested_topics=[],
+        script_blueprint=[],
+        title_format_groups=[],
+    )
+
+    with (
+        patch(
+            'server.apps.channel_research.tasks.NexLevService'
+            '.create_channel_analysis_job',
+            new=AsyncMock(return_value='nexlev-job-1'),
+        ),
+        patch(
+            'server.apps.channel_research.tasks.NexLevService'
+            '.get_channel_analysis_result',
+            new=AsyncMock(return_value=result),
+        ),
+    ):
+        asyncio.run(_run_deep_analysis(str(research_job.id)))
+
+    research_job.refresh_from_db()
+    assert research_job.deep_analysis_status == DeepAnalysisStatus.SUCCEEDED
+    assert research_job.deep_analysis_job_id == 'nexlev-job-1'
+    assert research_job.deep_analysis_result == {
+        'suggested_topics': [],
+        'script_blueprint': [],
+        'title_format_groups': [],
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_run_deep_analysis_marks_failed_on_timeout(
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.source_channel_id = 'UC1'
+    research_job.save(update_fields=['source_channel_id'])
+
+    with (
+        patch(
+            'server.apps.channel_research.tasks.NexLevService'
+            '.create_channel_analysis_job',
+            new=AsyncMock(return_value='nexlev-job-1'),
+        ),
+        patch(
+            'server.apps.channel_research.tasks.NexLevService'
+            '.get_channel_analysis_result',
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            'server.apps.channel_research.tasks.asyncio.sleep',
+            new=AsyncMock(),
+        ),
+    ):
+        asyncio.run(_run_deep_analysis(str(research_job.id)))
+
+    research_job.refresh_from_db()
+    assert research_job.deep_analysis_status == DeepAnalysisStatus.FAILED
+    assert 'timed out' in research_job.deep_analysis_error_message
+
+
+@pytest.mark.django_db(transaction=True)
+def test_run_deep_analysis_marks_failed_on_exception(
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.source_channel_id = 'UC1'
+    research_job.save(update_fields=['source_channel_id'])
+
+    with patch(
+        'server.apps.channel_research.tasks.NexLevService'
+        '.create_channel_analysis_job',
+        new=AsyncMock(side_effect=RuntimeError('nexlev down')),
+    ):
+        asyncio.run(_run_deep_analysis(str(research_job.id)))
+
+    research_job.refresh_from_db()
+    assert research_job.deep_analysis_status == DeepAnalysisStatus.FAILED
+    assert 'nexlev down' in research_job.deep_analysis_error_message
