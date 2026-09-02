@@ -43,6 +43,9 @@ ignore_imports =
   server.apps.channel_research.agent -> server.apps.generation.clients.search
   server.apps.channel_research.agent -> server.apps.generation.clients.dataforseo
   server.apps.channel_research.agent -> server.apps.generation.clients.youtube_search
+  # Channel research agent uses NexLev as its YouTube data provider
+  # (same provider-library pattern as the generation clients above)
+  server.apps.channel_research.agent -> server.apps.nexlev.services
   server.apps.pipelines.stages.outline -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.script -> server.apps.generation.clients.llm
   server.apps.pipelines.stages.scene_breakdown -> server.apps.generation.clients.llm
