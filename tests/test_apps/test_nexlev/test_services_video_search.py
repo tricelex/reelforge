@@ -55,6 +55,92 @@ def test_get_video_details_uses_fresh_record() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_get_video_transcript_fetches_when_missing() -> None:
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_transcript',
+            new=AsyncMock(
+                return_value=[{'startMs': '0', 'endMs': '100'}],
+            ),
+        ) as mock_call:
+            result = await service.get_video_transcript('v1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result[0].start_ms == '0'
+    mock_call.assert_awaited_once()
+    record = NexLevVideoRecord.objects.get(video_id='v1')
+    assert record.quota_spent == constants.QUOTA_COST_VIDEO_TRANSCRIPT
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_video_transcript_uses_fresh_record() -> None:
+    NexLevVideoRecord.objects.create(
+        video_id='v1',
+        transcript=[{'startMs': '5', 'endMs': '105'}],
+        transcript_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_transcript',
+            new=AsyncMock(),
+        ) as mock_call:
+            result = await service.get_video_transcript('v1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result[0].start_ms == '5'
+    mock_call.assert_not_awaited()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_video_comments_fetches_when_missing() -> None:
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_comments',
+            new=AsyncMock(
+                return_value=[{'commentId': 'c1', 'textDisplay': 'hi'}],
+            ),
+        ) as mock_call:
+            result = await service.get_video_comments('v1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result[0].comment_id == 'c1'
+    mock_call.assert_awaited_once()
+    record = NexLevVideoRecord.objects.get(video_id='v1')
+    assert record.quota_spent == constants.QUOTA_COST_VIDEO_COMMENTS
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_video_comments_uses_fresh_record() -> None:
+    NexLevVideoRecord.objects.create(
+        video_id='v1',
+        comments=[{'commentId': 'c2', 'textDisplay': 'cached'}],
+        comments_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_comments',
+            new=AsyncMock(),
+        ) as mock_call:
+            result = await service.get_video_comments('v1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result[0].text_display == 'cached'
+    mock_call.assert_not_awaited()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_search_youtube_caches_by_query() -> None:
     service = NexLevService()
 
