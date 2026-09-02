@@ -25,3 +25,10 @@ VisualMediumLiteral = Literal[
 ]
 
 RecommendedModeLiteral = Literal['same_niche', 'bent']
+
+DeepAnalysisStatusLiteral = Literal[
+    'NOT_STARTED',
+    'RUNNING',
+    'SUCCEEDED',
+    'FAILED',
+]
