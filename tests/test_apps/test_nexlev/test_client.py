@@ -245,3 +245,195 @@ def test_get_channel_analysis_result_returns_data_when_completed(
     )
     assert result is not None
     assert result['result']['channel_id'] == 'UC1'
+
+
+def test_get_channel_about_raises_fatal_on_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(monkeypatch, httpx.Response(404, json={'error': 'missing'}))
+
+    with pytest.raises(FatalProviderError):
+        asyncio.run(
+            nexlev_client.get_channel_about(
+                'UC1',
+                api_key=_API_KEY,
+                base_url=_BASE_URL,
+            ),
+        )
+
+
+def test_get_channel_about_raises_retryable_on_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(monkeypatch, httpx.Response(500, json={'error': 'boom'}))
+
+    with pytest.raises(RetryableProviderError):
+        asyncio.run(
+            nexlev_client.get_channel_about(
+                'UC1',
+                api_key=_API_KEY,
+                base_url=_BASE_URL,
+            ),
+        )
+
+
+def test_get_channel_about_raises_fatal_on_unexpected_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(monkeypatch, httpx.Response(302))
+
+    with pytest.raises(FatalProviderError):
+        asyncio.run(
+            nexlev_client.get_channel_about(
+                'UC1',
+                api_key=_API_KEY,
+                base_url=_BASE_URL,
+            ),
+        )
+
+
+def test_get_channel_outliers_returns_outliers_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(
+        monkeypatch,
+        httpx.Response(
+            200,
+            json={
+                'outliers': [{'videoId': 'v1', 'title': 'Hit'}],
+                'totalOutliers': 1,
+            },
+        ),
+    )
+
+    result = asyncio.run(
+        nexlev_client.get_channel_outliers(
+            'UC1',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+        ),
+    )
+    assert result == [{'videoId': 'v1', 'title': 'Hit'}]
+
+
+def test_get_niche_overview_returns_raw_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_post(
+        monkeypatch,
+        httpx.Response(
+            200,
+            json={'originalChannelId': 'UC1', 'similarChannels': []},
+        ),
+    )
+
+    result = asyncio.run(
+        nexlev_client.get_niche_overview(
+            'UC1',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+        ),
+    )
+    assert result['originalChannelId'] == 'UC1'
+
+
+def test_get_video_transcript_unwraps_list_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(
+        monkeypatch,
+        httpx.Response(
+            200,
+            json=[
+                {
+                    'id': 'v1',
+                    'transcript': [{'startMs': '0', 'endMs': '100'}],
+                },
+            ],
+        ),
+    )
+
+    result = asyncio.run(
+        nexlev_client.get_video_transcript(
+            'v1',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+        ),
+    )
+    assert result == [{'startMs': '0', 'endMs': '100'}]
+
+
+def test_get_video_comments_returns_comment_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(
+        monkeypatch,
+        httpx.Response(
+            200,
+            json={
+                'commentsCount': '1',
+                'data': [{'commentId': 'c1', 'textDisplay': 'hi'}],
+            },
+        ),
+    )
+
+    result = asyncio.run(
+        nexlev_client.get_video_comments(
+            'v1',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+        ),
+    )
+    assert result == [{'commentId': 'c1', 'textDisplay': 'hi'}]
+
+
+def test_search_youtube_returns_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_get(
+        monkeypatch,
+        httpx.Response(
+            200,
+            json={
+                'results': [{'type': 'video', 'title': 'Hit'}],
+                'resultCount': 1,
+            },
+        ),
+    )
+
+    result = asyncio.run(
+        nexlev_client.search_youtube(
+            'rome',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+        ),
+    )
+    assert result == [{'type': 'video', 'title': 'Hit'}]
+
+
+def test_search_youtube_passes_search_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def _fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        params: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        captured['params'] = params
+        return httpx.Response(200, json={'results': []})
+
+    monkeypatch.setattr(httpx.AsyncClient, 'get', _fake_get)
+
+    asyncio.run(
+        nexlev_client.search_youtube(
+            'rome',
+            api_key=_API_KEY,
+            base_url=_BASE_URL,
+            search_type='video',
+        ),
+    )
+    assert captured['params'] == {'query': 'rome', 'type': 'video'}

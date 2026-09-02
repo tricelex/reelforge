@@ -21,6 +21,7 @@ from server.apps.channel_research.tasks import (
     _run_channel_research,
     _run_deep_analysis,
     run_channel_research_task,
+    run_deep_analysis_task,
 )
 from server.apps.nexlev.logic.value_objects import NexLevChannelAnalysisResult
 
@@ -225,3 +226,13 @@ def test_run_deep_analysis_marks_failed_on_exception(
     research_job.refresh_from_db()
     assert research_job.deep_analysis_status == DeepAnalysisStatus.FAILED
     assert 'nexlev down' in research_job.deep_analysis_error_message
+
+
+@pytest.mark.django_db
+def test_deep_analysis_task_delegates_to_runner() -> None:
+    with patch(
+        'server.apps.channel_research.tasks._run_deep_analysis',
+        new=AsyncMock(),
+    ) as mock_run:
+        asyncio.run(run_deep_analysis_task('job-id'))
+    mock_run.assert_awaited_once_with('job-id')
