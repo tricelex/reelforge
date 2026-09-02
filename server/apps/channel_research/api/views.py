@@ -203,6 +203,84 @@ class ChannelResearchRetryController(
 
 
 @final
+class ChannelResearchDeepAnalysisController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Trigger NexLev's async Deep Analysis job for this channel."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def post(self) -> ChannelResearchJobPayload:
+        """Kick off Deep Analysis; poll job-detail GET for completion."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(ChannelResearchService).trigger_deep_analysis(
+            str(self.kwargs['job_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        mapped = _validation_or_not_found(self, endpoint, exc)
+        if mapped is not None:
+            return mapped
+        return super().handle_error(endpoint, controller, exc)
+
+
+@final
+class ChannelResearchApplySuggestedTopicsController(
+    JWTAuthenticatedMixin,
+    HasContainer,
+    Controller[MsgspecSerializer],
+):
+    """Merge NexLev's suggested_topics into channel_spec.seed_ideas."""
+
+    auth = (jwt_sync_auth,)
+
+    @modify(
+        status_code=HTTPStatus.OK,
+        extra_responses=[
+            ResponseSpec(
+                Controller.error_model,
+                status_code=HTTPStatus.NOT_FOUND,
+            ),
+        ],
+    )
+    def post(self) -> ChannelResearchJobPayload:
+        """Apply Deep Analysis suggested topics onto the job's spec."""
+        require_operator(get_request_user(self.request))
+        return self.resolve(ChannelResearchService).apply_suggested_topics(
+            str(self.kwargs['job_id']),
+        )
+
+    @override
+    def handle_error(
+        self,
+        endpoint: Endpoint,
+        controller: Controller[MsgspecSerializer],
+        exc: Exception,
+    ) -> HttpResponse:
+        mapped = _validation_or_not_found(self, endpoint, exc)
+        if mapped is not None:
+            return mapped
+        return super().handle_error(endpoint, controller, exc)
+
+
+@final
 class ChannelResearchValidateSpecController(
     JWTAuthenticatedMixin,
     HasContainer,

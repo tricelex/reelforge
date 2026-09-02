@@ -1,7 +1,12 @@
 """Pytest fixtures for channel research tests."""
 
+import asyncio
+from collections.abc import Iterator
+
 import pytest
+from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User
+from django.db import close_old_connections
 
 from server.apps.channel_research.logic.constants import (
     ChannelResearchKind,
@@ -20,6 +25,22 @@ from server.apps.channel_research.logic.schemas import (
 )
 from server.apps.channel_research.models import ChannelResearchJob
 
+_close_old_connections = sync_to_async(close_old_connections)
+
+
+@pytest.fixture(autouse=True)
+def _close_sync_to_async_db_connections() -> Iterator[None]:
+    """Close the DB connection opened by sync_to_async's worker thread.
+
+    Deep Analysis tasks run their ORM work via sync_to_async on a shared
+    worker thread with its own connection, separate from the main test
+    thread's. Left open, it can linger into session teardown. Mirrors
+    DjangoDbMiddleware's per-task cleanup (server/common/taskiq_middleware.py)
+    for tests that call async task code directly instead of through TaskIQ.
+    """
+    yield
+    asyncio.run(_close_old_connections())
+
 
 def _lore(medium: str = 'photoreal') -> str:
     label = medium.replace('_', ' ')
@@ -34,9 +55,7 @@ def _lore(medium: str = 'photoreal') -> str:
 
 def _visual_bible(medium: str = 'photoreal') -> str:
     label = medium.replace('_', ' ')
-    first = (
-        f'{label} establishing stills lock palette line weight and camera. '
-    )
+    first = f'{label} establishing stills lock palette line weight and camera. '
     return first + ' '.join(['token'] * 90)
 
 

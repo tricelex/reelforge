@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from server.apps.channel_research.logic.constants import (
     ChannelResearchKind,
     ChannelResearchStatus,
+    DeepAnalysisStatus,
 )
 from server.apps.channel_research.logic.schemas import (
     ChannelResearchAgentOutput,
@@ -184,3 +185,73 @@ def test_validate_spec_returns_ok_and_errors(
     )
     assert bad.ok is False
     assert bad.errors
+
+
+@pytest.mark.django_db
+def test_trigger_deep_analysis_enqueues_and_sets_running(
+    service: ChannelResearchService,
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.source_channel_id = 'UC1'
+    research_job.save(update_fields=['source_channel_id'])
+    with patch(
+        'server.apps.channel_research.services.kiq_task',
+    ) as mock_kiq:
+        payload = service.trigger_deep_analysis(str(research_job.id))
+    mock_kiq.assert_called_once()
+    assert payload.deep_analysis_status == DeepAnalysisStatus.RUNNING
+
+
+@pytest.mark.django_db
+def test_trigger_deep_analysis_requires_source_channel_id(
+    service: ChannelResearchService,
+    research_job: ChannelResearchJob,
+) -> None:
+    with pytest.raises(ValidationError, match='source_channel_id'):
+        service.trigger_deep_analysis(str(research_job.id))
+
+
+@pytest.mark.django_db
+def test_apply_suggested_topics_merges_into_seed_ideas(
+    service: ChannelResearchService,
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.status = ChannelResearchStatus.SUCCEEDED
+    research_job.channel_spec = {
+        'channel': {'name': 'X', 'kind': ChannelResearchKind.LONGFORM},
+        'niche': {'angle': 'a'},
+        'story_format': {'key': 'k', 'name': 'n'},
+        'seed_ideas': [{'title': 'Existing', 'topic': 'existing topic'}],
+    }
+    research_job.deep_analysis_status = DeepAnalysisStatus.SUCCEEDED
+    research_job.deep_analysis_result = {
+        'suggested_topics': [
+            {'title': 'New Idea', 'description': 'new topic'},
+        ],
+        'script_blueprint': [],
+        'title_format_groups': [],
+    }
+    research_job.save()
+
+    payload = service.apply_suggested_topics(str(research_job.id))
+
+    assert payload.channel_spec is not None
+    titles = [idea.title for idea in payload.channel_spec.seed_ideas]
+    assert 'Existing' in titles
+    assert 'New Idea' in titles
+
+
+@pytest.mark.django_db
+def test_apply_suggested_topics_requires_completed_deep_analysis(
+    service: ChannelResearchService,
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.status = ChannelResearchStatus.SUCCEEDED
+    research_job.channel_spec = {
+        'channel': {'name': 'X', 'kind': ChannelResearchKind.LONGFORM},
+        'niche': {'angle': 'a'},
+        'story_format': {'key': 'k', 'name': 'n'},
+    }
+    research_job.save()
+    with pytest.raises(ValidationError, match='deep_analysis'):
+        service.apply_suggested_topics(str(research_job.id))

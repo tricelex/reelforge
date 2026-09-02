@@ -16,6 +16,7 @@ from server.apps.channel_research.logic.value_objects import (
     UsagePayload,
 )
 from server.apps.channel_research.models import ChannelResearchJob
+from server.apps.nexlev.logic.value_objects import NexLevChannelAnalysisResult
 
 _MAX_PAGE_SIZE = 50
 
@@ -48,6 +49,12 @@ def _as_usage(raw: object) -> UsagePayload:
     return msgspec.convert(raw, type=UsagePayload)
 
 
+def _as_deep_analysis(raw: object) -> NexLevChannelAnalysisResult | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+    return msgspec.convert(raw, type=NexLevChannelAnalysisResult)
+
+
 def job_to_payload(job: ChannelResearchJob) -> ChannelResearchJobPayload:
     """Map a ChannelResearchJob row to its API payload."""
     created_by_id = str(job.created_by_id) if job.created_by_id else None
@@ -69,6 +76,10 @@ def job_to_payload(job: ChannelResearchJob) -> ChannelResearchJobPayload:
         created_by_id=created_by_id,
         created_at=_iso(job.created_at),
         updated_at=_iso(job.updated_at),
+        deep_analysis_status=job.deep_analysis_status,  # type: ignore[arg-type]
+        deep_analysis_job_id=job.deep_analysis_job_id,
+        deep_analysis_result=_as_deep_analysis(job.deep_analysis_result),
+        deep_analysis_error_message=job.deep_analysis_error_message,
     )
 
 

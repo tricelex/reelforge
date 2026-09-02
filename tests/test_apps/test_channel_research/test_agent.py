@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from django.test import override_settings
 from pydantic_ai import ModelRetry
 
 from server.apps.channel_research.agent import (
@@ -152,6 +153,7 @@ def test_run_channel_research_agent_returns_output(
     mock_agent.run.assert_awaited_once()
 
 
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
 def test_agent_registers_tools_and_validates_output(
     agent_output: ChannelResearchAgentOutput,
 ) -> None:
@@ -179,6 +181,27 @@ def test_agent_registers_tools_and_validates_output(
         fake.validator(ctx, copied)
 
 
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=False)
+def test_dataforseo_tools_not_registered_when_disabled() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-flags-off')
+    assert 'youtube_search' not in fake.tools
+    assert 'video_info' not in fake.tools
+    assert 'video_comments' not in fake.tools
+    assert 'video_subtitles' not in fake.tools
+
+
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
+def test_dataforseo_tools_registered_when_enabled() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-flags-on')
+    assert 'youtube_search' in fake.tools
+    assert 'video_info' in fake.tools
+
+
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
 def test_registered_tools_call_provider_clients() -> None:
     _agent.cache_clear()
     with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
@@ -246,4 +269,137 @@ def test_registered_tools_call_provider_clients() -> None:
     assert results['comments'][0]['text'] == 'wow'
     assert results['subs'][0]['text'] == 'hello'
     assert results['web'][0]['url'] == 'https://x'
+    assert len(ctx.deps.trace.entries) == 7
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_nexlev_tools_registered_when_enabled() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-nexlev-on')
+    expected = {
+        'youtube_search',
+        'video_info',
+        'video_comments',
+        'video_subtitles',
+        'channel_about',
+        'channel_outliers',
+        'similar_channels',
+    }
+    assert expected <= set(fake.tools)
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_nexlev_tools_call_service_and_record_trace() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-nexlev-tools')
+    ctx = SimpleNamespace(deps=_deps())
+
+    from server.apps.nexlev.logic.value_objects import (
+        NexLevChannelAbout,
+        NexLevComment,
+        NexLevOutlierVideo,
+        NexLevSearchResultItem,
+        NexLevSimilarChannel,
+        NexLevTranscriptSegment,
+        NexLevVideoDetails,
+    )
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.search_youtube',
+                new=AsyncMock(
+                    return_value=[
+                        NexLevSearchResultItem(type='video', title='hit'),
+                    ],
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_video_details',
+                new=AsyncMock(
+                    return_value=NexLevVideoDetails(id='v1', title='X'),
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_video_comments',
+                new=AsyncMock(
+                    return_value=[NexLevComment(comment_id='c1')],
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_video_transcript',
+                new=AsyncMock(
+                    return_value=[
+                        NexLevTranscriptSegment(
+                            start_ms='0',
+                            end_ms='100',
+                        ),
+                    ],
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_channel_about',
+                new=AsyncMock(
+                    return_value=NexLevChannelAbout(
+                        channel_id='UC1',
+                        title='X',
+                    ),
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_channel_outliers',
+                new=AsyncMock(
+                    return_value=[
+                        NexLevOutlierVideo(video_id='v1', title='Hit'),
+                    ],
+                ),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_similar_channels',
+                new=AsyncMock(
+                    return_value=[
+                        NexLevSimilarChannel(
+                            channel_id='UC2',
+                            channel_name='Rival',
+                        ),
+                    ],
+                ),
+            ),
+        ):
+            search = await fake.tools['youtube_search'](ctx, keyword='rome')
+            info = await fake.tools['video_info'](ctx, video_id='v1')
+            comments = await fake.tools['video_comments'](ctx, video_id='v1')
+            subs = await fake.tools['video_subtitles'](ctx, video_id='v1')
+            about = await fake.tools['channel_about'](ctx, channel_id='UC1')
+            outliers = await fake.tools['channel_outliers'](
+                ctx,
+                channel_id='UC1',
+            )
+            similar = await fake.tools['similar_channels'](
+                ctx,
+                channel_id='UC1',
+            )
+            return {
+                'search': search,
+                'info': info,
+                'comments': comments,
+                'subs': subs,
+                'about': about,
+                'outliers': outliers,
+                'similar': similar,
+            }
+
+    results = asyncio.run(_inner())
+    assert results['search'][0]['title'] == 'hit'
+    assert results['info']['id'] == 'v1'
+    assert results['about']['channelId'] == 'UC1'
     assert len(ctx.deps.trace.entries) == 7

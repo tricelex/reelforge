@@ -8,6 +8,7 @@ from django.db import models
 from server.apps.channel_research.logic.constants import (
     ChannelResearchKind,
     ChannelResearchStatus,
+    DeepAnalysisStatus,
 )
 from server.common.models import TimeStampedModel, UUIDModel
 
@@ -36,6 +37,18 @@ class ChannelResearchJob(UUIDModel, TimeStampedModel):
     tool_trace = models.JSONField(default=list, blank=True)
     usage = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(blank=True)
+    deep_analysis_status = models.CharField(
+        max_length=12,
+        choices=DeepAnalysisStatus.choices,
+        default=DeepAnalysisStatus.NOT_STARTED,
+    )
+    deep_analysis_job_id = models.CharField(
+        max_length=64,
+        default='',
+        blank=True,
+    )
+    deep_analysis_result = models.JSONField(null=True, blank=True)
+    deep_analysis_error_message = models.TextField(default='', blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -57,6 +70,12 @@ class ChannelResearchJob(UUIDModel, TimeStampedModel):
                 name='channel_research_job_kind_valid',
                 condition=models.Q(
                     kind__in=ChannelResearchKind.values,
+                ),
+            ),
+            models.CheckConstraint(
+                name='channel_research_job_deep_analysis_status_valid',
+                condition=models.Q(
+                    deep_analysis_status__in=DeepAnalysisStatus.values,
                 ),
             ),
         ]
