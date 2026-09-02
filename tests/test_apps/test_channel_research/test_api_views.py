@@ -9,7 +9,9 @@ from django.http import HttpResponse
 from dmr.endpoint import Endpoint
 
 from server.apps.channel_research.api.views import (
+    ChannelResearchApplySuggestedTopicsController,
     ChannelResearchCollectionController,
+    ChannelResearchDeepAnalysisController,
     ChannelResearchDetailController,
     ChannelResearchImportController,
     ChannelResearchRetryController,
@@ -52,6 +54,8 @@ def test_collection_list_jobs_uses_query() -> None:
         ChannelResearchRetryController,
         ChannelResearchValidateSpecController,
         ChannelResearchImportController,
+        ChannelResearchDeepAnalysisController,
+        ChannelResearchApplySuggestedTopicsController,
     ],
 )
 def test_handle_error_delegates_unknown_exceptions(

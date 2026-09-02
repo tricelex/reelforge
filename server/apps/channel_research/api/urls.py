@@ -32,4 +32,14 @@ urlpatterns = [
         views.ChannelResearchRetryController.as_view(),
         name='job-retry',
     ),
+    path(
+        'channel-research/<uuid:job_id>/deep-analysis/',
+        views.ChannelResearchDeepAnalysisController.as_view(),
+        name='job-deep-analysis',
+    ),
+    path(
+        'channel-research/<uuid:job_id>/deep-analysis/apply-topics/',
+        views.ChannelResearchApplySuggestedTopicsController.as_view(),
+        name='job-apply-suggested-topics',
+    ),
 ]
