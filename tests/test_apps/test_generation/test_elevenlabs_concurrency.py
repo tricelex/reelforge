@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from server.common.exceptions import RetryableProviderError
+
+
+def test_elevenlabs_slot_acquire_release() -> None:
     """Redis acquire/release is called when the client connects."""
     from server.apps.generation.clients.elevenlabs_concurrency import (
         elevenlabs_slot,
