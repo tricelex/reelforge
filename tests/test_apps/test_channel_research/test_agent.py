@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from django.test import override_settings
 from pydantic_ai import ModelRetry
 
 from server.apps.channel_research.agent import (
@@ -152,6 +153,7 @@ def test_run_channel_research_agent_returns_output(
     mock_agent.run.assert_awaited_once()
 
 
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
 def test_agent_registers_tools_and_validates_output(
     agent_output: ChannelResearchAgentOutput,
 ) -> None:
@@ -179,6 +181,27 @@ def test_agent_registers_tools_and_validates_output(
         fake.validator(ctx, copied)
 
 
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=False)
+def test_dataforseo_tools_not_registered_when_disabled() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-flags-off')
+    assert 'youtube_search' not in fake.tools
+    assert 'video_info' not in fake.tools
+    assert 'video_comments' not in fake.tools
+    assert 'video_subtitles' not in fake.tools
+
+
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
+def test_dataforseo_tools_registered_when_enabled() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-flags-on')
+    assert 'youtube_search' in fake.tools
+    assert 'video_info' in fake.tools
+
+
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
 def test_registered_tools_call_provider_clients() -> None:
     _agent.cache_clear()
     with patch('server.apps.channel_research.agent.Agent', _FakeAgent):

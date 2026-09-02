@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any, final
 
 import attrs
+from django.conf import settings
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
@@ -267,7 +268,8 @@ def _register_tools(
         )
         return result
 
-    _register_dataforseo_tools(agent)
+    if settings.DATAFORSEO_ENABLED:
+        _register_dataforseo_tools(agent)
     _register_web_search_tool(agent)
 
 
