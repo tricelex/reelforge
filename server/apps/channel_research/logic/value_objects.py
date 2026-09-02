@@ -7,9 +7,11 @@ import msgspec
 from server.apps.channel_research.logic.types import (
     ChannelResearchKindLiteral,
     ChannelResearchStatusLiteral,
+    DeepAnalysisStatusLiteral,
     RecommendedModeLiteral,
     VisualMediumLiteral,
 )
+from server.apps.nexlev.logic.value_objects import NexLevChannelAnalysisResult
 
 
 class ChannelSpecProviderCapPayload(msgspec.Struct, frozen=True):
@@ -272,6 +274,10 @@ class ChannelResearchJobPayload(msgspec.Struct, frozen=True):
     created_by_id: str | None
     created_at: str
     updated_at: str
+    deep_analysis_status: DeepAnalysisStatusLiteral
+    deep_analysis_job_id: str
+    deep_analysis_result: NexLevChannelAnalysisResult | None
+    deep_analysis_error_message: str
 
 
 class ChannelResearchCreatePayload(msgspec.Struct, frozen=True):
