@@ -7,7 +7,14 @@ import msgspec
 import pydantic
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from zeal import zeal_ignore
+
+try:
+    # zeal is a development-only dependency (django-zeal's N+1 raiser is
+    # only wired up in server.settings.environments.development). Fall back
+    # to a no-op so this production module stays importable without it.
+    from zeal import zeal_ignore
+except ModuleNotFoundError:
+    from contextlib import nullcontext as zeal_ignore
 
 from server.apps.channel_research.logic.schemas import (
     ChannelSpecModel,
