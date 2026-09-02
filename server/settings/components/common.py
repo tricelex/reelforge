@@ -52,6 +52,7 @@ INSTALLED_APPS: tuple[str, ...] = (
     'server.apps.clips',
     'server.apps.ideas',
     'server.apps.channel_research',
+    'server.apps.nexlev',
     # Unfold must come before django.contrib.admin:
     'unfold',
     'unfold.contrib.filters',
@@ -580,6 +581,19 @@ ANTHROPIC_API_KEY: str = config('ANTHROPIC_API_KEY', default='')
 EXA_API_KEY: str = config('EXA_API_KEY', default='')
 DATAFORSEO_LOGIN: str = config('DATAFORSEO_LOGIN', default='')
 DATAFORSEO_PASSWORD: str = config('DATAFORSEO_PASSWORD', default='')
+# DataForSEO is disabled by default — NexLev replaces it as the channel
+# research YouTube-data provider. Flip to re-enable without code changes.
+DATAFORSEO_ENABLED: bool = config(
+    'DATAFORSEO_ENABLED',
+    default=False,
+    cast=bool,
+)
+NEXLEV_API_KEY: str = config('NEXLEV_API_KEY', default='')
+NEXLEV_BASE_URL: str = config(
+    'NEXLEV_BASE_URL',
+    default='https://prod.dashboard.nexlev.io',
+)
+NEXLEV_ENABLED: bool = config('NEXLEV_ENABLED', default=True, cast=bool)
 PEXELS_API_KEY: str = config('PEXELS_API_KEY', default='')
 PIXABAY_API_KEY: str = config('PIXABAY_API_KEY', default='')
 OPENVERSE_CLIENT_ID: str = config('OPENVERSE_CLIENT_ID', default='')

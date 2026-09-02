@@ -83,6 +83,12 @@ def _inject_channel_research(container: Container) -> None:
     container.register(ChannelResearchService, scope=Scope.singleton)
 
 
+def _inject_nexlev(container: Container) -> None:
+    from server.apps.nexlev.services import NexLevService
+
+    container.register(NexLevService, scope=Scope.singleton)
+
+
 def _inject_campaigns(container: Container) -> None:
     from server.apps.clips.brand_template_services import (
         ClipBrandTemplateService,
@@ -104,5 +110,6 @@ def populate_dependencies(container: Container) -> Container:
     _inject_prompts(container)
     _inject_ideas(container)
     _inject_channel_research(container)
+    _inject_nexlev(container)
     _inject_campaigns(container)
     return container
