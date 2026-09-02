@@ -1,5 +1,7 @@
 """NexLev read service — records-first, staleness-aware, per section."""
 
+import hashlib
+import json
 from typing import final
 
 import attrs
@@ -14,11 +16,19 @@ from server.apps.nexlev.logic.staleness import is_stale
 from server.apps.nexlev.logic.value_objects import (
     NexLevChannelAbout,
     NexLevChannelAnalytics,
+    NexLevComment,
     NexLevNicheOverview,
     NexLevOutlierVideo,
+    NexLevSearchResultItem,
     NexLevSimilarChannel,
+    NexLevTranscriptSegment,
+    NexLevVideoDetails,
 )
-from server.apps.nexlev.models import NexLevChannelRecord
+from server.apps.nexlev.models import (
+    NexLevChannelRecord,
+    NexLevSearchCacheEntry,
+    NexLevVideoRecord,
+)
 
 
 def _get_or_create_channel_record(channel_id: str) -> NexLevChannelRecord:
@@ -34,6 +44,44 @@ def _save_channel_record(
     fields: list[str],
 ) -> None:
     record.save(update_fields=[*fields, 'updated_at'])
+
+
+def _get_or_create_video_record(video_id: str) -> NexLevVideoRecord:
+    record, _ = NexLevVideoRecord.objects.get_or_create(video_id=video_id)
+    return record
+
+
+def _save_video_record(record: NexLevVideoRecord, *, fields: list[str]) -> None:
+    record.save(update_fields=[*fields, 'updated_at'])
+
+
+def _search_cache_key(query: str, search_type: str | None) -> str:
+    raw = json.dumps({'query': query, 'type': search_type}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _get_fresh_search_cache_entry(
+    cache_key: str,
+) -> NexLevSearchCacheEntry | None:
+    cutoff = timezone.now() - constants.SEARCH_CACHE_TTL
+    return NexLevSearchCacheEntry.objects.filter(
+        cache_key=cache_key,
+        fetched_at__gte=cutoff,
+    ).first()
+
+
+def _upsert_search_cache_entry(
+    cache_key: str,
+    payload: list[dict[str, object]],
+) -> None:
+    NexLevSearchCacheEntry.objects.update_or_create(
+        cache_key=cache_key,
+        defaults={
+            'payload': payload,
+            'fetched_at': timezone.now(),
+            'quota_spent': constants.QUOTA_COST_SEARCH,
+        },
+    )
 
 
 @final
@@ -197,3 +245,111 @@ class NexLevService:
             record.niche_overview,
             type=NexLevNicheOverview,
         )
+
+    async def get_video_details(
+        self,
+        video_id: str,
+        *,
+        force_refresh: bool = False,
+    ) -> NexLevVideoDetails:
+        """Return video details; content is immutable, long staleness."""
+        record = await sync_to_async(_get_or_create_video_record)(video_id)
+        if force_refresh or is_stale(
+            record.details_fetched_at,
+            window=constants.VIDEO_STALE_AFTER,
+        ):
+            raw = await nexlev_client.get_video_details(
+                video_id,
+                api_key=settings.NEXLEV_API_KEY,
+                base_url=settings.NEXLEV_BASE_URL,
+            )
+            record.details = raw
+            record.details_fetched_at = timezone.now()
+            record.quota_spent += constants.QUOTA_COST_VIDEO_DETAILS
+            await sync_to_async(_save_video_record)(
+                record,
+                fields=['details', 'details_fetched_at', 'quota_spent'],
+            )
+        return msgspec.convert(record.details, type=NexLevVideoDetails)
+
+    async def get_video_transcript(
+        self,
+        video_id: str,
+        *,
+        force_refresh: bool = False,
+    ) -> list[NexLevTranscriptSegment]:
+        """Return the transcript; content is immutable, long staleness."""
+        record = await sync_to_async(_get_or_create_video_record)(video_id)
+        if force_refresh or is_stale(
+            record.transcript_fetched_at,
+            window=constants.VIDEO_STALE_AFTER,
+        ):
+            raw = await nexlev_client.get_video_transcript(
+                video_id,
+                api_key=settings.NEXLEV_API_KEY,
+                base_url=settings.NEXLEV_BASE_URL,
+            )
+            record.transcript = raw
+            record.transcript_fetched_at = timezone.now()
+            record.quota_spent += constants.QUOTA_COST_VIDEO_TRANSCRIPT
+            await sync_to_async(_save_video_record)(
+                record,
+                fields=[
+                    'transcript',
+                    'transcript_fetched_at',
+                    'quota_spent',
+                ],
+            )
+        return msgspec.convert(
+            record.transcript or [],
+            type=list[NexLevTranscriptSegment],
+        )
+
+    async def get_video_comments(
+        self,
+        video_id: str,
+        *,
+        force_refresh: bool = False,
+    ) -> list[NexLevComment]:
+        """Return top comments; content is immutable, long staleness."""
+        record = await sync_to_async(_get_or_create_video_record)(video_id)
+        if force_refresh or is_stale(
+            record.comments_fetched_at,
+            window=constants.VIDEO_STALE_AFTER,
+        ):
+            raw = await nexlev_client.get_video_comments(
+                video_id,
+                api_key=settings.NEXLEV_API_KEY,
+                base_url=settings.NEXLEV_BASE_URL,
+            )
+            record.comments = raw
+            record.comments_fetched_at = timezone.now()
+            record.quota_spent += constants.QUOTA_COST_VIDEO_COMMENTS
+            await sync_to_async(_save_video_record)(
+                record,
+                fields=['comments', 'comments_fetched_at', 'quota_spent'],
+            )
+        return msgspec.convert(record.comments or [], type=list[NexLevComment])
+
+    async def search_youtube(
+        self,
+        query: str,
+        *,
+        search_type: str | None = None,
+    ) -> list[NexLevSearchResultItem]:
+        """Return live YouTube search results, short-TTL cached by query."""
+        cache_key = _search_cache_key(query, search_type)
+        cached = await sync_to_async(_get_fresh_search_cache_entry)(cache_key)
+        if cached is not None:
+            return msgspec.convert(
+                cached.payload,
+                type=list[NexLevSearchResultItem],
+            )
+        raw = await nexlev_client.search_youtube(
+            query,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+            search_type=search_type,
+        )
+        await sync_to_async(_upsert_search_cache_entry)(cache_key, raw)
+        return msgspec.convert(raw, type=list[NexLevSearchResultItem])
