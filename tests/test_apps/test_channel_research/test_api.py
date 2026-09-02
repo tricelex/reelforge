@@ -9,6 +9,7 @@ from dmr.test import DMRClient
 
 from server.apps.channel_research.logic.constants import (
     ChannelResearchStatus,
+    DeepAnalysisStatus,
 )
 from server.apps.channel_research.logic.schemas import (
     ChannelResearchAgentOutput,
@@ -271,3 +272,79 @@ def test_validate_spec_returns_errors_for_short_lore(
     body = response.json()
     assert body['ok'] is False
     assert body['errors']
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deep_analysis_endpoint_requires_source_channel_id(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+    research_job: ChannelResearchJob,
+) -> None:
+    url = reverse(
+        'api:channel_research_api:job-deep-analysis',
+        kwargs={'job_id': research_job.id},
+    )
+    response = dmr_client.post(url, headers=auth_headers)
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deep_analysis_endpoint_enqueues_when_channel_id_present(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+    research_job: ChannelResearchJob,
+) -> None:
+    research_job.source_channel_id = 'UC1'
+    research_job.save(update_fields=['source_channel_id'])
+    url = reverse(
+        'api:channel_research_api:job-deep-analysis',
+        kwargs={'job_id': research_job.id},
+    )
+    with patch('server.apps.channel_research.services.kiq_task'):
+        response = dmr_client.post(url, headers=auth_headers)
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['deep_analysis_status'] == DeepAnalysisStatus.RUNNING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_apply_suggested_topics_endpoint_requires_completed_deep_analysis(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+    research_job: ChannelResearchJob,
+) -> None:
+    url = reverse(
+        'api:channel_research_api:job-apply-suggested-topics',
+        kwargs={'job_id': research_job.id},
+    )
+    response = dmr_client.post(url, headers=auth_headers)
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.django_db(transaction=True)
+def test_apply_suggested_topics_endpoint_merges_topics(
+    dmr_client: DMRClient,
+    auth_headers: dict[str, str],
+    research_job: ChannelResearchJob,
+    agent_output: ChannelResearchAgentOutput,
+) -> None:
+    research_job.status = ChannelResearchStatus.SUCCEEDED
+    research_job.channel_spec = agent_output.channel_spec.model_dump()
+    research_job.deep_analysis_status = DeepAnalysisStatus.SUCCEEDED
+    research_job.deep_analysis_result = {
+        'suggested_topics': [
+            {'title': 'New Idea', 'description': 'new topic'},
+        ],
+        'script_blueprint': [],
+        'title_format_groups': [],
+    }
+    research_job.save()
+    url = reverse(
+        'api:channel_research_api:job-apply-suggested-topics',
+        kwargs={'job_id': research_job.id},
+    )
+    response = dmr_client.post(url, headers=auth_headers)
+    assert response.status_code == HTTPStatus.OK
+    titles = [
+        idea['title'] for idea in response.json()['channel_spec']['seed_ideas']
+    ]
+    assert 'New Idea' in titles
