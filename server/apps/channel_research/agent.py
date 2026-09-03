@@ -27,7 +27,6 @@ from server.apps.nexlev.services import NexLevService
 from server.common.exceptions import FatalProviderError
 
 _MAX_TOKENS = 16384
-_REQUEST_LIMIT = 20
 _SUMMARY_CHARS = 240
 TOOL_CAPS: dict[str, int] = {
     'resolve_channel': 1,
@@ -41,6 +40,12 @@ TOOL_CAPS: dict[str, int] = {
     'channel_outliers': 1,
     'similar_channels': 1,
 }
+# TOOL_CAPS alone budgets sum(TOOL_CAPS.values()) == 28 tool calls (each
+# usually its own model request), which the system prompt tells the model
+# it may use. Leave headroom above that for ModelRetry nudges (a capped
+# tool, a video with no NexLev data) and the final output turn(s), or
+# thorough runs hit UsageLimitExceeded before producing output.
+_REQUEST_LIMIT = 45
 
 _SYSTEM_PROMPT = """\
 You are a YouTube channel strategist for ReelForge. You research one source
