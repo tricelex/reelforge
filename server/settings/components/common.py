@@ -477,6 +477,13 @@ UNFOLD: dict[str, Any] = {
                         ),
                     },
                     {
+                        'title': 'Brand Templates',
+                        'icon': 'palette',
+                        'link': reverse_lazy(
+                            'admin:clips_clipbrandtemplate_changelist',
+                        ),
+                    },
+                    {
                         'title': 'Candidates',
                         'icon': 'movie',
                         'link': reverse_lazy(
@@ -502,6 +509,33 @@ UNFOLD: dict[str, Any] = {
                         'icon': 'paid',
                         'link': reverse_lazy(
                             'admin:clips_earning_changelist',
+                        ),
+                    },
+                ],
+            },
+            {
+                'title': 'NexLev',
+                'separator': True,
+                'items': [
+                    {
+                        'title': 'Channel Records',
+                        'icon': 'tv',
+                        'link': reverse_lazy(
+                            'admin:nexlev_nexlevchannelrecord_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Video Records',
+                        'icon': 'smart_display',
+                        'link': reverse_lazy(
+                            'admin:nexlev_nexlevvideorecord_changelist',
+                        ),
+                    },
+                    {
+                        'title': 'Search Cache',
+                        'icon': 'cached',
+                        'link': reverse_lazy(
+                            'admin:nexlev_nexlevsearchcacheentry_changelist',
                         ),
                     },
                 ],
