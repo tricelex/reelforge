@@ -189,6 +189,22 @@ def test_get_video_details_unwraps_list_envelope(
     assert result['id'] == 'v1'
 
 
+def test_get_video_details_raises_fatal_when_no_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NexLev returns 200 + [] when it has no data for a video_id."""
+    _patch_get(monkeypatch, httpx.Response(200, json=[]))
+
+    with pytest.raises(FatalProviderError):
+        asyncio.run(
+            nexlev_client.get_video_details(
+                'missing-video',
+                api_key=_API_KEY,
+                base_url=_BASE_URL,
+            ),
+        )
+
+
 def test_create_channel_analysis_job_unwraps_list_envelope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

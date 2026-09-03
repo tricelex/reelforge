@@ -177,7 +177,11 @@ async def get_video_details(
     api_key: str,
     base_url: str,
 ) -> dict[str, Any]:
-    """GET /api/external/videos/details. 1 quota. Unwraps list envelope."""
+    """GET /api/external/videos/details. 1 quota. Unwraps list envelope.
+
+    Raises FatalProviderError if NexLev has no data for this video_id
+    (it responds 200 with an empty list rather than 404).
+    """
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(
             f'{base_url}/api/external/videos/details',
@@ -185,7 +189,10 @@ async def get_video_details(
             headers=_auth_headers(api_key),
         )
     data = _parse_json(response)
-    return data[0] if isinstance(data, list) and data else {}
+    if not isinstance(data, list) or not data:
+        msg = f'NexLev has no data for video {video_id}'
+        raise FatalProviderError(msg, provider=_PROVIDER, error_code='404')
+    return dict(data[0])
 
 
 async def get_video_transcript(

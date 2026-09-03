@@ -24,6 +24,7 @@ from server.apps.generation.logic.model_resolver import (
     to_pydantic_ai_model,
 )
 from server.apps.nexlev.services import NexLevService
+from server.common.exceptions import FatalProviderError
 
 _MAX_TOKENS = 16384
 _REQUEST_LIMIT = 20
@@ -400,7 +401,11 @@ def _register_nexlev_video_tools(
     ) -> dict[str, Any]:
         """Fetch NexLev video metadata for one video_id. Cap 8."""
         ctx.deps.trace.consume('video_info')
-        details = await service.get_video_details(video_id)
+        try:
+            details = await service.get_video_details(video_id)
+        except FatalProviderError as exc:
+            msg = f'No NexLev data for video_id {video_id}: {exc}'
+            raise ModelRetry(msg) from exc
         result: dict[str, Any] = msgspec.to_builtins(details)
         ctx.deps.trace.record('video_info', {'video_id': video_id}, result)
         return result
