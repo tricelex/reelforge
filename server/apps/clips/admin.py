@@ -20,6 +20,7 @@ from server.apps.clips.logic.constants import (
     PostStatus,
 )
 from server.apps.clips.models import (
+    ClipBrandTemplate,
     ClipCampaign,
     ClipCandidate,
     ClipLayoutConfig,
@@ -518,6 +519,95 @@ class ClipCampaignAdmin(ReelForgeAdmin):
         'status',
         _CLIP_STATUS_COLORS,
         description=_('Status'),
+    )
+
+
+@admin.register(ClipBrandTemplate)
+class ClipBrandTemplateAdmin(ReelForgeAdmin):
+    """Admin for ClipBrandTemplate."""
+
+    list_display = (
+        'name',
+        'channel',
+        'render_format',
+        'render_mode',
+        'archived',
+    )
+    list_filter = (
+        ('channel', AutocompleteSelectFilter),
+        ('render_format', ChoicesCheckboxFilter),
+        ('render_mode', ChoicesCheckboxFilter),
+        ('archived', ChoicesCheckboxFilter),
+    )
+    search_fields = ('name', 'channel__name')
+    autocomplete_fields = (
+        'channel',
+        'logo_asset',
+        'intro_asset',
+        'outro_asset',
+        'music_asset',
+    )
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        (
+            None,
+            {
+                'fields': (
+                    'channel',
+                    'name',
+                    'archived',
+                    'notes',
+                ),
+            },
+        ),
+        (
+            _('Render'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'render_format',
+                    'render_mode',
+                    'fit_mode',
+                    'foreground_treatment',
+                    'background_mode',
+                    'background_color',
+                    'blur_strength',
+                ),
+            },
+        ),
+        (
+            _('Captions & transitions'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'caption_preset_key',
+                    'keyword_highlighter',
+                    'auto_transitions',
+                ),
+            },
+        ),
+        (
+            _('Branding assets'),
+            {
+                'classes': ('tab',),
+                'fields': (
+                    'logo_asset',
+                    'logo_position',
+                    'logo_opacity',
+                    'intro_asset',
+                    'outro_asset',
+                    'music_asset',
+                    'music_volume_db',
+                ),
+            },
+        ),
+        (
+            _('Timestamps'),
+            {
+                'classes': ('tab',),
+                'fields': ('created_at', 'updated_at'),
+            },
+        ),
     )
 
 
