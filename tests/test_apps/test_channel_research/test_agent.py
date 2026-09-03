@@ -403,3 +403,31 @@ def test_nexlev_tools_call_service_and_record_trace() -> None:
     assert results['info']['id'] == 'v1'
     assert results['about']['channelId'] == 'UC1'
     assert len(ctx.deps.trace.entries) == 7
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_video_info_retries_model_when_video_has_no_data() -> None:
+    """A single missing video_id should not crash the whole research run."""
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-nexlev-video-not-found')
+    ctx = SimpleNamespace(deps=_deps())
+
+    from server.common.exceptions import FatalProviderError
+
+    async def _inner() -> None:
+        with patch(
+            'server.apps.channel_research.agent.NexLevService'
+            '.get_video_details',
+            new=AsyncMock(
+                side_effect=FatalProviderError(
+                    'NexLev has no data for video missing-video',
+                    provider='nexlev',
+                    error_code='404',
+                ),
+            ),
+        ):
+            await fake.tools['video_info'](ctx, video_id='missing-video')
+
+    with pytest.raises(ModelRetry):
+        asyncio.run(_inner())
