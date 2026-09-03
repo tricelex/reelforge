@@ -119,7 +119,11 @@ class NexLevService:
                 record,
                 fields=['about', 'about_fetched_at', 'quota_spent'],
             )
-        return msgspec.convert(record.about, type=NexLevChannelAbout)
+        return msgspec.convert(
+            record.about,
+            type=NexLevChannelAbout,
+            strict=False,
+        )
 
     async def get_channel_outliers(
         self,
@@ -150,6 +154,7 @@ class NexLevService:
         return msgspec.convert(
             record.outliers or [],
             type=list[NexLevOutlierVideo],
+            strict=False,
         )
 
     async def get_channel_analytics(
@@ -178,7 +183,11 @@ class NexLevService:
                 record,
                 fields=['analytics', 'analytics_fetched_at', 'quota_spent'],
             )
-        return msgspec.convert(record.analytics, type=NexLevChannelAnalytics)
+        return msgspec.convert(
+            record.analytics,
+            type=NexLevChannelAnalytics,
+            strict=False,
+        )
 
     async def get_similar_channels(
         self,
@@ -213,6 +222,7 @@ class NexLevService:
         return msgspec.convert(
             record.similar_channels or [],
             type=list[NexLevSimilarChannel],
+            strict=False,
         )
 
     async def get_niche_overview(
@@ -248,6 +258,7 @@ class NexLevService:
         return msgspec.convert(
             record.niche_overview,
             type=NexLevNicheOverview,
+            strict=False,
         )
 
     async def get_video_details(
@@ -274,7 +285,11 @@ class NexLevService:
                 record,
                 fields=['details', 'details_fetched_at', 'quota_spent'],
             )
-        return msgspec.convert(record.details, type=NexLevVideoDetails)
+        return msgspec.convert(
+            record.details,
+            type=NexLevVideoDetails,
+            strict=False,
+        )
 
     async def get_video_transcript(
         self,
@@ -307,6 +322,7 @@ class NexLevService:
         return msgspec.convert(
             record.transcript or [],
             type=list[NexLevTranscriptSegment],
+            strict=False,
         )
 
     async def get_video_comments(
@@ -333,7 +349,11 @@ class NexLevService:
                 record,
                 fields=['comments', 'comments_fetched_at', 'quota_spent'],
             )
-        return msgspec.convert(record.comments or [], type=list[NexLevComment])
+        return msgspec.convert(
+            record.comments or [],
+            type=list[NexLevComment],
+            strict=False,
+        )
 
     async def search_youtube(
         self,
@@ -348,6 +368,7 @@ class NexLevService:
             return msgspec.convert(
                 cached.payload,
                 type=list[NexLevSearchResultItem],
+                strict=False,
             )
         raw = await nexlev_client.search_youtube(
             query,
@@ -356,7 +377,11 @@ class NexLevService:
             search_type=search_type,
         )
         await sync_to_async(_upsert_search_cache_entry)(cache_key, raw)
-        return msgspec.convert(raw, type=list[NexLevSearchResultItem])
+        return msgspec.convert(
+            raw,
+            type=list[NexLevSearchResultItem],
+            strict=False,
+        )
 
     async def create_channel_analysis_job(self, channel_id: str) -> str:
         """Kick off NexLev's async Deep Analysis job.
