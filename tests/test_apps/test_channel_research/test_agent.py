@@ -31,11 +31,20 @@ class _FakeAgent:
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self.tools: dict[str, Any] = {}
+        self.prepares: dict[str, Any] = {}
         self.validator: Any = None
 
-    def tool(self, fn: Any) -> Any:
-        self.tools[fn.__name__] = fn
-        return fn
+    def tool(self, fn: Any = None, **kwargs: Any) -> Any:
+        if fn is not None:
+            self.tools[fn.__name__] = fn
+            return fn
+
+        def decorator(inner: Any) -> Any:
+            self.tools[inner.__name__] = inner
+            self.prepares[inner.__name__] = kwargs.get('prepare')
+            return inner
+
+        return decorator
 
     def output_validator(self, fn: Any) -> Any:
         self.validator = fn
@@ -277,6 +286,54 @@ def test_nexlev_tools_registered_when_enabled() -> None:
     assert 'channel_about' not in fake.tools
     assert 'channel_outliers' not in fake.tools
     assert 'similar_channels' not in fake.tools
+
+
+def test_hide_when_capped_removes_tool_once_cap_is_spent() -> None:
+    """A capped-out tool must disappear from the model's choices outright.
+
+    Bouncing an over-cap call back with ModelRetry still leaves the tool
+    in front of the model every turn - it (or another capped tool) can
+    keep getting re-offered and re-declined turn after turn until the
+    whole request_limit is spent with no final output. Hiding the tool
+    once its cap is spent removes that option instead of hoping the
+    model takes the hint.
+    """
+    from server.apps.channel_research.agent import _hide_when_capped
+
+    prepare = _hide_when_capped('youtube_search')
+    ctx = SimpleNamespace(deps=_deps())
+    tool_def = SimpleNamespace(name='youtube_search')
+
+    under_cap = prepare(ctx, tool_def)
+    ctx.deps.trace.counts['youtube_search'] = 2
+    at_cap = prepare(ctx, tool_def)
+
+    assert under_cap is tool_def
+    assert at_cap is None
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_nexlev_tools_wired_with_cap_prepare_hooks() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-nexlev-prepare')
+    assert fake.prepares['youtube_search'] is not None
+    assert fake.prepares['video_info'] is not None
+
+
+@override_settings(DATAFORSEO_ENABLED=True, NEXLEV_ENABLED=False)
+def test_dataforseo_tools_wired_with_cap_prepare_hooks() -> None:
+    _agent.cache_clear()
+    with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
+        fake = _agent('unit-test-dataforseo-prepare')
+    for name in (
+        'youtube_search',
+        'video_info',
+        'video_comments',
+        'video_subtitles',
+        'web_search',
+    ):
+        assert fake.prepares[name] is not None
 
 
 @override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
