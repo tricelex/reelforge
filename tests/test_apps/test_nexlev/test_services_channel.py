@@ -69,6 +69,37 @@ def test_get_channel_about_uses_fresh_record_without_calling_api() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_get_channel_about_coerces_stringified_numeric_fields() -> None:
+    """NexLev's about endpoint sometimes sends counts as strings."""
+    NexLevChannelRecord.objects.create(
+        channel_id='UC1',
+        about={
+            'channelId': 'UC1',
+            'title': 'Cached',
+            'subscriberCount': '5',
+            'videosCount': '1',
+            'viewCount': '50',
+        },
+        about_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_channel_about',
+            new=AsyncMock(),
+        ) as mock_call:
+            result = await service.get_channel_about('UC1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result.videos_count == 1
+    assert result.subscriber_count == 5
+    assert result.view_count == 50
+    mock_call.assert_not_awaited()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_get_channel_about_refetches_when_stale() -> None:
     stale_at = timezone.now() - constants.ABOUT_STALE_AFTER - timedelta(days=1)
     NexLevChannelRecord.objects.create(
