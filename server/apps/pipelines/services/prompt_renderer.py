@@ -92,7 +92,10 @@ class PromptRenderer:
         """Return (system_prompt, user_prompt) with variables substituted.
 
         Looks up via prompt_snapshot -> PromptVersion.id, or falls back to
-        the active version for this template key.
+        the active version for this template key. Both templates are
+        rendered from the same variables, so callers who only have the
+        user-prompt's extras (e.g. the chapter being processed) available
+        must use `render_system` instead of this for system-prompt hooks.
         """
         sys_raw, usr_raw = await self.get_raw_templates(stage_key)
         if not sys_raw and not usr_raw:
@@ -100,3 +103,20 @@ class PromptRenderer:
         sys = _jinja_env.from_string(sys_raw).render(**variables)
         usr = _jinja_env.from_string(usr_raw).render(**variables)
         return sys, usr
+
+    async def render_system(
+        self,
+        stage_key: str,
+        variables: dict[str, Any],
+    ) -> str:
+        """Return just the rendered system_prompt, '' when none is set.
+
+        Unlike `render`, this never touches the user_prompt template, so it
+        is safe to call from a system-prompt hook whose variables lack
+        per-item extras (e.g. the chapter being processed) that only the
+        later user-prompt render call supplies.
+        """
+        sys_raw, _ = await self.get_raw_templates(stage_key)
+        if not sys_raw:
+            return ''
+        return _jinja_env.from_string(sys_raw).render(**variables)

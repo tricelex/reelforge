@@ -44,7 +44,10 @@ def _agent(model: str) -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C9
     @a.system_prompt
     async def _sys(ctx: RunContext[StageContext]) -> str:  # pragma: no cover
         variables = await build_prompt_variables(ctx.deps)
-        sys, _ = await ctx.deps.prompts.render('scene_breakdown', variables)
+        sys = await ctx.deps.prompts.render_system(
+            'scene_breakdown',
+            variables,
+        )
         min_w, max_w, min_s, max_s = density_bounds(ctx.deps.config)
         return sys or (
             'You are a documentary scene breakdown specialist. '
