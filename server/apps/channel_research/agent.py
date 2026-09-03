@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any, final
@@ -10,7 +10,7 @@ from typing import Any, final
 import attrs
 import msgspec
 from django.conf import settings
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext, ToolDefinition
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 from pydantic_ai.usage import UsageLimits
 
@@ -202,6 +202,33 @@ class ChannelResearchDeps:
     trace: ToolTrace
 
 
+def _hide_when_capped(
+    name: str,
+) -> Callable[
+    [RunContext[ChannelResearchDeps], ToolDefinition],
+    ToolDefinition | None,
+]:
+    """Drop a tool from the model's choices once its cap is used up.
+
+    ToolTrace.consume() bouncing an over-cap call back with ModelRetry
+    still puts the tool in front of the model every turn - a confused or
+    unlucky model can keep re-offering it (or hop between several capped
+    tools) turn after turn, burning the whole request_limit without ever
+    reaching final output. Hiding the tool once its cap is spent removes
+    that option outright instead of hoping the model takes the hint.
+    """
+
+    def prepare(
+        ctx: RunContext[ChannelResearchDeps],
+        tool_def: ToolDefinition,
+    ) -> ToolDefinition | None:
+        if ctx.deps.trace.counts.get(name, 0) >= TOOL_CAPS[name]:
+            return None
+        return tool_def
+
+    return prepare
+
+
 def _summarize(data: object) -> str:
     text = json.dumps(data, default=str)
     if len(text) <= _SUMMARY_CHARS:
@@ -378,7 +405,7 @@ def _register_dataforseo_tools(
 ) -> None:
     """Attach DataForSEO YouTube Live tools."""
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('youtube_search'))
     async def youtube_search(
         ctx: RunContext[ChannelResearchDeps],
         keyword: str,
@@ -400,7 +427,7 @@ def _register_dataforseo_tools(
         )
         return result
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('video_info'))
     async def video_info(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
@@ -415,7 +442,7 @@ def _register_dataforseo_tools(
         ctx.deps.trace.record('video_info', {'video_id': video_id}, result)
         return result
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('video_comments'))
     async def video_comments(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
@@ -434,7 +461,7 @@ def _register_dataforseo_tools(
         )
         return result
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('video_subtitles'))
     async def video_subtitles(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
@@ -464,7 +491,7 @@ def _register_nexlev_video_tools(
     """
     service = NexLevService()
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('youtube_search'))
     async def youtube_search(
         ctx: RunContext[ChannelResearchDeps],
         keyword: str,
@@ -479,7 +506,7 @@ def _register_nexlev_video_tools(
         ctx.deps.trace.record('youtube_search', {'keyword': keyword}, result)
         return result
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('video_info'))
     async def video_info(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
@@ -501,7 +528,7 @@ def _register_web_search_tool(
 ) -> None:
     """Attach Exa web_search with the research-stage budget."""
 
-    @agent.tool
+    @agent.tool(prepare=_hide_when_capped('web_search'))
     async def web_search(
         ctx: RunContext[ChannelResearchDeps],
         query: str,
