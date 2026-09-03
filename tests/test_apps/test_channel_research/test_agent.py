@@ -406,3 +406,17 @@ def test_video_info_retries_model_when_video_has_no_data() -> None:
 
     with pytest.raises(ModelRetry):
         asyncio.run(_inner())
+
+
+def test_agent_retry_budget_absorbs_cap_and_provider_error_nudges() -> None:
+    """Cap nudges and NexLev misses share a tool's retry budget.
+
+    Too low a budget turns a couple of expected soft nudges into a hard
+    UnexpectedModelBehavior that kills the whole run.
+    """
+    _agent.cache_clear()
+    mock_agent_cls = MagicMock()
+    with patch('server.apps.channel_research.agent.Agent', mock_agent_cls):
+        _agent('unit-test-retries-budget')
+    _, kwargs = mock_agent_cls.call_args
+    assert kwargs['retries'] >= 4

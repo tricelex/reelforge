@@ -11,6 +11,7 @@ from django.utils import timezone
 from server.apps.nexlev.logic import constants
 from server.apps.nexlev.models import NexLevSearchCacheEntry, NexLevVideoRecord
 from server.apps.nexlev.services import NexLevService
+from server.common.exceptions import FatalProviderError
 
 
 @pytest.mark.django_db(transaction=True)
@@ -75,6 +76,72 @@ def test_get_video_details_refetches_when_cached_record_is_corrupt() -> None:
     result, mock_call = asyncio.run(_inner())
     assert result.title == 'Refetched'
     mock_call.assert_awaited_once()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_video_details_caches_not_found_and_skips_refetch() -> None:
+    """A video NexLev has no data for must not re-spend quota on retry."""
+    service = NexLevService()
+    not_found = FatalProviderError(
+        'NexLev has no data for video v1',
+        provider='nexlev',
+        error_code='404',
+    )
+
+    async def _inner() -> tuple[Exception | None, Exception | None, AsyncMock]:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_details',
+            new=AsyncMock(side_effect=not_found),
+        ) as mock_call:
+            first_exc: Exception | None = None
+            second_exc: Exception | None = None
+            try:
+                await service.get_video_details('v1')
+            except FatalProviderError as exc:
+                first_exc = exc
+            try:
+                await service.get_video_details('v1')
+            except FatalProviderError as exc:
+                second_exc = exc
+            return first_exc, second_exc, mock_call
+
+    first_exc, second_exc, mock_call = asyncio.run(_inner())
+    assert first_exc is not None
+    assert second_exc is not None
+    mock_call.assert_awaited_once()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_video_details_not_found_force_refresh_retries_provider() -> None:
+    """force_refresh must bypass a cached not-found result."""
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_details',
+            new=AsyncMock(
+                side_effect=[
+                    FatalProviderError(
+                        'NexLev has no data for video v1',
+                        provider='nexlev',
+                        error_code='404',
+                    ),
+                    {'id': 'v1', 'title': 'Now indexed'},
+                ],
+            ),
+        ) as mock_call:
+            first_exc: Exception | None = None
+            try:
+                await service.get_video_details('v1')
+            except FatalProviderError as exc:
+                first_exc = exc
+            result = await service.get_video_details('v1', force_refresh=True)
+            return first_exc, result, mock_call
+
+    first_exc, result, mock_call = asyncio.run(_inner())
+    assert first_exc is not None
+    assert result.title == 'Now indexed'
+    assert mock_call.await_count == 2
 
 
 @pytest.mark.django_db(transaction=True)

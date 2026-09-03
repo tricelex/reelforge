@@ -225,7 +225,15 @@ def _agent(
         output_type=ChannelResearchAgentOutput,
         deps_type=ChannelResearchDeps,
         system_prompt=_SYSTEM_PROMPT,
-        retries=2,
+        # ToolTrace.consume() raises ModelRetry for BOTH the intentional
+        # "cap reached, use another tool" nudge AND a tool's genuine
+        # provider errors (e.g. a video NexLev has no data for) - both
+        # share this same per-tool-name retry budget. Too low a number
+        # here means one cap nudge plus one real 404 on the same tool
+        # (easily happens; not every video is in NexLev) exceeds the
+        # budget and pydantic-ai raises UnexpectedModelBehavior, aborting
+        # the whole run instead of letting the model route around it.
+        retries=5,
     )
     _register_tools(a)
 
