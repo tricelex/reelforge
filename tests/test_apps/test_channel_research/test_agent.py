@@ -23,6 +23,7 @@ from server.apps.channel_research.logic.schemas import (
     ChannelResearchAgentOutput,
     validate_agent_output,
 )
+from server.common.exceptions import FatalProviderError
 
 
 class _FakeAgent:
@@ -59,9 +60,10 @@ def _deps() -> ChannelResearchDeps:
 
 def test_tool_trace_enforces_cap() -> None:
     trace = ToolTrace()
-    trace.consume('resolve_channel')
-    with pytest.raises(ModelRetry, match='cap of 1'):
-        trace.consume('resolve_channel')
+    trace.consume('youtube_search')
+    trace.consume('youtube_search')
+    with pytest.raises(ModelRetry, match='cap of 2'):
+        trace.consume('youtube_search')
 
 
 def test_tool_trace_records_summary_and_ts() -> None:
@@ -80,12 +82,15 @@ def test_summarize_truncates_long_payloads() -> None:
 
 
 def test_build_user_prompt_includes_inputs() -> None:
-    prompt = _build_user_prompt(_deps())
+    context = {'channel_id': 'UC1', 'recent_videos': [{'id': 'v1'}]}
+    prompt = _build_user_prompt(_deps(), context)
     assert '@HistoryHub' in prompt
     assert 'nurses' in prompt
     assert 'Night Shift Lore' in prompt
     assert 'LONGFORM' in prompt
     assert 'visual_medium' in prompt
+    assert 'UC1' in prompt
+    assert 're-fetch' in prompt
 
 
 def test_system_prompt_locks_visual_medium_and_templates() -> None:
@@ -112,7 +117,7 @@ def test_build_user_prompt_omitted_market() -> None:
         exa_api_key='exa',
         trace=ToolTrace(),
     )
-    prompt = _build_user_prompt(deps)
+    prompt = _build_user_prompt(deps, {})
     assert 'omitted' in prompt
     assert 'propose' in prompt
 
@@ -140,9 +145,15 @@ def test_run_channel_research_agent_returns_output(
     mock_agent.run = AsyncMock(return_value=mock_result)
 
     async def _inner() -> object:
-        with patch(
-            'server.apps.channel_research.agent._agent',
-            return_value=mock_agent,
+        with (
+            patch(
+                'server.apps.channel_research.agent._agent',
+                return_value=mock_agent,
+            ),
+            patch(
+                'server.apps.channel_research.agent._prefetch_context',
+                new=AsyncMock(return_value={}),
+            ),
         ):
             return await run_channel_research_agent(_deps())
 
@@ -162,8 +173,6 @@ def test_agent_registers_tools_and_validates_output(
         fake = _agent('unit-test-model')
     assert isinstance(fake, _FakeAgent)
     expected_tools = {
-        'resolve_channel',
-        'list_channel_videos',
         'youtube_search',
         'video_info',
         'video_comments',
@@ -171,6 +180,8 @@ def test_agent_registers_tools_and_validates_output(
         'web_search',
     }
     assert expected_tools <= set(fake.tools)
+    assert 'resolve_channel' not in fake.tools
+    assert 'list_channel_videos' not in fake.tools
     ctx = SimpleNamespace(deps=_deps())
     assert fake.validator(ctx, agent_output) is agent_output
     copied = agent_output.model_copy(deep=True)
@@ -212,14 +223,6 @@ def test_registered_tools_call_provider_clients() -> None:
     async def _inner() -> dict[str, object]:
         with (
             patch(
-                'server.apps.channel_research.agent.yt_client.resolve_channel',
-                new=AsyncMock(return_value={'id': 'UC1'}),
-            ),
-            patch(
-                'server.apps.channel_research.agent.yt_client.list_channel_videos',
-                new=AsyncMock(return_value=[{'id': 'v1'}]),
-            ),
-            patch(
                 'server.apps.channel_research.agent.dfs_client.youtube_organic_search',
                 new=AsyncMock(return_value=[{'title': 'hit'}]),
             ),
@@ -240,20 +243,12 @@ def test_registered_tools_call_provider_clients() -> None:
                 new=AsyncMock(return_value=[{'url': 'https://x'}]),
             ),
         ):
-            resolved = await fake.tools['resolve_channel'](ctx)
-            videos = await fake.tools['list_channel_videos'](
-                ctx,
-                channel_id='UC1',
-                order='viewCount',
-            )
             search = await fake.tools['youtube_search'](ctx, keyword='rome')
             info = await fake.tools['video_info'](ctx, video_id='v1')
             comments = await fake.tools['video_comments'](ctx, video_id='v1')
             subs = await fake.tools['video_subtitles'](ctx, video_id='v1')
             web = await fake.tools['web_search'](ctx, query='market')
             return {
-                'resolved': resolved,
-                'videos': videos,
                 'search': search,
                 'info': info,
                 'comments': comments,
@@ -262,14 +257,12 @@ def test_registered_tools_call_provider_clients() -> None:
             }
 
     results = asyncio.run(_inner())
-    assert results['resolved'] == {'id': 'UC1'}
-    assert results['videos'][0]['id'] == 'v1'
     assert results['search'][0]['title'] == 'hit'
     assert results['info'][0]['video_id'] == 'v1'
     assert results['comments'][0]['text'] == 'wow'
     assert results['subs'][0]['text'] == 'hello'
     assert results['web'][0]['url'] == 'https://x'
-    assert len(ctx.deps.trace.entries) == 7
+    assert len(ctx.deps.trace.entries) == 5
 
 
 @override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
@@ -277,16 +270,13 @@ def test_nexlev_tools_registered_when_enabled() -> None:
     _agent.cache_clear()
     with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
         fake = _agent('unit-test-nexlev-on')
-    expected = {
-        'youtube_search',
-        'video_info',
-        'channel_about',
-        'channel_outliers',
-        'similar_channels',
-    }
+    expected = {'youtube_search', 'video_info'}
     assert expected <= set(fake.tools)
     assert 'video_comments' not in fake.tools
     assert 'video_subtitles' not in fake.tools
+    assert 'channel_about' not in fake.tools
+    assert 'channel_outliers' not in fake.tools
+    assert 'similar_channels' not in fake.tools
 
 
 @override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
@@ -297,10 +287,7 @@ def test_nexlev_tools_call_service_and_record_trace() -> None:
     ctx = SimpleNamespace(deps=_deps())
 
     from server.apps.nexlev.logic.value_objects import (
-        NexLevChannelAbout,
-        NexLevOutlierVideo,
         NexLevSearchResultItem,
-        NexLevSimilarChannel,
         NexLevVideoDetails,
     )
 
@@ -322,6 +309,32 @@ def test_nexlev_tools_call_service_and_record_trace() -> None:
                     return_value=NexLevVideoDetails(id='v1', title='X'),
                 ),
             ),
+        ):
+            search = await fake.tools['youtube_search'](ctx, keyword='rome')
+            info = await fake.tools['video_info'](ctx, video_id='v1')
+            return {'search': search, 'info': info}
+
+    results = asyncio.run(_inner())
+    assert results['search'][0]['title'] == 'hit'
+    assert results['info']['id'] == 'v1'
+    assert len(ctx.deps.trace.entries) == 2
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_merge_nexlev_channel_context_fills_sections() -> None:
+    """The channel-scoped NexLev sections come from a prefetch, not tools."""
+    from server.apps.channel_research.agent import (
+        _merge_nexlev_channel_context,
+    )
+    from server.apps.nexlev.logic.value_objects import (
+        NexLevChannelAbout,
+        NexLevOutlierVideo,
+        NexLevSimilarChannel,
+    )
+
+    async def _inner() -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        with (
             patch(
                 'server.apps.channel_research.agent.NexLevService'
                 '.get_channel_about',
@@ -354,30 +367,117 @@ def test_nexlev_tools_call_service_and_record_trace() -> None:
                 ),
             ),
         ):
-            search = await fake.tools['youtube_search'](ctx, keyword='rome')
-            info = await fake.tools['video_info'](ctx, video_id='v1')
-            about = await fake.tools['channel_about'](ctx, channel_id='UC1')
-            outliers = await fake.tools['channel_outliers'](
-                ctx,
-                channel_id='UC1',
-            )
-            similar = await fake.tools['similar_channels'](
-                ctx,
-                channel_id='UC1',
-            )
-            return {
-                'search': search,
-                'info': info,
-                'about': about,
-                'outliers': outliers,
-                'similar': similar,
-            }
+            await _merge_nexlev_channel_context('UC1', context)
+        return context
 
-    results = asyncio.run(_inner())
-    assert results['search'][0]['title'] == 'hit'
-    assert results['info']['id'] == 'v1'
-    assert results['about']['channelId'] == 'UC1'
-    assert len(ctx.deps.trace.entries) == 5
+    context = asyncio.run(_inner())
+    assert context['channel_about']['channelId'] == 'UC1'
+    assert context['channel_outliers'][0]['videoId'] == 'v1'
+    assert context['similar_channels'][0]['channelId'] == 'UC2'
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_merge_nexlev_channel_context_tolerates_provider_miss() -> None:
+    """A missing NexLev section degrades to empty/None, not a crash."""
+    from server.apps.channel_research.agent import (
+        _merge_nexlev_channel_context,
+    )
+
+    not_found = FatalProviderError(
+        'NexLev has no data',
+        provider='nexlev',
+        error_code='404',
+    )
+
+    async def _inner() -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        with (
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_channel_about',
+                new=AsyncMock(side_effect=not_found),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_channel_outliers',
+                new=AsyncMock(side_effect=not_found),
+            ),
+            patch(
+                'server.apps.channel_research.agent.NexLevService'
+                '.get_similar_channels',
+                new=AsyncMock(side_effect=not_found),
+            ),
+        ):
+            await _merge_nexlev_channel_context('UC1', context)
+        return context
+
+    context = asyncio.run(_inner())
+    assert context['channel_about'] is None
+    assert context['channel_outliers'] == []
+    assert context['similar_channels'] == []
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_prefetch_context_gathers_channel_and_videos() -> None:
+    from server.apps.channel_research.agent import _prefetch_context
+
+    async def _inner() -> dict[str, Any]:
+        with (
+            patch(
+                'server.apps.channel_research.agent.yt_client.resolve_channel',
+                new=AsyncMock(return_value={'id': 'UC1', 'snippet': {}}),
+            ),
+            patch(
+                'server.apps.channel_research.agent.yt_client'
+                '.list_channel_videos',
+                new=AsyncMock(return_value=[{'id': 'v1'}]),
+            ),
+            patch(
+                'server.apps.channel_research.agent'
+                '._merge_nexlev_channel_context',
+                new=AsyncMock(),
+            ),
+        ):
+            return await _prefetch_context(_deps())
+
+    context = asyncio.run(_inner())
+    assert context['channel_id'] == 'UC1'
+    assert context['recent_videos'] == [{'id': 'v1'}]
+    assert context['popular_videos'] == [{'id': 'v1'}]
+
+
+@override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
+def test_prefetch_context_tolerates_missing_video_lists() -> None:
+    """A YouTube Data API miss on the video lists degrades gracefully."""
+    from server.apps.channel_research.agent import _prefetch_context
+
+    quota_error = FatalProviderError(
+        'quota exceeded',
+        provider='youtube_search',
+    )
+
+    async def _inner() -> dict[str, Any]:
+        with (
+            patch(
+                'server.apps.channel_research.agent.yt_client.resolve_channel',
+                new=AsyncMock(return_value={'id': 'UC1'}),
+            ),
+            patch(
+                'server.apps.channel_research.agent.yt_client'
+                '.list_channel_videos',
+                new=AsyncMock(side_effect=quota_error),
+            ),
+            patch(
+                'server.apps.channel_research.agent'
+                '._merge_nexlev_channel_context',
+                new=AsyncMock(),
+            ),
+        ):
+            return await _prefetch_context(_deps())
+
+    context = asyncio.run(_inner())
+    assert context['recent_videos'] == []
+    assert context['popular_videos'] == []
 
 
 @override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
@@ -387,8 +487,6 @@ def test_video_info_retries_model_when_video_has_no_data() -> None:
     with patch('server.apps.channel_research.agent.Agent', _FakeAgent):
         fake = _agent('unit-test-nexlev-video-not-found')
     ctx = SimpleNamespace(deps=_deps())
-
-    from server.common.exceptions import FatalProviderError
 
     async def _inner() -> None:
         with patch(

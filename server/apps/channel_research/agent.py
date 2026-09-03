@@ -1,6 +1,8 @@
 """Pydantic AI channel-research agent (not a pipeline stage)."""
 
+import asyncio
 import json
+from collections.abc import Awaitable
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any, final
@@ -9,7 +11,7 @@ import attrs
 import msgspec
 from django.conf import settings
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.models.anthropic import AnthropicModelSettings
 from pydantic_ai.usage import UsageLimits
 
 from server.apps.channel_research.logic.schemas import (
@@ -24,32 +26,35 @@ from server.apps.generation.logic.model_resolver import (
     to_pydantic_ai_model,
 )
 from server.apps.nexlev.services import NexLevService
-from server.common.exceptions import FatalProviderError
+from server.common.exceptions import FatalProviderError, RetryableProviderError
 
 _MAX_TOKENS = 16384
 _SUMMARY_CHARS = 240
+_CONTEXT_VIDEOS_PER_LIST = 8
+
+# resolve_channel, list_channel_videos, and (with NexLev) channel_about /
+# channel_outliers / similar_channels are NOT agent tools: the model was
+# always going to call each of them exactly once, so making it spend a
+# full paid LLM turn deciding to do so was pure waste - and because the
+# growing conversation is resent in full on every subsequent turn, that
+# waste compounded across the whole run. _prefetch_context() fetches all
+# of it deterministically before the agent even starts; only tools that
+# genuinely need model judgment (which videos/queries are worth a call)
+# remain, with tight caps.
 TOOL_CAPS: dict[str, int] = {
-    'resolve_channel': 1,
-    'list_channel_videos': 2,
-    'youtube_search': 5,
-    'video_info': 5,
-    'web_search': 4,
-    'channel_about': 1,
-    'channel_outliers': 1,
-    'similar_channels': 1,
+    'youtube_search': 2,
+    'video_info': 3,
+    'web_search': 2,
     # DataForSEO-only tools (disabled by default; NexLev is the default
     # provider and never registers these) — kept so trace.consume() has
     # a cap to read if DATAFORSEO_ENABLED is ever turned on.
-    'video_comments': 3,
-    'video_subtitles': 2,
+    'video_comments': 2,
+    'video_subtitles': 1,
 }
-# With the default NexLev provider, the eight registered tools' caps sum
-# to 20 tool calls (each usually its own model request), which the system
-# prompt tells the model it may use. Leave headroom above that for
-# ModelRetry nudges (a capped tool, a video with no NexLev data) and the
-# final output turn(s), or thorough runs hit UsageLimitExceeded before
-# producing output.
-_REQUEST_LIMIT = 30
+# The three remaining tools cap out at 7 calls total. Leave headroom for
+# ModelRetry nudges and the final output turn(s) without coming anywhere
+# near the previous 20-plus-call, $7-per-run budget.
+_REQUEST_LIMIT = 12
 
 _SYSTEM_PROMPT = """\
 You are a YouTube channel strategist for ReelForge. You research one source
@@ -74,18 +79,22 @@ Research first (tools), then classify:
    3d_cgi | motion_graphics | photoreal | live_action_stock | mixed
 Inspect thumbnails and video_info before classifying.
 
-Use tools with discipline — fetch only what the dossier actually needs,
-never research for its own sake. Every call spends real API quota:
-- resolve_channel exactly once
-- list_channel_videos up to twice (recent + popular)
-- channel_about once, for subscriber count and links
-- channel_outliers once, for the channel's best-performing videos
-- similar_channels once, for a quick competitor/niche list ONLY — do not
-  research the similar channels further (no video_info, no outliers on
-  them); at most one follow-up channel_about call if genuinely needed
-- youtube_search for competitors/adjacent formats (cap 5)
-- video_info on the strongest videos (cap 5)
-- web_search for market/context (cap 4)
+The user message already contains the channel's resolve info, recent AND
+popular video lists, about, outliers, and similar channels - this is a
+one-time fixed snapshot, not something you can refresh. Do NOT call a
+tool to re-fetch any of it; read it directly from the user message.
+
+Use tools with extreme discipline — most runs need only 3-5 tool calls
+total, never more. Each call spends real API quota AND a full paid model
+turn:
+- video_info on the 2-3 strongest videos only, for thumbnails/pacing
+  (cap 3)
+- youtube_search for competitors/adjacent formats — at most 2 targeted
+  queries, only if the provided context doesn't already answer it
+- web_search for market/context — at most 2 targeted queries, only if
+  genuinely needed
+Do not research similar channels further (no video_info or outliers on
+them) — they're listed for competitor mapping only.
 
 Distinctive format or medium (2d_animation, 3d_cgi, motion_graphics,
 mixed — anything that is not generic photoreal documentary):
@@ -200,18 +209,115 @@ def _summarize(data: object) -> str:
     return f'{text[: _SUMMARY_CHARS - 3]}...'
 
 
-def _build_user_prompt(deps: ChannelResearchDeps) -> str:
+def _build_user_prompt(
+    deps: ChannelResearchDeps,
+    context: dict[str, Any],
+) -> str:
     market = deps.target_market or '(omitted - same-niche new brand)'
     working = deps.working_name or '(propose a distinct brandable name)'
     extra = deps.notes or '(none)'
+    context_json = json.dumps(context, default=str)
     return (
         f'Research this YouTube channel: {deps.source_channel_url}\n'
         f'Target market: {market}\n'
         f'Working name: {working}\n'
         f'Content kind: {deps.kind}\n'
-        f'Operator notes: {extra}\n'
-        'Classify visual_medium from thumbnails/video_info. '
-        'Return research_report + channel_spec that pass the quality bar.'
+        f'Operator notes: {extra}\n\n'
+        'Already-fetched channel context (resolve info, recent + popular '
+        'video lists, about, outliers, similar channels) - do NOT call a '
+        f'tool to re-fetch any of this:\n{context_json}\n\n'
+        'Pick 2-3 of the strongest videos above and call video_info on '
+        'each for thumbnails/pacing. Classify visual_medium from '
+        'thumbnails/video_info. Return research_report + channel_spec '
+        'that pass the quality bar.'
+    )
+
+
+async def _fetch_optional[T](awaitable: Awaitable[T]) -> T | None:
+    """Await a supplementary context fetch.
+
+    A provider miss just means that section is absent, not a reason to
+    fail the whole job before the agent even starts.
+    """
+    try:
+        return await awaitable
+    except (FatalProviderError, RetryableProviderError):
+        return None
+
+
+async def _prefetch_context(deps: ChannelResearchDeps) -> dict[str, Any]:
+    """Fetch the channel's fixed, always-needed context once, up front.
+
+    The model was always going to ask for exactly this - once each - so
+    there was never any judgment to spend a paid turn on.
+    """
+    resolved = await yt_client.resolve_channel(
+        deps.source_channel_url,
+        deps.youtube_api_key,
+    )
+    channel_id = str(resolved['id'])
+    deps.trace.record('resolve_channel', {}, resolved)
+
+    recent, popular = await asyncio.gather(
+        _fetch_optional(
+            yt_client.list_channel_videos(
+                channel_id,
+                deps.youtube_api_key,
+                order='date',
+                max_results=_CONTEXT_VIDEOS_PER_LIST,
+            ),
+        ),
+        _fetch_optional(
+            yt_client.list_channel_videos(
+                channel_id,
+                deps.youtube_api_key,
+                order='viewCount',
+                max_results=_CONTEXT_VIDEOS_PER_LIST,
+            ),
+        ),
+    )
+    deps.trace.record(
+        'list_channel_videos',
+        {'channel_id': channel_id, 'order': 'date'},
+        recent,
+    )
+    deps.trace.record(
+        'list_channel_videos',
+        {'channel_id': channel_id, 'order': 'viewCount'},
+        popular,
+    )
+    context: dict[str, Any] = {
+        'channel': resolved,
+        'channel_id': channel_id,
+        'recent_videos': recent or [],
+        'popular_videos': popular or [],
+    }
+    if settings.NEXLEV_ENABLED:
+        await _merge_nexlev_channel_context(channel_id, context)
+    return context
+
+
+async def _merge_nexlev_channel_context(
+    channel_id: str,
+    context: dict[str, Any],
+) -> None:
+    """Fetch NexLev's channel-scoped sections and add them to `context`."""
+    service = NexLevService()
+    about, outliers, similar = await asyncio.gather(
+        _fetch_optional(service.get_channel_about(channel_id)),
+        _fetch_optional(service.get_channel_outliers(channel_id)),
+        _fetch_optional(service.get_similar_channels(channel_id)),
+    )
+    context['channel_about'] = (
+        msgspec.to_builtins(about) if about is not None else None
+    )
+    context['channel_outliers'] = (
+        [msgspec.to_builtins(o) for o in outliers]
+        if outliers is not None
+        else []
+    )
+    context['similar_channels'] = (
+        [msgspec.to_builtins(s) for s in similar] if similar is not None else []
     )
 
 
@@ -254,51 +360,16 @@ def _agent(
 def _register_tools(
     agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
 ) -> None:
-    """Attach research tools with per-tool caps."""
+    """Attach research tools with per-tool caps.
 
-    @agent.tool
-    async def resolve_channel(
-        ctx: RunContext[ChannelResearchDeps],
-    ) -> dict[str, Any]:
-        """Resolve the source URL to channel snippet, stats, and branding.
-
-        Call exactly once at the start of research.
-        """
-        ctx.deps.trace.consume('resolve_channel')
-        result = await yt_client.resolve_channel(
-            ctx.deps.source_channel_url,
-            ctx.deps.youtube_api_key,
-        )
-        ctx.deps.trace.record('resolve_channel', {}, result)
-        return result
-
-    @agent.tool
-    async def list_channel_videos(
-        ctx: RunContext[ChannelResearchDeps],
-        channel_id: str,
-        order: str = 'date',
-    ) -> list[dict[str, Any]]:
-        """List recent (`date`) or popular (`viewCount`) videos on a channel.
-
-        Call at most twice - once recent, once popular.
-        """
-        ctx.deps.trace.consume('list_channel_videos')
-        result = await yt_client.list_channel_videos(
-            channel_id,
-            ctx.deps.youtube_api_key,
-            order=order,
-        )
-        ctx.deps.trace.record(
-            'list_channel_videos',
-            {'channel_id': channel_id, 'order': order},
-            result,
-        )
-        return result
-
+    resolve_channel, list_channel_videos, and NexLev's channel-scoped
+    sections are prefetched by `_prefetch_context()` instead of being
+    tools - see the TOOL_CAPS comment.
+    """
     if settings.DATAFORSEO_ENABLED:
         _register_dataforseo_tools(agent)
     if settings.NEXLEV_ENABLED:
-        _register_nexlev_tools(agent)
+        _register_nexlev_video_tools(agent)
     _register_web_search_tool(agent)
 
 
@@ -314,7 +385,7 @@ def _register_dataforseo_tools(
     ) -> list[dict[str, Any]]:
         """Search YouTube via DataForSEO for videos and channels.
 
-        Use for competitors and adjacent formats. Cap 5 queries.
+        Use for competitors and adjacent formats. Cap 2 queries.
         """
         ctx.deps.trace.consume('youtube_search')
         result = await dfs_client.youtube_organic_search(
@@ -334,7 +405,7 @@ def _register_dataforseo_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> list[dict[str, Any]]:
-        """Fetch DataForSEO video metadata for one video_id. Cap 5."""
+        """Fetch DataForSEO video metadata for one video_id. Cap 3."""
         ctx.deps.trace.consume('video_info')
         result = await dfs_client.youtube_video_info(
             video_id,
@@ -349,7 +420,7 @@ def _register_dataforseo_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> list[dict[str, Any]]:
-        """Fetch comment themes for audience language. Cap 3."""
+        """Fetch comment themes for audience language. Cap 2."""
         ctx.deps.trace.consume('video_comments')
         result = await dfs_client.youtube_video_comments(
             video_id,
@@ -368,7 +439,7 @@ def _register_dataforseo_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> list[dict[str, Any]]:
-        """Fetch subtitles for pacing/format. Expensive - cap 2."""
+        """Fetch subtitles for pacing/format. Expensive - cap 1."""
         ctx.deps.trace.consume('video_subtitles')
         result = await dfs_client.youtube_video_subtitles(
             video_id,
@@ -383,18 +454,14 @@ def _register_dataforseo_tools(
         return result
 
 
-def _register_nexlev_tools(
-    agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
-) -> None:
-    """Attach NexLev-backed YouTube data tools (replaces DataForSEO)."""
-    _register_nexlev_video_tools(agent)
-    _register_nexlev_channel_tools(agent)
-
-
 def _register_nexlev_video_tools(
     agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
 ) -> None:
-    """Attach NexLev's video-scoped tools (search, info, comments, subs)."""
+    """Attach NexLev's video-scoped tools (search, info).
+
+    Channel-scoped sections (about, outliers, similar) are prefetched by
+    `_merge_nexlev_channel_context()` instead - see the TOOL_CAPS comment.
+    """
     service = NexLevService()
 
     @agent.tool
@@ -404,7 +471,7 @@ def _register_nexlev_video_tools(
     ) -> list[dict[str, Any]]:
         """Search YouTube live via NexLev for videos and channels.
 
-        Use for competitors and adjacent formats. Cap 5 queries.
+        Use for competitors and adjacent formats. Cap 2 queries.
         """
         ctx.deps.trace.consume('youtube_search')
         items = await service.search_youtube(keyword)
@@ -417,7 +484,7 @@ def _register_nexlev_video_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> dict[str, Any]:
-        """Fetch NexLev video metadata for one video_id. Cap 5."""
+        """Fetch NexLev video metadata for one video_id. Cap 3."""
         ctx.deps.trace.consume('video_info')
         try:
             details = await service.get_video_details(video_id)
@@ -426,61 +493,6 @@ def _register_nexlev_video_tools(
             raise ModelRetry(msg) from exc
         result: dict[str, Any] = msgspec.to_builtins(details)
         ctx.deps.trace.record('video_info', {'video_id': video_id}, result)
-        return result
-
-
-def _register_nexlev_channel_tools(
-    agent: Agent[ChannelResearchDeps, ChannelResearchAgentOutput],
-) -> None:
-    """Attach NexLev's channel-scoped tools (about, outliers, similar)."""
-    service = NexLevService()
-
-    @agent.tool
-    async def channel_about(
-        ctx: RunContext[ChannelResearchDeps],
-        channel_id: str,
-    ) -> dict[str, Any]:
-        """Fetch channel about-info (subs, description, links). Cap 1."""
-        ctx.deps.trace.consume('channel_about')
-        about = await service.get_channel_about(channel_id)
-        result: dict[str, Any] = msgspec.to_builtins(about)
-        ctx.deps.trace.record(
-            'channel_about',
-            {'channel_id': channel_id},
-            result,
-        )
-        return result
-
-    @agent.tool
-    async def channel_outliers(
-        ctx: RunContext[ChannelResearchDeps],
-        channel_id: str,
-    ) -> list[dict[str, Any]]:
-        """Fetch the channel's highest-performing videos. Cap 1."""
-        ctx.deps.trace.consume('channel_outliers')
-        outliers = await service.get_channel_outliers(channel_id)
-        result = [msgspec.to_builtins(o) for o in outliers]
-        ctx.deps.trace.record(
-            'channel_outliers',
-            {'channel_id': channel_id},
-            result,
-        )
-        return result
-
-    @agent.tool
-    async def similar_channels(
-        ctx: RunContext[ChannelResearchDeps],
-        channel_id: str,
-    ) -> list[dict[str, Any]]:
-        """Fetch channels similar to this one for competitor mapping. Cap 1."""
-        ctx.deps.trace.consume('similar_channels')
-        similar = await service.get_similar_channels(channel_id)
-        result = [msgspec.to_builtins(s) for s in similar]
-        ctx.deps.trace.record(
-            'similar_channels',
-            {'channel_id': channel_id},
-            result,
-        )
         return result
 
 
@@ -494,7 +506,7 @@ def _register_web_search_tool(
         ctx: RunContext[ChannelResearchDeps],
         query: str,
     ) -> list[dict[str, Any]]:
-        """Search the web for market context. Cap 4 targeted queries."""
+        """Search the web for market context. Cap 2 targeted queries."""
         ctx.deps.trace.consume('web_search')
         result = await search_client.search(
             query,
@@ -527,10 +539,19 @@ async def run_channel_research_agent(
 ) -> tuple[ChannelResearchAgentOutput, dict[str, Any]]:
     """Run the agent and return structured output plus token usage."""
     model_slug = resolve_model('channel_research', None)
+    context = await _prefetch_context(deps)
     result = await _agent(to_pydantic_ai_model(model_slug)).run(
-        _build_user_prompt(deps),
+        _build_user_prompt(deps, context),
         deps=deps,
-        model_settings=ModelSettings(max_tokens=_MAX_TOKENS),
+        # Cache the (large, static-per-run) system prompt, tool schemas,
+        # and growing message history so each of the few remaining turns
+        # only pays full price for what's actually new.
+        model_settings=AnthropicModelSettings(
+            max_tokens=_MAX_TOKENS,
+            anthropic_cache_instructions=True,
+            anthropic_cache_tool_definitions=True,
+            anthropic_cache=True,
+        ),
         usage_limits=UsageLimits(request_limit=_REQUEST_LIMIT),
     )
     return result.output, _usage_dict(result, len(deps.trace.entries))
