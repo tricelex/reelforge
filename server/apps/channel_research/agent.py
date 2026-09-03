@@ -32,20 +32,24 @@ TOOL_CAPS: dict[str, int] = {
     'resolve_channel': 1,
     'list_channel_videos': 2,
     'youtube_search': 5,
-    'video_info': 8,
-    'video_comments': 3,
-    'video_subtitles': 2,
+    'video_info': 5,
     'web_search': 4,
     'channel_about': 1,
     'channel_outliers': 1,
     'similar_channels': 1,
+    # DataForSEO-only tools (disabled by default; NexLev is the default
+    # provider and never registers these) — kept so trace.consume() has
+    # a cap to read if DATAFORSEO_ENABLED is ever turned on.
+    'video_comments': 3,
+    'video_subtitles': 2,
 }
-# TOOL_CAPS alone budgets sum(TOOL_CAPS.values()) == 28 tool calls (each
-# usually its own model request), which the system prompt tells the model
-# it may use. Leave headroom above that for ModelRetry nudges (a capped
-# tool, a video with no NexLev data) and the final output turn(s), or
-# thorough runs hit UsageLimitExceeded before producing output.
-_REQUEST_LIMIT = 45
+# With the default NexLev provider, the eight registered tools' caps sum
+# to 20 tool calls (each usually its own model request), which the system
+# prompt tells the model it may use. Leave headroom above that for
+# ModelRetry nudges (a capped tool, a video with no NexLev data) and the
+# final output turn(s), or thorough runs hit UsageLimitExceeded before
+# producing output.
+_REQUEST_LIMIT = 30
 
 _SYSTEM_PROMPT = """\
 You are a YouTube channel strategist for ReelForge. You research one source
@@ -68,18 +72,19 @@ Research first (tools), then classify:
 2. FORMAT — title formula, hook, episode shape (this is what we bend)
 3. visual_medium (required enum, do not guess photoreal): 2d_animation |
    3d_cgi | motion_graphics | photoreal | live_action_stock | mixed
-Inspect thumbnails, video_info, and a subtitle sample before classifying.
+Inspect thumbnails and video_info before classifying.
 
-Use tools with discipline:
+Use tools with discipline — fetch only what the dossier actually needs,
+never research for its own sake. Every call spends real API quota:
 - resolve_channel exactly once
 - list_channel_videos up to twice (recent + popular)
 - channel_about once, for subscriber count and links
 - channel_outliers once, for the channel's best-performing videos
-- similar_channels once, for competitor/niche mapping
+- similar_channels once, for a quick competitor/niche list ONLY — do not
+  research the similar channels further (no video_info, no outliers on
+  them); at most one follow-up channel_about call if genuinely needed
 - youtube_search for competitors/adjacent formats (cap 5)
-- video_info on the strongest videos (cap 8)
-- video_comments sparingly for audience language (cap 3)
-- video_subtitles at most twice (expensive; pacing/format only)
+- video_info on the strongest videos (cap 5)
 - web_search for market/context (cap 4)
 
 Distinctive format or medium (2d_animation, 3d_cgi, motion_graphics,
@@ -205,7 +210,7 @@ def _build_user_prompt(deps: ChannelResearchDeps) -> str:
         f'Working name: {working}\n'
         f'Content kind: {deps.kind}\n'
         f'Operator notes: {extra}\n'
-        'Classify visual_medium from thumbnails/video_info/subtitles. '
+        'Classify visual_medium from thumbnails/video_info. '
         'Return research_report + channel_spec that pass the quality bar.'
     )
 
@@ -321,7 +326,7 @@ def _register_dataforseo_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> list[dict[str, Any]]:
-        """Fetch DataForSEO video metadata for one video_id. Cap 8."""
+        """Fetch DataForSEO video metadata for one video_id. Cap 5."""
         ctx.deps.trace.consume('video_info')
         result = await dfs_client.youtube_video_info(
             video_id,
@@ -404,7 +409,7 @@ def _register_nexlev_video_tools(
         ctx: RunContext[ChannelResearchDeps],
         video_id: str,
     ) -> dict[str, Any]:
-        """Fetch NexLev video metadata for one video_id. Cap 8."""
+        """Fetch NexLev video metadata for one video_id. Cap 5."""
         ctx.deps.trace.consume('video_info')
         try:
             details = await service.get_video_details(video_id)
@@ -413,38 +418,6 @@ def _register_nexlev_video_tools(
             raise ModelRetry(msg) from exc
         result: dict[str, Any] = msgspec.to_builtins(details)
         ctx.deps.trace.record('video_info', {'video_id': video_id}, result)
-        return result
-
-    @agent.tool
-    async def video_comments(
-        ctx: RunContext[ChannelResearchDeps],
-        video_id: str,
-    ) -> list[dict[str, Any]]:
-        """Fetch comment themes for audience language. Cap 3."""
-        ctx.deps.trace.consume('video_comments')
-        comments = await service.get_video_comments(video_id)
-        result = [msgspec.to_builtins(c) for c in comments]
-        ctx.deps.trace.record(
-            'video_comments',
-            {'video_id': video_id},
-            result,
-        )
-        return result
-
-    @agent.tool
-    async def video_subtitles(
-        ctx: RunContext[ChannelResearchDeps],
-        video_id: str,
-    ) -> list[dict[str, Any]]:
-        """Fetch the transcript for pacing/format. Expensive - cap 2."""
-        ctx.deps.trace.consume('video_subtitles')
-        segments = await service.get_video_transcript(video_id)
-        result = [msgspec.to_builtins(s) for s in segments]
-        ctx.deps.trace.record(
-            'video_subtitles',
-            {'video_id': video_id},
-            result,
-        )
         return result
 
 
