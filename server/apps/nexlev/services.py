@@ -33,6 +33,9 @@ from server.apps.nexlev.models import (
     NexLevSearchCacheEntry,
     NexLevVideoRecord,
 )
+from server.common.exceptions import FatalProviderError
+
+_VIDEO_NOT_FOUND: dict[str, object] = {'_not_found': True}
 
 
 def _get_or_create_channel_record(channel_id: str) -> NexLevChannelRecord:
@@ -294,6 +297,13 @@ class NexLevService:
             window=constants.VIDEO_STALE_AFTER,
         )
         if not stale:
+            if record.details == _VIDEO_NOT_FOUND:
+                msg = f'NexLev has no data for video {video_id}'
+                raise FatalProviderError(
+                    msg,
+                    provider='nexlev',
+                    error_code='404',
+                )
             try:
                 return msgspec.convert(
                     record.details,
@@ -303,11 +313,23 @@ class NexLevService:
             except msgspec.ValidationError:
                 # Cached row predates a provider-shape fix; refetch it.
                 pass
-        raw = await nexlev_client.get_video_details(
-            video_id,
-            api_key=settings.NEXLEV_API_KEY,
-            base_url=settings.NEXLEV_BASE_URL,
-        )
+        try:
+            raw = await nexlev_client.get_video_details(
+                video_id,
+                api_key=settings.NEXLEV_API_KEY,
+                base_url=settings.NEXLEV_BASE_URL,
+            )
+        except FatalProviderError as exc:
+            if exc.error_code == '404':
+                # Remember the miss so retries don't re-spend NexLev quota
+                # asking about a video it has already told us it lacks.
+                record.details = _VIDEO_NOT_FOUND
+                record.details_fetched_at = timezone.now()
+                await sync_to_async(_save_video_record)(
+                    record,
+                    fields=['details', 'details_fetched_at'],
+                )
+            raise
         record.details = raw
         record.details_fetched_at = timezone.now()
         record.quota_spent += constants.QUOTA_COST_VIDEO_DETAILS
