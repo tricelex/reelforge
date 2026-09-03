@@ -3,7 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from server.apps.pipelines.schemas import Scene, SceneBreakdownOutput
+from server.apps.pipelines.schemas import (
+    Scene,
+    SceneBreakdownOutput,
+    ScriptChapter,
+)
 
 
 def _narration(n_words: int) -> str:
@@ -65,6 +69,19 @@ def test_scene_syncs_word_count_from_narration() -> None:
     assert scene.word_count == 20
     result = SceneBreakdownOutput(scenes=[scene])
     assert result.scenes[0].word_count == 20
+
+
+def test_script_chapter_syncs_word_count_from_text() -> None:
+    """LLM miscounts are corrected from text.split(), like Scene does."""
+    chapter = ScriptChapter(
+        idx=0,
+        title='Intro',
+        text=_narration(605),
+        word_count=1068,
+        closing_line='But it fell.',
+        commentary='I think this collapse was avoidable.',
+    )
+    assert chapter.word_count == 605
 
 
 def test_scene_breakdown_rejects_more_than_two_foreground_cast() -> None:

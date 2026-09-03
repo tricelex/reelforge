@@ -113,6 +113,14 @@ class ScriptChapter(BaseModel):
     closing_line: str
     commentary: str = Field(min_length=1)
 
+    @model_validator(mode='after')
+    def sync_word_count(self) -> ScriptChapter:
+        """Derive word_count from text — LLMs routinely miscount by 1."""
+        counted = len(self.text.split())
+        if self.word_count != counted:
+            self.word_count = counted
+        return self
+
 
 class ScriptOutput(BaseModel):
     """Full output of the script stage."""
