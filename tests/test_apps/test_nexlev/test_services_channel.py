@@ -100,6 +100,31 @@ def test_get_channel_about_coerces_stringified_numeric_fields() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_get_channel_about_refetches_when_cached_record_is_corrupt() -> None:
+    """A fresh-but-invalid cached row must be refetched, not raise."""
+    NexLevChannelRecord.objects.create(
+        channel_id='UC1',
+        about={},
+        about_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_channel_about',
+            new=AsyncMock(
+                return_value={'channelId': 'UC1', 'title': 'Refetched'},
+            ),
+        ) as mock_call:
+            result = await service.get_channel_about('UC1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result.title == 'Refetched'
+    mock_call.assert_awaited_once()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_get_channel_about_refetches_when_stale() -> None:
     stale_at = timezone.now() - constants.ABOUT_STALE_AFTER - timedelta(days=1)
     NexLevChannelRecord.objects.create(
@@ -319,3 +344,28 @@ def test_get_niche_overview_uses_fresh_record() -> None:
     result, mock_call = asyncio.run(_inner())
     assert result.original_channel_id == 'UC1'
     mock_call.assert_not_awaited()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_niche_overview_refetches_when_cached_record_is_corrupt() -> None:
+    """A fresh-but-invalid cached row must be refetched, not raise."""
+    NexLevChannelRecord.objects.create(
+        channel_id='UC1',
+        niche_overview={},
+        niche_overview_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_niche_overview',
+            new=AsyncMock(
+                return_value={'originalChannelId': 'UC1'},
+            ),
+        ) as mock_call:
+            result = await service.get_niche_overview('UC1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result.original_channel_id == 'UC1'
+    mock_call.assert_awaited_once()

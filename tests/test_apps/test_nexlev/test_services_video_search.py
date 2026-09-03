@@ -55,6 +55,29 @@ def test_get_video_details_uses_fresh_record() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+def test_get_video_details_refetches_when_cached_record_is_corrupt() -> None:
+    """A fresh-but-invalid cached row must be refetched, not raise."""
+    NexLevVideoRecord.objects.create(
+        video_id='v1',
+        details={},
+        details_fetched_at=timezone.now(),
+    )
+    service = NexLevService()
+
+    async def _inner() -> object:
+        with patch(
+            'server.apps.nexlev.services.nexlev_client.get_video_details',
+            new=AsyncMock(return_value={'id': 'v1', 'title': 'Refetched'}),
+        ) as mock_call:
+            result = await service.get_video_details('v1')
+            return result, mock_call
+
+    result, mock_call = asyncio.run(_inner())
+    assert result.title == 'Refetched'
+    mock_call.assert_awaited_once()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_get_video_transcript_fetches_when_missing() -> None:
     service = NexLevService()
 
