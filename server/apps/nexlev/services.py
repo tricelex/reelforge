@@ -103,22 +103,32 @@ class NexLevService:
         record = await sync_to_async(_get_or_create_channel_record)(
             channel_id,
         )
-        if force_refresh or is_stale(
+        stale = force_refresh or is_stale(
             record.about_fetched_at,
             window=constants.ABOUT_STALE_AFTER,
-        ):
-            raw = await nexlev_client.get_channel_about(
-                channel_id,
-                api_key=settings.NEXLEV_API_KEY,
-                base_url=settings.NEXLEV_BASE_URL,
-            )
-            record.about = raw
-            record.about_fetched_at = timezone.now()
-            record.quota_spent += constants.QUOTA_COST_ABOUT
-            await sync_to_async(_save_channel_record)(
-                record,
-                fields=['about', 'about_fetched_at', 'quota_spent'],
-            )
+        )
+        if not stale:
+            try:
+                return msgspec.convert(
+                    record.about,
+                    type=NexLevChannelAbout,
+                    strict=False,
+                )
+            except msgspec.ValidationError:
+                # Cached row predates a provider-shape fix; refetch it.
+                pass
+        raw = await nexlev_client.get_channel_about(
+            channel_id,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+        )
+        record.about = raw
+        record.about_fetched_at = timezone.now()
+        record.quota_spent += constants.QUOTA_COST_ABOUT
+        await sync_to_async(_save_channel_record)(
+            record,
+            fields=['about', 'about_fetched_at', 'quota_spent'],
+        )
         return msgspec.convert(
             record.about,
             type=NexLevChannelAbout,
@@ -235,26 +245,36 @@ class NexLevService:
         record = await sync_to_async(_get_or_create_channel_record)(
             channel_id,
         )
-        if force_refresh or is_stale(
+        stale = force_refresh or is_stale(
             record.niche_overview_fetched_at,
             window=constants.NICHE_OVERVIEW_STALE_AFTER,
-        ):
-            raw = await nexlev_client.get_niche_overview(
-                channel_id,
-                api_key=settings.NEXLEV_API_KEY,
-                base_url=settings.NEXLEV_BASE_URL,
-            )
-            record.niche_overview = raw
-            record.niche_overview_fetched_at = timezone.now()
-            record.quota_spent += constants.QUOTA_COST_NICHE_OVERVIEW
-            await sync_to_async(_save_channel_record)(
-                record,
-                fields=[
-                    'niche_overview',
-                    'niche_overview_fetched_at',
-                    'quota_spent',
-                ],
-            )
+        )
+        if not stale:
+            try:
+                return msgspec.convert(
+                    record.niche_overview,
+                    type=NexLevNicheOverview,
+                    strict=False,
+                )
+            except msgspec.ValidationError:
+                # Cached row predates a provider-shape fix; refetch it.
+                pass
+        raw = await nexlev_client.get_niche_overview(
+            channel_id,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+        )
+        record.niche_overview = raw
+        record.niche_overview_fetched_at = timezone.now()
+        record.quota_spent += constants.QUOTA_COST_NICHE_OVERVIEW
+        await sync_to_async(_save_channel_record)(
+            record,
+            fields=[
+                'niche_overview',
+                'niche_overview_fetched_at',
+                'quota_spent',
+            ],
+        )
         return msgspec.convert(
             record.niche_overview,
             type=NexLevNicheOverview,
@@ -269,22 +289,32 @@ class NexLevService:
     ) -> NexLevVideoDetails:
         """Return video details; content is immutable, long staleness."""
         record = await sync_to_async(_get_or_create_video_record)(video_id)
-        if force_refresh or is_stale(
+        stale = force_refresh or is_stale(
             record.details_fetched_at,
             window=constants.VIDEO_STALE_AFTER,
-        ):
-            raw = await nexlev_client.get_video_details(
-                video_id,
-                api_key=settings.NEXLEV_API_KEY,
-                base_url=settings.NEXLEV_BASE_URL,
-            )
-            record.details = raw
-            record.details_fetched_at = timezone.now()
-            record.quota_spent += constants.QUOTA_COST_VIDEO_DETAILS
-            await sync_to_async(_save_video_record)(
-                record,
-                fields=['details', 'details_fetched_at', 'quota_spent'],
-            )
+        )
+        if not stale:
+            try:
+                return msgspec.convert(
+                    record.details,
+                    type=NexLevVideoDetails,
+                    strict=False,
+                )
+            except msgspec.ValidationError:
+                # Cached row predates a provider-shape fix; refetch it.
+                pass
+        raw = await nexlev_client.get_video_details(
+            video_id,
+            api_key=settings.NEXLEV_API_KEY,
+            base_url=settings.NEXLEV_BASE_URL,
+        )
+        record.details = raw
+        record.details_fetched_at = timezone.now()
+        record.quota_spent += constants.QUOTA_COST_VIDEO_DETAILS
+        await sync_to_async(_save_video_record)(
+            record,
+            fields=['details', 'details_fetched_at', 'quota_spent'],
+        )
         return msgspec.convert(
             record.details,
             type=NexLevVideoDetails,
