@@ -28,6 +28,7 @@ def test_defaults_are_documentary_safe(channel: Channel) -> None:
     """A config created with no arguments is usable as-is."""
     config = FootageSourcingConfig.objects.create(channel=channel)
     assert config.ai_fallback_enabled is True
+    assert config.max_ai_fallback_per_run == 15
     assert config.rerank_mode == RerankMode.VISION
     assert config.sourcing_mode == SourcingMode.STOCK_FIRST
     assert config.candidates_per_scene == 8

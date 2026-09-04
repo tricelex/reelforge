@@ -37,6 +37,7 @@ class FootageSourcingPayload(msgspec.Struct, frozen=True):
     enabled_providers: list[str]
     sourcing_mode: str
     ai_fallback_enabled: bool
+    max_ai_fallback_per_run: int
     rerank_mode: str
     candidates_per_scene: int
     min_clip_width: int
@@ -51,6 +52,7 @@ class FootageSourcingPatchPayload(msgspec.Struct, frozen=True):
     enabled_providers: list[str] | None = None
     sourcing_mode: str | None = None
     ai_fallback_enabled: bool | None = None
+    max_ai_fallback_per_run: int | None = None
     rerank_mode: str | None = None
     candidates_per_scene: int | None = None
     min_clip_width: int | None = None

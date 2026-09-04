@@ -80,6 +80,7 @@ def _footage_sourcing(channel: Channel) -> FootageSourcingPayload:
         enabled_providers=list(config.enabled_providers),
         sourcing_mode=config.sourcing_mode,
         ai_fallback_enabled=config.ai_fallback_enabled,
+        max_ai_fallback_per_run=config.max_ai_fallback_per_run,
         rerank_mode=config.rerank_mode,
         candidates_per_scene=config.candidates_per_scene,
         min_clip_width=config.min_clip_width,

@@ -198,6 +198,7 @@ class FootageSourcingConfigAdmin(ReelForgeAdmin):
         'enabled_providers',
         'rerank_mode',
         'ai_fallback_enabled',
+        'max_ai_fallback_per_run',
         'min_clip_width',
         'min_clip_duration_s',
         'require_attribution',

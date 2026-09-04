@@ -49,6 +49,7 @@ def _make_ctx(*, ai_fallback: bool = True, rerank: str = 'none') -> MagicMock:
     config = MagicMock()
     config.enabled_providers = ['pexels']
     config.ai_fallback_enabled = ai_fallback
+    config.max_ai_fallback_per_run = 15
     config.rerank_mode = rerank
     config.candidates_per_scene = 8
     config.min_clip_width = 1280
@@ -168,9 +169,145 @@ def test_empty_providers_falls_back_to_defaults_before_search() -> None:
             'server.apps.pipelines.stages.footage_search._fetch_bytes',
             new=AsyncMock(return_value=b'img'),
         ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=0),
+        ),
     ):
         result = asyncio.run(FootageSearchStage().run(ctx))
     assert built == list(DEFAULT_ENABLED_PROVIDERS)
+    assert result['source'] == 'ai_flux'
+
+
+def test_provider_order_rotates_by_scene_idx() -> None:
+    """Different scenes start from different providers to spread load."""
+    ctx = _make_ctx()
+    ctx.channel.footage_sourcing_or_default.return_value.enabled_providers = [
+        'pexels',
+        'pixabay',
+        'wikimedia',
+    ]
+    ctx.execution.input_snapshot['scene_idx'] = 1
+    built: list[str] = []
+
+    def _capture_build(names: object) -> list[object]:
+        built.extend(list(names))  # type: ignore[arg-type]
+        return []
+
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.build_providers',
+            side_effect=_capture_build,
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=AsyncMock(return_value={'url': 'https://e.test/ai.jpg'}),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._fetch_bytes',
+            new=AsyncMock(return_value=b'img'),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=0),
+        ),
+    ):
+        asyncio.run(FootageSearchStage().run(ctx))
+    assert built == ['pixabay', 'wikimedia', 'pexels']
+
+
+def test_provider_order_is_unrotated_for_scene_zero() -> None:
+    """Scene 0 keeps the channel's configured priority order as-is."""
+    ctx = _make_ctx()
+    ctx.channel.footage_sourcing_or_default.return_value.enabled_providers = [
+        'pexels',
+        'pixabay',
+        'wikimedia',
+    ]
+    built: list[str] = []
+
+    def _capture_build(names: object) -> list[object]:
+        built.extend(list(names))  # type: ignore[arg-type]
+        return []
+
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.build_providers',
+            side_effect=_capture_build,
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=AsyncMock(return_value={'url': 'https://e.test/ai.jpg'}),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._fetch_bytes',
+            new=AsyncMock(return_value=b'img'),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=0),
+        ),
+    ):
+        asyncio.run(FootageSearchStage().run(ctx))
+    assert built == ['pexels', 'pixabay', 'wikimedia']
+
+
+def test_ai_fallback_raises_when_cap_reached() -> None:
+    """Hitting the per-run AI-fallback cap parks the run without spending."""
+    ctx = _make_ctx(ai_fallback=True)
+    ctx.channel.footage_sourcing_or_default.return_value.max_ai_fallback_per_run = 2
+    generate = AsyncMock(return_value={'url': 'https://fal/x.png'})
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=generate,
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=2),
+        ),
+    ):
+        with pytest.raises(FatalProviderError) as exc_info:
+            asyncio.run(FootageSearchStage().run(ctx))
+    assert exc_info.value.error_code == 'ai_fallback_cap_exceeded'
+    generate.assert_not_awaited()
+
+
+def test_ai_fallback_allowed_when_under_cap() -> None:
+    """A count below the cap still generates normally."""
+    ctx = _make_ctx(ai_fallback=True)
+    ctx.channel.footage_sourcing_or_default.return_value.max_ai_fallback_per_run = 2
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=AsyncMock(return_value={'url': 'https://fal/x.png'}),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._fetch_bytes',
+            new=AsyncMock(return_value=b'img'),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=1),
+        ),
+    ):
+        result = asyncio.run(FootageSearchStage().run(ctx))
     assert result['source'] == 'ai_flux'
 
 
@@ -209,6 +346,10 @@ def test_falls_back_to_ai_generation_when_nothing_found() -> None:
         patch(
             'server.apps.pipelines.stages.footage_search._fetch_bytes',
             new=AsyncMock(return_value=b'img'),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=0),
         ),
     ):
         result = asyncio.run(FootageSearchStage().run(ctx))

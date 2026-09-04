@@ -8,6 +8,8 @@ retries, gate swaps, and stage reruns cost no additional quota.
 import asyncio
 import json
 import re
+import time
+from collections.abc import Callable
 from typing import Any
 
 import attrs
@@ -39,6 +41,68 @@ def _semaphore(provider_name: str) -> asyncio.Semaphore:
             _MAX_CONCURRENT_PER_PROVIDER,
         )
     return _SEMAPHORES[provider_name]
+
+
+# Documented free-tier quotas: (max_requests, window_seconds). A long-form
+# run can fan out over 100+ scenes, and the concurrency semaphore above only
+# bounds how many requests are in flight at once — it does not stop the
+# *rate* of requests from exceeding an hourly/per-minute quota. Providers
+# without a documented limit get a conservative default.
+_RATE_LIMITS: dict[str, tuple[int, float]] = {
+    'pexels': (200, 3600.0),
+    'pixabay': (100, 60.0),
+}
+_DEFAULT_RATE_LIMIT: tuple[int, float] = (60, 60.0)
+
+
+class _TokenBucket:
+    """Async token bucket pacing requests to a provider's documented quota."""
+
+    def __init__(
+        self,
+        capacity: int,
+        window_s: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._capacity = float(capacity)
+        self._refill_rate = capacity / window_s
+        self._tokens = float(capacity)
+        self._clock = clock
+        self._updated_at = clock()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """Block until one request's worth of quota is available."""
+        async with self._lock:
+            now = self._clock()
+            elapsed = max(0.0, now - self._updated_at)
+            self._tokens = min(
+                self._capacity,
+                self._tokens + elapsed * self._refill_rate,
+            )
+            self._updated_at = now
+            if self._tokens < 1.0:
+                wait_s = (1.0 - self._tokens) / self._refill_rate
+                await asyncio.sleep(wait_s)
+                self._tokens = 0.0
+                self._updated_at = self._clock()
+            else:
+                self._tokens -= 1.0
+
+
+_BUCKETS: dict[str, _TokenBucket] = {}
+
+
+def _bucket(provider_name: str) -> _TokenBucket:
+    """Return the shared rate limiter for one provider."""
+    if provider_name not in _BUCKETS:
+        capacity, window_s = _RATE_LIMITS.get(
+            provider_name,
+            _DEFAULT_RATE_LIMIT,
+        )
+        _BUCKETS[provider_name] = _TokenBucket(capacity, window_s)
+    return _BUCKETS[provider_name]
 
 
 def normalize_query(query: str) -> str:
@@ -122,6 +186,7 @@ async def cached_search(
                 return cached
 
         async with _semaphore(provider.name):
+            await _bucket(provider.name).acquire()
             results = await provider.search(
                 query,
                 media_type=media_type,

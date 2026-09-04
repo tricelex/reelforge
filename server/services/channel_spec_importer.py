@@ -263,6 +263,7 @@ def _apply_optional_config(
                 enabled_providers=list(footage.enabled_providers),
                 sourcing_mode=footage.sourcing_mode,
                 ai_fallback_enabled=footage.ai_fallback_enabled,
+                max_ai_fallback_per_run=footage.max_ai_fallback_per_run,
                 rerank_mode=footage.rerank_mode,
                 candidates_per_scene=footage.candidates_per_scene,
                 min_clip_width=footage.min_clip_width,

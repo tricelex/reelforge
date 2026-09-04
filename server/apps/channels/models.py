@@ -503,6 +503,10 @@ class FootageSourcingConfig(UUIDModel, TimeStampedModel):
         default=SourcingMode.STOCK_FIRST,
     )
     ai_fallback_enabled = models.BooleanField(default=True)
+    max_ai_fallback_per_run = models.PositiveSmallIntegerField(
+        default=15,
+        db_default=15,
+    )
     rerank_mode = models.CharField(
         max_length=10,
         choices=RerankMode.choices,
