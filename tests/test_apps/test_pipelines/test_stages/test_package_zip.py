@@ -4,7 +4,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.core.exceptions import ObjectDoesNotExist
 
 from server.apps.pipelines.stages.package_zip import (
     PackageZipStage,
@@ -13,7 +12,6 @@ from server.apps.pipelines.stages.package_zip import (
     _ext_for_mime,
     _fetch_asset,
     _fetch_asset_bytes,
-    _fetch_library_asset,
     _gather_candidates,
     _gather_clipping_captions,
     _gather_clipping_docs,
@@ -21,7 +19,6 @@ from server.apps.pipelines.stages.package_zip import (
     _gather_longform_captions,
     _gather_longform_docs,
     _gather_longform_files,
-    _gather_music,
     _gather_stills,
     _gather_thumbnails,
     _gather_timeline,
@@ -76,7 +73,7 @@ class TestExtForMime:
 
 
 class TestFetchHelpers:
-    """Tests for _fetch_asset / _fetch_asset_bytes / _fetch_library_asset."""
+    """Tests for _fetch_asset / _fetch_asset_bytes."""
 
     def test_fetch_asset_returns_asset(self) -> None:
         """_fetch_asset awaits Asset.objects.aget by id."""
@@ -104,33 +101,6 @@ class TestFetchHelpers:
                 return await _fetch_asset_bytes('asset-1')
 
         assert asyncio.run(_inner()) == b'content'
-
-    def test_fetch_library_asset_found(self) -> None:
-        """_fetch_library_asset returns the LibraryAsset when found."""
-        fake_lib = MagicMock()
-
-        async def _inner() -> object:
-            with patch(
-                'server.apps.assets.models.LibraryAsset',
-            ) as mock_cls:
-                mock_cls.objects.aget = AsyncMock(return_value=fake_lib)
-                return await _fetch_library_asset('lib-1')
-
-        assert asyncio.run(_inner()) is fake_lib
-
-    def test_fetch_library_asset_missing_returns_none(self) -> None:
-        """A missing LibraryAsset returns None instead of raising."""
-
-        async def _inner() -> object:
-            with patch(
-                'server.apps.assets.models.LibraryAsset',
-            ) as mock_cls:
-                mock_cls.objects.aget = AsyncMock(
-                    side_effect=ObjectDoesNotExist,
-                )
-                return await _fetch_library_asset('lib-missing')
-
-        assert asyncio.run(_inner()) is None
 
 
 class TestBuildRoleAssetMap:
@@ -323,63 +293,6 @@ class TestGatherVo:
         assert files == {'audio/vo/ch_000.mp3': b'AUDIO'}
 
 
-class TestGatherMusic:
-    """Tests for _gather_music."""
-
-    def test_no_library_asset_id_returns_empty(self) -> None:
-        """No selected bed returns no music files."""
-        ctx = MagicMock()
-        ctx.upstream = {'music_plan': {}}
-
-        async def _inner() -> dict:
-            return await _gather_music(ctx)
-
-        assert asyncio.run(_inner()) == {}
-
-    def test_missing_library_asset_returns_empty(self) -> None:
-        """A stale library_asset_id that no longer exists returns no files."""
-        ctx = MagicMock()
-        ctx.upstream = {
-            'music_plan': {'library_asset_id': 'lib-1', 'gain_db': -18.0},
-        }
-
-        async def _inner() -> dict:
-            with patch(
-                f'{_MODULE}._fetch_library_asset',
-                new=AsyncMock(return_value=None),
-            ):
-                return await _gather_music(ctx)
-
-        assert asyncio.run(_inner()) == {}
-
-    def test_found_library_asset_returns_bed_and_notes(self) -> None:
-        """A found library asset produces the bed file plus a notes JSON."""
-        ctx = MagicMock()
-        ctx.upstream = {
-            'music_plan': {'library_asset_id': 'lib-1', 'gain_db': -18.0},
-        }
-        fake_lib = MagicMock()
-        fake_lib.mime = 'audio/mpeg'
-        fake_lib.file.read.return_value = b'MUSIC'
-
-        async def _inner() -> dict:
-            with (
-                patch(
-                    f'{_MODULE}._fetch_library_asset',
-                    new=AsyncMock(return_value=fake_lib),
-                ),
-                patch(
-                    f'{_MODULE}.asyncio.to_thread',
-                    new=AsyncMock(return_value=b'MUSIC'),
-                ),
-            ):
-                return await _gather_music(ctx)
-
-        files = asyncio.run(_inner())
-        assert files['audio/music/bed.mp3'] == b'MUSIC'
-        assert b'-18.0' in files['audio/music/music_notes.json']
-
-
 class TestGatherVideoScenesAndStills:
     """Tests for _gather_video_scenes and _gather_stills."""
 
@@ -519,10 +432,6 @@ class TestGatherLongformFiles:
                 patch(
                     f'{_MODULE}._gather_vo',
                     new=AsyncMock(return_value={'audio/vo/a': b'2'}),
-                ),
-                patch(
-                    f'{_MODULE}._gather_music',
-                    new=AsyncMock(return_value={}),
                 ),
                 patch(
                     f'{_MODULE}._gather_video_scenes',

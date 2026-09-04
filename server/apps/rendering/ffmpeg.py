@@ -893,12 +893,12 @@ async def _run_ffmpeg_cmd(
 
 async def final_pass(
     chapter_paths: list[str],
-    music_paths: list[str],
-    music_gains_db: list[float],
     ass_path: str | None,
     watermark_path: str | None,
     out_path: str,
     watermark_opacity: float = 0.6,
+    music_paths: list[str] | None = None,
+    music_gains_db: list[float] | None = None,
     sfx_paths: list[str] | None = None,
     sfx_gains_db: list[float] | None = None,
 ) -> None:
@@ -913,6 +913,8 @@ async def final_pass(
     Raises:
         RuntimeError: If any FFmpeg call exits non-zero.
     """
+    music_paths = music_paths or []
+    music_gains_db = music_gains_db or []
     sfx_paths = sfx_paths or []
     sfx_gains_db = sfx_gains_db or []
     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:

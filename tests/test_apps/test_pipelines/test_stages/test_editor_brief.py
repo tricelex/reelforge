@@ -17,7 +17,6 @@ from server.apps.pipelines.stages.editor_brief import (
     _chapter_lines,
     _fmt_mmss,
     _load_approved_candidates,
-    _music_lines,
     _render_editorial_markdown,
     _scene_lines,
 )
@@ -151,43 +150,20 @@ class TestSceneLines:
         assert 'Scene 1' in text
 
 
-class TestMusicLines:
-    """Tests for _music_lines."""
-
-    def test_no_library_asset_id(self) -> None:
-        """No selected bed renders a 'no music' notice."""
-        lines = _music_lines({})
-        assert 'No background music bed selected' in '\n'.join(lines)
-
-    def test_with_library_asset_and_default_gain(self) -> None:
-        """A selected bed without explicit gain uses the default gain."""
-        lines = _music_lines({'library_asset_id': 'lib-1'})
-        text = '\n'.join(lines)
-        assert 'lib-1' in text
-        assert '-22.0 dB' in text
-
-    def test_with_custom_gain(self) -> None:
-        """A selected bed with explicit gain renders that gain value."""
-        lines = _music_lines({'library_asset_id': 'lib-1', 'gain_db': -10.0})
-        assert '-10.0 dB' in '\n'.join(lines)
-
-
 class TestBuildLongformAppendix:
     """Tests for _build_longform_appendix."""
 
     def test_full_upstream(self) -> None:
-        """A fully populated upstream renders chapters, scenes, and music."""
+        """A fully populated upstream renders chapters and scenes."""
         ctx = MagicMock()
         ctx.run.topic = 'My Topic'
         ctx.upstream = {
             'script': {'chapters': [{'idx': 0, 'title': 'Intro'}]},
             'scene_breakdown': {'scenes': [{'idx': 0, 'beat': 'Setup'}]},
-            'music_plan': {'library_asset_id': 'lib-1'},
         }
         markdown = _build_longform_appendix(ctx)
         assert '**Intro**' in markdown
         assert 'Scene 0' in markdown
-        assert 'lib-1' in markdown
 
     def test_missing_upstream_keys_use_defaults(self) -> None:
         """Missing upstream keys fall back to empty defaults, not errors."""
@@ -195,7 +171,8 @@ class TestBuildLongformAppendix:
         ctx.run.topic = 'Topic'
         ctx.upstream = {}
         markdown = _build_longform_appendix(ctx)
-        assert 'No background music bed selected' in markdown
+        assert '## Appendix — Chapters' in markdown
+        assert '## Appendix — Scene Intents' in markdown
 
 
 class TestCandidateLine:
@@ -381,7 +358,6 @@ class TestEditorBriefStageRun:
         ctx.upstream = {
             'script': {'chapters': []},
             'scene_breakdown': {'scenes': []},
-            'music_plan': {},
         }
         ctx.prompts.render = AsyncMock(return_value=('', ''))
         ctx.prompts.get_model = AsyncMock(return_value=None)

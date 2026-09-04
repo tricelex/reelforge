@@ -131,11 +131,6 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'music_plan',
-            'depends_on': ['narrative_qc'],
-            'queue': 'api',
-        },
-        {
             'key': 'metadata',
             'depends_on': ['script', 'alignment'],
             'queue': 'api',
@@ -148,7 +143,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'assembly',
-            'depends_on': ['motion', 'tts', 'alignment', 'music_plan'],
+            'depends_on': ['motion', 'tts', 'alignment'],
             'queue': 'render',
         },
         {
@@ -231,11 +226,6 @@ _LONGFORM_DOC_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'music_plan',
-            'depends_on': ['narrative_qc'],
-            'queue': 'api',
-        },
-        {
             'key': 'metadata',
             'depends_on': ['script', 'alignment', 'footage_search'],
             'queue': 'api',
@@ -252,7 +242,6 @@ _LONGFORM_DOC_V1_GRAPH: dict[str, object] = {
                 'footage_prep',
                 'tts',
                 'alignment',
-                'music_plan',
             ],
             'queue': 'render',
         },
@@ -292,7 +281,6 @@ _LONGFORM_EDITOR_HANDOFF: list[dict[str, object]] = [
             'motion',
             'tts',
             'alignment',
-            'music_plan',
             'metadata',
             'thumbnail',
         ],
@@ -322,7 +310,6 @@ _LONGFORM_DOC_EDITOR_HANDOFF: list[dict[str, object]] = [
             'footage_prep',
             'tts',
             'alignment',
-            'music_plan',
             'metadata',
             'thumbnail',
         ],

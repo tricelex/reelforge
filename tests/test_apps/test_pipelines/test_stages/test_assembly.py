@@ -18,10 +18,7 @@ from server.apps.pipelines.stages.assembly import (
     AssemblyStage,
     _build_chapter_audio_map,
     _build_chapter_files,
-    _build_music_map,
-    _build_music_paths,
     _build_scene_asset_map,
-    _candidate_music_asset_ids,
     _fetch_asset_bytes,
     _fetch_library_bytes,
     _group_scenes_by_chapter,
@@ -125,122 +122,6 @@ def test_build_chapter_files_converts_absolute_times_to_chapter_relative(
     assert ch1['end_s'] == pytest.approx(10.0)
 
 
-def test_build_music_map() -> None:
-    entries = [
-        {'chapter_idx': 0, 'library_asset_id': 'uuid-a', 'gain_db': -3.0},
-        {'chapter_idx': 1, 'library_asset_id': 'uuid-b', 'gain_db': -6.0},
-    ]
-    result = _build_music_map(entries)
-    assert result[0]['library_asset_id'] == 'uuid-a'
-    assert result[1]['gain_db'] == -6.0
-
-
-def test_candidate_music_asset_ids_prefers_single_bed() -> None:
-    assert _candidate_music_asset_ids(
-        {'library_asset_id': 'uuid-a', 'entries': []},
-    ) == ['uuid-a']
-
-
-def test_candidate_music_asset_ids_dedupes_legacy_entries() -> None:
-    assert _candidate_music_asset_ids(
-        {
-            'entries': [
-                {'chapter_idx': 0, 'library_asset_id': 'uuid-a'},
-                {'chapter_idx': 1, 'library_asset_id': 'uuid-b'},
-                {'chapter_idx': 2, 'library_asset_id': 'uuid-a'},
-            ],
-        },
-    ) == ['uuid-a', 'uuid-b']
-
-
-def test_build_music_paths_downloads_single_bed(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """A resolvable library_asset_id downloads once as the only bed."""
-    music_plan = {'library_asset_id': 'uuid-a', 'gain_db': -3.0}
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        with patch(
-            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-            new=AsyncMock(return_value=b'music bytes'),
-        ):
-            return await _build_music_paths(tmp_path, music_plan)
-
-    paths, gains = asyncio.run(_inner())
-    assert len(paths) == 1
-    assert gains == [-22.0]
-
-
-def test_build_music_paths_uses_channel_bed_gain(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """Channel music_bed_gain_db overrides legacy music_plan gain_db=0."""
-    music_plan = {'library_asset_id': 'uuid-a', 'gain_db': 0.0}
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        with patch(
-            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-            new=AsyncMock(return_value=b'music bytes'),
-        ):
-            return await _build_music_paths(
-                tmp_path,
-                music_plan,
-                channel_bed_gain_db=-20.0,
-            )
-
-    _, gains = asyncio.run(_inner())
-    assert gains == [-20.0]
-
-
-def test_build_music_paths_legacy_multi_entry_uses_first_resolvable(
-    tmp_path,
-) -> None:  # type: ignore[no-untyped-def]
-    """Legacy multi-entry plans yield one bed, not layered tracks."""
-    from django.core.exceptions import ObjectDoesNotExist
-
-    music_plan = {
-        'entries': [
-            {'chapter_idx': 0, 'library_asset_id': 'hallucinated-id'},
-            {'chapter_idx': 1, 'library_asset_id': 'uuid-b'},
-            {'chapter_idx': 2, 'library_asset_id': 'uuid-c'},
-        ],
-    }
-    fetch = AsyncMock(
-        side_effect=[ObjectDoesNotExist(), b'music bytes', b'other'],
-    )
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        with patch(
-            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-            new=fetch,
-        ):
-            return await _build_music_paths(tmp_path, music_plan)
-
-    paths, gains = asyncio.run(_inner())
-    assert len(paths) == 1
-    assert gains == [-22.0]
-    assert fetch.await_count == 2
-
-
-def test_build_music_paths_skips_all_missing_assets(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """All-missing library IDs yield an empty music list."""
-    from django.core.exceptions import ObjectDoesNotExist
-
-    music_plan = {
-        'entries': [
-            {'chapter_idx': 0, 'library_asset_id': 'missing-a'},
-            {'chapter_idx': 1, 'library_asset_id': 'missing-b'},
-        ],
-    }
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        with patch(
-            'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-            new=AsyncMock(side_effect=ObjectDoesNotExist()),
-        ):
-            return await _build_music_paths(tmp_path, music_plan)
-
-    paths, gains = asyncio.run(_inner())
-    assert paths == []
-    assert gains == []
-
-
 def _make_ctx() -> MagicMock:
     ctx = MagicMock()
     ctx.run.id = 'run-uuid'
@@ -261,10 +142,6 @@ def _make_ctx() -> MagicMock:
             ],
             'ass_asset_id': 'sub-uuid',
         },
-        'music_plan': {
-            'library_asset_id': 'music-uuid',
-            'gain_db': -22.0,
-        },
     }
     ctx.config = {}
     ctx.costs = AsyncMock()
@@ -272,7 +149,6 @@ def _make_ctx() -> MagicMock:
     ctx.assets.save = AsyncMock(return_value=MagicMock(id='final-uuid'))
     ctx.channel.branding = None
     ctx.channel.assembly_style_transition_styles = []
-    ctx.channel.assembly_style_sfx_pool_tags = []
     return ctx
 
 
@@ -551,55 +427,6 @@ def test_fetch_library_bytes_reads_file() -> None:
     assert result == b'library-bytes'
 
 
-@pytest.mark.django_db(transaction=True)
-def test_build_sfx_paths_downloads_matching_sfx(tmp_path: object) -> None:
-    """_build_sfx_paths fetches active SFX assets overlapping channel tags."""
-    from pathlib import Path
-
-    from server.apps.assets.models import LibraryAsset, LibraryAssetKind
-    from server.apps.pipelines.stages.assembly import _build_sfx_paths
-
-    LibraryAsset.objects.create(
-        kind=LibraryAssetKind.SFX,
-        name='whoosh',
-        tags=['whoosh', 'impact'],
-        file='library/whoosh.mp3',
-    )
-    ctx = MagicMock()
-    ctx.channel.assembly_style_sfx_pool_tags = ['whoosh']
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        with (
-            patch(
-                'server.apps.pipelines.stages.assembly._fetch_library_bytes',
-                new=AsyncMock(return_value=b'sfx-bytes'),
-            ),
-            patch('asyncio.to_thread', new=AsyncMock()),
-        ):
-            return await _build_sfx_paths(Path(str(tmp_path)), ctx)
-
-    paths, gains = _run_async(_inner())  # type: ignore[misc]
-    assert len(paths) == 1
-    assert gains == [-12.0]
-
-
-def test_build_sfx_paths_empty_tags_returns_empty() -> None:
-    """No sfx_pool_tags → no SFX tracks fetched."""
-    from pathlib import Path
-
-    from server.apps.pipelines.stages.assembly import _build_sfx_paths
-
-    ctx = MagicMock()
-    ctx.channel.assembly_style_sfx_pool_tags = []
-
-    async def _inner() -> tuple[list[str], list[float]]:
-        return await _build_sfx_paths(Path('/tmp'), ctx)
-
-    paths, gains = asyncio.run(_inner())
-    assert paths == []
-    assert gains == []
-
-
 # ---------------------------------------------------------------------------
 # _build_scene_asset_map / _build_chapter_audio_map — missing output fields
 # ---------------------------------------------------------------------------
@@ -766,13 +593,10 @@ def test_assembly_run_with_branding_but_no_watermark() -> None:
     assert result['asset_id'] == 'final-uuid'
 
 
-def test_assembly_run_without_ass_and_no_music_for_chapter() -> None:
-    """No ass_asset_id (branch 123->125), no music entry (branch 187->185)."""
+def test_assembly_run_without_ass() -> None:
+    """No ass_asset_id (branch 123->125)."""
     ctx = _make_ctx()
     ctx.upstream['alignment']['ass_asset_id'] = None  # no captions
-    ctx.upstream['music_plan'] = {
-        'library_asset_id': None,
-    }  # no music
     fake_probe = {'format': {'duration': '5.0'}, 'streams': []}
 
     async def _run() -> dict:  # type: ignore[type-arg]

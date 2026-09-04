@@ -520,38 +520,6 @@ _PROMPT_TEMPLATES: list[dict[str, Any]] = [
         ),
     },
     {
-        'key': 'music_plan',
-        'name': 'Music Plan',
-        'scope': 'GLOBAL',
-        'description': (
-            'Selects one background music track from the channel library '
-            'for the whole video. Aligns mood with the StoryFormat music_mood_map.'
-        ),
-        'system_prompt': (
-            'You are a music supervisor for YouTube documentary content. '
-            'You select one background music bed that enhances emotional impact '
-            'for the entire video. You understand pacing, mood, and how music '
-            'affects viewer retention. Choose from the provided library asset '
-            'IDs only. Return structured JSON.'
-        ),
-        'user_prompt': (
-            'Create a music plan for the following video:\n\n'
-            'Topic: {{ topic }}\n\n'
-            'Chapter/Scene Breakdown:\n'
-            '{{ upstream.scene_breakdown.scenes | tojson(indent=2) }}\n\n'
-            '{% if format %}'
-            'Music Mood Map: {{ format.music_mood_map | tojson }}\n'
-            '{% endif %}'
-            'Available Library Asset IDs by tag:\n'
-            '{{ library_tracks | default([]) | tojson }}\n\n'
-            'Select ONE track for the whole video. Provide:\n'
-            '- library_asset_id (must be from the available list above)\n'
-            '- gain_db (volume adjustment: -24 to -6, suggest -22 for bed music)\n'
-            '- mood (selected mood tag matching music_mood_map)\n'
-            '- rationale (one sentence explaining why this track fits)'
-        ),
-    },
-    {
         'key': 'metadata',
         'name': 'YouTube Metadata',
         'scope': 'GLOBAL',
@@ -694,11 +662,6 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
             'queue': 'api',
         },
         {
-            'key': 'music_plan',
-            'depends_on': ['scene_breakdown'],
-            'queue': 'api',
-        },
-        {
             'key': 'thumbnail',
             'depends_on': ['script'],
             'queue': 'api',
@@ -711,7 +674,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
         },
         {
             'key': 'assembly',
-            'depends_on': ['motion', 'tts', 'alignment', 'music_plan'],
+            'depends_on': ['motion', 'tts', 'alignment'],
             'queue': 'render',
         },
         {
@@ -722,7 +685,7 @@ _LONGFORM_V1_GRAPH: dict[str, object] = {
     ],
 }
 
-# Shorts: no motion (GPU cost), no music_plan, no thumbnail.
+# Shorts: no motion (GPU cost), no thumbnail.
 # Assembly runs on static images + VO in 9:16 vertical format.
 _SHORTS_V1_GRAPH: dict[str, object] = {
     'stages': [

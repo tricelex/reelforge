@@ -352,24 +352,6 @@ def test_footage_queries_json(
 
 
 @pytest.mark.django_db
-def test_music_plan_json(
-    dmr_client: DMRClient,
-    run: PipelineRun,
-    auth_headers: dict[str, str],
-) -> None:
-    """Music plan stage returns single-bed track data."""
-    _stage(
-        run,
-        'music_plan',
-        {'library_asset_id': 'lib-1', 'gain_db': -22.0},
-    )
-    body = _get(dmr_client, run.id, 'music_plan', auth_headers).json()
-    assert body['kind'] == 'json'
-    assert body['summary'] == '1 track'
-    assert body['data']['library_asset_id'] == 'lib-1'
-
-
-@pytest.mark.django_db
 def test_alignment_mixed(
     dmr_client: DMRClient,
     run: PipelineRun,

@@ -39,7 +39,6 @@ _KNOWN_STAGE_KEYS: Final[frozenset[str]] = frozenset({
     'motion',
     'tts',
     'alignment',
-    'music_plan',
     'assembly',
     'qc',
     'publish',
@@ -226,24 +225,6 @@ def _build_alignment(_run_id: str, execution: StageExecution) -> _BuildResult:
     return f'{len(scenes)} aligned segments', None, {'scenes': scenes}
 
 
-def _build_music_plan(_run_id: str, execution: StageExecution) -> _BuildResult:
-    out = execution.output
-    asset_id = out.get('library_asset_id')
-    if asset_id:
-        return (
-            '1 track',
-            None,
-            {
-                'library_asset_id': asset_id,
-                'gain_db': out.get('gain_db'),
-            },
-        )
-    entries = out.get('entries', [])
-    if entries:
-        return f'{len(entries)} tracks', None, {'entries': entries}
-    return 'no music', None, {'library_asset_id': None}
-
-
 def _build_qc(_run_id: str, execution: StageExecution) -> _BuildResult:
     out = execution.output
     passed = bool(out.get('passed', False))
@@ -427,7 +408,6 @@ _BUILDERS: Final[dict[str, _Builder]] = {
     'visual_prompts': _build_visual_prompts,
     'footage_queries': _build_footage_queries,
     'alignment': _build_alignment,
-    'music_plan': _build_music_plan,
     'qc': _build_qc,
     'publish': _build_publish,
     'metadata': _build_metadata,

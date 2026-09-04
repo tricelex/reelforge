@@ -71,32 +71,14 @@ def _scene_lines(scenes: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def _music_lines(music_plan: dict[str, Any]) -> list[str]:
-    """Render the music bed note block."""
-    library_asset_id = music_plan.get('library_asset_id')
-    lines: list[str] = ['## Appendix — Music Notes', '']
-    if not library_asset_id:
-        lines.append('- No background music bed selected for this run.')
-    else:
-        gain_db = music_plan.get('gain_db', -22.0)
-        lines.extend((
-            f'- Library asset: `{library_asset_id}`',
-            f'- Suggested bed gain: {gain_db} dB',
-        ))
-    lines.append('')
-    return lines
-
-
 def _build_longform_appendix(ctx: StageContext) -> str:
     """Build the deterministic longform appendix markdown."""
     script = ctx.upstream.get('script', {})
     chapters = script.get('chapters', [])
     scenes = ctx.upstream.get('scene_breakdown', {}).get('scenes', [])
-    music_plan = ctx.upstream.get('music_plan', {})
     lines: list[str] = []
     lines.extend(_chapter_lines(chapters))
     lines.extend(_scene_lines(scenes))
-    lines.extend(_music_lines(music_plan))
     return '\n'.join(lines)
 
 
@@ -269,7 +251,6 @@ def _longform_context_payload(ctx: StageContext) -> dict[str, Any]:
     """Compact longform facts for the agent user prompt."""
     script = ctx.upstream.get('script', {})
     scenes = ctx.upstream.get('scene_breakdown', {}).get('scenes', [])
-    music_plan = ctx.upstream.get('music_plan', {})
     return {
         'topic': ctx.run.topic,
         'chapters': [
@@ -289,10 +270,6 @@ def _longform_context_payload(ctx: StageContext) -> dict[str, Any]:
             }
             for s in scenes[:80]
         ],
-        'music_plan': {
-            'library_asset_id': music_plan.get('library_asset_id'),
-            'gain_db': music_plan.get('gain_db'),
-        },
     }
 
 

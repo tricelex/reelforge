@@ -222,12 +222,11 @@ research
                                 │               └── motion [fan-out: scenes]  ─────────────┐
                                 ├── tts [fan-out: chapters]                                 │
                                 │       └── alignment                          ─────────────┤
-                                ├── music_plan                                 ─────────────┤
                                 └── thumbnail                                               │
                     └── metadata (depends on: script + alignment)              ─────────────┤
                                                                                             │
                                                                              assembly ───────┘
-                                                                             (depends on: motion, tts, alignment, music_plan)
+                                                                             (depends on: motion, tts, alignment)
                                                                                  └── qc
 ```
 
@@ -389,22 +388,6 @@ research
   }
   ```
 
-#### `music_plan`
-- **Queue:** `api`
-- **Depends on:** `scene_breakdown`
-- **What it does:** Uses the LLM to select background music tracks from the channel's
-  `LibraryAsset` music pool, matching mood to each chapter. Reads `StoryFormat.music_mood_map`
-  to align track choices with the narrative format.
-- **Output:**
-  ```json
-  {
-    "entries": [
-      {"chapter_idx": 0, "library_asset_id": "uuid", "gain_db": -18, "mood": "epic"}
-    ]
-  }
-  ```
-- **Prompt template key:** `music_plan`
-
 #### `thumbnail`
 - **Queue:** `api`
 - **Depends on:** `script`
@@ -435,13 +418,12 @@ research
 
 #### `assembly`
 - **Queue:** `render`
-- **Depends on:** `motion`, `tts`, `alignment`, `music_plan`
+- **Depends on:** `motion`, `tts`, `alignment`
 - **What it does:** FFmpeg pipeline that:
   1. Stitches animated scene clips (`motion` shards) in order
   2. Overlays per-chapter VO audio (`tts` shards)
   3. Burns in ASS captions from `alignment`
-  4. Mixes background music from `music_plan`
-  5. Applies channel branding (intro, outro, watermark)
+  4. Applies channel branding (intro, outro, watermark)
 - **Output:**
   ```json
   {"asset_id": "uuid", "duration_sec": 847.2}
@@ -467,7 +449,7 @@ research
 ## 5. Stage Catalogue — SHORTS
 
 The `shorts_v1` blueprint removes GPU-intensive stages to produce a fast, cost-efficient
-vertical video for YouTube Shorts. No I2V animation, no background music, no thumbnail.
+vertical video for YouTube Shorts. No I2V animation, no thumbnail.
 
 ```
 research
@@ -490,7 +472,6 @@ research
 | Stage | Reason omitted |
 |-------|----------------|
 | `motion` | GPU/cost intensive; static images fine for Shorts |
-| `music_plan` | No BGM in most Shorts formats |
 | `thumbnail` | Shorts use auto-generated thumbnails |
 
 **`assembly` config for Shorts:**
@@ -949,8 +930,9 @@ The `outline` stage receives `format.beats` and structures chapters to follow th
 }
 ```
 
-The `music_plan` stage reads this map to select appropriate tracks from the channel's
-music library for each narrative beat.
+No pipeline stage consumes this map — the longform/documentary blueprints no longer
+select or mix background music automatically. The field remains on `StoryFormat` for
+external/manual music workflows outside the pipeline.
 
 ### 14.4 NicheConfig → StoryFormat Link
 
@@ -1048,8 +1030,7 @@ Here is a complete example for a LONGFORM run on the "History Explained" channel
    advance_pipeline_impl():
    → visual_prompts: deps=[scene_breakdown] ✓ → QUEUED
    → tts: deps=[scene_breakdown] ✓ → QUEUED
-   → music_plan: deps=[scene_breakdown] ✓ → QUEUED
-   All three enqueued simultaneously
+   Both enqueued simultaneously
 
 8. VISUAL_PROMPTS SUCCEEDS
    → image_gen: fan_out() returns 42 scene dicts
@@ -1064,7 +1045,7 @@ Here is a complete example for a LONGFORM run on the "History Explained" channel
     → Parent image_gen marked SUCCEEDED
     → motion: fan_out() creates 42 shards → 42 Kling I2V calls (GPU queue)
 
-11. MOTION + TTS + ALIGNMENT + MUSIC_PLAN ALL SUCCEED
+11. MOTION + TTS + ALIGNMENT ALL SUCCEED
     → assembly: deps all met → QUEUED
     → FFmpeg render job combines everything (~5 min)
 
@@ -1082,7 +1063,7 @@ Here is a complete example for a LONGFORM run on the "History Explained" channel
 (Most time: Fal-AI image gen ~2 min, Kling motion ~4 min, WhisperX alignment ~3 min)
 
 **Key concurrency points:**
-- `visual_prompts`, `tts`, and `music_plan` all run in parallel after `scene_breakdown`
+- `visual_prompts` and `tts` run in parallel after `scene_breakdown`
 - All 42 `image_gen` shards run in parallel
 - All 42 `motion` shards run in parallel
 - All 8 `tts` shards run in parallel

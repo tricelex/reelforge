@@ -19,48 +19,11 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_TRANSITION = 'hard_cut'
 _TRANSITION_DURATION_S = 0.5
-_MUSIC_GAIN_DEFAULT_DB = -22.0
-_MUSIC_GAIN_MIN_DB = -24.0
-_MUSIC_GAIN_MAX_DB = -6.0
 # worker-render is capped at 4 vCPUs in production (docker-compose.vps.yml)
 # and each mux_scene call is its own multi-threaded ffmpeg encode — keep
 # concurrent scenes low enough that they don't starve each other, not so
 # low that scene-heavy chapters stay fully sequential.
 _SCENE_MUX_CONCURRENCY = 3
-
-
-def _clamp_music_gain_db(gain_db: float) -> float:
-    """Clamp bed music gain into the safe documentary range."""
-    return max(_MUSIC_GAIN_MIN_DB, min(_MUSIC_GAIN_MAX_DB, gain_db))
-
-
-def _resolve_channel_music_bed_gain_db(channel: object) -> float:
-    """Return channel bed gain, or the quiet documentary default (-22)."""
-    from server.apps.channels.models import (  # noqa: PLC0415
-        AssemblyStyleConfig,
-    )
-
-    try:
-        style = channel.assembly_style  # type: ignore[attr-defined]
-    except AssemblyStyleConfig.DoesNotExist:
-        return _MUSIC_GAIN_DEFAULT_DB
-    except AttributeError:
-        return _MUSIC_GAIN_DEFAULT_DB
-    return _clamp_music_gain_db(float(style.music_bed_gain_db))
-
-
-def _effective_music_gain_db(
-    entry: dict[str, Any],
-    *,
-    channel_bed_gain_db: float,
-) -> float:
-    """Apply channel bed gain (default -22); ignore legacy loud plan values.
-
-    ``music_plan.gain_db`` historically defaulted to ``0.0`` and often stays
-    too hot. Channel style (or the -22 fallback) is the operator control.
-    """
-    del entry  # plan picks the track; channel style owns bed level
-    return _clamp_music_gain_db(channel_bed_gain_db)
 
 
 def _pick_transition_style(pool: list[str], chapter_idx: int) -> str:
@@ -77,36 +40,6 @@ def _group_scenes_by_chapter(
         ch = scene['chapter_idx']
         groups.setdefault(ch, []).append(scene)
     return dict(sorted(groups.items()))
-
-
-def _build_music_map(
-    entries: list[dict[str, Any]],
-) -> dict[int, dict[str, Any]]:
-    """Index music_plan entries by chapter_idx (legacy multi-entry plans)."""
-    return {e['chapter_idx']: e for e in entries}
-
-
-def _candidate_music_asset_ids(music_plan: dict[str, Any]) -> list[str]:
-    """Return unique library asset IDs from a single-bed or legacy plan.
-
-    Prefer the modern ``library_asset_id`` field. Fall back to legacy
-    per-chapter ``entries``, preserving first-seen order and deduplicating.
-    """
-    direct = music_plan.get('library_asset_id')
-    if direct:
-        return [str(direct)]
-    candidates: list[str] = []
-    seen: set[str] = set()
-    for entry in music_plan.get('entries') or []:
-        asset_id = entry.get('library_asset_id')
-        if not asset_id:
-            continue
-        key = str(asset_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        candidates.append(key)
-    return candidates
 
 
 def _resolve_segment_stage(ctx: StageContext) -> str:
@@ -412,44 +345,6 @@ async def _build_chapter_files(
     return chapter_files
 
 
-async def _build_music_paths(
-    tmp: Path,
-    music_plan: dict[str, Any],
-    *,
-    channel_bed_gain_db: float = _MUSIC_GAIN_DEFAULT_DB,
-) -> tuple[list[str], list[float]]:
-    """Download at most one music library asset; return path and bed gain.
-
-    Skips (rather than crashes the render on) a plan whose
-    library_asset_id doesn't resolve to a real LibraryAsset — e.g. the
-    music_plan LLM hallucinated an ID. Legacy multi-entry plans try
-    candidates in order until one resolves; only the first successful
-    download is used so beds are never layered.
-
-    Channel ``music_bed_gain_db`` (default -22) wins over loud/legacy plan
-    gains so assembly-only reruns stay quiet without re-running music_plan.
-    """
-    from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
-
-    for asset_id in _candidate_music_asset_ids(music_plan):
-        try:
-            music_bytes = await _fetch_library_bytes(asset_id)
-        except ObjectDoesNotExist:
-            logger.warning(
-                'assembly_music_asset_missing',
-                library_asset_id=asset_id,
-            )
-            continue
-        music_file = tmp / 'music_bed.mp3'
-        await asyncio.to_thread(music_file.write_bytes, music_bytes)
-        gain = _effective_music_gain_db(
-            {},
-            channel_bed_gain_db=channel_bed_gain_db,
-        )
-        return [str(music_file)], [gain]
-    return [], []
-
-
 async def _resolve_ass_path(
     tmp: Path,
     *,
@@ -482,40 +377,6 @@ async def _resolve_ass_path(
     return str(ass_file)
 
 
-_SFX_GAIN_DB = -12.0
-_SFX_LIMIT = 3
-
-
-async def _build_sfx_paths(
-    tmp: Path,
-    ctx: StageContext,
-) -> tuple[list[str], list[float]]:
-    """Download up to 3 SFX tracks matching the channel's sfx_pool_tags."""
-    from server.apps.assets.models import (  # noqa: PLC0415
-        LibraryAsset,
-        LibraryAssetKind,
-    )
-
-    tags = getattr(ctx.channel, 'assembly_style_sfx_pool_tags', [])
-    if not tags:
-        return [], []
-    assets_qs = LibraryAsset.objects.filter(
-        kind=LibraryAssetKind.SFX,
-        is_active=True,
-        tags__overlap=tags,
-    ).order_by('name')[:_SFX_LIMIT]
-
-    sfx_paths: list[str] = []
-    sfx_gains: list[float] = []
-    async for asset in assets_qs:
-        sfx_bytes = await _fetch_library_bytes(str(asset.id))
-        sfx_file = tmp / f'sfx_{asset.id}.mp3'
-        await asyncio.to_thread(sfx_file.write_bytes, sfx_bytes)
-        sfx_paths.append(str(sfx_file))
-        sfx_gains.append(_SFX_GAIN_DB)
-    return sfx_paths, sfx_gains
-
-
 @register_stage
 class AssemblyStage(Stage):
     """Stage 13: assemble motion, TTS, music, subtitles → FINAL_VIDEO asset."""
@@ -537,7 +398,6 @@ class AssemblyStage(Stage):
         alignment = ctx.upstream.get('alignment', {})
         scenes = alignment.get('scenes', [])
         ass_asset_id: str | None = alignment.get('ass_asset_id')
-        music_plan = ctx.upstream.get('music_plan', {})
         scene_groups = _group_scenes_by_chapter(scenes)
         watermark_asset_id, watermark_opacity = _resolve_watermark_config(ctx)
 
@@ -574,26 +434,13 @@ class AssemblyStage(Stage):
                 transition_pool,
                 chapter_origins=alignment.get('chapter_origins'),
             )
-            music_paths, music_gains = await _build_music_paths(
-                tmp,
-                music_plan,
-                channel_bed_gain_db=_resolve_channel_music_bed_gain_db(
-                    ctx.channel,
-                ),
-            )
-            sfx_paths, sfx_gains = await _build_sfx_paths(tmp, ctx)
-
             final_file = tmp / 'final.mp4'
             await ffmpeg.final_pass(
                 chapter_paths=chapter_files,
-                music_paths=music_paths,
-                music_gains_db=music_gains,
                 ass_path=ass_path,
                 watermark_path=watermark_path,
                 out_path=str(final_file),
                 watermark_opacity=watermark_opacity,
-                sfx_paths=sfx_paths,
-                sfx_gains_db=sfx_gains,
             )
 
             probe = await ffmpeg.async_ffprobe(str(final_file))
