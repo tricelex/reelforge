@@ -54,7 +54,12 @@ TOOL_CAPS: dict[str, int] = {
 # The three remaining tools cap out at 7 calls total. Leave headroom for
 # ModelRetry nudges and the final output turn(s) without coming anywhere
 # near the previous 20-plus-call, $7-per-run budget.
-_REQUEST_LIMIT = 12
+_REQUEST_LIMIT = 16
+# Requests held back once _tools_exhausted() starts hiding every research
+# tool, reserved for the forced structured-output turn plus its
+# output-validator retries (the quality-bar checks in logic/schemas.py are
+# strict enough that 1-2 retries are routine, not exceptional).
+_FINAL_ANSWER_RESERVE = 5
 
 _SYSTEM_PROMPT = """\
 You are a YouTube channel strategist for ReelForge. You research one source
@@ -202,6 +207,22 @@ class ChannelResearchDeps:
     trace: ToolTrace
 
 
+def _tools_exhausted(ctx: RunContext[ChannelResearchDeps]) -> bool:
+    """True once too little request budget remains to risk another tool call.
+
+    Per-tool caps alone don't guarantee the run ever reaches final output:
+    a model bouncing between several *not-yet-capped* tools, or one that
+    burns retries on invalid tool args or invalid structured output, can
+    exhaust the whole request_limit without ever being forced toward an
+    answer - the run then aborts via UsageLimitExceeded, wasting every
+    token already spent. Hiding every tool with `_FINAL_ANSWER_RESERVE`
+    requests still on the clock forces the model onto the structured-output
+    turn while there's still budget left for it (and its own retries) to
+    succeed.
+    """
+    return ctx.usage.requests >= _REQUEST_LIMIT - _FINAL_ANSWER_RESERVE
+
+
 def _hide_when_capped(
     name: str,
 ) -> Callable[
@@ -222,6 +243,8 @@ def _hide_when_capped(
         ctx: RunContext[ChannelResearchDeps],
         tool_def: ToolDefinition,
     ) -> ToolDefinition | None:
+        if _tools_exhausted(ctx):
+            return None
         if ctx.deps.trace.counts.get(name, 0) >= TOOL_CAPS[name]:
             return None
         return tool_def

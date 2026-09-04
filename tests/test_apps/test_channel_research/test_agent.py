@@ -301,7 +301,7 @@ def test_hide_when_capped_removes_tool_once_cap_is_spent() -> None:
     from server.apps.channel_research.agent import _hide_when_capped
 
     prepare = _hide_when_capped('youtube_search')
-    ctx = SimpleNamespace(deps=_deps())
+    ctx = SimpleNamespace(deps=_deps(), usage=SimpleNamespace(requests=0))
     tool_def = SimpleNamespace(name='youtube_search')
 
     under_cap = prepare(ctx, tool_def)
@@ -310,6 +310,60 @@ def test_hide_when_capped_removes_tool_once_cap_is_spent() -> None:
 
     assert under_cap is tool_def
     assert at_cap is None
+
+
+def test_tools_exhausted_false_with_budget_remaining() -> None:
+    from server.apps.channel_research.agent import _tools_exhausted
+
+    ctx = SimpleNamespace(usage=SimpleNamespace(requests=0))
+    assert _tools_exhausted(ctx) is False
+
+
+def test_tools_exhausted_true_near_request_limit() -> None:
+    """Once too little budget remains, every tool must be hidden outright.
+
+    Per-tool caps alone don't force a stop: a model bouncing between
+    several not-yet-capped tools, or burning retries on invalid tool args
+    or invalid structured output, can exhaust the whole request_limit
+    without ever being pushed toward final output - the run then aborts
+    via UsageLimitExceeded instead of returning a dossier. This global
+    guard forces every tool to disappear while enough budget still
+    remains for the model to produce (and retry) a final answer.
+    """
+    from server.apps.channel_research.agent import (
+        _FINAL_ANSWER_RESERVE,
+        _REQUEST_LIMIT,
+        _tools_exhausted,
+    )
+
+    threshold = _REQUEST_LIMIT - _FINAL_ANSWER_RESERVE
+    ctx = SimpleNamespace(usage=SimpleNamespace(requests=threshold))
+    assert _tools_exhausted(ctx) is True
+
+
+def test_hide_when_capped_hides_under_cap_tool_once_budget_exhausted() -> None:
+    """The global budget guard hides a tool even if its own cap isn't hit.
+
+    Without this, a tool that still has cap headroom stays visible right
+    up to the hard request_limit, giving the model no forced off-ramp
+    toward final output.
+    """
+    from server.apps.channel_research.agent import (
+        _FINAL_ANSWER_RESERVE,
+        _REQUEST_LIMIT,
+        _hide_when_capped,
+    )
+
+    prepare = _hide_when_capped('youtube_search')
+    threshold = _REQUEST_LIMIT - _FINAL_ANSWER_RESERVE
+    ctx = SimpleNamespace(
+        deps=_deps(),
+        usage=SimpleNamespace(requests=threshold),
+    )
+    tool_def = SimpleNamespace(name='youtube_search')
+
+    assert ctx.deps.trace.counts.get('youtube_search', 0) < 2
+    assert prepare(ctx, tool_def) is None
 
 
 @override_settings(DATAFORSEO_ENABLED=False, NEXLEV_ENABLED=True)
