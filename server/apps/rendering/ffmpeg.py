@@ -515,6 +515,93 @@ async def _normalize_segments_for_xfade(
     return normalized, durations, temps
 
 
+# Cap on simultaneous inputs per xfade filter_complex call. A cascading
+# chain across every scene in a chapter opens one decoder per scene in a
+# single FFmpeg process — for long-form chapters (dozens of scenes) that
+# graph's memory scales unboundedly and can get the process OOM-killed.
+# Batching bounds each call to a small, constant input count regardless of
+# chapter size.
+_MAX_XFADE_INPUTS = 6
+
+
+def _temp_mp4_path() -> str:
+    with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+        return f.name
+
+
+async def _xfade_batch(
+    paths: list[str],
+    durations: list[float],
+    transition: str,
+    transition_duration_s: float,
+    out_path: str,
+) -> None:
+    """Cross-fade 2+ inputs (bounded by _MAX_XFADE_INPUTS) into one file."""
+    filter_complex, v_out, a_out = _build_xfade_filter(
+        durations,
+        transition_duration_s,
+        transition=transition,
+    )
+    inputs: list[str] = []
+    for p in paths:
+        inputs += ['-i', p]
+
+    cmd = [
+        'ffmpeg',
+        '-y',
+        *inputs,
+        '-filter_complex',
+        filter_complex,
+        '-map',
+        v_out,
+        '-map',
+        a_out,
+        *_final_encode_args(out_path),
+    ]
+    await _run_ffmpeg_cmd(cmd, label='concat_chapter_with_transition')
+
+
+async def _xfade_round(
+    paths: list[str],
+    durs: list[float],
+    *,
+    transition: str,
+    transition_duration_s: float,
+    out_path: str,
+    is_final_round: bool,
+    temps: list[str],
+) -> tuple[list[str], list[float]]:
+    """Merge one batching round; returns the next round's (paths, durs)."""
+    chunks = [
+        paths[i : i + _MAX_XFADE_INPUTS]
+        for i in range(0, len(paths), _MAX_XFADE_INPUTS)
+    ]
+    dur_chunks = [
+        durs[i : i + _MAX_XFADE_INPUTS]
+        for i in range(0, len(durs), _MAX_XFADE_INPUTS)
+    ]
+    merged_paths: list[str] = []
+    merged_durs: list[float] = []
+    for chunk, chunk_durs in zip(chunks, dur_chunks, strict=True):
+        if len(chunk) == 1:
+            merged_paths.append(chunk[0])
+            merged_durs.append(chunk_durs[0])
+            continue
+        dest = out_path if is_final_round else _temp_mp4_path()
+        if not is_final_round:
+            temps.append(dest)
+        await _xfade_batch(
+            chunk,
+            chunk_durs,
+            transition,
+            transition_duration_s,
+            dest,
+        )
+        merged_paths.append(dest)
+        merged_durs.append(await _probe_duration(dest))
+    return merged_paths, merged_durs
+
+
 async def concat_chapter_with_transition(
     segment_paths: list[str],
     transition: str,
@@ -524,8 +611,10 @@ async def concat_chapter_with_transition(
     """Concatenate chapter files with a named transition between each pair.
 
     transition='hard_cut' delegates to the existing stream-copy concat_chapter
-    (fast path, no re-encode). Any other transition name re-encodes using a
-    cascading xfade/acrossfade filter_complex chain.
+    (fast path, no re-encode). Any other transition name re-encodes using
+    xfade/acrossfade, batching inputs in groups of _MAX_XFADE_INPUTS and
+    cascading the batch outputs so no single FFmpeg call ever opens more
+    than a bounded number of decoders at once.
 
     Raises:
         RuntimeError: If FFmpeg exits with non-zero return code.
@@ -539,31 +628,23 @@ async def concat_chapter_with_transition(
 
     temps: list[str] = []
     try:
-        normalized, durations, temps = await _normalize_segments_for_xfade(
+        normalized, durations, norm_temps = await _normalize_segments_for_xfade(
             segment_paths,
         )
-        filter_complex, v_out, a_out = _build_xfade_filter(
-            durations,
-            transition_duration_s,
-            transition=transition,
-        )
-        inputs: list[str] = []
-        for p in normalized:
-            inputs += ['-i', p]
+        temps.extend(norm_temps)
 
-        cmd = [
-            'ffmpeg',
-            '-y',
-            *inputs,
-            '-filter_complex',
-            filter_complex,
-            '-map',
-            v_out,
-            '-map',
-            a_out,
-            *_final_encode_args(out_path),
-        ]
-        await _run_ffmpeg_cmd(cmd, label='concat_chapter_with_transition')
+        paths, durs = normalized, durations
+        while len(paths) > 1:
+            is_final_round = len(paths) <= _MAX_XFADE_INPUTS
+            paths, durs = await _xfade_round(
+                paths,
+                durs,
+                transition=transition,
+                transition_duration_s=transition_duration_s,
+                out_path=out_path,
+                is_final_round=is_final_round,
+                temps=temps,
+            )
     finally:
         for tmp in temps:
             await asyncio.to_thread(Path(tmp).unlink, missing_ok=True)

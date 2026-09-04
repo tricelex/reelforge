@@ -800,6 +800,54 @@ def test_concat_chapter_with_transition_normalizes_video_only_segment() -> None:
     assert 'acrossfade' in xfade_cmd
 
 
+def test_concat_chapter_with_transition_batches_many_segments() -> None:
+    """More than _MAX_XFADE_INPUTS segments are merged in bounded batches.
+
+    A single filter_complex spanning every scene in a long chapter opens
+    one decoder per scene in one FFmpeg process, which can OOM on
+    long-form chapters. Batching keeps each call's input count bounded
+    regardless of how many scenes the chapter has.
+    """
+    from server.apps.rendering.ffmpeg import _MAX_XFADE_INPUTS
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured_cmds: list[list[str]] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured_cmds.append(list(args))
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=_PROBE_MEZZ_WITH_AUDIO),
+            ),
+        ):
+            # 7 segments, batch size 6: round 1 -> [6, 1] (one xfade call,
+            # one passthrough leftover); round 2 merges the two down to
+            # out_path (one more xfade call).
+            segments = [f'/tmp/s{i}.mp4' for i in range(7)]
+            await concat_chapter_with_transition(
+                segments,
+                'cross_dissolve',
+                0.5,
+                '/tmp/out.mp4',
+            )
+
+    asyncio.run(_run())
+    xfade_cmds = [c for c in captured_cmds if 'xfade' in ' '.join(c)]
+    assert len(xfade_cmds) == 2
+    for cmd in xfade_cmds:
+        assert cmd.count('-i') <= _MAX_XFADE_INPUTS
+    assert xfade_cmds[0].count('-i') == 6
+    assert xfade_cmds[-1].count('-i') == 2
+    assert '/tmp/out.mp4' in xfade_cmds[-1]
+
+
 def test_probe_duration_returns_container_duration() -> None:
     from server.apps.rendering.ffmpeg import _probe_duration
 
