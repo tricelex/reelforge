@@ -7,6 +7,7 @@ plain types (bytes, Path, float) — no StageContext or Django ORM dependency.
 import asyncio
 import json
 import tempfile
+from itertools import starmap
 from pathlib import Path
 from typing import Any
 
@@ -523,6 +524,16 @@ async def _normalize_segments_for_xfade(
 # chapter size.
 _MAX_XFADE_INPUTS = 6
 
+# Concurrent xfade batches within one round. Each batch is a bounded,
+# independent FFmpeg process (its own inputs, its own out_path), so running
+# a few at once is as safe as _SCENE_MUX_CONCURRENCY is for scene muxing.
+# Merging batches strictly one at a time turned long chapters (many batches
+# per round) into a fully serial chain of full re-encodes - no single call
+# was slow, but the chain was long enough to blow the assembly stage's
+# overall timeout. Kept low so concurrent batches don't recreate the same
+# memory pressure batching was meant to bound in the first place.
+_XFADE_BATCH_CONCURRENCY = 2
+
 
 def _temp_mp4_path() -> str:
     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
@@ -580,25 +591,32 @@ async def _xfade_round(
         durs[i : i + _MAX_XFADE_INPUTS]
         for i in range(0, len(durs), _MAX_XFADE_INPUTS)
     ]
-    merged_paths: list[str] = []
-    merged_durs: list[float] = []
-    for chunk, chunk_durs in zip(chunks, dur_chunks, strict=True):
+    semaphore = asyncio.Semaphore(_XFADE_BATCH_CONCURRENCY)
+
+    async def _merge_chunk(
+        chunk: list[str],
+        chunk_durs: list[float],
+    ) -> tuple[str, float]:
         if len(chunk) == 1:
-            merged_paths.append(chunk[0])
-            merged_durs.append(chunk_durs[0])
-            continue
+            return chunk[0], chunk_durs[0]
         dest = out_path if is_final_round else _temp_mp4_path()
         if not is_final_round:
             temps.append(dest)
-        await _xfade_batch(
-            chunk,
-            chunk_durs,
-            transition,
-            transition_duration_s,
-            dest,
-        )
-        merged_paths.append(dest)
-        merged_durs.append(await _probe_duration(dest))
+        async with semaphore:
+            await _xfade_batch(
+                chunk,
+                chunk_durs,
+                transition,
+                transition_duration_s,
+                dest,
+            )
+        return dest, await _probe_duration(dest)
+
+    merged = await asyncio.gather(
+        *starmap(_merge_chunk, zip(chunks, dur_chunks, strict=True)),
+    )
+    merged_paths = [path for path, _ in merged]
+    merged_durs = [dur for _, dur in merged]
     return merged_paths, merged_durs
 
 
