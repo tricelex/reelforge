@@ -848,6 +848,63 @@ def test_concat_chapter_with_transition_batches_many_segments() -> None:
     assert '/tmp/out.mp4' in xfade_cmds[-1]
 
 
+def test_concat_chapter_with_transition_runs_round_batches_concurrently() -> (
+    None
+):
+    """Batches within a round merge concurrently, not one at a time.
+
+    Long chapters can need several real xfade batches in a single round
+    (e.g. 13 scenes -> two 6-input batches plus a passthrough). Merging
+    those strictly sequentially chains their full re-encode times end to
+    end, long enough on long-form chapters to blow the assembly stage's
+    overall timeout even though no single FFmpeg call is slow. Batches are
+    independent (own inputs, own out_path) so they must run concurrently,
+    bounded by _XFADE_BATCH_CONCURRENCY - and results must still land back
+    in the original chunk order regardless of completion order.
+    """
+    from server.apps.rendering.ffmpeg import _MAX_XFADE_INPUTS
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    captured_cmds: list[list[str]] = []
+
+    async def fake_exec(*args: str, **_: object) -> MagicMock:
+        captured_cmds.append(list(args))
+        return mock_proc
+
+    async def _run() -> None:
+        with (
+            patch('asyncio.create_subprocess_exec', side_effect=fake_exec),
+            patch(
+                'server.apps.rendering.ffmpeg.async_ffprobe',
+                new=AsyncMock(return_value=_PROBE_MEZZ_WITH_AUDIO),
+            ),
+        ):
+            # 13 segments, batch size 6: round 1 -> [6, 6, 1] (two real
+            # xfade batches run concurrently, one passthrough leftover);
+            # round 2 merges the three round-1 outputs into out_path.
+            segments = [f'/tmp/s{i}.mp4' for i in range(13)]
+            await concat_chapter_with_transition(
+                segments,
+                'cross_dissolve',
+                0.5,
+                '/tmp/out.mp4',
+            )
+
+    asyncio.run(_run())
+    xfade_cmds = [c for c in captured_cmds if 'xfade' in ' '.join(c)]
+    assert len(xfade_cmds) == 3
+    round_one = xfade_cmds[:2]
+    final = xfade_cmds[-1]
+    for cmd in round_one:
+        assert cmd.count('-i') == _MAX_XFADE_INPUTS
+    assert '/tmp/s0.mp4' in round_one[0]
+    assert '/tmp/s6.mp4' in round_one[1]
+    assert final.count('-i') == 3
+    assert '/tmp/out.mp4' in final
+
+
 def test_probe_duration_returns_container_duration() -> None:
     from server.apps.rendering.ffmpeg import _probe_duration
 
