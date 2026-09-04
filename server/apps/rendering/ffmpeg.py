@@ -56,12 +56,50 @@ def _extract_ffmpeg_error(stderr: str, limit: int = 500) -> str:
     return text[-limit:]
 
 
-_KEN_BURNS_PRESETS = [
-    "zoompan=z='zoom+0.008':d=150:s=1920x1080",
-    "zoompan=z='1.12-0.008*on':d=150:s=1920x1080",
-    "zoompan=x='iw/2-(iw/zoom/2)+on*8':z=1.08:d=150:s=1920x1080",
-    "zoompan=x='iw-(iw/zoom/2)-on*8':z=1.08:d=150:s=1920x1080",
-]
+_KEN_BURNS_SIZE = '1920x1080'
+# Total travel targets for the whole hold, not a per-frame rate — the old
+# presets baked in a fixed delta per output frame, tuned for the original
+# ~5s/150-frame scenes. At today's 6-12s (and potentially 30s) scene
+# durations that either over-zoomed or ran the pan past the source image's
+# edge and sat static for the rest of the clip. These targets are reached
+# over the *entire* requested duration instead, at any length.
+_KEN_BURNS_TARGET_ZOOM = 1.15
+_KEN_BURNS_PAN_ZOOM = 1.12
+_KEN_BURNS_DIAGONAL_ZOOM = 1.10
+
+
+def _eased_t(frames: int) -> str:
+    """Smoothstep-eased frame-progress fraction, normalised to this clip."""
+    denom = max(frames - 1, 1)
+    t = f'(on/{denom})'
+    return f'({t}*{t}*(3-2*{t}))'
+
+
+def _ken_burns_filters(frames: int) -> list[str]:
+    """Build this clip's Ken Burns presets, sized to an exact frame count."""
+    t = _eased_t(frames)
+    zoom_in = f'1+({_KEN_BURNS_TARGET_ZOOM}-1)*{t}'
+    zoom_out = f'{_KEN_BURNS_TARGET_ZOOM}-({_KEN_BURNS_TARGET_ZOOM}-1)*{t}'
+    center_x = "x='iw/2-(iw/zoom/2)'"
+    center_y = "y='ih/2-(ih/zoom/2)'"
+    pan_margin_x = f'(iw-(iw/{_KEN_BURNS_PAN_ZOOM}))'
+    pan_margin_y = f'(ih-(ih/{_KEN_BURNS_PAN_ZOOM}))'
+    diag_zoom = f'1+({_KEN_BURNS_DIAGONAL_ZOOM}-1)*{t}'
+    diag_margin_x = f'(iw-(iw/({diag_zoom})))'
+    diag_margin_y = f'(ih-(ih/({diag_zoom})))'
+    tail = f'd={frames}:s={_KEN_BURNS_SIZE}'
+    return [
+        f"zoompan=z='{zoom_in}':{center_x}:{center_y}:{tail}",
+        f"zoompan=z='{zoom_out}':{center_x}:{center_y}:{tail}",
+        f"zoompan=z={_KEN_BURNS_PAN_ZOOM}:x='{pan_margin_x}*{t}':{center_y}:{tail}",
+        f"zoompan=z={_KEN_BURNS_PAN_ZOOM}:x='{pan_margin_x}*(1-{t})':{center_y}:{tail}",
+        f"zoompan=z={_KEN_BURNS_PAN_ZOOM}:{center_x}:y='{pan_margin_y}*{t}':{tail}",
+        f"zoompan=z={_KEN_BURNS_PAN_ZOOM}:{center_x}:y='{pan_margin_y}*(1-{t})':{tail}",
+        (
+            f"zoompan=z='{diag_zoom}':x='{diag_margin_x}*{t}':"
+            f"y='{diag_margin_y}*{t}':{tail}"
+        ),
+    ]
 
 
 async def ken_burns(
@@ -84,11 +122,9 @@ async def ken_burns(
     try:
         await asyncio.to_thread(Path(img_path).write_bytes, image_bytes)
 
-        frames = int(duration_s * 30)
-        vf = _KEN_BURNS_PRESETS[preset_idx % len(_KEN_BURNS_PRESETS)].replace(
-            'd=150',
-            f'd={frames}',
-        )
+        frames = max(1, int(duration_s * 30))
+        presets = _ken_burns_filters(frames)
+        vf = presets[preset_idx % len(presets)]
         cmd = [
             'ffmpeg',
             '-y',
