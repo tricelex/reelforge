@@ -105,3 +105,31 @@ def test_run_raises_on_extra_queries() -> None:
         with pytest.raises(FatalProviderError) as exc_info:
             asyncio.run(FootageQueriesStage().run(ctx))
     assert exc_info.value.error_code == 'query_coverage'
+
+
+def test_run_batches_by_chapter() -> None:
+    """One LLM call per chapter, then queries are concatenated.
+
+    A single call across every scene risks truncation at the model's
+    max_tokens on long-form runs with many scenes, silently dropping
+    trailing queries. Batching per chapter keeps each call small.
+    """
+    ctx = _make_ctx(n_scenes=0)
+    ctx.upstream['scene_breakdown']['scenes'] = [
+        {'idx': 0, 'chapter_idx': 0, 'visual_concept': 'a'},
+        {'idx': 1, 'chapter_idx': 0, 'visual_concept': 'b'},
+        {'idx': 2, 'chapter_idx': 1, 'visual_concept': 'c'},
+    ]
+    mock_agent = AsyncMock(
+        side_effect=[
+            _output([0, 1]),
+            _output([2]),
+        ],
+    )
+    with patch(
+        'server.apps.generation.clients.llm.run_agent',
+        new=mock_agent,
+    ):
+        result = asyncio.run(FootageQueriesStage().run(ctx))
+    assert mock_agent.await_count == 2
+    assert [q['scene_idx'] for q in result['queries']] == [0, 1, 2]
