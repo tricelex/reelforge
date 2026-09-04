@@ -8,7 +8,7 @@ falls back to AI generation, and only then parks the run for an operator.
 import asyncio
 import tempfile
 from pathlib import Path
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 import httpx
 import structlog
@@ -35,10 +35,36 @@ from server.apps.pipelines.stages.base import (
 )
 from server.common.exceptions import FatalProviderError
 
+if TYPE_CHECKING:
+    from server.apps.pipelines.models import PipelineRun
+
 logger = structlog.get_logger(__name__)
 
 _AI_IMAGE_COST_USD = 0.035
 _DOWNLOAD_TIMEOUT_S = 120.0
+
+
+def _rotate_providers(names: list[str], scene_idx: int) -> list[str]:
+    """Rotate the provider priority list so scenes spread across providers.
+
+    Otherwise every scene hits the top-priority provider first, which
+    exhausts its quota fast on a large fan-out and cascades the rest of
+    the scenes into paid AI fallback.
+    """
+    if not names:
+        return names
+    offset = scene_idx % len(names)
+    return [*names[offset:], *names[:offset]]
+
+
+async def _ai_fallback_count(run: 'PipelineRun') -> int:
+    """Count AI-fallback images already generated for this run."""
+    from server.apps.pipelines.models import CostRecord  # noqa: PLC0415
+
+    return await CostRecord.objects.filter(
+        stage_execution__run=run,
+        operation='footage_ai_fallback',
+    ).acount()
 
 
 async def _fetch_bytes(url: str) -> bytes:
@@ -223,7 +249,8 @@ class FootageSearchStage(Stage):
                 scene_idx=scene_idx,
                 defaults=provider_names,
             )
-        providers = build_providers(provider_names)
+        rotated = _rotate_providers(provider_names, scene_idx)
+        providers = build_providers(rotated)
         media_type: MediaType = (
             'image' if snap.get('media_preference') == 'image' else 'video'
         )
@@ -352,6 +379,15 @@ class FootageSearchStage(Stage):
                 f'fallback is unavailable',
                 provider='footage_search',
                 error_code='no_footage_found',
+            )
+        used = await _ai_fallback_count(ctx.run)
+        if used >= config.max_ai_fallback_per_run:
+            raise FatalProviderError(
+                f'Scene {scene_idx}: AI-fallback cap of '
+                f'{config.max_ai_fallback_per_run} images reached for this '
+                f'run',
+                provider='footage_search',
+                error_code='ai_fallback_cap_exceeded',
             )
         result = await fal_client.generate_image(
             prompt=prompt,

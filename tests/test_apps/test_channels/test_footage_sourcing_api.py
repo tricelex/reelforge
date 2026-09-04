@@ -44,6 +44,7 @@ def test_channel_detail_includes_footage_sourcing_defaults(
     ]
     assert body['sourcing_mode'] == 'stock_first'
     assert body['ai_fallback_enabled'] is True
+    assert body['max_ai_fallback_per_run'] == 15
     assert body['rerank_mode'] == 'vision'
     assert body['candidates_per_scene'] == 8
     assert body['min_clip_width'] == 1280
@@ -120,6 +121,31 @@ def test_patch_preserves_provider_order(
         'openverse',
         'pexels',
     ]
+
+
+@pytest.mark.django_db
+def test_patch_updates_max_ai_fallback_per_run(
+    dmr_client: DMRClient,
+    channel: Channel,
+    auth_headers: dict[str, str],
+) -> None:
+    """PATCH can lower the per-run AI-fallback safety cap."""
+    detail_url = reverse(
+        'api:channels_api:channel-detail',
+        kwargs={'channel_id': channel.id},
+    )
+
+    response = dmr_client.patch(
+        detail_url,
+        data={'footage_sourcing': {'max_ai_fallback_per_run': 5}},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.json()['footage_sourcing']
+    assert body['max_ai_fallback_per_run'] == 5
+    config = FootageSourcingConfig.objects.get(channel=channel)
+    assert config.max_ai_fallback_per_run == 5
 
 
 @pytest.mark.django_db

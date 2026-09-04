@@ -134,6 +134,7 @@ _FOOTAGE_SOURCING_FIELDS = (
     'enabled_providers',
     'sourcing_mode',
     'ai_fallback_enabled',
+    'max_ai_fallback_per_run',
     'rerank_mode',
     'candidates_per_scene',
     'min_clip_width',

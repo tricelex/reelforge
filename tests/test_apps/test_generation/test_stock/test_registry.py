@@ -4,12 +4,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from server.apps.generation.clients.stock import registry
 from server.apps.generation.clients.stock.base import FootageCandidate
 from server.apps.generation.clients.stock.registry import (
     build_providers,
     search_candidates,
 )
 from server.common.exceptions import RetryableProviderError
+
+
+@pytest.fixture(autouse=True)
+def _reset_cooldowns() -> None:
+    """Isolate each test from cooldown state set by earlier tests."""
+    registry._cooldown_until.clear()
 
 
 def _candidate(
@@ -197,6 +204,72 @@ async def test_rate_limited_provider_is_skipped_not_fatal() -> None:
         )
 
     assert [candidate.provider for candidate in results] == ['pixabay']
+
+
+@pytest.mark.anyio
+async def test_rate_limited_provider_starts_a_cooldown() -> None:
+    """A 429 marks the provider as cooling down for subsequent calls."""
+    provider = _provider('pexels', [])
+
+    async def _side_effect(
+        current: MagicMock,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        raise RetryableProviderError(
+            'rate',
+            provider='pexels',
+            status_code=429,
+        )
+
+    with patch(
+        'server.apps.generation.clients.stock.registry.cached_search',
+        new=AsyncMock(side_effect=_side_effect),
+    ):
+        await search_candidates(
+            providers=[provider],
+            query='ocean',
+            media_type='video',
+            orientation='landscape',
+            min_width=1280,
+            min_duration_s=3.0,
+            allowed_licenses=[],
+            limit=8,
+        )
+
+    assert registry._is_cooling_down('pexels') is True
+
+
+@pytest.mark.anyio
+async def test_cooling_down_provider_is_skipped_without_a_request() -> None:
+    """A provider already cooling down is never called again this search."""
+    registry._start_cooldown('pexels')
+    first = _provider('pexels', [_candidate('pexels', 0)])
+    second = _provider('pixabay', [_candidate('pixabay', 1)])
+
+    with patch(
+        'server.apps.generation.clients.stock.registry.cached_search',
+        new=AsyncMock(
+            side_effect=lambda provider, *args, **kwargs: (
+                provider.search.return_value
+            ),
+        ),
+    ) as search:
+        results = await search_candidates(
+            providers=[first, second],
+            query='ocean',
+            media_type='video',
+            orientation='landscape',
+            min_width=1280,
+            min_duration_s=3.0,
+            allowed_licenses=[],
+            limit=8,
+        )
+
+    assert [candidate.provider for candidate in results] == ['pixabay']
+    search.assert_awaited_once()
+    called_provider = search.await_args.args[0]
+    assert called_provider.name == 'pixabay'
 
 
 @pytest.mark.anyio

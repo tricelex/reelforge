@@ -233,6 +233,7 @@ class FootageSourcingBlock(pydantic.BaseModel):
     enabled_providers: list[str] = pydantic.Field(default_factory=list)
     sourcing_mode: str = 'stock_first'
     ai_fallback_enabled: bool = True
+    max_ai_fallback_per_run: int = 15
     rerank_mode: str = 'vision'
     candidates_per_scene: int = 8
     min_clip_width: int = 1280

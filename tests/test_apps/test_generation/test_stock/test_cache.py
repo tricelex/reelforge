@@ -7,6 +7,7 @@ import pytest
 
 from server.apps.generation.clients.stock.base import FootageCandidate
 from server.apps.generation.clients.stock.cache import (
+    _TokenBucket,
     cached_search,
     normalize_query,
 )
@@ -138,6 +139,120 @@ def attrs_asdict_of(candidate: FootageCandidate) -> dict[str, object]:
     data = attrs.asdict(candidate)
     data['tags'] = list(data['tags'])
     return data
+
+
+@pytest.mark.anyio
+async def test_cached_search_acquires_rate_limit_token_on_miss() -> None:
+    """A cache miss consumes one rate-limit token before hitting the API."""
+    provider = MagicMock()
+    provider.name = 'pexels'
+    provider.search = AsyncMock(return_value=[_candidate()])
+
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
+
+    bucket = MagicMock()
+    bucket.acquire = AsyncMock()
+
+    with (
+        patch(
+            'server.apps.generation.clients.stock.cache.get_redis',
+            return_value=redis,
+        ),
+        patch(
+            'server.apps.generation.clients.stock.cache._bucket',
+            return_value=bucket,
+        ),
+    ):
+        await cached_search(
+            provider,
+            'ocean waves',
+            media_type='video',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    bucket.acquire.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_cached_search_skips_rate_limit_token_on_hit() -> None:
+    """A cache hit must not spend rate-limit quota."""
+    provider = MagicMock()
+    provider.name = 'pexels'
+    provider.search = AsyncMock()
+
+    payload = json.dumps([attrs_asdict_of(_candidate())]).encode()
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=payload)
+    redis.set = AsyncMock()
+    redis.aclose = AsyncMock()
+
+    bucket = MagicMock()
+    bucket.acquire = AsyncMock()
+
+    with (
+        patch(
+            'server.apps.generation.clients.stock.cache.get_redis',
+            return_value=redis,
+        ),
+        patch(
+            'server.apps.generation.clients.stock.cache._bucket',
+            return_value=bucket,
+        ),
+    ):
+        await cached_search(
+            provider,
+            'ocean waves',
+            media_type='video',
+            orientation='landscape',
+            min_width=1280,
+            limit=3,
+        )
+
+    bucket.acquire.assert_not_awaited()
+
+
+class TestTokenBucket:
+    """Tests for the per-provider rate limiter."""
+
+    @pytest.mark.anyio
+    async def test_allows_up_to_capacity_without_sleep(self) -> None:
+        """Acquiring within capacity never sleeps."""
+        bucket = _TokenBucket(capacity=2, window_s=60.0, clock=lambda: 0.0)
+        with patch('asyncio.sleep', new=AsyncMock()) as sleep:
+            await bucket.acquire()
+            await bucket.acquire()
+        sleep.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_sleeps_for_the_refill_wait_once_exhausted(self) -> None:
+        """A call beyond capacity waits exactly as long as refill needs."""
+        bucket = _TokenBucket(capacity=1, window_s=60.0, clock=lambda: 0.0)
+        with patch('asyncio.sleep', new=AsyncMock()) as sleep:
+            await bucket.acquire()
+            await bucket.acquire()
+        sleep.assert_awaited_once()
+        (wait_s,), _ = sleep.await_args
+        assert wait_s == pytest.approx(60.0)
+
+    @pytest.mark.anyio
+    async def test_refills_over_time(self) -> None:
+        """Elapsed time between calls restores tokens before the next ask."""
+        now = 0.0
+
+        def _clock() -> float:
+            return now
+
+        bucket = _TokenBucket(capacity=1, window_s=60.0, clock=_clock)
+        with patch('asyncio.sleep', new=AsyncMock()) as sleep:
+            await bucket.acquire()
+            now = 60.0
+            await bucket.acquire()
+        sleep.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
