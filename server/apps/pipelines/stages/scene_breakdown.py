@@ -207,7 +207,7 @@ class SceneBreakdownStage(Stage):
     key = 'scene_breakdown'
     queue = 'api'
     max_retries = 3
-    timeout_s = 600
+    timeout_s = 1800
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
