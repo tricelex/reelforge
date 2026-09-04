@@ -226,13 +226,6 @@ class VisualPromptsOutput(BaseModel):
     prompts: list[VisualPrompt]
 
 
-class MusicPlanOutput(BaseModel):
-    """Full output of the music_plan stage — one bed for the whole video."""
-
-    library_asset_id: str | None = None
-    gain_db: float = -22.0
-
-
 class EditorBriefBeatNote(BaseModel):
     """Per-scene or per-candidate editorial note for the Resolve editor."""
 

@@ -22,7 +22,6 @@ from server.apps.pipelines.stages import (
     image_gen,  # noqa: F401
     metadata,  # noqa: F401
     motion,  # noqa: F401
-    music_plan,  # noqa: F401
     narrative_qc,  # noqa: F401
     outline,  # noqa: F401
     package_zip,  # noqa: F401

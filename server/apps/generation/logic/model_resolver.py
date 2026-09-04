@@ -20,7 +20,6 @@ STAGE_MODEL_DEFAULTS: dict[str, str] = {
     'scene_breakdown': 'gpt-5.6-terra',
     'narrative_qc': 'claude-opus-4-8',
     'visual_prompts': 'claude-sonnet-4-6',
-    'music_plan': 'gpt-5.6-terra',
     'metadata': 'gpt-5.6-terra',
     'editor_brief': 'gpt-5.6-terra',
     'ideation': 'gpt-5.6-terra',

@@ -26,7 +26,7 @@ from server.apps.pipelines.stages.base import (
 from server.common.exceptions import FatalProviderError
 
 if TYPE_CHECKING:
-    from server.apps.assets.models import Asset, LibraryAsset
+    from server.apps.assets.models import Asset
 
 _MAX_ITEMS = 5000
 _EXT_BY_MIME: dict[str, str] = {
@@ -54,18 +54,6 @@ async def _fetch_asset_bytes(asset_id: str) -> bytes:
     """Download bytes from an Asset by ID."""
     asset = await _fetch_asset(asset_id)
     return await asyncio.to_thread(asset.file.read)
-
-
-async def _fetch_library_asset(asset_id: str) -> 'LibraryAsset | None':
-    """Load a LibraryAsset by ID, or None if it no longer exists."""
-    from django.core.exceptions import ObjectDoesNotExist  # noqa: PLC0415
-
-    from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
-
-    try:
-        return await LibraryAsset.objects.aget(id=asset_id)
-    except ObjectDoesNotExist:
-        return None
 
 
 async def _build_role_asset_map(
@@ -171,27 +159,6 @@ async def _gather_vo(ctx: StageContext) -> dict[str, bytes]:
     return files
 
 
-async def _gather_music(ctx: StageContext) -> dict[str, bytes]:
-    """Gather audio/music/bed.* and music_notes.json, if a bed was chosen."""
-    music_plan = ctx.upstream.get('music_plan', {})
-    library_asset_id = music_plan.get('library_asset_id')
-    if not library_asset_id:
-        return {}
-    lib_asset = await _fetch_library_asset(library_asset_id)
-    if lib_asset is None:
-        return {}
-    ext = _ext_for_mime(lib_asset.mime)
-    content = await asyncio.to_thread(lib_asset.file.read)
-    notes = json.dumps({
-        'library_asset_id': library_asset_id,
-        'gain_db': music_plan.get('gain_db', -22.0),
-    }).encode()
-    return {
-        f'audio/music/bed.{ext}': content,
-        'audio/music/music_notes.json': notes,
-    }
-
-
 async def _gather_video_scenes(ctx: StageContext) -> dict[str, bytes]:
     """Gather video/scenes/sc_NNNN.mp4 from motion/footage_prep children."""
     scene_map = await _build_role_asset_map(ctx, SEGMENT_STAGE)
@@ -267,7 +234,6 @@ async def _gather_longform_files(ctx: StageContext) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     files.update(await _gather_longform_docs(ctx))
     files.update(await _gather_vo(ctx))
-    files.update(await _gather_music(ctx))
     files.update(await _gather_video_scenes(ctx))
     files.update(await _gather_stills(ctx))
     files.update(await _gather_longform_captions(ctx))

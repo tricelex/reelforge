@@ -1483,7 +1483,6 @@ def test_all_production_stages_registered() -> None:
         'tts',
         'motion',
         'alignment',
-        'music_plan',
         'thumbnail',
         'metadata',
         'assembly',

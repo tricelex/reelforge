@@ -136,7 +136,6 @@ def test_longform_v1_graph_includes_narrative_qc_between_breakdown_and_visuals()
     assert by_key['storyboard_gate'].get('gate') is True
     assert by_key['tts']['depends_on'] == ['storyboard_gate']
     assert by_key['motion']['depends_on'] == ['storyboard_gate']
-    assert by_key['music_plan']['depends_on'] == ['narrative_qc']
     assert by_key['final_gate']['depends_on'] == [
         'qc',
         'thumbnail',
