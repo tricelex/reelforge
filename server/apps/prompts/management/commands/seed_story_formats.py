@@ -68,7 +68,7 @@ _QUERIES_USER = (
     'Write footage search queries for "{{ topic }}".\n'
     'Available providers: {{ footage.providers }}\n'
     'Sourcing mode: {{ footage.sourcing_mode }}\n'
-    'Scenes: {{ upstream.scene_breakdown.scenes }}\n'
+    'Scenes: {{ chapter_scenes }}\n'
     'Return one FootageQuery per scene, matching scene_idx values.'
 )
 

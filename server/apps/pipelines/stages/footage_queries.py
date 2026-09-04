@@ -1,5 +1,6 @@
 """Footage queries stage — turns scenes into provider search terms."""
 
+from collections import defaultdict
 from functools import lru_cache
 from typing import Any, override
 
@@ -8,7 +9,7 @@ from pydantic_ai import Agent, RunContext
 from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
 from server.apps.generation.logic.stage_model import resolve_stage_model
-from server.apps.pipelines.schemas import FootageQueriesOutput
+from server.apps.pipelines.schemas import FootageQueriesOutput, FootageQuery
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
 )
@@ -54,6 +55,20 @@ def _agent(model: str) -> Agent[StageContext, FootageQueriesOutput]:
     return a
 
 
+def _scenes_by_chapter(
+    scenes: list[dict[str, Any]],
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """Group scenes in first-seen chapter order."""
+    groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    order: list[int] = []
+    for scene in scenes:
+        chapter_idx = int(scene.get('chapter_idx', 0))
+        if chapter_idx not in groups:
+            order.append(chapter_idx)
+        groups[chapter_idx].append(scene)
+    return [(idx, groups[idx]) for idx in order]
+
+
 @register_stage
 class FootageQueriesStage(Stage):
     """Documentary stage: search terms for every scene."""
@@ -65,7 +80,7 @@ class FootageQueriesStage(Stage):
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:
-        """Write provider search queries for each scene."""
+        """Write provider search queries for each scene, batched by chapter."""
         scenes = ctx.upstream.get('scene_breakdown', {}).get('scenes', [])
         if not scenes:
             raise FatalProviderError(
@@ -74,27 +89,19 @@ class FootageQueriesStage(Stage):
                 error_code='missing_scenes',
             )
 
-        variables = await build_prompt_variables(
-            ctx,
-            include_character=False,
-        )
-        _, usr = await ctx.prompts.render('footage_queries', variables)
-        user_prompt = usr or (
-            f'Write footage search queries for "{ctx.run.topic}".\n'
-            f'Scenes: {scenes}\n'
-            f'Return one FootageQuery per scene, same scene_idx values.'
-        )
         model_slug = await resolve_stage_model(ctx, self.key)
-        output: FootageQueriesOutput = await llm_client.run_agent(
-            _agent(to_pydantic_ai_model(model_slug)),
-            user_prompt,
-            ctx,
-            stage_key=self.key,
-            model_slug=model_slug,
-        )
+        collected: list[FootageQuery] = []
+        for _chapter_idx, chapter_scenes in _scenes_by_chapter(scenes):
+            collected.extend(
+                await _queries_for_chapter(
+                    ctx,
+                    chapter_scenes,
+                    model_slug=model_slug,
+                ),
+            )
 
         scene_idxs = {int(s['idx']) for s in scenes}
-        query_idxs = {int(q.scene_idx) for q in output.queries}
+        query_idxs = {int(q.scene_idx) for q in collected}
         if query_idxs != scene_idxs:
             missing = sorted(scene_idxs - query_idxs)
             extra = sorted(query_idxs - scene_idxs)
@@ -104,4 +111,32 @@ class FootageQueriesStage(Stage):
                 provider='footage_queries',
                 error_code='query_coverage',
             )
-        return output.model_dump()
+        return FootageQueriesOutput(queries=collected).model_dump()
+
+
+async def _queries_for_chapter(
+    ctx: StageContext,
+    chapter_scenes: list[dict[str, Any]],
+    *,
+    model_slug: str,
+) -> list[FootageQuery]:
+    """One LLM call for the scenes in a single chapter."""
+    variables = await build_prompt_variables(
+        ctx,
+        include_character=False,
+        extra={'chapter_scenes': chapter_scenes},
+    )
+    _, usr = await ctx.prompts.render('footage_queries', variables)
+    user_prompt = usr or (
+        f'Write footage search queries for "{ctx.run.topic}".\n'
+        f'Scenes: {chapter_scenes}\n'
+        f'Return one FootageQuery per scene, same scene_idx values.'
+    )
+    output: FootageQueriesOutput = await llm_client.run_agent(
+        _agent(to_pydantic_ai_model(model_slug)),
+        user_prompt,
+        ctx,
+        stage_key=FootageQueriesStage.key,
+        model_slug=model_slug,
+    )
+    return list(output.queries)
