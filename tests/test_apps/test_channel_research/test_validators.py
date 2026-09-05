@@ -224,6 +224,26 @@ def test_validate_channel_spec_rejects_music_mismatch() -> None:
         validate_channel_spec(spec)
 
 
+def test_validate_channel_spec_reports_every_failure_in_one_pass() -> None:
+    """Multiple independent violations must all land in one raised error.
+
+    Stopping at the first failing check forces one ModelRetry per rule -
+    on a schema this large that reliably exhausts the agent's retry
+    budget before every rule is satisfied. Every check must run and every
+    failure must be reported together so a single retry can fix them all.
+    """
+    spec = valid_spec(
+        lore='Too short. We never do this.',
+        music_mood_map={'hook': 'tension'},
+        music_pool_tags=['calm'],
+    )
+    with pytest.raises(ValueError) as exc_info:
+        validate_channel_spec(spec)
+    message = str(exc_info.value)
+    assert 'at least 400 words' in message
+    assert 'music_pool_tags' in message
+
+
 def test_validate_channel_spec_rejects_orphan_templates() -> None:
     spec = valid_spec(
         create_if_missing=True,
@@ -360,6 +380,19 @@ def test_validate_agent_output_rejects_copied_brand_name() -> None:
 
 def test_validate_agent_output_accepts_distinct_brand() -> None:
     validate_agent_output(valid_output())
+
+
+def test_validate_agent_output_reports_every_failure_in_one_pass() -> None:
+    """A dossier failure and a ChannelSpec failure must both surface at once."""
+    output = ChannelResearchAgentOutput(
+        research_report=valid_report(bend_count=1),
+        channel_spec=valid_spec(hero_ratio=0.05),
+    )
+    with pytest.raises(ValueError) as exc_info:
+        validate_agent_output(output)
+    message = str(exc_info.value)
+    assert 'niche_bend_opportunities' in message
+    assert 'hero_ratio' in message
 
 
 def test_lore_document_helper_meets_word_count() -> None:
@@ -594,6 +627,27 @@ def test_validate_medium_lock_rejects_bible_missing_medium() -> None:
     spec = valid_spec(visual_bible=bible)
     with pytest.raises(ValueError, match='sentence one'):
         validate_medium_lock(spec)
+
+
+def test_validate_medium_lock_reports_every_failure_in_one_pass() -> None:
+    """A too-short bible missing the medium mention, plus a bad hero_ratio.
+
+    Both kinds of failure must surface together, not one rule per retry.
+    This mirrors a real failure: the agent kept losing its whole
+    output-retry budget re-discovering visual_bible's two independent
+    checks (length, then medium mention) and hero_ratio one at a time
+    across separate turns, never reaching a valid final answer.
+    """
+    spec = valid_spec(
+        visual_bible='Too short and never names the medium.',
+        hero_ratio=0.05,
+    )
+    with pytest.raises(ValueError) as exc_info:
+        validate_medium_lock(spec)
+    message = str(exc_info.value)
+    assert 'visual_bible must be' in message
+    assert 'sentence one' in message
+    assert 'hero_ratio' in message
 
 
 def test_validate_medium_lock_rejects_short_distinctive_templates() -> None:
