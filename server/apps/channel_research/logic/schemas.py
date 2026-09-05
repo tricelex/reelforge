@@ -1,5 +1,6 @@
 """Pydantic schemas for the channel-research agent output."""
 
+from collections.abc import Callable
 from typing import Any, Literal
 
 import pydantic
@@ -294,6 +295,28 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+def _run_checks(*checks: Callable[[], None]) -> None:
+    """Run every check and raise all failures together, not just the first.
+
+    Stopping at the first failing check - the previous behavior here -
+    means a single ModelRetry conveys only one violated rule at a time.
+    On a schema this large (15+ independent checks) that reliably
+    exhausts the agent's output-retry budget before every rule is
+    satisfied, and can even cost a retry re-discovering a rule the model
+    regressed while blindly chasing the one it was just told about.
+    Reporting every currently-failing rule in one message lets a single
+    retry fix them all at once.
+    """
+    errors: list[str] = []
+    for check in checks:
+        try:
+            check()
+        except ValueError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise ValueError('; '.join(errors))
+
+
 def validate_research_report(report: ResearchReport) -> None:
     """Enforce 3-5 Niche Bending opportunities."""
     count = len(report.niche_bend_opportunities)
@@ -501,14 +524,16 @@ def _mentions_medium(text: str, medium: str) -> bool:
     return _medium_label(medium) in lowered or medium in lowered
 
 
-def _validate_visual_bible(bible: str, medium: str) -> None:
+def _validate_visual_bible_length(bible: str) -> None:
     words = _word_count(bible)
     if not (_MIN_BIBLE_WORDS <= words <= _MAX_BIBLE_WORDS):
         msg = (
-            'visual_bible must be '
-            f'{_MIN_BIBLE_WORDS}-{_MAX_BIBLE_WORDS} words'
+            f'visual_bible must be {_MIN_BIBLE_WORDS}-{_MAX_BIBLE_WORDS} words'
         )
         raise ValueError(msg)
+
+
+def _validate_visual_bible_names_medium(bible: str, medium: str) -> None:
     if not _mentions_medium(_first_sentence(bible), medium):
         msg = 'visual_bible must name the visual medium in sentence one'
         raise ValueError(msg)
@@ -587,15 +612,9 @@ def _validate_blueprint_for_medium(
         raise ValueError(msg)
 
 
-def _validate_distinctive_media(
-    spec: ChannelSpecModel,
-    medium: str,
+def _validate_style_negatives_required(
     style_negatives: list[str] | None,
 ) -> None:
-    if medium not in DISTINCTIVE_MEDIA:
-        return
-    _validate_distinctive_templates(spec)
-    _validate_template_quality(spec, medium)
     if not style_negatives:
         msg = 'style_negatives required for distinctive media'
         raise ValueError(msg)
@@ -608,8 +627,10 @@ def validate_medium_lock(
     style_negatives: list[str] | None = None,
 ) -> None:
     """Enforce hero_ratio, templates, and cuts for the classified medium."""
-    medium = visual_medium if visual_medium is not None else (
-        spec.niche.visual_medium or ''
+    medium = (
+        visual_medium
+        if visual_medium is not None
+        else (spec.niche.visual_medium or '')
     )
     negatives = (
         style_negatives
@@ -622,30 +643,42 @@ def validate_medium_lock(
     if medium not in VISUAL_MEDIUMS:
         msg = f'unknown visual_medium: {medium}'
         raise ValueError(msg)
-    _validate_visual_bible(spec.niche.visual_bible, medium)
-    _validate_hero_ratio_for_medium(spec, medium)
-    _validate_lore_names_medium(spec, medium)
-    _validate_blueprint_for_medium(spec, medium)
-    _validate_distinctive_media(spec, medium, negatives)
+
+    checks: list[Callable[[], None]] = [
+        lambda: _validate_visual_bible_length(spec.niche.visual_bible),
+        lambda: _validate_visual_bible_names_medium(
+            spec.niche.visual_bible,
+            medium,
+        ),
+        lambda: _validate_hero_ratio_for_medium(spec, medium),
+        lambda: _validate_lore_names_medium(spec, medium),
+        lambda: _validate_blueprint_for_medium(spec, medium),
+        lambda: _validate_character_lock(spec, medium),
+    ]
     if medium in ANIMATED_MEDIA:
-        _validate_animated_cuts_and_scenes(spec)
-    _validate_character_lock(spec, medium)
+        checks.append(lambda: _validate_animated_cuts_and_scenes(spec))
+    if medium in DISTINCTIVE_MEDIA:
+        checks.extend((
+            lambda: _validate_distinctive_templates(spec),
+            lambda: _validate_template_quality(spec, medium),
+            lambda: _validate_style_negatives_required(negatives),
+        ))
+    _run_checks(*checks)
 
 
 def validate_channel_spec(spec: ChannelSpecModel) -> None:
-    """Onboarding self-check. Raises ValueError on failure."""
-    _validate_lore(spec.niche.lore_document)
-    _validate_music_overlap(spec)
-    _validate_templates(spec)
-    _validate_seeds_and_character(spec)
-    _validate_pacing_and_blueprint(spec)
-    _validate_hero_ratio(spec)
+    """Onboarding self-check. Raises ValueError (all failures) at once."""
+    _run_checks(
+        lambda: _validate_lore(spec.niche.lore_document),
+        lambda: _validate_music_overlap(spec),
+        lambda: _validate_templates(spec),
+        lambda: _validate_seeds_and_character(spec),
+        lambda: _validate_pacing_and_blueprint(spec),
+        lambda: _validate_hero_ratio(spec),
+    )
 
 
-def validate_agent_output(output: ChannelResearchAgentOutput) -> None:
-    """Run dossier + ChannelSpec quality-bar checks."""
-    validate_research_report(output.research_report)
-    validate_channel_spec(output.channel_spec)
+def _validate_distinct_brand_name(output: ChannelResearchAgentOutput) -> None:
     source_name = output.research_report.source_channel.channel_name
     spec_name = output.channel_spec.channel.name
     if (
@@ -655,4 +688,13 @@ def validate_agent_output(output: ChannelResearchAgentOutput) -> None:
     ):
         msg = 'Do not copy the source channel brand name'
         raise ValueError(msg)
-    validate_medium_lock(output.channel_spec)
+
+
+def validate_agent_output(output: ChannelResearchAgentOutput) -> None:
+    """Run dossier + ChannelSpec quality-bar checks, all failures at once."""
+    _run_checks(
+        lambda: validate_research_report(output.research_report),
+        lambda: validate_channel_spec(output.channel_spec),
+        lambda: _validate_distinct_brand_name(output),
+        lambda: validate_medium_lock(output.channel_spec),
+    )
