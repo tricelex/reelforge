@@ -53,9 +53,21 @@ from server.apps.prompts.services import (
     PromptTemplateService,
     StoryFormatService,
 )
+from server.common.transition_styles import HARD_CUT
 
 MAX_PROMPT_TEMPLATES = 40
 MAX_SEED_IDEAS = 50
+
+
+def _normalize_transition_style(style: str) -> str:
+    """Map non-canonical spellings to ***REMOVED***'s snake_case vocabulary.
+
+    Import specs come from external tooling that doesn't always follow
+    server.common.transition_styles' naming (e.g. hyphens instead of
+    underscores, or 'cut' instead of 'hard_cut').
+    """
+    normalized = style.replace('-', '_')
+    return HARD_CUT if normalized == 'cut' else normalized
 
 
 def _step(
@@ -247,7 +259,10 @@ def _apply_optional_config(
         channel_id,
         AssemblyStyleConfigPatchPayload(
             camera_movements=list(assembly.camera_movements),
-            transition_styles=list(assembly.transition_styles),
+            transition_styles=[
+                _normalize_transition_style(style)
+                for style in assembly.transition_styles
+            ],
             sfx_pool_tags=list(assembly.sfx_pool_tags),
             min_cuts_per_minute=assembly.min_cuts_per_minute,
             max_cuts_per_minute=assembly.max_cuts_per_minute,
