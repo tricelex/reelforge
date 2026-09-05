@@ -52,6 +52,7 @@ from server.apps.channels.selectors import (
 from server.apps.pipelines.blueprint_validation import (
     validate_active_blueprint_name,
 )
+from server.common.transition_styles import VALID_TRANSITION_STYLES
 
 _YOUTUBE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 _YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
@@ -128,6 +129,19 @@ def _validate_config_overrides(overrides: Any) -> dict[str, Any]:
         msg = 'config_overrides must be a JSON object'
         raise ValidationError(msg)
     return dict(overrides)
+
+
+def _validate_transition_styles(styles: list[str]) -> None:
+    """Reject transition style names assembly's renderer can't map.
+
+    Without this, a name that doesn't match rendering's xfade table
+    silently degrades to a plain cross-dissolve for every chapter -
+    exactly what happened before this check existed.
+    """
+    unknown = sorted(set(styles) - VALID_TRANSITION_STYLES)
+    if unknown:
+        msg = f'Unknown transition style(s): {", ".join(unknown)}'
+        raise ValidationError(msg)
 
 
 _FOOTAGE_SOURCING_FIELDS = (
@@ -377,6 +391,8 @@ class ChannelService:
         payload: AssemblyStyleConfigPatchPayload,
     ) -> AssemblyStyleConfigPayload:
         """Update a channel's assembly style pool."""
+        if payload.transition_styles is not None:
+            _validate_transition_styles(payload.transition_styles)
         channel = Channel.objects.get(id=uuid.UUID(channel_id))
         style, _ = AssemblyStyleConfig.objects.get_or_create(channel=channel)
         update_fields = _apply_patch_fields(
