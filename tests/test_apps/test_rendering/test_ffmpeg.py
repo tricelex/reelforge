@@ -827,10 +827,10 @@ def test_concat_chapter_with_transition_batches_many_segments() -> None:
                 new=AsyncMock(return_value=_PROBE_MEZZ_WITH_AUDIO),
             ),
         ):
-            # 7 segments, batch size 6: round 1 -> [6, 1] (one xfade call,
-            # one passthrough leftover); round 2 merges the two down to
-            # out_path (one more xfade call).
-            segments = [f'/tmp/s{i}.mp4' for i in range(7)]
+            # _MAX_XFADE_INPUTS + 1 segments: round 1 -> [max, 1] (one
+            # xfade call, one passthrough leftover); round 2 merges the
+            # two down to out_path (one more xfade call).
+            segments = [f'/tmp/s{i}.mp4' for i in range(_MAX_XFADE_INPUTS + 1)]
             await concat_chapter_with_transition(
                 segments,
                 'cross_dissolve',
@@ -843,7 +843,7 @@ def test_concat_chapter_with_transition_batches_many_segments() -> None:
     assert len(xfade_cmds) == 2
     for cmd in xfade_cmds:
         assert cmd.count('-i') <= _MAX_XFADE_INPUTS
-    assert xfade_cmds[0].count('-i') == 6
+    assert xfade_cmds[0].count('-i') == _MAX_XFADE_INPUTS
     assert xfade_cmds[-1].count('-i') == 2
     assert '/tmp/out.mp4' in xfade_cmds[-1]
 
@@ -851,16 +851,16 @@ def test_concat_chapter_with_transition_batches_many_segments() -> None:
 def test_concat_chapter_with_transition_runs_round_batches_concurrently() -> (
     None
 ):
-    """Batches within a round merge concurrently, not one at a time.
+    """Batches within a round merge in bounded order, not all at once.
 
     Long chapters can need several real xfade batches in a single round
-    (e.g. 13 scenes -> two 6-input batches plus a passthrough). Merging
-    those strictly sequentially chains their full re-encode times end to
-    end, long enough on long-form chapters to blow the assembly stage's
-    overall timeout even though no single FFmpeg call is slow. Batches are
-    independent (own inputs, own out_path) so they must run concurrently,
-    bounded by _XFADE_BATCH_CONCURRENCY - and results must still land back
-    in the original chunk order regardless of completion order.
+    (e.g. 2*max+1 scenes -> two max-input batches plus a passthrough).
+    Merging those strictly sequentially chains their full re-encode times
+    end to end, long enough on long-form chapters to blow the assembly
+    stage's overall timeout even though no single FFmpeg call is slow.
+    Batches are independent (own inputs, own out_path) and run through a
+    semaphore bounded by _XFADE_BATCH_CONCURRENCY - and results must still
+    land back in the original chunk order regardless of completion order.
     """
     from server.apps.rendering.ffmpeg import _MAX_XFADE_INPUTS
 
@@ -881,10 +881,12 @@ def test_concat_chapter_with_transition_runs_round_batches_concurrently() -> (
                 new=AsyncMock(return_value=_PROBE_MEZZ_WITH_AUDIO),
             ),
         ):
-            # 13 segments, batch size 6: round 1 -> [6, 6, 1] (two real
-            # xfade batches run concurrently, one passthrough leftover);
-            # round 2 merges the three round-1 outputs into out_path.
-            segments = [f'/tmp/s{i}.mp4' for i in range(13)]
+            # 2*_MAX_XFADE_INPUTS + 1 segments: round 1 -> [max, max, 1]
+            # (two real xfade batches plus a passthrough); round 2 merges
+            # the three round-1 outputs into out_path.
+            segments = [
+                f'/tmp/s{i}.mp4' for i in range(2 * _MAX_XFADE_INPUTS + 1)
+            ]
             await concat_chapter_with_transition(
                 segments,
                 'cross_dissolve',
@@ -900,7 +902,7 @@ def test_concat_chapter_with_transition_runs_round_batches_concurrently() -> (
     for cmd in round_one:
         assert cmd.count('-i') == _MAX_XFADE_INPUTS
     assert '/tmp/s0.mp4' in round_one[0]
-    assert '/tmp/s6.mp4' in round_one[1]
+    assert f'/tmp/s{_MAX_XFADE_INPUTS}.mp4' in round_one[1]
     assert final.count('-i') == 3
     assert '/tmp/out.mp4' in final
 
