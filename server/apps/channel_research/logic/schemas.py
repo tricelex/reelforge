@@ -1,5 +1,6 @@
 """Pydantic schemas for the channel-research agent output."""
 
+import re
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -519,9 +520,25 @@ def _first_sentence(text: str) -> str:
     return stripped[:index].lower()
 
 
+_NON_ALNUM_RE = re.compile(r'[^a-z0-9]+')
+
+
+def _normalize_for_medium_match(text: str) -> str:
+    """Collapse case/punctuation so hyphenation doesn't break medium matching.
+
+    Phrasing like 'live-action, stock' or '2D-animated' should still match
+    the 'live_action_stock' / '2d_animation' medium label. Requiring the
+    literal underscore- or single-space-joined enum value is brittle
+    against ordinary hyphenation - it turned "name the medium" into a
+    check the model could satisfy in substance yet still fail every
+    retry on punctuation alone.
+    """
+    return _NON_ALNUM_RE.sub(' ', text.lower()).strip()
+
+
 def _mentions_medium(text: str, medium: str) -> bool:
-    lowered = text.lower()
-    return _medium_label(medium) in lowered or medium in lowered
+    label = _normalize_for_medium_match(_medium_label(medium))
+    return label in _normalize_for_medium_match(text)
 
 
 def _validate_visual_bible_length(bible: str) -> None:
@@ -535,7 +552,10 @@ def _validate_visual_bible_length(bible: str) -> None:
 
 def _validate_visual_bible_names_medium(bible: str, medium: str) -> None:
     if not _mentions_medium(_first_sentence(bible), medium):
-        msg = 'visual_bible must name the visual medium in sentence one'
+        msg = (
+            'visual_bible sentence one must literally say '
+            f'"{_medium_label(medium)}"'
+        )
         raise ValueError(msg)
 
 
@@ -561,7 +581,7 @@ def _validate_template_quality(
             blob,
             medium,
         ):
-            msg = 'visual template must mention the medium'
+            msg = f'{item.key} must literally say "{_medium_label(medium)}"'
             raise ValueError(msg)
         if item.key.startswith('script_'):
             if 'format' not in blob and 'hook' not in blob:
@@ -596,9 +616,8 @@ def _validate_character_lock(
 
 
 def _validate_lore_names_medium(spec: ChannelSpecModel, medium: str) -> None:
-    lore = spec.niche.lore_document.lower()
-    if _medium_label(medium) not in lore and medium not in lore:
-        msg = 'lore_document must name the visual medium'
+    if not _mentions_medium(spec.niche.lore_document, medium):
+        msg = f'lore_document must literally say "{_medium_label(medium)}"'
         raise ValueError(msg)
 
 
