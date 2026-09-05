@@ -557,18 +557,21 @@ async def _normalize_segments_for_xfade(
 # single FFmpeg process — for long-form chapters (dozens of scenes) that
 # graph's memory scales unboundedly and can get the process OOM-killed.
 # Batching bounds each call to a small, constant input count regardless of
-# chapter size.
-_MAX_XFADE_INPUTS = 6
+# chapter size. worker-render's 7GB limit has a wide margin over observed
+# usage (~1.7GB peak for a 6-input batch) so this can run higher than the
+# original conservative value — re-check actual peak memory (docker stats)
+# after raising it further.
+_MAX_XFADE_INPUTS = 12
 
-# Concurrent xfade batches within one round. Each batch is a bounded,
-# independent FFmpeg process (its own inputs, its own out_path), so running
-# a few at once is as safe as _SCENE_MUX_CONCURRENCY is for scene muxing.
-# Merging batches strictly one at a time turned long chapters (many batches
-# per round) into a fully serial chain of full re-encodes - no single call
-# was slow, but the chain was long enough to blow the assembly stage's
-# overall timeout. Kept low so concurrent batches don't recreate the same
-# memory pressure batching was meant to bound in the first place.
-_XFADE_BATCH_CONCURRENCY = 2
+# Concurrent xfade batches within one round. Each batch is its own
+# independent FFmpeg process (its own inputs, its own out_path), which
+# looked as safe to run a few at once as _SCENE_MUX_CONCURRENCY is for
+# scene muxing - but a single -preset slow/medium xfade batch already
+# saturates worker-render's 4 vCPU cap (observed 400%+ CPU from one
+# batch), so two "concurrent" batches were only ever contending for the
+# same 4 cores, not actually running in parallel. Sequential batches each
+# get the full box instead.
+_XFADE_BATCH_CONCURRENCY = 1
 
 
 def _temp_mp4_path() -> str:
@@ -761,12 +764,19 @@ def _loudnorm_audio_filter(stats: dict[str, str]) -> str:
 
 
 def _final_encode_args(out_path: str) -> list[str]:
-    """Shared libx264/AAC encode flags for the final pass."""
+    """Shared libx264/AAC encode flags for the final pass.
+
+    'medium' (not 'slow') because CRF targets constant *quality*, not
+    constant bitrate - a faster preset trades a bit of compression
+    efficiency (slightly larger file) for real encode-time savings, not
+    lower visual quality. Every full-length assembly re-encode pays this
+    cost, so on longform runs it adds up fast.
+    """
     return [
         '-c:v',
         'libx264',
         '-preset',
-        'slow',
+        'medium',
         '-crf',
         '18',
         '-pix_fmt',
