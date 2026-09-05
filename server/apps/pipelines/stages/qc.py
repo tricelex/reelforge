@@ -279,11 +279,51 @@ def _loudness_failures(loudness: dict[str, float]) -> list[dict[str, Any]]:
     return failures
 
 
+def _expected_transition_compression_s(
+    ctx: StageContext,
+    scenes: list[dict[str, Any]],
+) -> float:
+    """Return duration the assembled video's crossfades are meant to remove.
+
+    Mirrors assembly's per-chapter transition selection: a chapter whose
+    picked style isn't 'hard_cut' concatenates its scenes with xfade,
+    which overlaps clips instead of placing them end to end, compressing
+    that chapter's timeline by (scene_count - 1) * transition duration.
+    Comparing raw narration length against actual output without this
+    adjustment fails duration_drift on every video from a channel with no
+    'hard_cut' in its transition pool, regardless of whether anything
+    actually went wrong.
+    """
+    from server.apps.pipelines.stages.assembly import (  # noqa: PLC0415
+        _TRANSITION_DURATION_S,
+        _group_scenes_by_chapter,
+        _pick_transition_style,
+    )
+    from server.apps.rendering.ffmpeg import (  # noqa: PLC0415
+        _MIN_TRANSITION_SEGMENTS,
+    )
+
+    transition_pool = getattr(
+        ctx.channel,
+        'assembly_style_transition_styles',
+        [],
+    )
+    compression = 0.0
+    for ch_idx, ch_scenes in _group_scenes_by_chapter(scenes).items():
+        if len(ch_scenes) < _MIN_TRANSITION_SEGMENTS:
+            continue
+        if _pick_transition_style(transition_pool, ch_idx) == 'hard_cut':
+            continue
+        compression += (len(ch_scenes) - 1) * _TRANSITION_DURATION_S
+    return compression
+
+
 def _expected_duration_s(ctx: StageContext) -> float:
     """Prefer alignment/outline length over assembly self-probe."""
     scenes = ctx.upstream.get('alignment', {}).get('scenes', [])
     if scenes:
-        return max(float(s.get('end_s', 0.0)) for s in scenes)
+        raw = max(float(s.get('end_s', 0.0)) for s in scenes)
+        return raw - _expected_transition_compression_s(ctx, scenes)
     outline_target = ctx.upstream.get('outline', {}).get(
         'total_target_seconds',
     )
