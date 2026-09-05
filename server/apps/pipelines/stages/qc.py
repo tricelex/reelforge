@@ -17,6 +17,13 @@ from server.common.exceptions import FatalProviderError
 _DURATION_DRIFT_MAX = 0.03
 _SILENCE_MAX_S = 1.8
 _BLACK_FREEZE_MAX_S = 0.5
+# Fraction of max luma below which a pixel counts as "black" for
+# blackdetect. ffmpeg's default (0.1) also flags genuinely dark but
+# detailed cinematography (night scenes, dim interiors) as broken output.
+# Verified against a real run: 0.1 flagged 7 clearly-intentional dark
+# narrative shots; 0.03 cleared every one of them while still catching
+# a truly blank (near-RGB-0) frame.
+_BLACK_PIX_TH = 0.03
 # Ken Burns / static documentary holds look "frozen" to freezedetect.
 # Detect from 8s, but only hard-fail stuck holds beyond a scene-length
 # budget so normal longform stills do not block publish.
@@ -105,7 +112,7 @@ async def _run_black_detect(path: str) -> list[dict[str, float]]:
         '-i',
         path,
         '-vf',
-        'blackdetect=d=0.5:pix_th=0.1',
+        f'blackdetect=d=0.5:pix_th={_BLACK_PIX_TH}',
         '-f',
         'null',
         '-',

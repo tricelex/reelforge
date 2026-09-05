@@ -126,6 +126,56 @@ def test_patch_assembly_style_updates_pool() -> None:
 
 
 @pytest.mark.django_db
+def test_patch_assembly_style_accepts_known_transition_styles() -> None:
+    from server.apps.channels.logic.value_objects import (
+        AssemblyStyleConfigPatchPayload,
+    )
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.channels.services import ChannelService
+
+    channel = Channel.objects.create(
+        name='Valid Transition Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    result = ChannelService().patch_assembly_style(
+        str(channel.id),
+        AssemblyStyleConfigPatchPayload(
+            transition_styles=['long_dissolve', 'fade_to_black'],
+        ),
+    )
+    assert result.transition_styles == ['long_dissolve', 'fade_to_black']
+
+
+@pytest.mark.django_db
+def test_patch_assembly_style_rejects_unknown_transition_style() -> None:
+    """A style name rendering can't map must be rejected up front.
+
+    Regression: a channel was previously configured with style names
+    that matched nothing in ffmpeg's xfade table, silently rendering
+    every chapter as a plain cross-dissolve with no error anywhere.
+    """
+    from django.core.exceptions import ValidationError
+
+    from server.apps.channels.logic.value_objects import (
+        AssemblyStyleConfigPatchPayload,
+    )
+    from server.apps.channels.models import Channel, ChannelKind
+    from server.apps.channels.services import ChannelService
+
+    channel = Channel.objects.create(
+        name='Bad Transition Ch',
+        kind=ChannelKind.LONGFORM,
+    )
+    with pytest.raises(ValidationError, match='made_up_style'):
+        ChannelService().patch_assembly_style(
+            str(channel.id),
+            AssemblyStyleConfigPatchPayload(
+                transition_styles=['made_up_style'],
+            ),
+        )
+
+
+@pytest.mark.django_db
 def test_patch_assembly_style_empty_payload_is_noop() -> None:
     from server.apps.channels.logic.value_objects import (
         AssemblyStyleConfigPatchPayload,

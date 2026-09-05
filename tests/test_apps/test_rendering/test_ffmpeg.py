@@ -956,6 +956,21 @@ def test_xfade_name_logs_and_falls_back_for_unknown_style() -> None:
     )
 
 
+def test_xfade_transition_names_matches_canonical_style_set() -> None:
+    """Guards against the mapping and the shared vocabulary drifting apart.
+
+    server.apps.channels validates a channel's configured transition
+    styles against XFADE_TRANSITION_STYLES; this table is what actually
+    renders them. If a name is ever added to one and not the other, this
+    fails loudly here instead of silently degrading to plain 'fade' in
+    production, which is exactly how the original bug went unnoticed.
+    """
+    from server.apps.rendering.ffmpeg import _XFADE_TRANSITION_NAMES
+    from server.common.transition_styles import XFADE_TRANSITION_STYLES
+
+    assert set(_XFADE_TRANSITION_NAMES) == XFADE_TRANSITION_STYLES
+
+
 def test_build_xfade_filter_uses_named_transition() -> None:
     fc, _, _ = _build_xfade_filter(
         [5.0, 6.0],
