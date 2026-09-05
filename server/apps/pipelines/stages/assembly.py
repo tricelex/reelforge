@@ -384,7 +384,11 @@ class AssemblyStage(Stage):
     key: ClassVar[str] = 'assembly'
     queue: ClassVar[str] = 'render'
     max_retries: ClassVar[int] = 1
-    timeout_s: ClassVar[int] = 3600
+    # Longform runs (multiple chapters, each xfade-concatenated, plus a
+    # full-length final pass) can legitimately take well over an hour —
+    # this run's assembly stage already hit the old 3600s ceiling on a
+    # 52-minute output and had to be manually retried.
+    timeout_s: ClassVar[int] = 7200
 
     @override
     async def run(self, ctx: StageContext) -> dict[str, Any]:

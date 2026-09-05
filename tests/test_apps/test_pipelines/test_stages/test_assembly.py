@@ -29,7 +29,7 @@ def test_assembly_stage_attributes() -> None:
     assert AssemblyStage.key == 'assembly'
     assert AssemblyStage.queue == 'render'
     assert AssemblyStage.max_retries == 1
-    assert AssemblyStage.timeout_s == 3600
+    assert AssemblyStage.timeout_s == 7200
 
 
 def test_assembly_fan_out_returns_none() -> None:
