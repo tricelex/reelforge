@@ -930,6 +930,32 @@ def test_build_xfade_filter_chains_across_inputs() -> None:
     assert a_out == '[a2]'
 
 
+def test_xfade_name_maps_configured_channel_style_names() -> None:
+    """A channel's transition style must resolve to a real xfade name.
+
+    Regression: previously fell back to plain 'fade' silently.
+    """
+    from server.apps.rendering.ffmpeg import _xfade_name
+
+    assert _xfade_name('long_dissolve') == 'fade'
+    assert _xfade_name('fade_to_black') == 'fadeblack'
+    assert _xfade_name('slow_push_cut') == 'coverleft'
+
+
+def test_xfade_name_logs_and_falls_back_for_unknown_style() -> None:
+    from server.apps.rendering.ffmpeg import _DEFAULT_XFADE_NAME, _xfade_name
+
+    with patch('server.apps.rendering.ffmpeg.logger') as mock_logger:
+        result = _xfade_name('totally_unrecognized_style')
+
+    assert result == _DEFAULT_XFADE_NAME
+    mock_logger.warning.assert_called_once_with(
+        'unmapped_xfade_transition_style',
+        transition='totally_unrecognized_style',
+        fallback=_DEFAULT_XFADE_NAME,
+    )
+
+
 def test_build_xfade_filter_uses_named_transition() -> None:
     fc, _, _ = _build_xfade_filter(
         [5.0, 6.0],

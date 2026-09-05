@@ -9,6 +9,8 @@ import pytest
 from server.apps.pipelines.stages.qc import (
     QCStage,
     _check_duration_drift,
+    _expected_duration_s,
+    _expected_transition_compression_s,
     _fetch_asset_to_tempfile,
     _parse_fps,
     _run_black_detect,
@@ -75,6 +77,60 @@ def test_check_duration_drift_returns_error_on_large_drift() -> None:
     result = _check_duration_drift(20.0, 30.0)
     assert result is not None
     assert result['check'] == 'duration_drift'
+
+
+def _scene(chapter_idx: int, segment_idx: int, end_s: float) -> dict:
+    return {
+        'chapter_idx': chapter_idx,
+        'segment_idx': segment_idx,
+        'start_s': 0.0,
+        'end_s': end_s,
+        'text': 'A',
+        'words': [{'word': 'A', 'start': 0.1, 'end': 0.5}],
+    }
+
+
+def test_expected_transition_compression_zero_with_hard_cut_pool() -> None:
+    """No crossfade compression when the channel's pool is all hard_cut."""
+    ctx = MagicMock()
+    ctx.channel.assembly_style_transition_styles = ['hard_cut']
+    scenes = [_scene(0, i, float(i)) for i in range(4)]
+
+    assert _expected_transition_compression_s(ctx, scenes) == 0.0
+
+
+def test_expected_transition_compression_zero_for_single_scene_chapter() -> (
+    None
+):
+    """A chapter with < _MIN_TRANSITION_SEGMENTS scenes never crossfades."""
+    ctx = MagicMock()
+    ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
+    scenes = [_scene(0, 0, 10.0)]
+
+    assert _expected_transition_compression_s(ctx, scenes) == 0.0
+
+
+def test_expected_transition_compression_accounts_for_xfade_overlap() -> None:
+    """4 scenes with a real transition -> 3 joins * 0.5s transition."""
+    ctx = MagicMock()
+    ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
+    scenes = [_scene(0, i, float(i)) for i in range(4)]
+
+    assert _expected_transition_compression_s(ctx, scenes) == 1.5
+
+
+def test_expected_duration_s_subtracts_transition_compression() -> None:
+    """duration_drift's baseline accounts for designed-in xfade overlap."""
+    ctx = MagicMock()
+    ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
+    ctx.upstream = {
+        'alignment': {
+            'scenes': [_scene(0, i, float(i * 10)) for i in range(4)],
+        },
+    }
+
+    # raw max(end_s) = 30.0, minus 3 joins * 0.5s transition = 28.5
+    assert _expected_duration_s(ctx) == 28.5
 
 
 def test_run_silence_detect_parses_events() -> None:
@@ -431,7 +487,7 @@ def test_run_freeze_detect_parses_long_freeze() -> None:
 
 
 def test_run_freeze_detect_uses_tolerant_threshold() -> None:
-    """freezedetect filter uses -40dB noise and 8s minimum duration."""
+    """Freezedetect filter uses -40dB noise and 8s minimum duration."""
     fake_stderr = b''
     mock_proc = MagicMock()
     mock_proc.returncode = 0

@@ -29,13 +29,16 @@ _FFMPEG_ERROR_MARKERS = (
 )
 _XFADE_TRANSITION_NAMES: dict[str, str] = {
     'cross_dissolve': 'fade',
+    'long_dissolve': 'fade',
     'fade': 'fade',
     'fade_black': 'fadeblack',
+    'fade_to_black': 'fadeblack',
     'fade_white': 'fadewhite',
     'slide_left': 'slideleft',
     'slide_right': 'slideright',
     'slide_up': 'slideup',
     'slide_down': 'slidedown',
+    'slow_push_cut': 'coverleft',
     'wipe_left': 'wipeleft',
     'wipe_right': 'wiperight',
     'zoom_in': 'zoomin',
@@ -456,7 +459,19 @@ async def _probe_duration(path: str) -> float:
 
 
 def _xfade_name(transition: str) -> str:
-    """Map assembly transition style to an FFmpeg xfade transition name."""
+    """Map assembly transition style to an FFmpeg xfade transition name.
+
+    Falls back to _DEFAULT_XFADE_NAME for an unrecognized style so assembly
+    never hard-fails on bad channel config, but logs it - a channel's
+    configured style silently rendering as plain 'fade' previously went
+    unnoticed entirely.
+    """
+    if transition not in _XFADE_TRANSITION_NAMES:
+        logger.warning(
+            'unmapped_xfade_transition_style',
+            transition=transition,
+            fallback=_DEFAULT_XFADE_NAME,
+        )
     return _XFADE_TRANSITION_NAMES.get(transition, _DEFAULT_XFADE_NAME)
 
 
