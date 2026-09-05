@@ -629,6 +629,23 @@ def test_validate_medium_lock_rejects_bible_missing_medium() -> None:
         validate_medium_lock(spec)
 
 
+def test_validate_medium_lock_accepts_hyphenated_medium_mention() -> None:
+    """Natural hyphenation of a multi-word medium must not fail the check.
+
+    Requiring the literal underscore- or single-space-joined enum value
+    ("2d animation") is brittle against ordinary phrasing like
+    "2D-animated" - that turned "name the medium" into a rule the agent
+    kept failing every retry on punctuation alone, never on substance.
+    """
+    spec = animated_spec()
+    spec.niche.visual_bible = (
+        'This 2D-animation series locks a flat color palette and '
+        'consistent line weight throughout every scene. '
+        + ' '.join(['token'] * 90)
+    )
+    validate_medium_lock(spec, visual_medium='2d_animation')
+
+
 def test_validate_medium_lock_reports_every_failure_in_one_pass() -> None:
     """A too-short bible missing the medium mention, plus a bad hero_ratio.
 
@@ -664,7 +681,7 @@ def test_validate_medium_lock_rejects_visual_template_without_medium() -> None:
     )
     spec.prompt_templates[1].system_prompt = padded
     spec.prompt_templates[1].user_prompt = padded
-    with pytest.raises(ValueError, match='visual template must mention'):
+    with pytest.raises(ValueError, match='must literally say'):
         validate_medium_lock(spec)
 
 
