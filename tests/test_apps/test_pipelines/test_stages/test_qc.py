@@ -79,11 +79,16 @@ def test_check_duration_drift_returns_error_on_large_drift() -> None:
     assert result['check'] == 'duration_drift'
 
 
-def _scene(chapter_idx: int, segment_idx: int, end_s: float) -> dict:
+def _scene(
+    chapter_idx: int,
+    segment_idx: int,
+    start_s: float,
+    end_s: float,
+) -> dict:
     return {
         'chapter_idx': chapter_idx,
         'segment_idx': segment_idx,
-        'start_s': 0.0,
+        'start_s': start_s,
         'end_s': end_s,
         'text': 'A',
         'words': [{'word': 'A', 'start': 0.1, 'end': 0.5}],
@@ -94,7 +99,7 @@ def test_expected_transition_compression_zero_with_hard_cut_pool() -> None:
     """No crossfade compression when the channel's pool is all hard_cut."""
     ctx = MagicMock()
     ctx.channel.assembly_style_transition_styles = ['hard_cut']
-    scenes = [_scene(0, i, float(i)) for i in range(4)]
+    scenes = [_scene(0, i, float(i), float(i + 1)) for i in range(4)]
 
     assert _expected_transition_compression_s(ctx, scenes) == 0.0
 
@@ -105,7 +110,7 @@ def test_expected_transition_compression_zero_for_single_scene_chapter() -> (
     """A chapter with < _MIN_TRANSITION_SEGMENTS scenes never crossfades."""
     ctx = MagicMock()
     ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
-    scenes = [_scene(0, 0, 10.0)]
+    scenes = [_scene(0, 0, 0.0, 10.0)]
 
     assert _expected_transition_compression_s(ctx, scenes) == 0.0
 
@@ -114,7 +119,7 @@ def test_expected_transition_compression_accounts_for_xfade_overlap() -> None:
     """4 scenes with a real transition -> 3 joins * 0.5s transition."""
     ctx = MagicMock()
     ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
-    scenes = [_scene(0, i, float(i)) for i in range(4)]
+    scenes = [_scene(0, i, float(i), float(i + 1)) for i in range(4)]
 
     assert _expected_transition_compression_s(ctx, scenes) == 1.5
 
@@ -125,12 +130,39 @@ def test_expected_duration_s_subtracts_transition_compression() -> None:
     ctx.channel.assembly_style_transition_styles = ['cross_dissolve']
     ctx.upstream = {
         'alignment': {
-            'scenes': [_scene(0, i, float(i * 10)) for i in range(4)],
+            # 4 contiguous 10s scenes, no gaps -> raw sum = 40.0
+            'scenes': [
+                _scene(0, i, float(i * 10), float(i * 10 + 10))
+                for i in range(4)
+            ],
         },
     }
 
-    # raw max(end_s) = 30.0, minus 3 joins * 0.5s transition = 28.5
-    assert _expected_duration_s(ctx) == 28.5
+    # raw sum of scene durations = 40.0, minus 3 joins * 0.5s = 38.5
+    assert _expected_duration_s(ctx) == 38.5
+
+
+def test_expected_duration_s_excludes_gaps_between_scenes() -> None:
+    """Pauses between scenes aren't rendered, so shouldn't inflate expected.
+
+    Regression: comparing against the full narration span (max end_s)
+    counted gap time no scene covers, on top of the crossfade overlap,
+    double-penalizing videos whose narration has natural pauses.
+    """
+    ctx = MagicMock()
+    ctx.channel.assembly_style_transition_styles = ['hard_cut']
+    ctx.upstream = {
+        'alignment': {
+            # Two 10s scenes with a 5s gap between them (0-10, then
+            # 15-25) - span is 25s, but only 20s of it is ever rendered.
+            'scenes': [
+                _scene(0, 0, 0.0, 10.0),
+                _scene(0, 1, 15.0, 25.0),
+            ],
+        },
+    }
+
+    assert _expected_duration_s(ctx) == 20.0
 
 
 def test_run_silence_detect_parses_events() -> None:

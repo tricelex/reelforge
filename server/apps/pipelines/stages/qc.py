@@ -326,10 +326,22 @@ def _expected_transition_compression_s(
 
 
 def _expected_duration_s(ctx: StageContext) -> float:
-    """Prefer alignment/outline length over assembly self-probe."""
+    """Prefer alignment/outline length over assembly self-probe.
+
+    Baseline is the sum of each scene's own (end_s - start_s), not the
+    narration span (max end_s). Consecutive scenes routinely have small
+    gaps between them (pauses in narration that no scene's word-aligned
+    window covers), and assembly never renders that gap time - only the
+    scenes themselves get muxed and concatenated. Comparing against the
+    full span overstates expected duration by the sum of those gaps, on
+    top of the crossfade compression already accounted for below.
+    """
     scenes = ctx.upstream.get('alignment', {}).get('scenes', [])
     if scenes:
-        raw = max(float(s.get('end_s', 0.0)) for s in scenes)
+        raw = sum(
+            float(s.get('end_s', 0.0)) - float(s.get('start_s', 0.0))
+            for s in scenes
+        )
         return raw - _expected_transition_compression_s(ctx, scenes)
     outline_target = ctx.upstream.get('outline', {}).get(
         'total_target_seconds',
