@@ -9,9 +9,12 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 from dmr.test import DMRClient
 
-from server.apps.channel_research.logic.schemas import ChannelResearchAgentOutput
+from server.apps.channel_research.logic.schemas import (
+    ChannelResearchAgentOutput,
+)
 from server.apps.channel_research.logic.value_objects import ChannelSpecPayload
 from server.apps.channels.models import (
+    AssemblyStyleConfig,
     Channel,
     Character,
     CharacterStatus,
@@ -123,6 +126,36 @@ def test_import_rejects_invalid_spec(
     with pytest.raises(ValidationError):
         import_channel_spec(payload)
     assert not Channel.objects.filter(name='Forge History').exists()
+
+
+@pytest.mark.django_db
+def test_import_normalizes_hyphenated_transition_styles(
+    agent_output: ChannelResearchAgentOutput,
+    longform_blueprint: PipelineBlueprint,
+) -> None:
+    """Hyphenated/shorthand transition names map to canonical snake_case."""
+    assert longform_blueprint.is_active
+    data = agent_output.channel_spec.model_dump()
+    payload = _payload_from_agent_output(agent_output, name='Alias Forge')
+    data['assembly_style']['transition_styles'] = [
+        'cut',
+        'wipe-left',
+        'zoom-in',
+    ]
+    payload = msgspec.structs.replace(
+        payload,
+        assembly_style=msgspec.convert(
+            data['assembly_style'],
+            type=type(payload.assembly_style),
+        ),
+    )
+    result = import_channel_spec(payload)
+    style = AssemblyStyleConfig.objects.get(channel_id=result.channel_id)
+    assert set(style.transition_styles) == {
+        'hard_cut',
+        'wipe_left',
+        'zoom_in',
+    }
 
 
 @pytest.mark.django_db(transaction=True)
