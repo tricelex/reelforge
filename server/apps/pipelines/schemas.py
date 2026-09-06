@@ -217,7 +217,13 @@ class VisualPrompt(BaseModel):
     prompt: str
     negative_prompt: str = ''
     safety_flagged: bool = False
-    character_ref_id: str | None = None
+    character_ref_id: str | None = Field(
+        default=None,
+        description=(
+            'Always leave this null. It is a system-managed UUID filled in '
+            'after generation — never a character name or any other value.'
+        ),
+    )
 
 
 class VisualPromptsOutput(BaseModel):

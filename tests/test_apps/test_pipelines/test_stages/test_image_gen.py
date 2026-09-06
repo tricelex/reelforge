@@ -268,6 +268,58 @@ def test_image_gen_missing_library_ref_continues_without_url() -> None:
     assert fal_mock.await_args.kwargs['image_url'] is None
 
 
+def test_image_gen_invalid_library_ref_continues_without_url() -> None:
+    """A non-UUID character_ref_id (LLM-hallucinated) skips the ref.
+
+    Regression: an LLM sometimes fills character_ref_id with the character's
+    name instead of leaving it null. LibraryAsset.objects.aget(id=...)
+    raises django.core.exceptions.ValidationError for a non-UUID id before
+    ever hitting the DoesNotExist path — this must degrade to "no ref"
+    rather than crashing the shard.
+    """
+    import httpx
+
+    ctx = _make_ctx()
+    ctx.config = {'model': 'fal-ai/flux/dev', 'use_character_ref': True}
+    ctx.execution.shard_index = 0
+    ctx.execution.parent_id = 'p'
+    ctx.execution.input_snapshot = {
+        'scene_idx': 0,
+        'prompt': 'Hero walks',
+        'negative_prompt': '',
+        'safety_flagged': False,
+        'character_ref_id': 'Sketch',
+    }
+
+    fal_mock = AsyncMock(
+        return_value={
+            'url': 'https://fal.ai/out.jpg',
+            'seed': 9,
+            'content_policy_violation': False,
+        },
+    )
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.content = b'jpg'
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.generation.clients.fal.generate_image',
+                new=fal_mock,
+            ),
+            patch(
+                'httpx.AsyncClient.get',
+                new=AsyncMock(return_value=mock_resp),
+            ),
+        ):
+            await ImageGenStage().run(ctx)
+
+    asyncio.run(_inner())
+    assert fal_mock.await_args is not None
+    assert fal_mock.await_args.kwargs['image_url'] is None
+
+
 def test_image_gen_setting_anchor_routes_to_kontext() -> None:
     """A setting establishing shot is passed to Flux Kontext, not flux/dev."""
     import httpx

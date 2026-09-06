@@ -1,5 +1,6 @@
 """Image gen stage — fan-out per scene, Flux via fal.ai."""
 
+import uuid
 from typing import Any, override
 
 import httpx
@@ -28,6 +29,16 @@ logger = structlog.get_logger(__name__)
 async def _library_ref_url(ref_id: object, scene_idx: int) -> str | None:
     """Resolve a Character.hero_ref LibraryAsset id to a public file URL."""
     from server.apps.assets.models import LibraryAsset  # noqa: PLC0415
+
+    try:
+        uuid.UUID(str(ref_id))
+    except (TypeError, ValueError):
+        logger.warning(
+            'image_gen_character_ref_invalid',
+            character_ref_id=str(ref_id),
+            scene_idx=scene_idx,
+        )
+        return None
 
     try:
         ref_asset = await LibraryAsset.objects.aget(id=str(ref_id))
