@@ -34,6 +34,7 @@ from server.apps.channel_research.selectors import (
     list_jobs,
 )
 from server.common.taskiq_sender import kiq_task
+from server.common.transition_styles import normalize_transition_style
 
 _YOUTUBE_HINTS = ('youtube.com', 'youtu.be')
 _EDITABLE_STATUSES = frozenset({ChannelResearchStatus.SUCCEEDED})
@@ -117,6 +118,10 @@ def _collect_spec_errors(
         spec = _spec_model(payload)
     except pydantic.ValidationError as exc:
         return _flatten_pydantic_errors(exc)
+    spec.assembly_style.transition_styles = [
+        normalize_transition_style(style)
+        for style in spec.assembly_style.transition_styles
+    ]
     try:
         validate_channel_spec(spec)
         validate_medium_lock(spec)

@@ -188,6 +188,31 @@ def test_validate_spec_returns_ok_and_errors(
 
 
 @pytest.mark.django_db
+def test_validate_spec_normalizes_hyphenated_transition_styles(
+    service: ChannelResearchService,
+    agent_output: ChannelResearchAgentOutput,
+) -> None:
+    """Aliases the importer would normalize must not fail validation too.
+
+    Regression: validate_spec ran the raw payload straight through
+    validate_channel_spec with no normalization, so the "import editor"
+    pre-check rejected names (cut, wipe-left, zoom-in, slow-pan) that
+    the actual import endpoint accepts after normalizing them.
+    """
+    dump = agent_output.channel_spec.model_dump()
+    dump['assembly_style']['transition_styles'] = [
+        'cut',
+        'wipe-left',
+        'zoom-in',
+        'slow-pan',
+    ]
+    payload = msgspec.convert(dump, type=ChannelSpecPayload)
+    result = service.validate_spec(payload)
+    assert result.ok is True
+    assert result.errors == []
+
+
+@pytest.mark.django_db
 def test_trigger_deep_analysis_enqueues_and_sets_running(
     service: ChannelResearchService,
     research_job: ChannelResearchJob,

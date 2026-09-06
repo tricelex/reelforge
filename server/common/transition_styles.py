@@ -29,3 +29,16 @@ XFADE_TRANSITION_STYLES: frozenset[str] = frozenset({
 })
 
 VALID_TRANSITION_STYLES: frozenset[str] = XFADE_TRANSITION_STYLES | {HARD_CUT}
+
+
+def normalize_transition_style(style: str) -> str:
+    """Map non-canonical spellings to this module's snake_case vocabulary.
+
+    Shared by every caller that accepts externally-authored transition
+    style names (channel-spec import, the spec validator) so a name
+    normalizes identically wherever it's checked - otherwise a name the
+    importer accepts (e.g. 'wipe-left') could still fail a pre-import
+    validation pass that checked the raw, un-normalized value.
+    """
+    normalized = style.replace('-', '_')
+    return HARD_CUT if normalized == 'cut' else normalized
