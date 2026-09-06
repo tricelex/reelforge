@@ -980,6 +980,30 @@ def test_build_xfade_filter_uses_named_transition() -> None:
     assert 'xfade=transition=fadeblack' in fc
 
 
+def test_xfade_name_maps_slow_pan_to_custom() -> None:
+    from server.apps.rendering.ffmpeg import _xfade_name
+
+    assert _xfade_name('slow_pan') == 'custom'
+
+
+def test_build_xfade_filter_adds_expr_for_custom_transition() -> None:
+    """slow_pan has no built-in xfade name, so it carries an expr= clause."""
+    from server.apps.rendering.ffmpeg import _SLOW_PAN_EXPR
+
+    fc, _, _ = _build_xfade_filter(
+        [5.0, 6.0],
+        0.5,
+        transition='slow_pan',
+    )
+    assert 'xfade=transition=custom:expr=' in fc
+    assert _SLOW_PAN_EXPR in fc
+    # No stray unescaped commas: every comma in the expr must be
+    # backslash-escaped, since a bare comma would break ffmpeg's
+    # filtergraph parsing (comma separates chained filters).
+    expr_value = fc.split('expr=', 1)[1].split(':duration=', 1)[0]
+    assert ',' not in expr_value.replace('\\,', '')
+
+
 def test_run_ffmpeg_cmd_uses_operation_label() -> None:
     mock_proc = MagicMock()
     mock_proc.returncode = 1
