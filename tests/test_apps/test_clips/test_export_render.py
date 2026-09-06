@@ -206,8 +206,10 @@ def test_run_export_pipeline_uses_format_dimensions(
     candidate.refresh_from_db()
 
     source_asset = MagicMock()
-    opened = source_asset.file.open.return_value.__enter__.return_value
-    opened.read.return_value = b'video'
+    source_asset.checksum = 'source-checksum'
+    source_asset.file.open.return_value.read = MagicMock(
+        side_effect=[b'video', b''],
+    )
 
     captured: dict[str, object] = {}
 
