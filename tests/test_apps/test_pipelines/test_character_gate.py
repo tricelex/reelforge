@@ -215,6 +215,57 @@ def test_character_gate_auto_mode_runs_studio() -> None:
     assert run.status != RunStatus.AWAITING_REVIEW
 
 
+def test_character_gate_auto_mode_reuses_rerun_seeded_pending_row() -> None:
+    """Regression: rerun seeds a PENDING character_gate row.
+
+    ``_seed_pending_downstream_sync`` seeds a PENDING row (attempt=0); auto-
+    claiming it must reuse that row instead of creating a second attempt=0
+    row and violating uq_stage_attempt.
+    """
+    run = _make_run(
+        mode=CharacterDesignMode.AUTO,
+        gates=[],
+        requires_design=True,
+    )
+    seeded = StageExecution.objects.create(
+        run=run,
+        stage_key='character_gate',
+        status=StageStatus.PENDING,
+        input_hash='',
+    )
+    fake_output = {
+        'auto_designed': True,
+        'designed': [],
+        'approved_cast_ids': [],
+    }
+    with (
+        patch(
+            'server.apps.pipelines.services.orchestrator.execute_stage_kiq',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.orchestrator.publish_sse',
+            new=AsyncMock(),
+        ),
+        patch(
+            'server.apps.pipelines.services.auto_character_design.'
+            'run_auto_character_design',
+            return_value=fake_output,
+        ) as auto_mock,
+    ):
+        _run(advance_pipeline_impl(str(run.id)))
+
+    auto_mock.assert_called_once()
+    rows = list(
+        StageExecution.objects.filter(run=run, stage_key='character_gate'),
+    )
+    assert len(rows) == 1
+    gate = rows[0]
+    assert gate.id == seeded.id
+    assert gate.status == StageStatus.SUCCEEDED
+    assert gate.output.get('auto_designed') is True
+
+
 def test_run_auto_character_design_does_not_crash_on_cast_ordering() -> None:
     """Regression: RunCast has no created_at column.
 
