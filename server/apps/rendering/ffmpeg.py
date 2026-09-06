@@ -39,7 +39,12 @@ _XFADE_TRANSITION_NAMES: dict[str, str] = {
     'slide_up': 'slideup',
     'slide_down': 'slidedown',
     'slow_pan': 'custom',
-    'slow_push_cut': 'coverleft',
+    # FFmpeg's xfade has no 'cover*' transition (that name doesn't exist in
+    # any mainline build - see the filter's own `transition` enum, which
+    # tops out at 45/fadeslow). 'slideleft' is the closest real match for a
+    # push-cut: the incoming frame slides in and pushes the outgoing one
+    # off-screen, same motion a "push cut" describes in editing terms.
+    'slow_push_cut': 'slideleft',
     'wipe_left': 'wipeleft',
     'wipe_right': 'wiperight',
     'zoom_in': 'zoomin',
