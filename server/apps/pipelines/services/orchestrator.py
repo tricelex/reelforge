@@ -237,9 +237,7 @@ def _apply_terminal_status(
 ) -> None:
     """Apply FAILED, COMPLETED, or RUNNING to the run based on stage values."""
     terminal = {stage_status.SUCCEEDED, stage_status.SKIPPED}
-    in_flight = (
-        stage_status.QUEUED in values or stage_status.RUNNING in values
-    )
+    in_flight = stage_status.QUEUED in values or stage_status.RUNNING in values
     if stage_status.FAILED in values:
         run.status = run_status.FAILED
         run.finished_at = tz.now()
@@ -497,13 +495,22 @@ def _claim_auto_character_gate_sync(
         states[key] = latest.status
         return
 
-    StageExecution.objects.create(
-        run=run,
-        stage_key=key,
-        status=StageStatus.RUNNING,
-        input_hash='',
-        started_at=tz.now(),
-    )
+    # A rerun seeds a PENDING row for this key (_seed_pending_downstream_sync)
+    # — reuse it instead of creating a second attempt=0 row, which collides
+    # with uq_stage_attempt (same fix as _promote_or_create_stage_sync).
+    if latest is not None and latest.status == StageStatus.PENDING:
+        latest.status = StageStatus.RUNNING
+        latest.started_at = tz.now()
+        latest.save(update_fields=['status', 'started_at'])
+    else:
+        StageExecution.objects.create(
+            run=run,
+            stage_key=key,
+            status=StageStatus.RUNNING,
+            attempt=_next_stage_attempt(run, key),
+            input_hash='',
+            started_at=tz.now(),
+        )
     states[key] = StageStatus.RUNNING
     logger.info(
         'pipeline_character_gate_auto_claimed',
@@ -529,10 +536,8 @@ def _finish_auto_character_gate_sync(run_id: str) -> bool:
         run_auto_character_design,
     )
 
-    run = (
-        PipelineRun.objects
-        .select_related('channel')
-        .get(id=uuid.UUID(run_id))
+    run = PipelineRun.objects.select_related('channel').get(
+        id=uuid.UUID(run_id),
     )
     if (
         getattr(run.channel, 'character_design_mode', None)
