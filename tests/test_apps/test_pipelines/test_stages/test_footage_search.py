@@ -311,6 +311,52 @@ def test_ai_fallback_allowed_when_under_cap() -> None:
     assert result['source'] == 'ai_flux'
 
 
+def test_ai_only_mode_skips_stock_search_and_goes_straight_to_ai() -> None:
+    """sourcing_mode='ai_only' never touches the stock provider cascade."""
+    ctx = _make_ctx(ai_fallback=True)
+    ctx.channel.footage_sourcing_or_default.return_value.sourcing_mode = (
+        'ai_only'
+    )
+    search = AsyncMock(return_value=[_candidate('1')])
+    with (
+        patch(
+            'server.apps.pipelines.stages.footage_search.search_candidates',
+            new=search,
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search.fal_client.generate_image',
+            new=AsyncMock(return_value={'url': 'https://fal/x.png'}),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._fetch_bytes',
+            new=AsyncMock(return_value=b'img'),
+        ),
+        patch(
+            'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+            new=AsyncMock(return_value=0),
+        ),
+    ):
+        result = asyncio.run(FootageSearchStage().run(ctx))
+    search.assert_not_awaited()
+    assert result['source'] == 'ai_flux'
+
+
+def test_ai_only_mode_still_respects_fallback_cap() -> None:
+    """ai_only still parks the run once the AI-fallback budget is spent."""
+    ctx = _make_ctx(ai_fallback=True)
+    ctx.channel.footage_sourcing_or_default.return_value.sourcing_mode = (
+        'ai_only'
+    )
+    ctx.channel.footage_sourcing_or_default.return_value.max_ai_fallback_per_run = 1
+    with patch(
+        'server.apps.pipelines.stages.footage_search._ai_fallback_count',
+        new=AsyncMock(return_value=1),
+    ):
+        with pytest.raises(FatalProviderError) as exc_info:
+            asyncio.run(FootageSearchStage().run(ctx))
+    assert exc_info.value.error_code == 'ai_fallback_cap_exceeded'
+
+
 def test_broadens_to_fallback_query_when_primary_is_empty() -> None:
     """An empty primary result retries with the broadened query."""
     ctx = _make_ctx()

@@ -37,6 +37,7 @@ class SourcingMode(models.TextChoices):
     STOCK_FIRST = 'stock_first', 'Stock first'
     ARCHIVAL_FIRST = 'archival_first', 'Archival first'
     BALANCED = 'balanced', 'Balanced'
+    AI_ONLY = 'ai_only', 'AI only'
 
 
 # Aligns with ***REMOVED***-frontend PROVIDER_OPTIONS / stock-first cascade.

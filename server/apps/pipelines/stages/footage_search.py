@@ -42,6 +42,7 @@ logger = structlog.get_logger(__name__)
 
 _AI_IMAGE_COST_USD = 0.035
 _DOWNLOAD_TIMEOUT_S = 120.0
+_SOURCING_MODE_AI_ONLY = 'ai_only'
 
 
 def _rotate_providers(names: list[str], scene_idx: int) -> list[str]:
@@ -236,6 +237,14 @@ class FootageSearchStage(Stage):
         snap = ctx.execution.input_snapshot
         scene_idx = int(snap['scene_idx'])
         config = ctx.channel.footage_sourcing_or_default()
+        if config.sourcing_mode == _SOURCING_MODE_AI_ONLY:
+            logger.info(
+                'footage_search_ai_only',
+                run_id=str(ctx.run.id),
+                scene_idx=scene_idx,
+            )
+            return await self._ai_fallback(ctx, snap, scene_idx, config)
+
         provider_names = list(config.enabled_providers)
         if not provider_names:
             from server.apps.channels.models import (  # noqa: PLC0415
