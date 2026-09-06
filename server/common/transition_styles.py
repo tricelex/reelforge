@@ -21,6 +21,7 @@ XFADE_TRANSITION_STYLES: frozenset[str] = frozenset({
     'slide_right',
     'slide_up',
     'slide_down',
+    'slow_pan',
     'slow_push_cut',
     'wipe_left',
     'wipe_right',

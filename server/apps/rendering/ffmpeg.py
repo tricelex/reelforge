@@ -38,12 +38,38 @@ _XFADE_TRANSITION_NAMES: dict[str, str] = {
     'slide_right': 'slideright',
     'slide_up': 'slideup',
     'slide_down': 'slidedown',
+    'slow_pan': 'custom',
     'slow_push_cut': 'coverleft',
     'wipe_left': 'wipeleft',
     'wipe_right': 'wiperight',
     'zoom_in': 'zoomin',
 }
 _DEFAULT_XFADE_NAME = 'fade'
+
+# FFmpeg's xfade filter has no built-in "pan" transition, so slow_pan uses
+# the 'custom' transition type: a per-plane expr that samples each side's
+# frame shifted sideways (via aN(x,y)/bN(x,y) pixel lookup) while blending
+# by progress P, so content keeps drifting across the cut instead of
+# dissolving in place. Comma/colon are filtergraph separators, so both
+# must be backslash-escaped inside the expr value.
+_SLOW_PAN_SHIFT_FRACTION = 0.08
+
+
+def _slow_pan_expr() -> str:
+    shift = f'W*{_SLOW_PAN_SHIFT_FRACTION}'
+    ax, bx = f'X+{shift}*P', f'X-{shift}*(1-P)'
+
+    def blend(sample_a: str, sample_b: str) -> str:
+        return f'({sample_a}({ax}\\,Y)*(1-P)+{sample_b}({bx}\\,Y)*P)'
+
+    return (
+        f'if(eq(PLANE\\,0)\\,{blend("a0", "b0")}\\,'
+        f'if(eq(PLANE\\,1)\\,{blend("a1", "b1")}\\,'
+        f'{blend("a2", "b2")}))'
+    )
+
+
+_SLOW_PAN_EXPR = _slow_pan_expr()
 
 
 def _extract_ffmpeg_error(stderr: str, limit: int = 500) -> str:
@@ -485,6 +511,9 @@ def _build_xfade_filter(
     Returns (filter_complex, video_out_label, audio_out_label).
     """
     xfade = _xfade_name(transition)
+    transition_clause = f'transition={xfade}'
+    if xfade == 'custom':
+        transition_clause += f':expr={_SLOW_PAN_EXPR}'
     parts: list[str] = []
     cum = durations[0]
     v_prev = '[0:v]'
@@ -494,7 +523,7 @@ def _build_xfade_filter(
         v_out = f'[v{i}]'
         a_out = f'[a{i}]'
         v_str = (
-            f'{v_prev}[{i}:v]xfade=transition={xfade}:'
+            f'{v_prev}[{i}:v]xfade={transition_clause}:'
             f'duration={transition_duration_s}:offset={offset:.3f}{v_out}'
         )
         a_str = f'{a_prev}[{i}:a]acrossfade=d={transition_duration_s}{a_out}'
