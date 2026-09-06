@@ -939,7 +939,7 @@ def test_xfade_name_maps_configured_channel_style_names() -> None:
 
     assert _xfade_name('long_dissolve') == 'fade'
     assert _xfade_name('fade_to_black') == 'fadeblack'
-    assert _xfade_name('slow_push_cut') == 'coverleft'
+    assert _xfade_name('slow_push_cut') == 'slideleft'
 
 
 def test_xfade_name_logs_and_falls_back_for_unknown_style() -> None:
