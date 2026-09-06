@@ -232,7 +232,7 @@ def test_candidate_render_post_queues_export(
     candidate.status = CandidateStatus.APPROVED  # type: ignore[attr-defined]
     candidate.save(update_fields=['status'])  # type: ignore[attr-defined]
 
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         response = dmr_client.post(
             reverse(
                 'clips:candidate_render',
@@ -292,7 +292,7 @@ def test_candidate_preview_queues_job(
     auth_headers: dict[str, str],
 ) -> None:
     """Preview POST queues a render job."""
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         response = dmr_client.post(
             reverse(
                 'clips:candidate_preview',

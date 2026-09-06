@@ -71,7 +71,7 @@ def test_start_render_resumes_pipeline(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ) as mock_sync,
         patch(
-            'server.apps.clips.services.kiq_task',
+            'server.apps.clips.services.kiq_advance_pipeline',
         ),
     ):
         response = dmr_client.post(
@@ -111,7 +111,7 @@ def test_start_render_with_explicit_candidate_ids(
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ),
         patch(
-            'server.apps.clips.services.kiq_task',
+            'server.apps.clips.services.kiq_advance_pipeline',
         ),
     ):
         response = dmr_client.post(

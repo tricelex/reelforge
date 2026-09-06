@@ -73,7 +73,9 @@ def test_create_run_uses_channel_default_blueprint(
     channel.default_blueprint_name = alt.name
     channel.save(update_fields=['default_blueprint_name'])
 
-    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
+    with patch(
+        'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
+    ):
         response = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -100,7 +102,7 @@ def test_create_run(
     callbacks: list[object] = []
     with (
         patch(
-            'server.apps.pipelines.services.pipeline_run.kiq_task',
+            'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
         ) as mock_kiq,
         patch(
             'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
@@ -208,7 +210,7 @@ def test_pause_and_resume_run(
     assert run.is_paused is True
 
     with patch(
-        'server.apps.pipelines.services.pipeline_run.kiq_task',
+        'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
     ):
         resume_resp = dmr_client.post(
             reverse('api:pipelines_api:run-resume', kwargs={'run_id': run.id}),
@@ -265,7 +267,7 @@ def test_create_run_idempotency(
     callbacks: list[object] = []
     with (
         patch(
-            'server.apps.pipelines.services.pipeline_run.kiq_task',
+            'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
         ) as mock_kiq,
         patch(
             'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
@@ -317,7 +319,7 @@ def test_pipeline_run_service_idempotency(
     callbacks: list[object] = []
     with (
         patch(
-            'server.apps.pipelines.services.pipeline_run.kiq_task',
+            'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
         ) as mock_kiq,
         patch(
             'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
@@ -348,7 +350,6 @@ def test_pipeline_run_service_defers_enqueue_until_transaction_commit(
 
     from server.apps.pipelines.logic.value_objects import RunCreatePayload
     from server.apps.pipelines.services.pipeline_run import PipelineRunService
-    from server.apps.pipelines.tasks import advance_pipeline
     from server.common.events import EventBus
 
     service = PipelineRunService(MagicMock(spec=EventBus))
@@ -360,7 +361,7 @@ def test_pipeline_run_service_defers_enqueue_until_transaction_commit(
     callbacks: list[object] = []
     with (
         patch(
-            'server.apps.pipelines.services.pipeline_run.kiq_task',
+            'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
         ) as mock_kiq,
         patch(
             'server.apps.pipelines.services.pipeline_run.transaction.on_commit',
@@ -377,7 +378,7 @@ def test_pipeline_run_service_defers_enqueue_until_transaction_commit(
         assert callable(callback)
         mock_kiq.assert_not_called()
         callback()
-        mock_kiq.assert_called_once_with(advance_pipeline, run_detail.id)
+        mock_kiq.assert_called_once_with(run_detail.id)
 
 
 @pytest.mark.django_db
@@ -591,7 +592,9 @@ def test_rerun_stage(
     )
 
     with (
-        patch('server.apps.pipelines.services.pipeline_run.kiq_task') as mock_kiq,
+        patch(
+            'server.apps.pipelines.services.pipeline_run.kiq_execute_stage',
+        ) as mock_kiq,
         patch(
             'server.apps.pipelines.services.orchestrator.publish_sse',
             new_callable=AsyncMock,
@@ -617,7 +620,7 @@ def test_rerun_stage(
         StageExecution.objects.filter(
             run=rerun_run,
             stage_key='dummy_b',
-        ).order_by('attempt')
+        ).order_by('attempt'),
     )
     assert len(downstream_rows) == 2
     assert downstream_rows[0].status == StageStatus.STALE

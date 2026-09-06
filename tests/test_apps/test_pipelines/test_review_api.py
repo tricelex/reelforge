@@ -339,7 +339,7 @@ def test_publish_approves_gate(
     )
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
@@ -622,7 +622,7 @@ def test_publish_resolves_review_gate(
     )
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
@@ -885,7 +885,7 @@ def test_publish_with_metadata_and_thumbnail(
     PublishJob.objects.create(run=run, channel=run.channel)
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
@@ -920,7 +920,7 @@ def test_publish_run_not_found(
     missing_id = uuid.uuid4()
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
@@ -1014,7 +1014,7 @@ def test_publish_uses_running_gate(
     )
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
@@ -1170,7 +1170,7 @@ def test_publish_resolves_storyboard_gate(
     )
 
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(
