@@ -1304,7 +1304,7 @@ def test_publish_metadata_patch_without_metadata_stage(
         attempt=0,
     )
     with patch(
-        'server.apps.pipelines.services.run_review.kiq_task',
+        'server.apps.pipelines.services.run_review.kiq_advance_pipeline',
     ):
         response = dmr_client.post(
             reverse(

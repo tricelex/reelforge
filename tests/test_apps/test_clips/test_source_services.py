@@ -290,7 +290,7 @@ def test_probe_clip_source_sync_success(clipping_channel: Channel) -> None:
         status=ClipSourceStatus.INGESTING,
     )
     with patch(
-        'server.apps.clips.tasks.probe_youtube_or_rss',
+        'server.apps.clips.tasks_api.probe_youtube_or_rss',
         return_value={'title': 'Done', 'duration_sec': 10.0},
     ):
         _probe_clip_source_sync(str(source.id))
@@ -308,7 +308,7 @@ def test_probe_clip_source_sync_failure(clipping_channel: Channel) -> None:
         status=ClipSourceStatus.INGESTING,
     )
     with patch(
-        'server.apps.clips.tasks.probe_youtube_or_rss',
+        'server.apps.clips.tasks_api.probe_youtube_or_rss',
         side_effect=RuntimeError('probe failed'),
     ):
         _probe_clip_source_sync(str(source.id))

@@ -254,7 +254,7 @@ def test_trigger_render_queues_task(candidate: ClipCandidate) -> None:
     candidate.status = CandidateStatus.APPROVED
     candidate.save(update_fields=['status'])
 
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_render(str(candidate.id))
 
     assert result.status == 'queued'
@@ -276,7 +276,7 @@ def test_trigger_render_short_circuits_when_in_progress(
     candidate.save(update_fields=['status'])
     cache.set(export_cache_key(str(candidate.id)), {'status': 'rendering'})
 
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_render(str(candidate.id))
 
     assert result.status == 'rendering'
@@ -473,7 +473,7 @@ def test_preview_config_version_single_query_includes_sfx(
 @pytest.mark.django_db
 def test_trigger_preview_enqueues_task(candidate: ClipCandidate) -> None:
     """trigger_preview enqueues the render worker task."""
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
 
     assert result.status == 'queued'
@@ -497,7 +497,7 @@ def test_trigger_preview_skips_when_already_queued(
         preview_cache_key(str(candidate.id)),
         preview_job_entry('rendering', 1),
     )
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
     assert result.status == 'queued'
     mock_kiq.assert_not_called()
@@ -517,7 +517,7 @@ def test_trigger_preview_requeues_stale_rendering(
         preview_cache_key(str(candidate.id)),
         {'status': 'rendering'},
     )
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
     assert result.status == 'queued'
     mock_kiq.assert_called_once()
@@ -545,7 +545,7 @@ def test_trigger_preview_requeues_expired_queued(
             'at': time.time() - PREVIEW_QUEUED_STALE_SEC - 1,
         },
     )
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
     assert result.status == 'queued'
     mock_kiq.assert_called_once()
@@ -561,7 +561,7 @@ def test_trigger_preview_enqueue_failure_returns_failed(
     from server.apps.clips.preview_render import preview_cache_key
 
     with patch(
-        'server.apps.clips.services.kiq_task',
+        'server.apps.clips.services.kiq_render_task',
         side_effect=RuntimeError('broker down'),
     ):
         result = _clips_service().trigger_preview(str(candidate.id))
@@ -602,7 +602,7 @@ def test_trigger_preview_skips_when_ready_and_fresh(
         {'status': 'ready', 'config_version': version},
     )
 
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         result = _clips_service().trigger_preview(str(candidate.id))
 
     assert result.status == 'ready'
@@ -619,7 +619,7 @@ def test_trigger_preview_atomic_claim(candidate: ClipCandidate) -> None:
 
     cache_key = preview_cache_key(str(candidate.id))
 
-    with patch('server.apps.clips.services.kiq_task') as mock_kiq:
+    with patch('server.apps.clips.services.kiq_render_task') as mock_kiq:
         first = _clips_service().trigger_preview(str(candidate.id))
         second = _clips_service().trigger_preview(str(candidate.id))
 
@@ -681,7 +681,7 @@ def test_trigger_preview_force_clears_ready(
     candidate.render_asset_id = asset.id
     candidate.save(update_fields=['render_asset_id'])
 
-    with patch('server.apps.clips.services.kiq_task'):
+    with patch('server.apps.clips.services.kiq_render_task'):
         result = _clips_service().trigger_preview(str(candidate.id), force=True)
     assert result.status == 'queued'
     assert result.url is None
@@ -723,7 +723,7 @@ def test_approve_gate_mocks_orchestrator(candidate: ClipCandidate) -> None:
             'server.apps.pipelines.services.orchestrator._approve_gate_sync',
         ) as mock_sync,
         patch(
-            'server.apps.clips.services.kiq_task',
+            'server.apps.clips.services.kiq_advance_pipeline',
         ),
     ):
         result = _clips_service().approve_gate(
@@ -800,7 +800,7 @@ def test_reset_smart_crop_enqueues_detection(candidate: ClipCandidate) -> None:
     layout.save()
 
     with patch(
-        'server.apps.clips.services.kiq_task',
+        'server.apps.clips.services.kiq_render_task',
     ) as mock_kiq:
         result = _clips_service().reset_smart_crop(str(candidate.id))
 

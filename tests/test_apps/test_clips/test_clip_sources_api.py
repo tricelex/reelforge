@@ -99,7 +99,7 @@ def test_youtube_clip_source_probe(
     assert create_resp.json()['status'] == ClipSourceStatus.INGESTING
 
     with patch(
-        'server.apps.clips.tasks.probe_youtube_or_rss',
+        'server.apps.clips.tasks_api.probe_youtube_or_rss',
         return_value={'title': 'Test Video', 'duration_sec': 212.0},
     ):
         ClipSourceService().probe_now(source_id)
@@ -203,7 +203,9 @@ def test_create_run_from_clip_source(
     )
     source_id = create_resp.json()['id']
 
-    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
+    with patch(
+        'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
+    ):
         run_resp = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -262,7 +264,9 @@ def test_create_run_rejects_duplicate_source(
         headers=auth_headers,
     ).json()['id']
 
-    with patch('server.apps.pipelines.services.pipeline_run.kiq_task'):
+    with patch(
+        'server.apps.pipelines.services.pipeline_run.kiq_advance_pipeline',
+    ):
         first = dmr_client.post(
             reverse('api:pipelines_api:run-collection'),
             data={
@@ -352,7 +356,7 @@ def test_failed_clip_source_exposes_error_message(
         ).json()['id']
 
     with patch(
-        'server.apps.clips.tasks.probe_youtube_or_rss',
+        'server.apps.clips.tasks_api.probe_youtube_or_rss',
         side_effect=RuntimeError('probe failed'),
     ):
         ClipSourceService().probe_now(source_id)
