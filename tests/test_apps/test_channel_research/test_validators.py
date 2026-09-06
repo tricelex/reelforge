@@ -376,6 +376,61 @@ def test_validate_channel_spec_accepts_valid_assembly_and_sourcing() -> None:
     validate_channel_spec(spec)
 
 
+def test_validate_channel_spec_rejects_unknown_publish_mode() -> None:
+    spec = valid_spec()
+    spec.channel.publish_mode = 'manual'
+    with pytest.raises(ValueError, match='unknown publish_mode'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_character_design_mode() -> None:
+    spec = valid_spec(character_design_mode='auto', include_character=True)
+    spec.channel.character_design_mode = 'automatic'
+    with pytest.raises(ValueError, match='unknown character_design_mode'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_character_status() -> None:
+    spec = valid_spec()
+    spec.character.status = 'PENDING'
+    with pytest.raises(ValueError, match='unknown character status'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_enabled_provider() -> None:
+    spec = valid_spec()
+    spec.footage_sourcing.enabled_providers = ['pexels', 'shutterstock']
+    with pytest.raises(ValueError, match='unknown footage provider'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_prompt_template_scope() -> None:
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt='Write {{ topic }}',
+                scope='REGIONAL',
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match='unknown prompt template scope'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_accepts_valid_channel_and_character_fields() -> (
+    None
+):
+    spec = valid_spec(character_design_mode='auto', include_character=True)
+    spec.channel.publish_mode = 'auto'
+    spec.character.status = 'APPROVED'
+    spec.footage_sourcing.enabled_providers = ['pexels', 'archive_org']
+    validate_channel_spec(spec)
+
+
 def test_validate_channel_spec_rejects_pacing_without_beats() -> None:
     spec = valid_spec()
     spec.story_format.beats = [

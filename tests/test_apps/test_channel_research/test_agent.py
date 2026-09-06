@@ -126,6 +126,12 @@ def test_system_prompt_locks_transition_styles_and_sourcing_mode() -> None:
     assert 'sourcing_mode' in _SYSTEM_PROMPT
     assert 'ai_only' in _SYSTEM_PROMPT
     assert 'rerank_mode' in _SYSTEM_PROMPT
+    assert 'enabled_providers' in _SYSTEM_PROMPT
+    assert 'archive_org' in _SYSTEM_PROMPT
+    assert 'publish_mode must be one of: auto, review' in _SYSTEM_PROMPT
+    assert 'character_design_mode must be one of' in _SYSTEM_PROMPT
+    assert 'character.status must be one of' in _SYSTEM_PROMPT
+    assert 'prompt_templates[].scope must be one of' in _SYSTEM_PROMPT
 
 
 def test_build_user_prompt_omitted_market() -> None:

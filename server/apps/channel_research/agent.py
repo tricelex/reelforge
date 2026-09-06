@@ -158,6 +158,12 @@ Other quality bar:
 - footage_sourcing.sourcing_mode must be one of: stock_first,
   archival_first, balanced, ai_only
 - footage_sourcing.rerank_mode must be one of: vision, metadata, none
+- footage_sourcing.enabled_providers, if set, must only use: pexels,
+  pixabay, wikimedia, openverse, archive_org
+- channel.publish_mode must be one of: auto, review
+- channel.character_design_mode must be one of: interactive, auto, none
+- character.status must be one of: DRAFT, APPROVED, RETIRED
+- prompt_templates[].scope must be one of: GLOBAL, NICHE, CHANNEL
 - If create_if_missing is false: prompt_templates=[] and
   prompt_overrides={}. Only valid for non-distinctive photoreal
   documentary reuse.
