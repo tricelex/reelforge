@@ -53,21 +53,10 @@ from server.apps.prompts.services import (
     PromptTemplateService,
     StoryFormatService,
 )
-from server.common.transition_styles import HARD_CUT
+from server.common.transition_styles import normalize_transition_style
 
 MAX_PROMPT_TEMPLATES = 40
 MAX_SEED_IDEAS = 50
-
-
-def _normalize_transition_style(style: str) -> str:
-    """Map non-canonical spellings to reelforge's snake_case vocabulary.
-
-    Import specs come from external tooling that doesn't always follow
-    server.common.transition_styles' naming (e.g. hyphens instead of
-    underscores, or 'cut' instead of 'hard_cut').
-    """
-    normalized = style.replace('-', '_')
-    return HARD_CUT if normalized == 'cut' else normalized
 
 
 def _normalized_payload(payload: ChannelSpecPayload) -> ChannelSpecPayload:
@@ -80,7 +69,7 @@ def _normalized_payload(payload: ChannelSpecPayload) -> ChannelSpecPayload:
     """
     assembly = payload.assembly_style
     normalized_styles = [
-        _normalize_transition_style(style)
+        normalize_transition_style(style)
         for style in assembly.transition_styles
     ]
     if normalized_styles == list(assembly.transition_styles):
