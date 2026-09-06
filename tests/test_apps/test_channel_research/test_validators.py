@@ -343,6 +343,39 @@ def test_validate_channel_spec_rejects_unknown_blueprint() -> None:
         validate_channel_spec(spec)
 
 
+def test_validate_channel_spec_rejects_unknown_transition_style() -> None:
+    spec = valid_spec()
+    spec.assembly_style.transition_styles = ['cut', 'cross_dissolve']
+    with pytest.raises(ValueError, match='unknown transition style'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_sourcing_mode() -> None:
+    spec = valid_spec()
+    spec.footage_sourcing.sourcing_mode = 'ai_first'
+    with pytest.raises(ValueError, match='unknown sourcing_mode'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_unknown_rerank_mode() -> None:
+    spec = valid_spec()
+    spec.footage_sourcing.rerank_mode = 'best'
+    with pytest.raises(ValueError, match='unknown rerank_mode'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_accepts_valid_assembly_and_sourcing() -> None:
+    spec = valid_spec()
+    spec.assembly_style.transition_styles = [
+        'hard_cut',
+        'slow_pan',
+        'wipe_left',
+    ]
+    spec.footage_sourcing.sourcing_mode = 'ai_only'
+    spec.footage_sourcing.rerank_mode = 'metadata'
+    validate_channel_spec(spec)
+
+
 def test_validate_channel_spec_rejects_pacing_without_beats() -> None:
     spec = valid_spec()
     spec.story_format.beats = [

@@ -112,6 +112,22 @@ def test_system_prompt_locks_visual_medium_and_templates() -> None:
     assert 'Prefer an existing story_format.key' not in _SYSTEM_PROMPT
 
 
+def test_system_prompt_locks_transition_styles_and_sourcing_mode() -> None:
+    """The prompt must not leave these fields for the model to guess.
+
+    Regression: transition_styles/sourcing_mode/rerank_mode used to be
+    unconstrained free strings with no vocabulary in the prompt, so the
+    model invented plausible-looking values (cut, wipe-left, ai_only)
+    that failed validation only much later, deep in the import pipeline.
+    """
+    assert 'transition_styles' in _SYSTEM_PROMPT
+    assert 'slow_pan' in _SYSTEM_PROMPT
+    assert 'hard_cut' in _SYSTEM_PROMPT
+    assert 'sourcing_mode' in _SYSTEM_PROMPT
+    assert 'ai_only' in _SYSTEM_PROMPT
+    assert 'rerank_mode' in _SYSTEM_PROMPT
+
+
 def test_build_user_prompt_omitted_market() -> None:
     deps = ChannelResearchDeps(
         job_id='job-1',
