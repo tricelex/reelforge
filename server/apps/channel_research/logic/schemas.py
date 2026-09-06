@@ -46,6 +46,26 @@ SOURCING_MODES = frozenset({
 
 RERANK_MODES = frozenset({'vision', 'metadata', 'none'})
 
+# Mirrors server.apps.channels.models.PublishMode/CharacterDesignMode/
+# CharacterStatus and DEFAULT_ENABLED_PROVIDERS, and
+# server.apps.prompts.models.PromptScope. Duplicated rather than imported,
+# same reason as SOURCING_MODES/RERANK_MODES above.
+PUBLISH_MODES = frozenset({'auto', 'review'})
+
+CHARACTER_DESIGN_MODES = frozenset({'interactive', 'auto', 'none'})
+
+CHARACTER_STATUSES = frozenset({'DRAFT', 'APPROVED', 'RETIRED'})
+
+SUPPORTED_PROVIDERS = frozenset({
+    'pexels',
+    'pixabay',
+    'wikimedia',
+    'openverse',
+    'archive_org',
+})
+
+PROMPT_SCOPES = frozenset({'GLOBAL', 'NICHE', 'CHANNEL'})
+
 ANIMATED_MEDIA = frozenset({
     '2d_animation',
     '3d_cgi',
@@ -457,6 +477,38 @@ def _validate_assembly_and_sourcing(spec: ChannelSpecModel) -> None:
         raise ValueError(msg)
 
 
+def _validate_channel_and_character_enums(spec: ChannelSpecModel) -> None:
+    publish_mode = spec.channel.publish_mode
+    if publish_mode not in PUBLISH_MODES:
+        msg = f'unknown publish_mode: {publish_mode}'
+        raise ValueError(msg)
+    design_mode = spec.channel.character_design_mode
+    if design_mode not in CHARACTER_DESIGN_MODES:
+        msg = f'unknown character_design_mode: {design_mode}'
+        raise ValueError(msg)
+    status = spec.character.status
+    if status not in CHARACTER_STATUSES:
+        msg = f'unknown character status: {status}'
+        raise ValueError(msg)
+    unknown_providers = (
+        set(spec.footage_sourcing.enabled_providers) - SUPPORTED_PROVIDERS
+    )
+    if unknown_providers:
+        msg = (
+            'unknown footage provider(s): '
+            f'{", ".join(sorted(unknown_providers))}'
+        )
+        raise ValueError(msg)
+    bad_scopes = {
+        t.scope for t in spec.prompt_templates if t.scope not in PROMPT_SCOPES
+    }
+    if bad_scopes:
+        msg = (
+            f'unknown prompt template scope(s): {", ".join(sorted(bad_scopes))}'
+        )
+        raise ValueError(msg)
+
+
 def _medium_label(medium: str) -> str:
     return medium.replace('_', ' ')
 
@@ -728,6 +780,7 @@ def validate_channel_spec(spec: ChannelSpecModel) -> None:
         lambda: _validate_pacing_and_blueprint(spec),
         lambda: _validate_hero_ratio(spec),
         lambda: _validate_assembly_and_sourcing(spec),
+        lambda: _validate_channel_and_character_enums(spec),
     )
 
 
