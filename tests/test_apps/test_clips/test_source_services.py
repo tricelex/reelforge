@@ -58,7 +58,7 @@ def test_probe_clip_source_task_delegates(
         status=ClipSourceStatus.INGESTING,
     )
     with patch(
-        'server.apps.clips.tasks._probe_clip_source_sync',
+        'server.apps.clips.tasks_api._probe_clip_source_sync',
     ) as mock_probe:
         asyncio.run(probe_clip_source_task(str(source.id)))
     mock_probe.assert_called_once_with(str(source.id))
