@@ -150,6 +150,14 @@ Other quality bar:
 - default_blueprint_name must be one of: longform_v1,
   longform_documentary_v1, longform_editor_v1, longform_doc_editor_v1,
   shorts_v1, clipping_v1, clipping_v1_manual
+- assembly_style.transition_styles, if set, must only use: hard_cut,
+  cross_dissolve, long_dissolve, fade, fade_black, fade_to_black,
+  fade_white, slide_left, slide_right, slide_up, slide_down, slow_pan,
+  slow_push_cut, wipe_left, wipe_right, zoom_in. Never invent a name or
+  use a hyphen (e.g. "wipe-left") - underscores only.
+- footage_sourcing.sourcing_mode must be one of: stock_first,
+  archival_first, balanced, ai_only
+- footage_sourcing.rerank_mode must be one of: vision, metadata, none
 - If create_if_missing is false: prompt_templates=[] and
   prompt_overrides={}. Only valid for non-distinctive photoreal
   documentary reuse.

@@ -70,6 +70,30 @@ def _normalize_transition_style(style: str) -> str:
     return HARD_CUT if normalized == 'cut' else normalized
 
 
+def _normalized_payload(payload: ChannelSpecPayload) -> ChannelSpecPayload:
+    """Normalize transition style names before schema validation runs.
+
+    Must happen before _validate_before_write, not merely before the
+    write itself - validate_channel_spec rejects unknown transition
+    styles outright, so a hyphenated/shorthand name needs to already be
+    canonical by the time that check sees it.
+    """
+    assembly = payload.assembly_style
+    normalized_styles = [
+        _normalize_transition_style(style)
+        for style in assembly.transition_styles
+    ]
+    if normalized_styles == list(assembly.transition_styles):
+        return payload
+    return msgspec.structs.replace(
+        payload,
+        assembly_style=msgspec.structs.replace(
+            assembly,
+            transition_styles=normalized_styles,
+        ),
+    )
+
+
 def _step(
     name: str,
     detail: str,
@@ -259,10 +283,7 @@ def _apply_optional_config(
         channel_id,
         AssemblyStyleConfigPatchPayload(
             camera_movements=list(assembly.camera_movements),
-            transition_styles=[
-                _normalize_transition_style(style)
-                for style in assembly.transition_styles
-            ],
+            transition_styles=list(assembly.transition_styles),
             sfx_pool_tags=list(assembly.sfx_pool_tags),
             min_cuts_per_minute=assembly.min_cuts_per_minute,
             max_cuts_per_minute=assembly.max_cuts_per_minute,
@@ -332,6 +353,7 @@ class ChannelSpecImporter:
         payload: ChannelSpecPayload,
     ) -> ChannelSpecImportResultPayload:
         """Validate then write format, templates, channel, config, seeds."""
+        payload = _normalized_payload(payload)
         _validate_before_write(payload)
         # Sequential ChannelService create/patch reloads are intentional,
         # not a loop N+1 — suppress zeal for this orchestrator only.

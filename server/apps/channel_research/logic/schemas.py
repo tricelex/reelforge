@@ -7,6 +7,7 @@ from typing import Any, Literal
 import pydantic
 
 from server.apps.channel_research.logic.types import VisualMediumLiteral
+from server.common.transition_styles import VALID_TRANSITION_STYLES
 
 SHARED_FORMAT_KEYS = frozenset({
     'factual_documentary',
@@ -32,6 +33,18 @@ STOCK_BLUEPRINTS = frozenset({
     'longform_documentary_v1',
     'longform_doc_editor_v1',
 })
+
+# Mirrors server.apps.channels.models.SourcingMode/RerankMode. Duplicated
+# rather than imported - apps.channel_research stays independent of
+# apps.channels per .importlinter's layered-architecture contract.
+SOURCING_MODES = frozenset({
+    'stock_first',
+    'archival_first',
+    'balanced',
+    'ai_only',
+})
+
+RERANK_MODES = frozenset({'vision', 'metadata', 'none'})
 
 ANIMATED_MEDIA = frozenset({
     '2d_animation',
@@ -424,6 +437,26 @@ def _validate_pacing_and_blueprint(spec: ChannelSpecModel) -> None:
         raise ValueError(msg)
 
 
+def _validate_assembly_and_sourcing(spec: ChannelSpecModel) -> None:
+    unknown_transitions = (
+        set(spec.assembly_style.transition_styles) - VALID_TRANSITION_STYLES
+    )
+    if unknown_transitions:
+        msg = (
+            'unknown transition style(s): '
+            f'{", ".join(sorted(unknown_transitions))}'
+        )
+        raise ValueError(msg)
+    sourcing_mode = spec.footage_sourcing.sourcing_mode
+    if sourcing_mode not in SOURCING_MODES:
+        msg = f'unknown sourcing_mode: {sourcing_mode}'
+        raise ValueError(msg)
+    rerank_mode = spec.footage_sourcing.rerank_mode
+    if rerank_mode not in RERANK_MODES:
+        msg = f'unknown rerank_mode: {rerank_mode}'
+        raise ValueError(msg)
+
+
 def _medium_label(medium: str) -> str:
     return medium.replace('_', ' ')
 
@@ -694,6 +727,7 @@ def validate_channel_spec(spec: ChannelSpecModel) -> None:
         lambda: _validate_seeds_and_character(spec),
         lambda: _validate_pacing_and_blueprint(spec),
         lambda: _validate_hero_ratio(spec),
+        lambda: _validate_assembly_and_sourcing(spec),
     )
 
 
