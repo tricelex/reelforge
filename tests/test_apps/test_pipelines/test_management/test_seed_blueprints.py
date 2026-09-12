@@ -92,6 +92,33 @@ def test_longform_editor_v1_has_package_zip_no_assembly_or_publish() -> None:
     assert by_key['scene_breakdown']['config']['min_words'] == 8
 
 
+def test_longform_scene_export_v1_ends_at_scene_breakdown() -> None:
+    from server.apps.pipelines.models import PipelineBlueprint
+
+    call_command('seed_blueprints')
+    bp = PipelineBlueprint.objects.get(name='longform_scene_export_v1')
+    assert bp.is_active
+    assert bp.graph.get('handoff') == 'editor_package'
+    keys = {s['key'] for s in bp.graph['stages']}
+    by_key = {s['key']: s for s in bp.graph['stages']}
+    assert keys == {
+        'research',
+        'outline',
+        'script',
+        'scene_breakdown',
+        'script_gate',
+        'editor_brief',
+        'timeline_export',
+        'caption_bundle',
+        'package_zip',
+    }
+    assert by_key['script_gate']['depends_on'] == ['scene_breakdown']
+    assert by_key['script_gate'].get('gate') is True
+    assert by_key['editor_brief']['depends_on'] == ['script_gate']
+    assert by_key['package_zip']['depends_on'] == ['caption_bundle']
+    assert by_key['scene_breakdown']['config']['min_words'] == 8
+
+
 def test_clipping_editor_v1_skips_preview_and_distribute() -> None:
     from server.apps.pipelines.models import PipelineBlueprint
 

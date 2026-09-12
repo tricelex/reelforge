@@ -7,6 +7,7 @@ EDITOR_HANDOFF_BLUEPRINT_NAMES: frozenset[str] = frozenset({
     'longform_doc_editor_v1',
     'clipping_editor_v1',
     'clipping_editor_manual_v1',
+    'longform_scene_export_v1',
 })
 
 HANDOFF_TAIL_START = 'editor_brief'
