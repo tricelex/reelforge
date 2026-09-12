@@ -389,6 +389,59 @@ _CLIPPING_EDITOR_MANUAL_V1_GRAPH: dict[str, object] = {
 }
 
 
+_LONGFORM_SCENE_EXPORT_STAGES: list[dict[str, object]] = [
+    {'key': 'research', 'depends_on': [], 'queue': 'api'},
+    {'key': 'outline', 'depends_on': ['research'], 'queue': 'api'},
+    {'key': 'script', 'depends_on': ['outline'], 'queue': 'api'},
+    {
+        'key': 'scene_breakdown',
+        'depends_on': ['script'],
+        'queue': 'api',
+        'config': {
+            'min_words': 8,
+            'max_words': 16,
+            'min_seconds': 3,
+            'max_seconds': 5,
+            'max_hero_scenes': 6,
+        },
+    },
+    {
+        'key': 'script_gate',
+        'depends_on': ['scene_breakdown'],
+        'gate': True,
+        'queue': 'api',
+    },
+]
+
+_LONGFORM_SCENE_EXPORT_HANDOFF: list[dict[str, object]] = [
+    {
+        'key': 'editor_brief',
+        'depends_on': ['script_gate'],
+        'queue': 'api',
+    },
+    {
+        'key': 'timeline_export',
+        'depends_on': ['editor_brief'],
+        'queue': 'api',
+    },
+    {
+        'key': 'caption_bundle',
+        'depends_on': ['timeline_export'],
+        'queue': 'api',
+    },
+    {
+        'key': 'package_zip',
+        'depends_on': ['caption_bundle'],
+        'queue': 'render',
+    },
+]
+
+_LONGFORM_SCENE_EXPORT_V1_GRAPH: dict[str, object] = {
+    'handoff': 'editor_package',
+    'stages': (_LONGFORM_SCENE_EXPORT_STAGES + _LONGFORM_SCENE_EXPORT_HANDOFF),
+}
+
+
 class Command(BaseCommand):
     """Seed pipeline blueprints (idempotent upsert)."""
 
@@ -437,6 +490,11 @@ class Command(BaseCommand):
                 'clipping_editor_manual_v1',
                 PipelineKind.CLIPPING,
                 _CLIPPING_EDITOR_MANUAL_V1_GRAPH,
+            ),
+            (
+                'longform_scene_export_v1',
+                PipelineKind.LONGFORM,
+                _LONGFORM_SCENE_EXPORT_V1_GRAPH,
             ),
         ]
         for name, kind, graph in specs:
