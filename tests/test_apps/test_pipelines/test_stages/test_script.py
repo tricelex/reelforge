@@ -43,11 +43,11 @@ def _make_ctx() -> MagicMock:
                     'idx': 0,
                     'title': 'Intro',
                     'thesis': 'Brief intro.',
-                    'target_seconds': 60,
+                    'target_seconds': 2,
                     'device': 'open_loop',
                 },
             ],
-            'total_target_seconds': 60,
+            'total_target_seconds': 2,
         },
         'research': {
             'brief': {'key_facts': ['Rome fell 476 AD'], 'sources': []},
@@ -267,6 +267,229 @@ def test_recent_script_embeddings_reads_recent_completed_runs() -> None:
         _recent_script_embeddings(str(channel.id), str(completed[0].id)),
     )
     assert vecs == [[1.0, 0.0]]
+
+
+def test_script_run_retries_when_chapters_collapse_to_one() -> None:
+    """A script that collapses outline chapters into one is retried."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+
+    ctx = _make_ctx()
+    ctx.upstream['outline']['chapters'] = [
+        {'idx': 0, 'title': 'Intro', 'target_seconds': 2},
+        {'idx': 1, 'title': 'Middle', 'target_seconds': 2},
+    ]
+    ctx.upstream['outline']['total_target_seconds'] = 4
+    ctx.run.asave = AsyncMock()
+
+    collapsed = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Whole episode',
+                text='A short synopsis of the whole thing.',
+                word_count=7,
+                closing_line='The end.',
+                commentary='This is a real editorial stance on the piece.',
+            ),
+        ],
+        total_word_count=7,
+    )
+    fixed = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Intro',
+                text='Rome was great.',
+                word_count=3,
+                closing_line='But it fell.',
+                commentary='I think this was avoidable.',
+            ),
+            ScriptChapter(
+                idx=1,
+                title='Middle',
+                text='Then it declined.',
+                word_count=3,
+                closing_line='Slowly at first.',
+                commentary='The decline was not inevitable, in my view.',
+            ),
+        ],
+        total_word_count=6,
+    )
+
+    async def _inner() -> dict[str, object]:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(side_effect=[collapsed, fixed]),
+            ) as mock_run_agent,
+            patch(
+                'server.apps.pipelines.stages.script.embed_text',
+                new=AsyncMock(return_value=[1.0, 0.0]),
+            ),
+            patch(
+                'server.apps.pipelines.stages.script._recent_script_embeddings',
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            result = await ScriptStage().run(ctx)
+            assert mock_run_agent.await_count == 2
+            return result
+
+    result = asyncio.run(_inner())
+    assert len(result['chapters']) == 2
+
+
+def test_script_run_raises_fatal_error_after_exhausting_coverage_retries() -> (
+    None
+):
+    """A script that never covers the outline fails loudly, not silently."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+    from server.common.exceptions import FatalProviderError
+
+    ctx = _make_ctx()
+    ctx.upstream['outline']['chapters'] = [
+        {'idx': 0, 'title': 'Intro', 'target_seconds': 2},
+        {'idx': 1, 'title': 'Middle', 'target_seconds': 2},
+    ]
+    ctx.run.asave = AsyncMock()
+
+    always_collapsed = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Whole episode',
+                text='A short synopsis of the whole thing.',
+                word_count=7,
+                closing_line='The end.',
+                commentary='This is a real editorial stance on the piece.',
+            ),
+        ],
+        total_word_count=7,
+    )
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.generation.clients.llm.run_agent',
+                new=AsyncMock(return_value=always_collapsed),
+            ),
+            patch(
+                'server.apps.pipelines.stages.script.embed_text',
+                new=AsyncMock(return_value=[1.0, 0.0]),
+            ),
+            patch(
+                'server.apps.pipelines.stages.script._recent_script_embeddings',
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            await ScriptStage().run(ctx)
+
+    with pytest.raises(FatalProviderError):
+        asyncio.run(_inner())
+
+
+def test_expected_word_count_sums_chapter_target_seconds() -> None:
+    """_expected_word_count converts total outline seconds to words at wpm."""
+    from server.apps.pipelines.stages.script import _expected_word_count
+
+    chapters = [{'target_seconds': 30}, {'target_seconds': 30}]
+    assert _expected_word_count(chapters, wpm=120) == 120
+
+
+def test_expected_word_count_defaults_missing_target_seconds_to_zero() -> None:
+    """A chapter without target_seconds contributes zero, not an error."""
+    from server.apps.pipelines.stages.script import _expected_word_count
+
+    assert _expected_word_count([{'title': 'No timing'}], wpm=158) == 0
+
+
+def test_coverage_note_empty_when_no_outline_chapters() -> None:
+    """With no outline to compare against, any script is accepted."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+    from server.apps.pipelines.stages.script import _coverage_note
+
+    output = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Intro',
+                text='Rome was great.',
+                word_count=3,
+                closing_line='But it fell.',
+                commentary='I think this was avoidable.',
+            ),
+        ],
+        total_word_count=3,
+    )
+    assert _coverage_note(output, [], expected_words=0) == ''
+
+
+def test_coverage_note_flags_chapter_count_mismatch() -> None:
+    """A script with fewer chapters than the outline is flagged first."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+    from server.apps.pipelines.stages.script import _coverage_note
+
+    output = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Whole episode',
+                text='A short synopsis of the whole thing.',
+                word_count=7,
+                closing_line='The end.',
+                commentary='A real stance on the material.',
+            ),
+        ],
+        total_word_count=7,
+    )
+    outline_chapters = [{'idx': 0}, {'idx': 1}]
+    note = _coverage_note(output, outline_chapters, expected_words=100)
+    assert 'wrote 1 chapters but the outline has 2' in note
+
+
+def test_coverage_note_flags_word_count_far_below_expected() -> None:
+    """A script far short on words, despite matching chapter count, is flagged."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+    from server.apps.pipelines.stages.script import _coverage_note
+
+    output = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Intro',
+                text='Rome was great.',
+                word_count=3,
+                closing_line='But it fell.',
+                commentary='I think this was avoidable.',
+            ),
+        ],
+        total_word_count=3,
+    )
+    outline_chapters = [{'idx': 0}]
+    note = _coverage_note(output, outline_chapters, expected_words=100)
+    assert 'wrote 3 words total but the outline calls for roughly 100' in note
+
+
+def test_coverage_note_empty_when_words_within_band() -> None:
+    """A script within the coverage ratio band is accepted."""
+    from server.apps.pipelines.schemas import ScriptChapter, ScriptOutput
+    from server.apps.pipelines.stages.script import _coverage_note
+
+    output = ScriptOutput(
+        chapters=[
+            ScriptChapter(
+                idx=0,
+                title='Intro',
+                text='Rome was great.',
+                word_count=3,
+                closing_line='But it fell.',
+                commentary='I think this was avoidable.',
+            ),
+        ],
+        total_word_count=3,
+    )
+    outline_chapters = [{'idx': 0}]
+    assert _coverage_note(output, outline_chapters, expected_words=2) == ''
 
 
 def test_script_chapter_requires_commentary() -> None:

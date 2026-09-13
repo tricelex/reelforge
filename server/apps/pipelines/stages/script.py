@@ -9,6 +9,7 @@ from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.clients.embeddings import embed_text
 from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
 from server.apps.generation.logic.stage_model import resolve_stage_model
+from server.apps.pipelines.logic.scene_density import coverage_ok
 from server.apps.pipelines.logic.similarity import is_too_similar
 from server.apps.pipelines.schemas import ScriptOutput
 from server.apps.pipelines.services.prompt_variables import (
@@ -19,12 +20,63 @@ from server.apps.pipelines.stages.base import (
     StageContext,
     register_stage,
 )
+from server.common.exceptions import FatalProviderError
 
 _SIMILARITY_RETRY_HINT = (
     'Your previous draft was too similar to a recent video on this '
     'channel. Use a different structure, different examples, and '
     'different phrasing throughout.'
 )
+
+# A script that collapses into far fewer/more words than the outline calls
+# for usually means a prompt asked for the wrong deliverable shape (e.g. one
+# monolithic episode instead of one chapter per outline entry) and the model
+# produced a stub. Wide band — this only catches catastrophic collapse, not
+# ordinary pacing variance.
+_MAX_SCRIPT_ATTEMPTS = 3
+_COVERAGE_RATIO_MIN = 0.5
+_COVERAGE_RATIO_MAX = 2.5
+
+
+def _expected_word_count(chapters: list[dict[str, Any]], wpm: int) -> int:
+    """Estimate total narration words the outline calls for, at wpm."""
+    total_seconds = sum(
+        float(ch.get('target_seconds', 0) or 0) for ch in chapters
+    )
+    return round(total_seconds / 60 * wpm)
+
+
+def _coverage_note(
+    output: ScriptOutput,
+    outline_chapters: list[dict[str, Any]],
+    expected_words: int,
+) -> str:
+    """Return a corrective hint when the script doesn't cover the outline.
+
+    Empty string means the script is acceptable.
+    """
+    if not outline_chapters:
+        return ''
+    if len(output.chapters) != len(outline_chapters):
+        return (
+            f'You wrote {len(output.chapters)} chapters but the outline '
+            f'has {len(outline_chapters)}. Write exactly one script '
+            f'chapter per outline chapter, in the same order — do not '
+            f'collapse the episode into a single chapter or a summary.'
+        )
+    if expected_words and not coverage_ok(
+        output.total_word_count,
+        expected_words,
+        _COVERAGE_RATIO_MIN,
+        _COVERAGE_RATIO_MAX,
+    ):
+        return (
+            f'You wrote {output.total_word_count} words total but the '
+            f'outline calls for roughly {expected_words}. Write full '
+            f'spoken narration for every chapter, matching each '
+            f"chapter's target_seconds — do not summarize."
+        )
+    return ''
 
 
 @lru_cache(maxsize=4)
@@ -68,11 +120,12 @@ async def _generate_script(
     ctx: StageContext,
     extra_hint: str = '',
 ) -> ScriptOutput:
-    """Build the script prompt and run the agent once."""
+    """Build the script prompt and run the agent, retrying on weak coverage."""
     outline = ctx.upstream.get('outline', {})
     research = ctx.upstream.get('research', {})
     chapters = outline.get('chapters', [])
     wpm = getattr(ctx.channel, 'wpm', 158)
+    expected_words = _expected_word_count(chapters, wpm)
 
     variables = await build_prompt_variables(
         ctx,
@@ -80,7 +133,7 @@ async def _generate_script(
         include_character=True,
     )
     _, usr = await ctx.prompts.render('script', variables)
-    user_prompt = usr or (
+    base_user_prompt = usr or (
         f'Write the full script for "{ctx.run.topic}".\n'
         f'Chapters: {chapters}\n'
         f'Research: {research.get("brief", {})}\n'
@@ -91,19 +144,31 @@ async def _generate_script(
         f'the narration — that reflects a real editorial point of view '
         f'on the material.'
     )
-    if extra_hint:
-        user_prompt = f'{user_prompt}\n\n{extra_hint}'
     model_slug = await resolve_stage_model(ctx, ScriptStage.key)
-    output: ScriptOutput = await llm_client.run_agent(
-        _agent(to_pydantic_ai_model(model_slug)),
-        user_prompt,
-        ctx,
-        stage_key=ScriptStage.key,
-        model_slug=model_slug,
-        # 1 initial + up to 3 output-validation retries.
-        request_limit=5,
+    coverage_note = ''
+    for _attempt in range(_MAX_SCRIPT_ATTEMPTS):
+        user_prompt = base_user_prompt
+        if extra_hint:
+            user_prompt = f'{user_prompt}\n\n{extra_hint}'
+        if coverage_note:
+            user_prompt = f'{user_prompt}\n\n{coverage_note}'
+        output: ScriptOutput = await llm_client.run_agent(
+            _agent(to_pydantic_ai_model(model_slug)),
+            user_prompt,
+            ctx,
+            stage_key=ScriptStage.key,
+            model_slug=model_slug,
+            # 1 initial + up to 3 output-validation retries.
+            request_limit=5,
+        )
+        coverage_note = _coverage_note(output, chapters, expected_words)
+        if not coverage_note:
+            return output
+    raise FatalProviderError(
+        f'script: {coverage_note}',
+        provider='script',
+        error_code='script_coverage',
     )
-    return output
 
 
 async def _recent_script_embeddings(
