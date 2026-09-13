@@ -6,6 +6,10 @@ from typing import Any, Literal
 
 import pydantic
 
+from server.apps.channel_research.logic.prompt_safety import (
+    validate_prompt_template_jinja,
+    validate_prompt_template_structure,
+)
 from server.apps.channel_research.logic.types import VisualMediumLiteral
 from server.common.transition_styles import VALID_TRANSITION_STYLES
 
@@ -776,6 +780,8 @@ def validate_channel_spec(spec: ChannelSpecModel) -> None:
         lambda: _validate_lore(spec.niche.lore_document),
         lambda: _validate_music_overlap(spec),
         lambda: _validate_templates(spec),
+        lambda: validate_prompt_template_jinja(spec),
+        lambda: validate_prompt_template_structure(spec),
         lambda: _validate_seeds_and_character(spec),
         lambda: _validate_pacing_and_blueprint(spec),
         lambda: _validate_hero_ratio(spec),

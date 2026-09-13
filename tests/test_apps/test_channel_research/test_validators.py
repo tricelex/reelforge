@@ -63,9 +63,7 @@ def lore_document(words: int = 420, medium: str = 'photoreal') -> str:
 
 def visual_bible_text(words: int = 100, medium: str = 'photoreal') -> str:
     label = medium.replace('_', ' ')
-    first = (
-        f'{label} establishing stills lock palette line weight and camera. '
-    )
+    first = f'{label} establishing stills lock palette line weight and camera. '
     remaining = max(words - len(first.split()), 1)
     return first + ' '.join(['token'] * remaining)
 
@@ -274,7 +272,10 @@ def test_validate_channel_spec_accepts_templates_on_new_format_key() -> None:
             PromptTemplateBlock(
                 key='script_forge_history',
                 name='Forge script',
-                user_prompt='Write {{ topic }}',
+                user_prompt=(
+                    'Write {{ topic }}. Chapters: '
+                    '{{ upstream.outline.chapters }}'
+                ),
             ),
         ],
     )
@@ -421,6 +422,147 @@ def test_validate_channel_spec_rejects_unknown_prompt_template_scope() -> None:
         validate_channel_spec(spec)
 
 
+def test_validate_channel_spec_rejects_undefined_jinja_variable() -> None:
+    """Reproduces the Dreamless Abbot bug: an undefined template variable."""
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt=(
+                    'Title idea: {{ title }}\n'
+                    'Chapters: {{ upstream.outline.chapters }}'
+                ),
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match='undefined variable'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_template_syntax_error() -> None:
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt='{% if topic %}unterminated',
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match='syntax error'):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_script_template_missing_outline() -> (
+    None
+):
+    """A script template with valid variables but no outline reference."""
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt='Write a full episode for {{ topic }}.',
+            ),
+        ],
+    )
+    with pytest.raises(
+        ValueError,
+        match=r'must reference outline\.chapters',
+    ):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_rejects_scene_breakdown_missing_chapter() -> (
+    None
+):
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='scene_breakdown_forge_history',
+                name='Forge scenes',
+                user_prompt='Break "{{ topic }}" into scenes.',
+            ),
+        ],
+        prompt_overrides={'scene_breakdown': 'scene_breakdown_forge_history'},
+    )
+    with pytest.raises(
+        ValueError,
+        match=r'must reference chapter\.text or chapter\.idx',
+    ):
+        validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_accepts_well_formed_script_template() -> None:
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt=(
+                    'Write {{ topic }}. '
+                    'Chapters: {{ upstream.outline.chapters }}'
+                ),
+            ),
+        ],
+    )
+    validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_skips_unrecognized_stage_templates() -> None:
+    """A template overriding a stage with no known dummy context passes.
+
+    e.g. clip_analyze uses a different variable-building path entirely, so
+    there's nothing to render-check it against.
+    """
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='clip_analyze_forge_history',
+                name='Forge clip analyze',
+                user_prompt='{{ totally_undefined_variable }}',
+            ),
+        ],
+        prompt_overrides={'clip_analyze': 'clip_analyze_forge_history'},
+    )
+    validate_channel_spec(spec)
+
+
+def test_validate_channel_spec_ignores_orphan_template_variables() -> None:
+    """An orphan template (not in prompt_overrides) isn't Jinja-checked here.
+
+    _validate_templates already rejects it for being orphaned; the Jinja/
+    structure checks must not also crash trying to resolve its stage.
+    """
+    spec = valid_spec(
+        create_if_missing=True,
+        format_key='forge_history',
+        prompt_templates=[
+            PromptTemplateBlock(
+                key='script_forge_history',
+                name='Forge script',
+                user_prompt='{{ totally_undefined_variable }}',
+            ),
+        ],
+    )
+    spec.story_format.prompt_overrides = {}
+    with pytest.raises(ValueError, match='orphan prompt_templates'):
+        validate_channel_spec(spec)
+
+
 def test_validate_channel_spec_accepts_valid_channel_and_character_fields() -> (
     None
 ):
@@ -514,14 +656,15 @@ def _padded_template(seed: str) -> str:
 
 def _distinctive_templates(key: str) -> list[PromptTemplateBlock]:
     script = _padded_template(
-        'FORMAT CONTRACT and hook: every video is a cold-open. ',
+        'FORMAT CONTRACT and hook: every video is a cold-open. '
+        'Chapters: {{ upstream.outline.chapters }} ',
     )
     visual = _padded_template(
-        '2d animation stills. Flat color, no photoreal. '
-        '{{ visual_bible }} ',
+        '2d animation stills. Flat color, no photoreal. {{ visual_bible }} ',
     )
     scenes = _padded_template(
-        'Shorter scenes so cuts stay dense for animation. ',
+        'Shorter scenes so cuts stay dense for animation. '
+        'Chapter {{ chapter.idx }}: {{ chapter.text }} ',
     )
     return [
         PromptTemplateBlock(
@@ -708,9 +851,8 @@ def test_validate_medium_lock_rejects_short_visual_bible() -> None:
 
 
 def test_validate_medium_lock_rejects_bible_missing_medium() -> None:
-    bible = (
-        'Oil on canvas stills lock palette and line. '
-        + ' '.join(['token'] * 90)
+    bible = 'Oil on canvas stills lock palette and line. ' + ' '.join(
+        ['token'] * 90,
     )
     spec = valid_spec(visual_bible=bible)
     with pytest.raises(ValueError, match='sentence one'):
