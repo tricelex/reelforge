@@ -1,6 +1,9 @@
 # foglamp codebase-scan output (contains a secret edit token)
 .foglamp/
 
+# local git worktrees for isolated feature work
+.worktrees/
+
 #### joe made this: https://goel.io/joe
 
 # Git style-guide:
