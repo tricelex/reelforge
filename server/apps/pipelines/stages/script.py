@@ -98,7 +98,10 @@ def _agent(model: str) -> Agent[StageContext, ScriptOutput]:
         return sys or (
             'You are a professional documentary script writer. '
             'No greetings. Short sentences. Curiosity gaps at chapter ends. '
-            'First 30s hooks must restate the core payoff.'
+            'First 30s hooks must restate the core payoff. Synthesis uses '
+            'ElevenLabs v3 — use [sighs]/[whispers]-style audio tags '
+            'sparingly for genuine emotion, and ellipses/punctuation for '
+            'pacing instead of <break> tags or [pause].'
         )
 
     @a.output_validator
