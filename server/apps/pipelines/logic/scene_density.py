@@ -62,6 +62,21 @@ def max_hero_scenes(config: dict[str, Any]) -> int | None:
     )
 
 
+def is_stage_direction(text: str) -> bool:
+    """True when text is entirely one bracketed stage direction.
+
+    E.g. "[Ambient pause. No narration.]" — a wordless beat, not
+    narration to be split into 20-40 word verbatim scenes.
+    """
+    stripped = text.strip()
+    return (
+        stripped.startswith('[')
+        and stripped.endswith(']')
+        and stripped.count('[') == 1
+        and stripped.count(']') == 1
+    )
+
+
 def chapter_word_count(text: str) -> int:
     """Count words the same way alignment quotas do.
 
@@ -70,14 +85,7 @@ def chapter_word_count(text: str) -> int:
     chapter legitimately produces zero scenes downstream, so it counts as
     zero words rather than the word count of the stage direction itself.
     """
-    stripped = text.strip()
-    is_whole_chapter_stage_direction = (
-        stripped.startswith('[')
-        and stripped.endswith(']')
-        and stripped.count('[') == 1
-        and stripped.count(']') == 1
-    )
-    if is_whole_chapter_stage_direction:
+    if is_stage_direction(text):
         return 0
     return len(text.split())
 
