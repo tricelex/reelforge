@@ -11,7 +11,7 @@ no CLI flags, no editor-package integration. You run it by hand.
 2. Open `run_tts.py` and edit the config block at the top:
    `SCRIPT_PATH`, `VOICE_ID`, and optionally `RUN_NAME`, `OUT_DIR`,
    `MODEL_ID`, `STABILITY`, `SIMILARITY_BOOST`, `CHUNK_WORDS`.
-3. Run: `python scripts/elevenlabs/run_tts.py`
+3. Run (from the repo root): `python -m scripts.elevenlabs.run_tts`
 
 ## Output
 
@@ -27,3 +27,11 @@ Narration text should already contain ElevenLabs v3 audio tags (e.g.
 `[sighs]`, `[whispers]`) where wanted — this tool sends the text as-is
 to TTS, then strips tags before forced-aligning the resulting audio so
 captions stay clean.
+
+`captions.srt` assumes gapless concatenation of the chapter MP3s — each
+chapter's timeline offset is computed from its last aligned word's end
+time, not the actual audio file duration (this matches the Django
+pipeline's own alignment stage). If a chapter has meaningful trailing
+silence after the last spoken word, captions may drift slightly out of
+sync with the concatenated audio; you may need to trim the per-chapter
+MP3s or re-align the SRT after assembly.

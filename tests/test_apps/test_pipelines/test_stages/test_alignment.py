@@ -298,6 +298,33 @@ def test_split_words_into_scenes_remap_when_quota_mismatches_fa_count() -> None:
     assert result[0]['end_s'] <= result[1]['start_s']
 
 
+def test_split_words_into_scenes_strips_audio_tags_from_scene_text() -> None:
+    """Result scene 'text' has [bracket] tags stripped from narration_text.
+
+    This field is an unreachable fallback today (captions are built from
+    the 'words' list), but it costs nothing to close the gap defensively.
+    """
+    from server.apps.pipelines.stages.alignment import _split_words_into_scenes
+
+    chapter_scenes = [
+        {
+            'idx': 0,
+            'chapter_idx': 0,
+            'narration_text': '[sighs] Rome was great once.',
+            'word_count': 4,
+        },
+    ]
+    fa_words = [
+        {'word': 'Rome', 'start': 0.0, 'end': 0.2, 'score': 0.1},
+        {'word': 'was', 'start': 0.2, 'end': 0.4, 'score': 0.1},
+        {'word': 'great', 'start': 0.4, 'end': 0.6, 'score': 0.1},
+        {'word': 'once', 'start': 0.6, 'end': 0.8, 'score': 0.1},
+    ]
+    result = _split_words_into_scenes(chapter_scenes, fa_words)
+    assert result[0]['text'] == 'Rome was great once.'
+    assert '[' not in result[0]['text']
+
+
 def test_split_words_into_scenes_raises_without_speech_words() -> None:
     """Empty / whitespace-only FA stream is a fatal alignment failure."""
     from server.apps.pipelines.stages.alignment import _split_words_into_scenes
