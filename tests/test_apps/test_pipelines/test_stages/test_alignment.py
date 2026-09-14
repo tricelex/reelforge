@@ -316,6 +316,44 @@ def test_split_words_into_scenes_raises_without_speech_words() -> None:
         )
 
 
+def test_alignment_strips_audio_tags_before_force_align() -> None:
+    """force_align() receives tag-stripped text, not the raw script text."""
+    ctx = _make_ctx()
+    ctx.upstream['script']['chapters'][0]['text'] = (
+        '[whispers] Rome was great once. [sighs] Then it fell.'
+    )
+
+    async def _inner() -> None:
+        with (
+            patch(
+                'server.apps.pipelines.stages.alignment.load_tts_chapter_shards',
+                new=AsyncMock(
+                    return_value=[
+                        {'chapter_idx': 0, 'asset_id': 'audio-0'},
+                    ],
+                ),
+            ),
+            patch(
+                'server.apps.pipelines.stages.alignment._fetch_audio_bytes',
+                new=AsyncMock(return_value=b'fake-audio'),
+            ),
+            patch(
+                'server.apps.pipelines.stages.alignment.elevenlabs_client.force_align',
+                new=AsyncMock(return_value=_fake_fa_result()),
+            ) as mock_force_align,
+            patch(
+                'server.apps.pipelines.stages.alignment.settings.ELEVENLABS_API_KEY',
+                'test-key',
+            ),
+        ):
+            await AlignmentStage().run(ctx)
+
+        _, kwargs = mock_force_align.call_args
+        assert kwargs['text'] == 'Rome was great once. Then it fell.'
+
+    asyncio.run(_inner())
+
+
 def test_alignment_run_returns_scenes_and_subtitle_asset() -> None:
     """run() returns dict with 'scenes' and 'ass_asset_id'."""
     ctx = _make_ctx()
