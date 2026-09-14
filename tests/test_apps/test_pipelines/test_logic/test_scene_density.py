@@ -9,6 +9,7 @@ from server.apps.pipelines.logic.scene_density import (
     coverage_limits,
     coverage_ok,
     density_bounds,
+    is_stage_direction,
     normalize_setting,
     select_anchor_settings,
     stitch_global_idx,
@@ -72,6 +73,21 @@ def test_coverage_ok_empty_chapter_requires_empty_scenes() -> None:
 def test_chapter_word_count_splits_on_whitespace() -> None:
     """Word budget matches alignment's split() counting."""
     assert chapter_word_count('Rome was great once.') == 4
+
+
+def test_is_stage_direction_true_for_whole_bracket_span() -> None:
+    """A single bracket pair wrapping the entire text is a stage direction."""
+    assert is_stage_direction('[Ambient pause. No narration.]') is True
+
+
+def test_is_stage_direction_false_for_real_narration() -> None:
+    """Plain narration with no brackets is not a stage direction."""
+    assert is_stage_direction('Rome was great once.') is False
+
+
+def test_is_stage_direction_false_for_embedded_tag() -> None:
+    """A short tag inside otherwise-normal narration is not a stage direction."""
+    assert is_stage_direction('[sighs] Rome was great once.') is False
 
 
 def test_chapter_word_count_whole_chapter_stage_direction_is_zero() -> None:

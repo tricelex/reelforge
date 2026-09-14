@@ -14,10 +14,11 @@ from server.apps.pipelines.logic.scene_density import (
     coverage_limits,
     coverage_ok,
     density_bounds,
+    is_stage_direction,
     max_hero_scenes,
     stitch_global_idx,
 )
-from server.apps.pipelines.schemas import SceneBreakdownOutput
+from server.apps.pipelines.schemas import Scene, SceneBreakdownOutput
 from server.apps.pipelines.services.prompt_variables import (
     build_prompt_variables,
 )
@@ -29,6 +30,18 @@ from server.apps.pipelines.stages.base import (
 from server.common.exceptions import FatalProviderError
 
 _MAX_CHAPTER_ATTEMPTS = 3
+
+
+def _scene_word_count_ok(scene: Scene, min_w: int, max_w: int) -> bool:
+    """A stage-direction scene is exempt from the narration word band.
+
+    Its narration_text is a wordless beat like "[Ambient pause. No
+    narration.]" — the word count describes the stage direction, not
+    spoken narration, so the usual 20-40 word band doesn't apply.
+    """
+    if is_stage_direction(scene.narration_text):
+        return True
+    return min_w <= scene.word_count <= max_w
 
 
 @lru_cache(maxsize=4)
@@ -76,7 +89,7 @@ def _agent(model: str) -> Agent[StageContext, SceneBreakdownOutput]:  # noqa: C9
         min_w, max_w, min_s, max_s = density_bounds(ctx.deps.config)
         errors: list[str] = []
         for scene in output.scenes:
-            if not (min_w <= scene.word_count <= max_w):
+            if not _scene_word_count_ok(scene, min_w, max_w):
                 errors.append(
                     f'scene {scene.idx}: word_count='
                     f'{scene.word_count} must be in [{min_w},{max_w}]',
@@ -138,7 +151,9 @@ async def _breakdown_chapter(
     """Run the agent for one chapter, retrying on coverage failure."""
     min_w, max_w, min_s, max_s = density_bounds(ctx.config)
     ratio_min, ratio_max = coverage_limits(ctx.config)
-    chapter_words = chapter_word_count(str(chapter.get('text', '')))
+    chapter_text = str(chapter.get('text', ''))
+    chapter_words = chapter_word_count(chapter_text)
+    is_chapter_stage_direction = is_stage_direction(chapter_text)
     coverage_note = ''
     for _attempt in range(_MAX_CHAPTER_ATTEMPTS):
         variables = await build_prompt_variables(
@@ -168,6 +183,12 @@ async def _breakdown_chapter(
             model_slug=model_slug,
             request_limit=5,
         )
+        if is_chapter_stage_direction:
+            # No narration to cover — trust the per-scene validator
+            # (which already exempts stage-direction scenes from the
+            # word-count band) rather than a coverage ratio that has no
+            # meaning for a wordless beat.
+            return output
         word_sum = sum(scene.word_count for scene in output.scenes)
         if coverage_ok(word_sum, chapter_words, ratio_min, ratio_max):
             return output

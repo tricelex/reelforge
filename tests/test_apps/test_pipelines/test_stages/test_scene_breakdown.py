@@ -81,6 +81,26 @@ def test_scene_breakdown_fan_out_none() -> None:
     assert SceneBreakdownStage().fan_out(MagicMock()) is None
 
 
+def test_scene_word_count_ok_exempts_stage_direction_scene() -> None:
+    """A stage-direction scene bypasses the narration word-count band."""
+    from server.apps.pipelines.stages.scene_breakdown import (
+        _scene_word_count_ok,
+    )
+
+    scene = _scene(narration='[Ambient pause. No narration.]')
+    assert _scene_word_count_ok(scene, min_w=20, max_w=40) is True
+
+
+def test_scene_word_count_ok_enforces_band_for_real_narration() -> None:
+    """Real narration still must satisfy the configured word band."""
+    from server.apps.pipelines.stages.scene_breakdown import (
+        _scene_word_count_ok,
+    )
+
+    scene = _scene(narration='Too short for the band.')
+    assert _scene_word_count_ok(scene, min_w=20, max_w=40) is False
+
+
 def test_scene_breakdown_has_output_validator() -> None:
     """The PydanticAI agent has an output validator registered."""
     from server.apps.generation.logic.model_resolver import (
@@ -266,6 +286,48 @@ def test_scene_breakdown_accepts_stage_direction_only_chapter_without_retry() ->
     assert mock_agent.await_count == 2
     assert len(result['scenes']) == 1  # type: ignore[arg-type]
     assert result['scenes'][0]['chapter_idx'] == 0  # type: ignore[index]
+
+
+def test_scene_breakdown_accepts_low_word_count_stage_direction_scene() -> None:
+    """A stage-direction chapter split into one under-band scene still succeeds.
+
+    Reproduces a real failure: the model represented a whole-chapter
+    stage direction as a single scene whose narration_text word count
+    fell below the configured 20-40 word band, and the output_validator
+    rejected it on every attempt until the LLM call itself failed.
+    """
+    stage_direction = '[Ambient pause. No narration. Water recedes.]'
+    ctx = _make_ctx(
+        chapters=[
+            {
+                'idx': 0,
+                'title': 'Breathing Space',
+                'text': stage_direction,
+                'word_count': len(stage_direction.split()),
+            },
+        ],
+    )
+    ctx.config = {'hero_ratio': 0.15, 'min_words': 20, 'max_words': 40}
+    stage_direction_scene = _scene(
+        chapter_idx=0,
+        narration=stage_direction,
+        is_hero=False,
+    )
+    mock_agent = AsyncMock(
+        return_value=SceneBreakdownOutput(scenes=[stage_direction_scene]),
+    )
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert mock_agent.await_count == 1
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]
+    assert result['scenes'][0]['word_count'] == 6  # type: ignore[index]
 
 
 def test_scene_breakdown_missing_chapters_is_fatal() -> None:
