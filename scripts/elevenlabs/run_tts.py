@@ -1,6 +1,6 @@
 """Manual ElevenLabs v3 TTS + captions tool.
 
-Run directly: `python scripts/elevenlabs/run_tts.py`. Edit the config
+Run directly: `python -m scripts.elevenlabs.run_tts`. Edit the config
 block below before each run — there are no CLI flags. Reads
 ELEVENLABS_API_KEY from the environment (never hardcode it here).
 """

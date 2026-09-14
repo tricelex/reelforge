@@ -161,7 +161,7 @@ one change is sufficient — traced and confirmed no tag leakage into
 ## C. Standalone `scripts/elevenlabs/` tool
 
 Decoupled from Django — no settings bootstrap, no app imports. Run
-manually, one config edit per run, `python scripts/elevenlabs/run_tts.py`.
+manually, one config edit per run, `python -m scripts.elevenlabs.run_tts`.
 
 ```
 scripts/elevenlabs/

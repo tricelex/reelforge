@@ -206,7 +206,9 @@ def _split_words_into_scenes(
             'segment_idx': local_idx,
             'start_s': float(chunk[0]['start']),
             'end_s': float(chunk[-1]['end']),
-            'text': str(scene.get('narration_text', '')).strip(),
+            'text': strip_audio_tags(
+                str(scene.get('narration_text', '')),
+            ).strip(),
             'words': chunk,
         })
     return result
