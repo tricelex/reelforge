@@ -233,6 +233,41 @@ def test_scene_breakdown_empty_chapter_with_no_scenes_is_fatal() -> None:
     assert exc_info.value.error_code == 'missing_scenes'
 
 
+def test_scene_breakdown_accepts_stage_direction_only_chapter_without_retry() -> (
+    None
+):
+    """A whole-chapter bracketed stage direction needs no narration coverage."""
+    stage_direction = '[Ambient pause. No narration.]'
+    ctx = _make_ctx(
+        chapters=[
+            {'idx': 0, 'title': 'Intro', 'text': _TWELVE, 'word_count': 12},
+            {
+                'idx': 1,
+                'title': 'Breathing Space',
+                'text': stage_direction,
+                'word_count': len(stage_direction.split()),
+            },
+        ],
+    )
+    outputs = [
+        SceneBreakdownOutput(scenes=[_scene(chapter_idx=0)]),
+        SceneBreakdownOutput(scenes=[]),
+    ]
+    mock_agent = AsyncMock(side_effect=outputs)
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=mock_agent,
+        ):
+            return await SceneBreakdownStage().run(ctx)
+
+    result = asyncio.run(_inner())
+    assert mock_agent.await_count == 2
+    assert len(result['scenes']) == 1  # type: ignore[arg-type]
+    assert result['scenes'][0]['chapter_idx'] == 0  # type: ignore[index]
+
+
 def test_scene_breakdown_missing_chapters_is_fatal() -> None:
     """No script chapters cannot be broken into scenes."""
     ctx = _make_ctx()

@@ -74,6 +74,26 @@ def test_chapter_word_count_splits_on_whitespace() -> None:
     assert chapter_word_count('Rome was great once.') == 4
 
 
+def test_chapter_word_count_whole_chapter_stage_direction_is_zero() -> None:
+    """A chapter that is entirely one bracketed stage direction has no narration to cover."""
+    text = (
+        '[Ambient pause. No narration. Soft water sounds continue, '
+        'then thin into spacious room tone.]'
+    )
+    assert chapter_word_count(text) == 0
+
+
+def test_chapter_word_count_embedded_tag_counts_normally() -> None:
+    """A tag embedded in real narration still counts as narration words."""
+    assert chapter_word_count('[sighs] Rome was great once.') == 5
+
+
+def test_chapter_word_count_tags_at_both_ends_count_normally() -> None:
+    """Multiple bracket spans around real narration are not a stage direction."""
+    text = '[whispers] Real content here [exhales]'
+    assert chapter_word_count(text) == len(text.split())
+
+
 def test_stitch_global_idx_renumbers_across_chapters() -> None:
     """Per-chapter scene lists become one globally indexed list."""
     chapters = [
