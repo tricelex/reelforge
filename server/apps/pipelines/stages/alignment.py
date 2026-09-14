@@ -8,6 +8,7 @@ from django.conf import settings
 
 from server.apps.assets.models import AssetKind
 from server.apps.generation.clients import elevenlabs as elevenlabs_client
+from server.apps.pipelines.logic.audio_tags import strip_audio_tags
 from server.apps.pipelines.services.tts_shards import load_tts_chapter_shards
 from server.apps.pipelines.stages.base import (
     Stage,
@@ -333,7 +334,7 @@ async def _align_one_chapter(
     """Force-align one TTS chapter; return absolute segment, scenes, span."""
     audio_bytes = await _fetch_audio_bytes(shard['asset_id'])
     chapter = script_chapters.get(shard['chapter_idx'], {})
-    transcript_text = chapter.get('text', '')
+    transcript_text = strip_audio_tags(chapter.get('text', ''))
     if not transcript_text.strip():
         raise FatalProviderError(
             'Script chapter text is empty — cannot align audio',
