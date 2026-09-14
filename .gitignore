@@ -246,6 +246,9 @@ docker/caddy/certs/
 .gitlab/.svn/
 artifacts/
 
+# ElevenLabs manual TTS tool run output:
+scripts/elevenlabs/runs/
+
 # mypy:
 .mypy_cache/
 
