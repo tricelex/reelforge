@@ -396,6 +396,30 @@ def test_elevenlabs_synthesize_retryable_on_unknown_status() -> None:
         pass
 
 
+def test_elevenlabs_synthesize_defaults_to_v3_model() -> None:
+    """synthesize() sends model_id=eleven_v3 when the caller doesn't override it."""
+    import httpx
+
+    from server.apps.generation.clients.elevenlabs import synthesize
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.is_success = True
+    mock_resp.status_code = 200
+    mock_resp.content = b'fake-mp3-data'
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'httpx.AsyncClient.post',
+            new=AsyncMock(return_value=mock_resp),
+        ) as mock_post:
+            await synthesize('Hello world', voice_id='xyz', api_key='key')
+            _, kwargs = mock_post.call_args
+            return kwargs['json']
+
+    body = asyncio.run(_inner())
+    assert body['model_id'] == 'eleven_v3'
+
+
 def test_fal_generate_image_success_returns_dict() -> None:
     """Successful fal.generate_image returns url, seed, content_policy_violation."""
     from server.apps.generation.clients.fal import (
