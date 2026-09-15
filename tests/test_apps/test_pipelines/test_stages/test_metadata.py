@@ -178,6 +178,53 @@ def test_description_gains_credits_for_documentary_runs() -> None:
     assert 'CC-BY-4.0' in result['description']
 
 
+def test_metadata_run_falls_back_to_scene_breakdown_timing() -> None:
+    """Without an alignment stage, timestamps come from scene_breakdown."""
+    from server.apps.pipelines.schemas import VideoMetadata
+
+    ctx = _make_ctx()
+    ctx.upstream = {
+        'script': {
+            'chapters': [
+                {'idx': 0, 'title': 'Night Opening'},
+                {'idx': 1, 'title': 'Teaching'},
+            ],
+        },
+        'scene_breakdown': {
+            'scenes': [
+                {'idx': 0, 'chapter_idx': 0, 'est_seconds': 12.0},
+                {'idx': 1, 'chapter_idx': 1, 'est_seconds': 8.0},
+            ],
+        },
+    }
+    fake_output = VideoMetadata(
+        title='Title',
+        description='Body',
+        tags=['a'],
+    )
+    captured: dict[str, object] = {}
+
+    async def _fake_run_agent(
+        _agent: object,
+        user_prompt: str,
+        *_args: object,
+        **_kwargs: object,
+    ) -> VideoMetadata:
+        captured['user_prompt'] = user_prompt
+        return fake_output
+
+    async def _inner() -> dict[str, object]:
+        with patch(
+            'server.apps.generation.clients.llm.run_agent',
+            new=AsyncMock(side_effect=_fake_run_agent),
+        ):
+            return await MetadataStage().run(ctx)
+
+    asyncio.run(_inner())
+    assert '0:00 Night Opening' in captured['user_prompt']  # type: ignore[operator]
+    assert '0:12 Teaching' in captured['user_prompt']  # type: ignore[operator]
+
+
 def test_description_is_unchanged_for_ai_visual_runs() -> None:
     """A longform_v1 run gets no credits block."""
     from server.apps.pipelines.schemas import VideoMetadata

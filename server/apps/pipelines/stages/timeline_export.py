@@ -15,6 +15,9 @@ from server.apps.pipelines.logic.editor_handoff import (
     fmt_timecode,
     is_clipping_run,
 )
+from server.apps.pipelines.logic.scene_timing import (
+    resolve_scene_windows as _resolve_scene_windows,
+)
 from server.apps.pipelines.stages.base import (
     Stage,
     StageContext,
@@ -48,45 +51,6 @@ def _write_csv(header: list[str], rows: list[list[str]]) -> bytes:
     writer.writerow(header)
     writer.writerows(rows)
     return buf.getvalue().encode()
-
-
-def _estimated_scene_windows(
-    scenes: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Fabricate start_s/end_s for scene_breakdown scenes via est_seconds.
-
-    Used only when ``alignment`` has not run yet (or was skipped) so the
-    editor package still ships a usable, if approximate, timeline.
-    """
-    ordered = sorted(scenes, key=lambda s: int(s['idx']))
-    windows: list[dict[str, Any]] = []
-    cursor = 0.0
-    for i, scene in enumerate(ordered):
-        assert i < _MAX_ROWS, 'scene index exceeded bound'  # noqa: S101
-        duration = float(scene.get('est_seconds', 8.0))
-        windows.append({
-            **scene,
-            'scene_idx': int(scene['idx']),
-            'start_s': cursor,
-            'end_s': cursor + duration,
-        })
-        cursor += duration
-    return windows
-
-
-def _resolve_scene_windows(ctx: StageContext) -> list[dict[str, Any]]:
-    """Prefer alignment scene timing; fall back to estimated windows."""
-    aligned = ctx.upstream.get('alignment', {}).get('scenes', [])
-    if isinstance(aligned, list) and aligned:
-        return [s for s in aligned if isinstance(s, dict)]
-    breakdown_scenes = ctx.upstream.get('scene_breakdown', {}).get(
-        'scenes',
-        [],
-    )
-    scenes = breakdown_scenes if isinstance(breakdown_scenes, list) else []
-    return _estimated_scene_windows(
-        [s for s in scenes if isinstance(s, dict)],
-    )
 
 
 def _scene_breakdown_map(ctx: StageContext) -> dict[int, dict[str, Any]]:

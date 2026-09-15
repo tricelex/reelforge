@@ -1,6 +1,7 @@
 """Tests for PackageZipStage."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +26,7 @@ from server.apps.pipelines.stages.package_zip import (
     _gather_video_scenes,
     _gather_vo,
     _outline_markdown,
+    _publish_metadata_markdown,
     _script_markdown,
 )
 from server.common.exceptions import FatalProviderError
@@ -206,6 +208,87 @@ class TestOutlineMarkdown:
         assert _outline_markdown({}) == '# Outline\n'
 
 
+class TestPublishMetadataMarkdown:
+    """Tests for _publish_metadata_markdown."""
+
+    def test_renders_title_description_and_tags(self) -> None:
+        """Primary title, description, and tags render as fenced blocks."""
+        meta = {
+            'title': 'The Tao Te Ching for Sleep',
+            'description': 'Line one.\n\n0:00 Night Opening',
+            'tags': ['tao', 'sleep meditation'],
+            'category': 'Education',
+        }
+        markdown = _publish_metadata_markdown('My Topic', meta)
+        assert '# Publish Metadata — YouTube' in markdown
+        assert 'The Tao Te Ching for Sleep' in markdown
+        assert 'Line one.\n\n0:00 Night Opening' in markdown
+        assert 'tao, sleep meditation' in markdown
+        assert '| Category | Education |' in markdown
+
+    def test_omits_alternates_section_when_empty(self) -> None:
+        """No title_alternates means no Backups subsection."""
+        meta = {
+            'title': 'T',
+            'description': 'D',
+            'tags': [],
+            'title_alternates': [],
+        }
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert 'Backups' not in markdown
+
+    def test_includes_alternates_section_when_present(self) -> None:
+        """title_alternates render as their own backup title blocks."""
+        meta = {
+            'title': 'T',
+            'description': 'D',
+            'tags': [],
+            'title_alternates': ['Alt One', 'Alt Two'],
+        }
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert 'Backups' in markdown
+        assert 'Alt One' in markdown
+        assert 'Alt Two' in markdown
+
+    def test_omits_thumbnail_section_when_empty(self) -> None:
+        """No thumbnail_text/thumbnail_notes means no Thumbnail section."""
+        meta = {'title': 'T', 'description': 'D', 'tags': []}
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert 'Thumbnail note' not in markdown
+
+    def test_includes_thumbnail_section_when_present(self) -> None:
+        """thumbnail_text/thumbnail_notes render under Thumbnail note."""
+        meta = {
+            'title': 'T',
+            'description': 'D',
+            'tags': [],
+            'thumbnail_text': 'THE STRENGTH OF BEING SOFT',
+            'thumbnail_notes': 'Use the water hero scene, no faces.',
+        }
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert 'Thumbnail note' in markdown
+        assert 'THE STRENGTH OF BEING SOFT' in markdown
+        assert 'Use the water hero scene, no faces.' in markdown
+
+    def test_omits_brand_checklist_section_when_empty(self) -> None:
+        """No brand_checklist entries means no checklist section."""
+        meta = {'title': 'T', 'description': 'D', 'tags': []}
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert 'Brand-contract check' not in markdown
+
+    def test_includes_brand_checklist_section_when_present(self) -> None:
+        """Each brand_checklist entry renders as its own bullet."""
+        meta = {
+            'title': 'T',
+            'description': 'D',
+            'tags': [],
+            'brand_checklist': ['No banned words used.', 'Hook opens cold.'],
+        }
+        markdown = _publish_metadata_markdown('Topic', meta)
+        assert '- No banned words used.' in markdown
+        assert '- Hook opens cold.' in markdown
+
+
 class TestGatherLongformDocs:
     """Tests for _gather_longform_docs."""
 
@@ -263,6 +346,37 @@ class TestGatherLongformDocs:
         files = asyncio.run(_inner())
         assert 'docs/script.md' not in files
         assert 'docs/outline.md' not in files
+        assert 'docs/PUBLISH_METADATA.md' not in files
+
+    def test_metadata_present_adds_publish_metadata_doc(self) -> None:
+        """A metadata upstream output adds docs/PUBLISH_METADATA.md."""
+        ctx = MagicMock()
+        ctx.run.topic = 'Topic'
+        ctx.run.id = 'run-id'
+        ctx.upstream = {
+            'editor_brief': {'brief_asset_id': 'brief-1'},
+            'metadata': {
+                'title': 'The Tao Te Ching for Sleep',
+                'description': 'Body',
+                'tags': ['tao'],
+            },
+        }
+
+        async def _inner() -> dict:
+            with patch(
+                f'{_MODULE}._fetch_asset_bytes',
+                new=AsyncMock(return_value=b'BRIEF'),
+            ):
+                return await _gather_longform_docs(ctx)
+
+        files = asyncio.run(_inner())
+        assert (
+            b'The Tao Te Ching for Sleep' in files['docs/PUBLISH_METADATA.md']
+        )
+        metadata_json = json.loads(files['docs/metadata.json'])
+        assert metadata_json['title'] == 'The Tao Te Ching for Sleep'
+        assert metadata_json['topic'] == 'Topic'
+        assert metadata_json['run_id'] == 'run-id'
 
 
 class TestGatherVo:

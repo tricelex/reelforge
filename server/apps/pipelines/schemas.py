@@ -260,6 +260,11 @@ class VideoMetadata(BaseModel):
     description: str
     tags: list[str] = Field(default_factory=list)
     category: str = 'Education'
+    title_alternates: list[str] = Field(default_factory=list)
+    thumbnail_text: str = ''
+    thumbnail_notes: str = ''
+    disclaimer: str = ''
+    brand_checklist: list[str] = Field(default_factory=list)
 
 
 class FootageQuery(BaseModel):

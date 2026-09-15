@@ -11,6 +11,7 @@ from server.apps.generation.clients import llm as llm_client
 from server.apps.generation.logic.model_resolver import to_pydantic_ai_model
 from server.apps.generation.logic.stage_model import resolve_stage_model
 from server.apps.pipelines.footage_selectors import get_run_credits
+from server.apps.pipelines.logic.scene_timing import resolve_scene_windows
 from server.apps.pipelines.logic.value_objects import RunCreditsPayload
 from server.apps.pipelines.schemas import VideoMetadata
 from server.apps.pipelines.services.prompt_variables import (
@@ -118,8 +119,8 @@ class MetadataStage(Stage):
     async def run(self, ctx: StageContext) -> dict[str, Any]:
         """Generate YouTube-optimised metadata for the completed video."""
         chapters = ctx.upstream.get('script', {}).get('chapters', [])
-        alignment_scenes = ctx.upstream.get('alignment', {}).get('scenes', [])
-        timestamps = _build_chapter_timestamps(alignment_scenes, chapters)
+        scene_windows = resolve_scene_windows(ctx)
+        timestamps = _build_chapter_timestamps(scene_windows, chapters)
 
         variables = await build_prompt_variables(
             ctx,

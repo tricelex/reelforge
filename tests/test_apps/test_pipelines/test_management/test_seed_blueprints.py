@@ -108,6 +108,7 @@ def test_longform_scene_export_v1_ends_at_scene_breakdown() -> None:
         'scene_breakdown',
         'script_gate',
         'editor_brief',
+        'metadata',
         'timeline_export',
         'caption_bundle',
         'package_zip',
@@ -115,6 +116,8 @@ def test_longform_scene_export_v1_ends_at_scene_breakdown() -> None:
     assert by_key['script_gate']['depends_on'] == ['scene_breakdown']
     assert by_key['script_gate'].get('gate') is True
     assert by_key['editor_brief']['depends_on'] == ['script_gate']
+    assert by_key['metadata']['depends_on'] == ['editor_brief']
+    assert by_key['timeline_export']['depends_on'] == ['metadata']
     assert by_key['package_zip']['depends_on'] == ['caption_bundle']
     assert by_key['scene_breakdown']['config']['min_words'] == 8
 
