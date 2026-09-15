@@ -420,8 +420,13 @@ _LONGFORM_SCENE_EXPORT_HANDOFF: list[dict[str, object]] = [
         'queue': 'api',
     },
     {
-        'key': 'timeline_export',
+        'key': 'metadata',
         'depends_on': ['editor_brief'],
+        'queue': 'api',
+    },
+    {
+        'key': 'timeline_export',
+        'depends_on': ['metadata'],
         'queue': 'api',
     },
     {

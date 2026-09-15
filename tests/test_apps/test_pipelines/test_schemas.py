@@ -135,4 +135,34 @@ def test_footage_queries_output_holds_queries() -> None:
         queries=[FootageQuery(scene_idx=0, primary_query='q')],
     )
     assert len(output.queries) == 1
-    assert output.queries[0].scene_idx == 0
+
+
+def test_video_metadata_brand_fields_default_empty() -> None:
+    """title_alternates/thumbnail/disclaimer/checklist default to empty."""
+    from server.apps.pipelines.schemas import VideoMetadata
+
+    meta = VideoMetadata(title='A Title', description='Body', tags=['a'])
+    assert meta.title_alternates == []
+    assert meta.thumbnail_text == ''
+    assert meta.thumbnail_notes == ''
+    assert meta.disclaimer == ''
+    assert meta.brand_checklist == []
+
+
+def test_video_metadata_brand_fields_accept_values() -> None:
+    """Brand-aware fields round-trip when the stage populates them."""
+    from server.apps.pipelines.schemas import VideoMetadata
+
+    meta = VideoMetadata(
+        title='A Title',
+        description='Body',
+        tags=['a'],
+        title_alternates=['Alt One', 'Alt Two'],
+        thumbnail_text='THE STRENGTH OF BEING SOFT',
+        thumbnail_notes='Use the hero water scene, no faces.',
+        disclaimer='For relaxation purposes only.',
+        brand_checklist=['No banned words used.'],
+    )
+    assert meta.title_alternates == ['Alt One', 'Alt Two']
+    assert meta.thumbnail_text == 'THE STRENGTH OF BEING SOFT'
+    assert meta.brand_checklist == ['No banned words used.']

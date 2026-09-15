@@ -3,12 +3,14 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from server.apps.pipelines.logic.scene_timing import (
+    estimated_scene_windows as _estimated_scene_windows,
+)
 from server.apps.pipelines.stages.timeline_export import (
     TimelineExportStage,
     _build_clipping_files,
     _build_longform_files,
     _candidate_dict,
-    _estimated_scene_windows,
     _guess_mime,
     _load_approved_candidates,
     _markers_csv_rows,

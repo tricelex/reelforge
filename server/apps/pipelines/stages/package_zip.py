@@ -119,6 +119,94 @@ def _outline_markdown(outline: dict[str, Any]) -> str:
     return '\n'.join(lines)
 
 
+def _title_block(meta: dict[str, Any]) -> list[str]:
+    """Render the Title section: primary title plus optional backups."""
+    lines: list[str] = [
+        '## Title',
+        '',
+        '**Primary:**',
+        '```',
+        str(meta.get('title', '')),
+        '```',
+    ]
+    alternates = meta.get('title_alternates') or []
+    if alternates:
+        lines.extend(('', '**Backups:**'))
+        for alt in alternates:
+            lines.extend(('```', str(alt), '```'))
+    return lines
+
+
+def _thumbnail_block(meta: dict[str, Any]) -> list[str]:
+    """Render the optional Thumbnail note section, or nothing."""
+    thumbnail_text = str(meta.get('thumbnail_text', '')).strip()
+    thumbnail_notes = str(meta.get('thumbnail_notes', '')).strip()
+    if not thumbnail_text and not thumbnail_notes:
+        return []
+    lines: list[str] = ['', '---', '', '## Thumbnail note', '']
+    if thumbnail_notes:
+        lines.append(thumbnail_notes)
+    if thumbnail_text:
+        lines.append(f'\nSuggested overlay text: **"{thumbnail_text}"**')
+    return lines
+
+
+def _brand_checklist_block(meta: dict[str, Any]) -> list[str]:
+    """Render the optional Brand-contract check section, or nothing."""
+    checklist = meta.get('brand_checklist') or []
+    if not checklist:
+        return []
+    lines: list[str] = ['', '---', '', '## Brand-contract check', '']
+    lines.extend(f'- {item}' for item in checklist)
+    return lines
+
+
+def _publish_metadata_markdown(topic: str, meta: dict[str, Any]) -> str:
+    """Render the metadata stage's output as a publish-ready doc.
+
+    Mirrors a hand-written publish brief: primary title (+ backups),
+    paste-ready description, tags, category, thumbnail guidance, and a
+    brand-contract checklist — each optional section only appears when
+    the stage populated it.
+    """
+    lines: list[str] = [
+        '# Publish Metadata — YouTube',
+        '',
+        f'**Topic:** {topic}',
+        '',
+        '---',
+        '',
+        *_title_block(meta),
+        '',
+        '---',
+        '',
+        '## Description',
+        '',
+        '```',
+        str(meta.get('description', '')),
+        '```',
+        '',
+        '---',
+        '',
+        '## Tags',
+        '',
+        '```',
+        ', '.join(meta.get('tags') or []),
+        '```',
+        '',
+        '---',
+        '',
+        '## Other publish fields',
+        '',
+        '| Field | Value |',
+        '|---|---|',
+        f'| Category | {meta.get("category", "Education")} |',
+        *_thumbnail_block(meta),
+        *_brand_checklist_block(meta),
+    ]
+    return '\n'.join(lines)
+
+
 async def _gather_longform_docs(ctx: StageContext) -> dict[str, bytes]:
     """Gather docs/: EDIT_BRIEF.md, script.md, outline.md?, composition."""
     brief_id = ctx.upstream.get('editor_brief', {}).get('brief_asset_id')
@@ -127,13 +215,20 @@ async def _gather_longform_docs(ctx: StageContext) -> dict[str, bytes]:
             'editor_brief must produce a brief before package_zip runs',
             provider='***REMOVED***',
         )
+    metadata = ctx.upstream.get('metadata', {})
     files: dict[str, bytes] = {
         'docs/EDIT_BRIEF.md': await _fetch_asset_bytes(brief_id),
         'docs/metadata.json': json.dumps({
+            **metadata,
             'topic': ctx.run.topic,
             'run_id': str(ctx.run.id),
         }).encode(),
     }
+    if metadata:
+        files['docs/PUBLISH_METADATA.md'] = _publish_metadata_markdown(
+            str(ctx.run.topic),
+            metadata,
+        ).encode()
     script = ctx.upstream.get('script', {})
     if script:
         files['docs/script.md'] = _script_markdown(script).encode()
